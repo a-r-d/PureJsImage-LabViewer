@@ -1,0 +1,86 @@
+.gitignore
+  h_9f4a25732fa0c1 1-272
+AGENTS.md
+  h_9f4a25732fa0c1 1-272
+CODEX_RUNBOOK.md
+  h_9f4a25732fa0c1 1-1866
+FILE_INDEX.md
+  h_9f4a25732fa0c1 1-37
+README.md
+  h_9f4a25732fa0c1 1-129
+datasets/README.md
+  h_9f4a25732fa0c1 1-24
+datasets/corpus.yaml
+  h_9f4a25732fa0c1 1-271
+docs/AI_AGENT.md
+  h_9f4a25732fa0c1 1-218
+docs/ARCHITECTURE.md
+  h_9f4a25732fa0c1 1-310
+docs/DECISIONS.md
+  h_9f4a25732fa0c1 1-101
+docs/PLUGIN_SYSTEM.md
+  h_9f4a25732fa0c1 1-167
+docs/PRODUCT_NORTH_STAR.md
+  h_9f4a25732fa0c1 1-301
+docs/QUALITY_GATES.md
+  h_9f4a25732fa0c1 1-192
+docs/RESEARCH_SOURCES.md
+  h_9f4a25732fa0c1 1-101
+docs/TEST_CORPUS.md
+  h_9f4a25732fa0c1 1-301
+docs/UX_SYSTEM.md
+  h_9f4a25732fa0c1 1-315
+prompts/00-bootstrap-monorepo.md
+  h_9f4a25732fa0c1 1-241
+prompts/01-workbench-shell-and-design-system.md
+  h_9f4a25732fa0c1 1-200
+prompts/02-purejsimage-worker-and-viewer.md
+  h_9f4a25732fa0c1 1-178
+prompts/03-workspace-project-and-history.md
+  h_9f4a25732fa0c1 1-152
+prompts/04-materials-analysis-workflows.md
+  h_9f4a25732fa0c1 1-182
+prompts/05-openrouter-agent.md
+  h_9f4a25732fa0c1 1-166
+prompts/06-plugin-foundation.md
+  h_9f4a25732fa0c1 1-154
+prompts/07-test-corpus-and-product-e2e.md
+  h_9f4a25732fa0c1 1-152
+prompts/08-ux-performance-and-accessibility.md
+  h_9f4a25732fa0c1 1-132
+prompts/09-cloudflare-deployment.md
+  h_9f4a25732fa0c1 1-103
+prompts/10-final-hardening.md
+  h_9f4a25732fa0c1 1-172
+repo-tree.txt
+  h_9f4a25732fa0c1 1-56
+services/README.md
+  h_9f4a25732fa0c1 1-25
+templates/.github/workflows/ci.yml
+  h_9f4a25732fa0c1 1-58
+templates/biome.json
+  h_9f4a25732fa0c1 1-49
+templates/package.json.template
+  h_9f4a25732fa0c1 1-26
+templates/playwright.config.ts
+  h_9f4a25732fa0c1 1-28
+templates/pnpm-workspace.yaml
+  h_9f4a25732fa0c1 1-5
+templates/tsconfig.base.json
+  h_9f4a25732fa0c1 1-25
+templates/turbo.json
+  h_9f4a25732fa0c1 1-32
+templates/vitest.workspace.ts
+  h_9f4a25732fa0c1 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "291f5400960a0c9076a1317b5f0d2f6a93045d42",
+  "prompts": {},
+  "humans": {
+    "h_9f4a25732fa0c1": {
+      "author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
