@@ -1,0 +1,26 @@
+{
+  "name": "purejsimage-materials-workbench",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@VERIFY_CURRENT_EXACT_VERSION",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e && pnpm deploy:dry-run",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "test": "turbo run test",
+    "test:e2e": "playwright test",
+    "test:a11y": "playwright test --grep @a11y --project=chromium",
+    "test:visual": "playwright test --grep @visual --project=chromium",
+    "test:corpus": "turbo run test:corpus",
+    "test:performance": "playwright test --grep @performance --project=chromium",
+    "deploy:dry-run": "pnpm --filter @pji-workbench/app deploy:dry-run",
+    "clean": "turbo run clean && rimraf node_modules .turbo"
+  }
+}

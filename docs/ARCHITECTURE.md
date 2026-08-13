@@ -1,0 +1,310 @@
+# Architecture
+
+## Design principles
+
+1. **PureJsImage owns scientific data semantics.** The app does not recreate readers, ROIs, analysis graphs, operation validation, results, or tile accounting.
+2. **The app owns workflows and presentation.** Panel layout, selection, viewport interaction, workspace organization, user preferences, and onboarding belong here.
+3. **No large-data work on the React render path.** File parsing and analysis execute through a worker boundary.
+4. **Local-first is a complete mode.** A backend can enhance storage, sharing, compute, and authentication later, but the core app is useful without it.
+5. **Every cross-boundary message is versioned and validated.** This includes Worker RPC, project persistence, plugins, agent tools, and future backend APIs.
+6. **One source of truth per concern.** Avoid dual state between React, worker, URL, local storage, and project documents.
+7. **Measured performance over folklore.** React versus Preact is less important than tile latency, transfer, draw calls, cache reuse, and result virtualization.
+
+## Monorepo
+
+```text
+apps/workbench
+  Browser app, Cloudflare entry, composition root, route, panels.
+
+packages/contracts
+  JSON-safe contracts shared with Workers and future services.
+  No React, DOM, Node, or PureJsImage runtime imports unless types-only and deliberate.
+
+packages/workspace
+  Immutable workspace state, commands, revisions, undo/redo, project persistence,
+  user-visible activity/history, selection, and orchestration state.
+
+packages/imaging
+  The only package that directly composes PureJsImage readers, scientific documents,
+  analysis controller/runtime, and worker-side lifecycles.
+
+packages/viewport
+  Camera math, visible tile selection, render model, overlay geometry, hit testing,
+  and renderer interfaces. Core is framework-neutral.
+
+packages/agent
+  OpenRouter client, tool definitions, tool loop, approval policy, message history,
+  summaries, redaction, and deterministic mocks.
+
+packages/plugin-sdk
+  Manifest schemas, recipe plugins, capability declarations, installation records,
+  and the future sandbox RPC protocol.
+
+packages/ui
+  Design tokens and accessible reusable React components. No domain data access.
+
+packages/test-corpus
+  Dataset manifest types, license/checksum validation, fetch/extract scripts,
+  and corpus metadata used by tests.
+```
+
+## Dependency direction
+
+```text
+contracts
+  ↑        ↑          ↑
+workspace imaging   plugin-sdk
+  ↑        ↑          ↑
+  └──── workbench ────┘
+       ↑        ↑
+    viewport    agent
+       ↑        ↑
+       └── workbench
+
+ui → React only and generic contracts
+```
+
+Rules:
+
+- `apps/workbench` may import all public workspace packages.
+- No package imports from `apps/*`.
+- `imaging` may import only documented PureJsImage package exports.
+- `viewport` receives tile/render descriptors; it does not open files or execute analysis.
+- `agent` invokes a narrow application tool host, never PureJsImage internals directly.
+- `workspace` stores semantic references and project state, not live `ScientificDataset` objects or typed pixel buffers.
+
+Add an automated dependency-boundary test. Turborepo ordering alone does not enforce architecture.
+
+## Browser runtime
+
+### Main thread
+
+Owns:
+
+- React application shell;
+- keyboard, pointer, drag/drop, and accessibility behavior;
+- viewport camera and high-frequency interaction state;
+- WebGL renderer initially;
+- panel layout;
+- virtualized tables;
+- command dispatch and user approval dialogs.
+
+Do not place full scientific datasets, result columns, or tile caches in React state.
+
+### Imaging Worker
+
+Owns:
+
+- PureJsImage scientific library and explicitly registered readers;
+- local Blob/File sources and remote HTTP Range sources;
+- open ScientificDocuments and datasets;
+- AnalysisController, provider bundles, and TileRuntime;
+- operation planning, dry-run, execution, result summarization;
+- tile requests and lifecycle cleanup;
+- project validation and source identity checks where appropriate.
+
+The worker should support multiple open documents but enforce explicit limits.
+
+### Renderer
+
+Start with a WebGL2 renderer on the main thread behind this conceptual interface:
+
+```ts
+interface ViewportRenderer {
+  configure(config: ViewportRenderConfig): void
+  uploadTile(tile: RenderTile): RenderTileHandle
+  releaseTile(handle: RenderTileHandle): void
+  render(frame: RenderFrame): void
+  dispose(): void
+}
+```
+
+Use transferable buffers or `ImageBitmap` only where ownership and measured performance justify them. Do not copy an entire plane to the main thread.
+
+Keep an experimental OffscreenCanvas worker renderer possible, but do not make it a skeleton dependency because browser/debugging behavior varies and input latency must be measured.
+
+### Agent
+
+The agent runs on the main thread or a dedicated small Worker, but all analysis tools cross the same typed host boundary used by the UI.
+
+The agent cannot:
+
+- access dataset bytes directly;
+- inspect the OpenRouter key through tools;
+- mutate React stores;
+- execute arbitrary JavaScript;
+- bypass graph validation, dry-run, limits, or user approvals.
+
+## Worker RPC
+
+Use a small request/response/event protocol owned by `packages/contracts`.
+
+Every message includes:
+
+```ts
+interface RpcEnvelope {
+  readonly schemaVersion: 1
+  readonly requestId: string
+  readonly kind: string
+  readonly payload: unknown
+}
+```
+
+Required RPC categories:
+
+- open/close document;
+- enumerate/open dataset;
+- request/cancel viewport tile;
+- inspect metadata/capabilities;
+- manage ROI/workspace graph bindings;
+- validate/dry-run/execute/cancel analysis;
+- summarize/read paged result data;
+- project validate/import/export;
+- runtime metrics and diagnostics.
+
+Use `AbortSignal` semantics at the application boundary through explicit cancel messages. Do not serialize an `AbortSignal` object.
+
+The protocol must validate unknown payloads before use. Invalid messages return structured errors rather than throwing unhandled worker exceptions.
+
+## State layers
+
+### Ephemeral interaction state
+
+Examples:
+
+- pointer position;
+- current pan gesture;
+- hover target;
+- transient threshold preview slider;
+- panel resize drag.
+
+Keep this close to the relevant component or viewport controller.
+
+### Workspace semantic state
+
+Examples:
+
+- open dataset references;
+- active dataset and plane selection;
+- ROI set;
+- operation graph;
+- bindings;
+- pinned results;
+- notes;
+- agent-proposed changes pending approval.
+
+Managed by `packages/workspace` through immutable commands with revision preconditions.
+
+### Preferences
+
+Examples:
+
+- theme;
+- panel layout;
+- shortcut settings;
+- OpenRouter model selection;
+- recent sources;
+- credential presence.
+
+Stored separately from project data. Credentials are never included in project state.
+
+### Live runtime handles
+
+Examples:
+
+- Worker-side documents;
+- datasets;
+- prepared plans;
+- execution results;
+- tile leases;
+- GPU resources.
+
+Referenced by opaque IDs only. Never persist these IDs as durable source identity.
+
+## Persistence
+
+Use interfaces from the start:
+
+```ts
+interface ProjectStore {
+  save(project: WorkspaceProject): Promise<void>
+  load(id: string): Promise<WorkspaceProject | undefined>
+  list(): Promise<readonly ProjectSummary[]>
+  delete(id: string): Promise<void>
+}
+```
+
+Initial implementation:
+
+- IndexedDB for projects and bounded history;
+- localStorage only for tiny preferences and the requested OpenRouter key;
+- explicit JSON project export/import;
+- local files must be rebound after reload unless the browser grants persistent file handles.
+
+Do not store multi-megabyte result tables in localStorage.
+
+## Optional backend boundary
+
+A future service may provide:
+
+- project storage and sharing;
+- object-store credentials or signed URLs;
+- durable dataset registry;
+- asynchronous compute jobs;
+- team identity and permissions;
+- plugin registry;
+- audit and institutional controls.
+
+The client should target these interfaces:
+
+```ts
+interface RemoteProjectService extends ProjectStore {}
+interface ComputeService { submit(...): Promise<JobReference> }
+interface DatasetLocatorService { resolve(...): Promise<SourceLocator> }
+interface PluginRegistryService { search(...): Promise<PluginSummary[]> }
+```
+
+A Dockerized open-source service and a hosted implementation can both satisfy them. Do not couple client logic to deployment ownership or licensing.
+
+## Security boundaries
+
+- Treat uploaded files, remote bytes, metadata, project JSON, plugin packages, and model responses as untrusted.
+- Apply size, depth, item-count, and string-length limits before allocating.
+- Never render metadata or model output as unsanitized HTML.
+- Keep Content Security Policy strict; avoid `unsafe-eval`.
+- OpenRouter requests go directly to OpenRouter only after explicit user action.
+- Plugins do not execute in the page realm.
+- Remote URLs require HTTPS except localhost development.
+- Do not proxy arbitrary URLs through a future backend without SSRF protections.
+
+## Build outputs
+
+`apps/workbench` produces a browser bundle and Cloudflare static deployment output.
+
+Workspace libraries produce ESM declarations/build artifacts for boundary verification, but are not published.
+
+Every package should support:
+
+```text
+check
+build
+test
+typecheck
+lint
+```
+
+Root tasks use Turborepo and must be reproducible from a clean clone.
+
+## Performance budgets
+
+Initial budgets, enforced by tests where practical:
+
+- first shell interaction within 1 second on a warm local development build;
+- no application route chunk above 300 KB gzip without an explicit budget update;
+- PureJsImage reader bundles loaded lazily by format or workflow;
+- pan/zoom input-to-frame target below 50 ms, with 60 fps as the normal steady-state goal;
+- no React commit required for every pointer move or tile upload;
+- first useful tile before nonessential metadata panels finish;
+- object table remains responsive at 100,000 rows through virtualization;
+- agent tool payloads never include full tables or raw tiles;
+- every remote workflow records bytes fetched and request count in test mode.

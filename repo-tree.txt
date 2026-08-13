@@ -1,0 +1,56 @@
+apps/
+  workbench/
+    src/
+      app/
+      features/
+      services/
+      styles/
+      workers/
+
+packages/
+  contracts/
+  workspace/
+  imaging/
+  viewport/
+  agent/
+  plugin-sdk/
+  ui/
+  test-corpus/
+
+apps-e2e/
+  workbench/
+    fixtures/
+    pages/
+    tests/
+
+services/
+  README.md
+
+tooling/
+  typescript/
+  vitest/
+  playwright/
+  scripts/
+
+datasets/
+  README.md
+  corpus.yaml
+
+docs/
+  PRODUCT_NORTH_STAR.md
+  ARCHITECTURE.md
+  UX_SYSTEM.md
+  AI_AGENT.md
+  PLUGIN_SYSTEM.md
+  TEST_CORPUS.md
+  QUALITY_GATES.md
+  DECISIONS.md
+
+AGENTS.md
+README.md
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+turbo.json
+biome.json
+tsconfig.json

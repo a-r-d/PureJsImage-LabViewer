@@ -1,0 +1,37 @@
+# File index
+
+- `AGENTS.md`
+- `CODEX_RUNBOOK.md`
+- `README.md`
+- `datasets/README.md`
+- `datasets/corpus.yaml`
+- `docs/AI_AGENT.md`
+- `docs/ARCHITECTURE.md`
+- `docs/DECISIONS.md`
+- `docs/PLUGIN_SYSTEM.md`
+- `docs/PRODUCT_NORTH_STAR.md`
+- `docs/QUALITY_GATES.md`
+- `docs/RESEARCH_SOURCES.md`
+- `docs/TEST_CORPUS.md`
+- `docs/UX_SYSTEM.md`
+- `prompts/00-bootstrap-monorepo.md`
+- `prompts/01-workbench-shell-and-design-system.md`
+- `prompts/02-purejsimage-worker-and-viewer.md`
+- `prompts/03-workspace-project-and-history.md`
+- `prompts/04-materials-analysis-workflows.md`
+- `prompts/05-openrouter-agent.md`
+- `prompts/06-plugin-foundation.md`
+- `prompts/07-test-corpus-and-product-e2e.md`
+- `prompts/08-ux-performance-and-accessibility.md`
+- `prompts/09-cloudflare-deployment.md`
+- `prompts/10-final-hardening.md`
+- `repo-tree.txt`
+- `services/README.md`
+- `templates/.github/workflows/ci.yml`
+- `templates/biome.json`
+- `templates/package.json.template`
+- `templates/playwright.config.ts`
+- `templates/pnpm-workspace.yaml`
+- `templates/tsconfig.base.json`
+- `templates/turbo.json`
+- `templates/vitest.workspace.ts`
