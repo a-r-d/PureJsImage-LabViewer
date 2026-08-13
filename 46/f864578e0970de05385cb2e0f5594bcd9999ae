@@ -1,0 +1,14 @@
+.nvmrc
+  h_9f4a25732fa0c1 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "46f864578e0970de05385cb2e0f5594bcd9999ae",
+  "prompts": {},
+  "humans": {
+    "h_9f4a25732fa0c1": {
+      "author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
