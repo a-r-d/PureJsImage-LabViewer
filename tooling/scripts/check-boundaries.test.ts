@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { inspectSource } from './check-boundaries.mjs'
+import { findFeatureCycles, inspectSource } from './check-boundaries.mjs'
 
 describe('architecture boundary checker', () => {
   it('accepts public package composition', () => {
@@ -31,5 +31,14 @@ describe('architecture boundary checker', () => {
     ['apps/workbench/src/app.tsx', "import value from '@pji-workbench/contracts/src/private'"],
   ])('rejects %s crossing a protected boundary', (file, source) => {
     expect(inspectSource(file, source)).toHaveLength(1)
+  })
+
+  it('detects cycles between application feature boundaries', () => {
+    expect(
+      findFeatureCycles([
+        { file: 'apps/workbench/src/features/source/a.ts', source: "import '../analysis/b.js'" },
+        { file: 'apps/workbench/src/features/analysis/b.ts', source: "import '../source/a.js'" },
+      ]),
+    ).toEqual(['analysis -> source -> analysis'])
   })
 })

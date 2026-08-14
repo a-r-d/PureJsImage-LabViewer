@@ -1,3 +1,9 @@
+import {
+  type ActionDefinition,
+  type WorkbenchActionDescriptorV1,
+  WorkbenchActionRegistry,
+} from '@pji-workbench/actions'
+
 export type CommandId =
   | 'palette.open'
   | 'panel.agent'
@@ -12,92 +18,340 @@ export type CommandId =
   | 'workspace.save'
   | 'workspace.undo'
 
+export type WorkbenchActionId =
+  | CommandId
+  | 'analysis.connected-components.execute'
+  | 'analysis.connected-components.plan'
+  | 'analysis.threshold.commit'
+  | 'analysis.threshold.preview'
+  | 'panel.select'
+  | 'pipeline.node.remove'
+  | 'result.page.read'
+  | 'roi.create'
+  | 'roi.remove'
+  | 'roi.select'
+  | 'source.open-local'
+  | 'source.open-remote'
+  | 'viewport.state.read'
+
 export interface CommandContext {
   readonly hasDataset: boolean
   readonly canUndo?: boolean
   readonly canRedo?: boolean
 }
 
-export interface WorkbenchCommand {
+interface CommandPresentation {
   readonly id: CommandId
-  readonly label: string
   readonly shortcut?: string
-  readonly available: (context: CommandContext) => boolean
 }
 
-export const workbenchCommands: readonly WorkbenchCommand[] = [
+export interface WorkbenchCommand extends CommandPresentation {
+  readonly label: string
+}
+
+const EMPTY_INPUT = { type: 'object', additionalProperties: false } as const
+const NULL_OUTPUT = { type: 'null' } as const
+
+function descriptor(
+  id: WorkbenchActionId,
+  title: string,
+  description: string,
+  category: string,
+  options: Partial<
+    Pick<
+      WorkbenchActionDescriptorV1,
+      'cancellable' | 'cost' | 'inputSchema' | 'mutability' | 'outputSchema' | 'permissions'
+    >
+  > = {},
+): WorkbenchActionDescriptorV1 {
+  return {
+    schemaVersion: 1,
+    id,
+    version: 1,
+    title,
+    description,
+    category,
+    inputSchema: options.inputSchema ?? EMPTY_INPUT,
+    outputSchema: options.outputSchema ?? NULL_OUTPUT,
+    mutability: options.mutability ?? 'mutation',
+    cost: options.cost ?? 'trivial',
+    permissions: options.permissions ?? ['workspace.propose'],
+    cancellable: options.cancellable ?? false,
+  }
+}
+
+const requiresDataset = ({ hasDataset }: CommandContext) =>
+  hasDataset ? { available: true } : { available: false, reason: 'Open a dataset first.' }
+const requiresUndo = ({ canUndo }: CommandContext) =>
+  canUndo === true ? { available: true } : { available: false, reason: 'Nothing to undo.' }
+const requiresRedo = ({ canRedo }: CommandContext) =>
+  canRedo === true ? { available: true } : { available: false, reason: 'Nothing to redo.' }
+
+const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
   {
-    id: 'workspace.new',
-    label: 'New project',
-    shortcut: 'Ctrl+Shift+N',
-    available: () => true,
+    descriptor: descriptor(
+      'workspace.new',
+      'New project',
+      'Create a new local workspace.',
+      'project',
+    ),
   },
   {
-    id: 'workspace.openProject',
-    label: 'Open recent project',
-    shortcut: 'Ctrl+Shift+O',
-    available: () => true,
+    descriptor: descriptor(
+      'workspace.openProject',
+      'Open recent project',
+      'Open the local project browser.',
+      'project',
+    ),
   },
   {
-    id: 'workspace.save',
-    label: 'Save project locally',
-    shortcut: 'Ctrl+S',
-    available: () => true,
+    descriptor: descriptor(
+      'workspace.save',
+      'Save project locally',
+      'Save the current project to IndexedDB.',
+      'project',
+    ),
   },
   {
-    id: 'workspace.export',
-    label: 'Export project JSON',
-    available: () => true,
+    descriptor: descriptor(
+      'workspace.export',
+      'Export project JSON',
+      'Export a bounded project document.',
+      'project',
+      { cost: 'external', permissions: ['file.export'] },
+    ),
   },
   {
-    id: 'workspace.undo',
-    label: 'Undo project change',
-    shortcut: 'Ctrl+Z',
-    available: ({ canUndo }) => canUndo === true,
+    descriptor: descriptor(
+      'workspace.undo',
+      'Undo project change',
+      'Undo one semantic project command.',
+      'project',
+    ),
+    availability: requiresUndo,
   },
   {
-    id: 'workspace.redo',
-    label: 'Redo project change',
-    shortcut: 'Ctrl+Shift+Z',
-    available: ({ canRedo }) => canRedo === true,
+    descriptor: descriptor(
+      'workspace.redo',
+      'Redo project change',
+      'Redo one semantic project command.',
+      'project',
+    ),
+    availability: requiresRedo,
   },
   {
-    id: 'workspace.openSample',
-    label: 'Open sample SEM image',
-    shortcut: 'Ctrl+O',
-    available: () => true,
+    descriptor: descriptor(
+      'workspace.openSample',
+      'Open sample SEM image',
+      'Open the deterministic generated calibrated sample.',
+      'source',
+      { cost: 'interactive', cancellable: true, permissions: ['source.read-metadata'] },
+    ),
   },
   {
-    id: 'viewport.fit',
-    label: 'Fit image to viewport',
-    shortcut: 'F',
-    available: ({ hasDataset }) => hasDataset,
+    descriptor: descriptor(
+      'source.open-local',
+      'Open local source',
+      'Open user-selected local scientific files.',
+      'source',
+      { cost: 'interactive', cancellable: true, permissions: ['source.read-metadata'] },
+    ),
   },
   {
-    id: 'viewport.oneToOne',
-    label: 'Set viewport to 1:1',
-    shortcut: '1',
-    available: ({ hasDataset }) => hasDataset,
+    descriptor: descriptor(
+      'source.open-remote',
+      'Open remote source',
+      'Open an explicit HTTPS range-backed source.',
+      'source',
+      { cost: 'external', cancellable: true, permissions: ['network.explicit-hosts'] },
+    ),
   },
   {
-    id: 'panel.agent',
-    label: 'Show agent panel',
-    shortcut: 'Ctrl+Shift+A',
-    available: () => true,
+    descriptor: descriptor(
+      'viewport.fit',
+      'Fit image to viewport',
+      'Fit the active dataset in the specimen viewport.',
+      'viewport',
+      { permissions: ['viewport.propose'] },
+    ),
+    availability: requiresDataset,
   },
   {
-    id: 'theme.toggle',
-    label: 'Toggle color theme',
-    shortcut: 'Ctrl+Shift+T',
-    available: () => true,
+    descriptor: descriptor(
+      'viewport.oneToOne',
+      'Set viewport to 1:1',
+      'Show one source pixel per display pixel.',
+      'viewport',
+      { permissions: ['viewport.propose'] },
+    ),
+    availability: requiresDataset,
   },
   {
-    id: 'palette.open',
-    label: 'Open command palette',
-    shortcut: 'Ctrl+K',
-    available: () => true,
+    descriptor: descriptor(
+      'viewport.state.read',
+      'Read viewport state',
+      'Read a bounded camera and selection summary.',
+      'viewport',
+      { mutability: 'read', permissions: ['viewport.read'] },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'roi.create',
+      'Create ROI',
+      'Create a validated ROI on the active dataset.',
+      'roi',
+      { cost: 'interactive', cancellable: true, permissions: ['roi.propose'] },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor('roi.select', 'Select ROI', 'Select a workspace ROI.', 'roi', {
+      permissions: ['roi.propose'],
+    }),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'roi.remove',
+      'Remove ROI',
+      'Remove a workspace ROI through project history.',
+      'roi',
+      { permissions: ['roi.propose'] },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.threshold.preview',
+      'Preview threshold',
+      'Run a bounded threshold preview without project history.',
+      'analysis',
+      { cost: 'interactive', cancellable: true, permissions: ['analysis.execute'] },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.threshold.commit',
+      'Commit threshold',
+      'Normalize and commit one threshold graph change.',
+      'analysis',
+      { cost: 'interactive', cancellable: true, permissions: ['analysis.execute'] },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.connected-components.plan',
+      'Plan connected components',
+      'Dry-run connected components and return resource estimates.',
+      'analysis',
+      {
+        mutability: 'read',
+        cost: 'interactive',
+        cancellable: true,
+        permissions: ['analysis.dry-run'],
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.connected-components.execute',
+      'Run connected components',
+      'Execute the reviewed connected-components plan.',
+      'analysis',
+      { cost: 'expensive', cancellable: true, permissions: ['analysis.execute'] },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'result.page.read',
+      'Read result page',
+      'Read one bounded page from a result table.',
+      'results',
+      {
+        mutability: 'read',
+        cost: 'interactive',
+        cancellable: true,
+        permissions: ['result.read-page'],
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'pipeline.node.remove',
+      'Remove pipeline node',
+      'Remove an unconsumed operation node.',
+      'pipeline',
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'panel.select',
+      'Select workbench panel',
+      'Open a named workbench surface.',
+      'ui',
+      { permissions: ['ui.propose'] },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'panel.agent',
+      'Show agent panel',
+      'Open the disabled future-agent surface.',
+      'ui',
+      { permissions: ['ui.propose'] },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'theme.toggle',
+      'Toggle color theme',
+      'Switch between light and dark workbench themes.',
+      'settings',
+      { permissions: ['ui.propose'] },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'palette.open',
+      'Open command palette',
+      'Search available semantic workbench actions.',
+      'ui',
+      { permissions: ['ui.propose'] },
+    ),
   },
 ]
+
+export const workbenchActionRegistry = new WorkbenchActionRegistry(actionDefinitions)
+
+const commandPresentation: readonly CommandPresentation[] = [
+  { id: 'workspace.new', shortcut: 'Ctrl+Shift+N' },
+  { id: 'workspace.openProject', shortcut: 'Ctrl+Shift+O' },
+  { id: 'workspace.save', shortcut: 'Ctrl+S' },
+  { id: 'workspace.export' },
+  { id: 'workspace.undo', shortcut: 'Ctrl+Z' },
+  { id: 'workspace.redo', shortcut: 'Ctrl+Shift+Z' },
+  { id: 'workspace.openSample', shortcut: 'Ctrl+O' },
+  { id: 'viewport.fit', shortcut: 'F' },
+  { id: 'viewport.oneToOne', shortcut: '1' },
+  { id: 'panel.agent', shortcut: 'Ctrl+Shift+A' },
+  { id: 'theme.toggle', shortcut: 'Ctrl+Shift+T' },
+  { id: 'palette.open', shortcut: 'Ctrl+K' },
+]
+
+export const workbenchCommands: readonly WorkbenchCommand[] = commandPresentation.map(
+  (presentation) => ({
+    ...presentation,
+    label: workbenchActionRegistry.get(presentation.id, 1)?.title ?? presentation.id,
+  }),
+)
 
 export interface ShortcutEvent {
   readonly key: string
@@ -138,8 +392,7 @@ export function resolveShortcut(
 ): CommandId | undefined {
   if (isEditableTarget(event.target)) return undefined
   const id = commandForShortcut(event)
-  return id !== undefined &&
-    workbenchCommands.find((command) => command.id === id)?.available(context)
+  return id !== undefined && workbenchActionRegistry.availability(id, 1, context).available
     ? id
     : undefined
 }
@@ -148,6 +401,9 @@ export function getCommandAvailability(
   context: CommandContext,
 ): Readonly<Record<CommandId, boolean>> {
   return Object.fromEntries(
-    workbenchCommands.map((command) => [command.id, command.available(context)]),
+    workbenchCommands.map(({ id }) => [
+      id,
+      workbenchActionRegistry.availability(id, 1, context).available,
+    ]),
   ) as Readonly<Record<CommandId, boolean>>
 }

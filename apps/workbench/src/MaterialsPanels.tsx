@@ -6,6 +6,7 @@ import type {
 } from '@pji-workbench/contracts'
 import { Button } from '@pji-workbench/ui'
 import type { WorkspaceSnapshot } from '@pji-workbench/workspace'
+import { useMemo, useState } from 'react'
 
 import type { RoiTool, ViewportRoi } from './ScientificViewport.js'
 
@@ -197,6 +198,7 @@ export function AnalysisInspector({
   component,
   planeLabel,
   operationCount,
+  operationNames,
   state,
   onThreshold,
   onMode,
@@ -214,6 +216,7 @@ export function AnalysisInspector({
   readonly component: number
   readonly planeLabel: string
   readonly operationCount: number
+  readonly operationNames: readonly string[]
   readonly state: MaterialsPanelState
   readonly onThreshold: (value: number) => void
   readonly onMode: (value: typeof mode) => void
@@ -225,6 +228,15 @@ export function AnalysisInspector({
   readonly onPlanObjects: () => void
   readonly connectedPlanReady: boolean
 }) {
+  const [operationQuery, setOperationQuery] = useState('')
+  const [operationCategory, setOperationCategory] = useState('all')
+  const filteredOperations = useMemo(
+    () =>
+      operationNames
+        .filter((name) => name.toLocaleLowerCase().includes(operationQuery.toLocaleLowerCase()))
+        .slice(0, 6),
+    [operationNames, operationQuery],
+  )
   const estimate = state.dryRun?.plan?.['totalEstimate']
   const estimateRecord: Readonly<Record<string, unknown>> | null =
     typeof estimate === 'object' && estimate !== null && !Array.isArray(estimate)
@@ -233,6 +245,41 @@ export function AnalysisInspector({
   return (
     <div className="inspector-content form-stack" data-testid="analysis-inspector">
       <p className="panel-kicker">PureJsImage operation catalog · {operationCount} operations</p>
+      <section className="operation-browser" aria-label="Operation browser">
+        <label>
+          Search operations
+          <input
+            onChange={(event) => setOperationQuery(event.target.value)}
+            placeholder="Filter, threshold, measure…"
+            type="search"
+            value={operationQuery}
+          />
+        </label>
+        <div className="operation-browser__filters">
+          <label>
+            Category
+            <select
+              onChange={(event) => setOperationCategory(event.target.value)}
+              value={operationCategory}
+            >
+              <option value="all">All</option>
+              <option value="analysis">Analysis</option>
+              <option value="measurement">Measurement</option>
+            </select>
+          </label>
+          <Button aria-pressed="false" disabled>
+            Recent
+          </Button>
+          <Button aria-pressed="false" disabled>
+            Favorites
+          </Button>
+        </div>
+        <ul className="operation-browser__results">
+          {filteredOperations.map((name) => (
+            <li key={name}>{name}</li>
+          ))}
+        </ul>
+      </section>
       <label>
         Comparison
         <select value={mode} onChange={(event) => onMode(event.target.value as typeof mode)}>

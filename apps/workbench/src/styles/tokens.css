@@ -1,0 +1,34 @@
+.workbench-theme,
+.ui-lab-theme {
+  --wb-type-label: 700 11px / 1.25 var(--wb-font-ui);
+  --wb-type-body: 12px / 1.45 var(--wb-font-ui);
+  --wb-type-readout: 11px / 1.25 var(--wb-font-mono);
+  --wb-space-1: 4px;
+  --wb-space-2: 8px;
+  --wb-space-3: 12px;
+  --wb-space-4: 16px;
+  --wb-radius-sm: 3px;
+  --wb-radius-md: 6px;
+  --wb-overlay-selection: #55b7ef;
+  --wb-overlay-warning: #f1bb58;
+  --wb-scientific-label-spacing: 0.06em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbench-theme *,
+  .workbench-theme *::before,
+  .workbench-theme *::after,
+  .ui-lab-theme *,
+  .ui-lab-theme *::before,
+  .ui-lab-theme *::after {
+    animation-duration: 0.001ms;
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+    transition-duration: 0.001ms;
+  }
+}
+
+.workbench[data-environment="test"] *,
+.ui-lab * {
+  caret-color: transparent;
+}

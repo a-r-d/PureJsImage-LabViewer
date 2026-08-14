@@ -19,7 +19,7 @@
 .ui-button--primary {
   border-color: var(--wb-accent);
   background: var(--wb-accent);
-  color: #061018;
+  color: var(--wb-accent-text);
 }
 .ui-button--ghost {
   border-color: transparent;

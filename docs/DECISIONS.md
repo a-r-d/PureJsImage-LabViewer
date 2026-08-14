@@ -99,3 +99,18 @@ purejsimage/extensions
 ```
 
 Never import `purejsimage/src/*`, copied internal types, or unpublished files.
+
+## Versioned semantic actions are the shared invocation boundary
+
+UI commands, command-palette entries, future scripts, tests, and the approval-gated agent use one
+versioned JSON-safe action registry and host. Descriptors live in `packages/actions`; they contain
+schemas, permissions, mutability, cost, cancellation metadata, and availability reasons but no
+React or PureJsImage runtime objects. Application composition supplies handlers and context, so the
+package is not a global singleton and exact action versions remain replayable.
+
+## Chromium Linux owns visual goldens
+
+Visual goldens use a pinned Chromium configuration and Linux-named paths on every host. Firefox
+and WebKit run the functional, keyboard, persistence, performance, and accessibility workflows but
+skip pixel comparison. Baselines change only after deterministic readiness, artifact inspection,
+and three consecutive no-update passes.

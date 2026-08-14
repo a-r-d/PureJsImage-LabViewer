@@ -52,10 +52,19 @@ export function inspectSource(relativeFile, source) {
     }
 
     if (
-      (file.startsWith('packages/contracts/') || file.startsWith('packages/workspace/')) &&
+      (file.startsWith('packages/actions/') ||
+        file.startsWith('packages/contracts/') ||
+        file.startsWith('packages/workspace/')) &&
       (specifier === 'react' || specifier.startsWith('react/'))
     ) {
       violations.push(`${file}: React import in framework-neutral core '${specifier}'`)
+    }
+
+    if (
+      file.startsWith('packages/actions/') &&
+      (specifier === 'purejsimage' || specifier.startsWith('purejsimage/'))
+    ) {
+      violations.push(`${file}: PureJsImage import in semantic action contracts '${specifier}'`)
     }
 
     if (file.startsWith('apps/')) {
@@ -68,6 +77,47 @@ export function inspectSource(relativeFile, source) {
   }
 
   return violations
+}
+
+function featureName(file) {
+  return normalized(file).match(/^apps\/workbench\/src\/features\/([^/]+)\//)?.[1]
+}
+
+export function findFeatureCycles(sources) {
+  const graph = new Map()
+  for (const { file: inputFile, source } of sources) {
+    const file = normalized(inputFile)
+    const from = featureName(file)
+    if (from === undefined) continue
+    const edges = graph.get(from) ?? new Set()
+    for (const match of source.matchAll(IMPORT_PATTERN)) {
+      const specifier = match[1]
+      if (specifier === undefined) continue
+      const target = featureName(resolveRepositoryImport(file, specifier) ?? '')
+      if (target !== undefined && target !== from) edges.add(target)
+    }
+    graph.set(from, edges)
+  }
+  const visiting = new Set()
+  const visited = new Set()
+  const stack = []
+  const cycles = []
+  function visit(feature) {
+    if (visiting.has(feature)) {
+      const start = stack.indexOf(feature)
+      cycles.push([...stack.slice(start), feature].join(' -> '))
+      return
+    }
+    if (visited.has(feature)) return
+    visiting.add(feature)
+    stack.push(feature)
+    for (const dependency of [...(graph.get(feature) ?? [])].sort()) visit(dependency)
+    stack.pop()
+    visiting.delete(feature)
+    visited.add(feature)
+  }
+  for (const feature of [...graph.keys()].sort()) visit(feature)
+  return [...new Set(cycles)]
 }
 
 async function collectSourceFiles(root, directory) {
@@ -93,11 +143,19 @@ export async function findBoundaryViolations(root) {
     ...(await collectSourceFiles(root, 'packages')),
   ]
   const violations = []
+  const sources = []
 
   for (const file of files.sort()) {
     const source = await readFile(path.join(root, file), 'utf8')
+    sources.push({ file, source })
     violations.push(...inspectSource(file, source))
   }
+
+  violations.push(
+    ...findFeatureCycles(sources).map(
+      (cycle) => `apps/workbench/src/features: feature cycle '${cycle}'`,
+    ),
+  )
 
   return violations
 }

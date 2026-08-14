@@ -17,7 +17,11 @@ The concrete scientific source, Worker RPC, and renderer tile lifecycle is docum
 
 ```text
 apps/workbench
-  Browser app, Cloudflare entry, composition root, route, panels.
+  Browser app, Cloudflare entry, composition root, routes, feature controllers, and panels.
+
+packages/actions
+  JSON-safe semantic action descriptors, deterministic registry, availability, validation,
+  capability manifests, and the shared action host. No React or PureJsImage runtime imports.
 
 packages/contracts
   JSON-safe contracts shared with Workers and future services.
@@ -55,10 +59,10 @@ packages/test-corpus
 
 ```text
 contracts
-  ↑        ↑          ↑
-workspace imaging   plugin-sdk
-  ↑        ↑          ↑
-  └──── workbench ────┘
+  ↑        ↑          ↑          ↑
+actions workspace  imaging   plugin-sdk
+  ↑        ↑          ↑          ↑
+  └────────── workbench ─────────┘
        ↑        ↑
     viewport    agent
        ↑        ↑
@@ -74,9 +78,23 @@ Rules:
 - `imaging` may import only documented PureJsImage package exports.
 - `viewport` receives tile/render descriptors; it does not open files or execute analysis.
 - `agent` invokes a narrow application tool host, never PureJsImage internals directly.
+- `actions` owns semantic descriptors and policy metadata, never live datasets or UI components.
 - `workspace` stores semantic references and project state, not live `ScientificDataset` objects or typed pixel buffers.
 
 Add an automated dependency-boundary test. Turborepo ordering alone does not enforce architecture.
+The boundary gate also rejects import cycles between `apps/workbench/src/features/*` roots.
+
+## Workbench composition
+
+`apps/workbench/src/App.tsx` is only the route selector. `app/WorkbenchProviders.tsx` constructs
+the preference, persistence, imaging, runtime, and reconciliation services, while
+`app/WorkbenchShell.tsx` owns the top-level shell and readiness contract. Feature folders own
+bounded view models and callbacks for source, project, inspector, pipeline, layout, and examples.
+High-frequency camera, pointer, and render-settled updates remain outside broad React state.
+
+Current semantic UI commands and the command palette execute through one `WorkbenchActionHost`.
+The same registry provides deterministic capability enumeration, exact version lookup, input
+validation, availability reasons, permission metadata, and future script/agent manifests.
 
 ## Browser runtime
 
@@ -107,6 +125,11 @@ Owns:
 - project validation and source identity checks where appropriate.
 
 The worker should support multiple open documents but enforce explicit limits.
+
+The Worker remains one request router, but domain logic and runtime records are split beneath
+`packages/imaging/src/worker-host/` into protocol, source, view, analysis, result, and runtime
+modules. This preserves one lifecycle owner while preventing the router from becoming the home
+for every domain helper.
 
 ### Renderer
 

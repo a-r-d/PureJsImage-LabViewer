@@ -51,6 +51,7 @@ interface ScientificViewportProps {
   readonly mapping: DisplayMapping
   readonly onReady: (api: ScientificViewportApi | null) => void
   readonly onTile: (tile: RenderTile, first: boolean) => void
+  readonly onRenderSettled?: (settled: boolean) => void
   readonly rois?: readonly ViewportRoi[]
   readonly selectedRoiId?: string | undefined
   readonly roiTool?: RoiTool
@@ -365,6 +366,7 @@ export function ScientificViewport({
   mapping,
   onReady,
   onTile,
+  onRenderSettled,
   rois = [],
   selectedRoiId,
   roiTool = 'select',
@@ -383,6 +385,7 @@ export function ScientificViewport({
   useEffect(() => {
     const canvas = canvasRef.current
     if (canvas === null) return
+    onRenderSettled?.(false)
     const bounds = imageBounds(opened, selection)
     const horizontalAxis = opened.dataset.axes.find(({ id }) => id === selection.displayAxes[0])
     const verticalAxis = opened.dataset.axes.find(({ id }) => id === selection.displayAxes[1])
@@ -432,11 +435,13 @@ export function ScientificViewport({
         if (zoomRef.current !== null)
           zoomRef.current.textContent = `${Math.round(camera.zoom * 100)}%`
         window.__PJI_WORKBENCH_METRICS__.viewportFrames += 1
+        if (rendererTileIds.size > 0) onRenderSettled?.(true)
       })
     }
     let rendererTileIds = new Set<string>()
 
     const scheduleTiles = (): void => {
+      onRenderSettled?.(false)
       const visible = visibleWorldBounds(camera, viewport)
       const candidates = planVisibleTileRegions(bounds, visible, TILE_SIZE, PREFETCH_TILES)
       const scheduledCandidates =
@@ -717,6 +722,7 @@ export function ScientificViewport({
     return () => {
       requestGeneration += 1
       onReady(null)
+      onRenderSettled?.(false)
       for (const controller of pending.values()) controller.abort()
       pending.clear()
       cancelAnimationFrame(frameRequest)
@@ -738,6 +744,7 @@ export function ScientificViewport({
     onCreateRoi,
     onDeleteRoi,
     onReady,
+    onRenderSettled,
     onSelectRoi,
     onSelectLabel,
     onTile,

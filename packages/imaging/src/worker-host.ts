@@ -3,7 +3,6 @@ import {
   type DatasetHandleId,
   type DocumentId,
   type OpenedDatasetDescriptor,
-  type PlaneSelection,
   RPC_SCHEMA_VERSION,
   RpcValidationError,
   type SourceId,
@@ -14,269 +13,60 @@ import {
   type WorkerResponse,
 } from '@pji-workbench/contracts'
 import {
-  type AnalysisController,
   type AnalysisExecutionResult,
   createAnalysisController,
   createBuiltInAnalysisBundle,
   type PreparedAnalysisPlan,
-  scientificDatasetCharacteristics,
 } from 'purejsimage/analysis'
-import { hashCanonicalJson } from 'purejsimage/analysis/project'
 import {
   summarizeResult,
-  type TableColumn,
-  type TableResult,
   validateAnalysisResult,
   validateTableResult,
 } from 'purejsimage/analysis/results'
-import { canonicalNormalizedRoiSemanticsJson, normalizeRoi } from 'purejsimage/analysis/roi'
+import { normalizeRoi } from 'purejsimage/analysis/roi'
 import {
   createTileDatasetIdentityForScientificDataset,
   createTileRuntime,
   numericTileSourceToTileSource,
-  type TileRuntime,
-  type TileSource,
 } from 'purejsimage/analysis/runtime'
 import {
   createScientificLibrary,
-  getScientificDatasetIdentity,
   type NumericTile,
   normalizeScientificRelativeName,
-  numericTileSampleOffset,
   resolveNumericTileSource,
   type ScientificCompanionResolver,
-  type ScientificDataset,
-  type ScientificDatasetSummary,
-  type ScientificDocument,
   supportsScientificPlaneRead,
 } from 'purejsimage/scientific'
 import { createScientificFileContext } from 'purejsimage/scientific/browser'
 import { HttpRangeSource } from 'purejsimage/sources/http-range'
 
 import { datasetDescriptor, defaultPlaneSelection, openedSourceDescriptor } from './descriptor.js'
+import { createAnalysisBindings, isScientificDataset } from './worker-host/analysis-rpc.js'
+import {
+  abortError,
+  errorResult,
+  structuredError,
+  success,
+  type WorkerHostResult,
+} from './worker-host/protocol.js'
+import { tablePage } from './worker-host/result-rpc.js'
+import type {
+  AnalysisExecutionRecord,
+  DatasetRecord,
+  PendingRequest,
+  SourceRecord,
+} from './worker-host/runtime.js'
+import { assertRemoteUrl, sampleValues, sourceName } from './worker-host/source-rpc.js'
+import { mapTile, numericValue } from './worker-host/view-rpc.js'
 import { loadReadersForSource, SUPPORTED_READERS } from './worker-readers.js'
 
-interface SourceRecord {
-  readonly id: SourceId
-  readonly documentId: DocumentId
-  readonly generation: number
-  readonly kind: 'local' | 'remote' | 'sample'
-  readonly name: string
-  readonly size: number
-  readonly url?: string
-  readonly document: ScientificDocument
-  readonly rangeSources: readonly HttpRangeSource[]
-  readonly datasets: Map<DatasetHandleId, DatasetRecord>
-  closed: boolean
-}
-
-interface DatasetRecord {
-  readonly handleId: DatasetHandleId
-  readonly summary: ScientificDatasetSummary
-  readonly dataset: ScientificDataset
-  readonly runtime: TileRuntime
-  readonly tileSource: TileSource
-  readonly tileIdentity: ReturnType<typeof createTileDatasetIdentityForScientificDataset>
-  readonly analysis: AnalysisController
-  readonly results: Map<AnalysisResultHandleId, AnalysisExecutionRecord>
-  selection: PlaneSelection
-  closed: boolean
-}
-
-interface AnalysisExecutionRecord {
-  readonly id: AnalysisResultHandleId
-  readonly plan: PreparedAnalysisPlan
-  readonly execution: AnalysisExecutionResult
-  closed: boolean
-}
-
-interface PendingRequest {
-  readonly controller: AbortController
-  readonly datasetHandleId?: DatasetHandleId
-}
-
-export interface WorkerHostResult {
-  readonly response: WorkerResponse
-  readonly transfer: readonly Transferable[]
-}
+export type { WorkerHostResult } from './worker-host/protocol.js'
 
 export interface ImagingWorkerHostOptions {
   readonly fetch?: typeof fetch
 }
 
 const MiB = 1_024 * 1_024
-
-function success<Kind extends WorkerResponse extends infer _Response ? string : never>(
-  requestId: string,
-  kind: Kind,
-  payload: unknown,
-): WorkerHostResult {
-  return {
-    response: {
-      schemaVersion: RPC_SCHEMA_VERSION,
-      requestId,
-      ok: true,
-      kind,
-      payload,
-    } as WorkerResponse,
-    transfer: [],
-  }
-}
-
-function errorResult(requestId: string, error: StructuredRpcError): WorkerHostResult {
-  return {
-    response: {
-      schemaVersion: RPC_SCHEMA_VERSION,
-      requestId,
-      ok: false,
-      kind: 'error',
-      error,
-    },
-    transfer: [],
-  }
-}
-
-function abortError(message: string): DOMException {
-  return new DOMException(message, 'AbortError')
-}
-
-function structuredError(error: unknown, fallback: StructuredRpcError['code']): StructuredRpcError {
-  if (error instanceof RpcValidationError) {
-    return { code: error.code, message: error.message, retryable: false }
-  }
-  if (error instanceof DOMException && error.name === 'AbortError') {
-    return {
-      code: 'ABORTED',
-      message: error.message || 'The request was cancelled.',
-      retryable: true,
-    }
-  }
-  const record =
-    typeof error === 'object' && error !== null ? (error as { readonly code?: unknown }) : {}
-  const code = typeof record.code === 'string' ? record.code : undefined
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : 'Unknown worker error'
-  if (
-    fallback === 'SOURCE_OPEN_FAILED' &&
-    (error instanceof TypeError || /cors|range|fetch|network|content-range|206/iu.test(message))
-  ) {
-    return {
-      code: 'CORS_OR_RANGE_UNAVAILABLE',
-      message,
-      guidance:
-        'Confirm the server allows this origin, supports byte Range requests, and exposes Content-Range.',
-      retryable: true,
-    }
-  }
-  if (code === 'LIMIT_EXCEEDED') {
-    return { code: 'LIMIT_EXCEEDED', message, retryable: false }
-  }
-  if (code === 'STALE_ID') return { code: 'STALE_ID', message, retryable: false }
-  if (code === 'UNSUPPORTED_FORMAT' || code === 'UNSUPPORTED_FEATURE') {
-    return { code: 'UNSUPPORTED', message, retryable: false }
-  }
-  return { code: fallback, message, retryable: fallback !== 'INVALID_PAYLOAD' }
-}
-
-function assertRemoteUrl(input: string): URL {
-  const url = new URL(input)
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
-  if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) {
-    throw new RpcValidationError(
-      'INVALID_PAYLOAD',
-      'Remote sources must use HTTPS; HTTP is allowed only for localhost development.',
-    )
-  }
-  url.username = ''
-  url.password = ''
-  return url
-}
-
-function sourceName(url: URL): string {
-  const last = url.pathname.split('/').filter(Boolean).at(-1)
-  return decodeURIComponent(last ?? 'remote-image')
-}
-
-function sampleValues(width: number, height: number): Float32Array {
-  const values = new Float32Array(width * height)
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const wave = 38 * Math.sin(x / 29) + 27 * Math.cos(y / 23)
-      const particle = (x * 17 + y * 31) % 137 < 5 ? 105 : 0
-      values[y * width + x] = 92 + wave + particle + ((x * 13 + y * 7) % 17)
-    }
-  }
-  return values
-}
-
-function numericValue(tile: NumericTile, x: number, y: number, component: number): number {
-  const offset = numericTileSampleOffset(tile, x, y, component)
-  return Number(tile.data[offset])
-}
-
-function mapTile(
-  tile: NumericTile,
-  component: number,
-  mapping: Extract<WorkerRequest, { kind: 'tile.request' }>['payload']['mapping'],
-): Pick<
-  Extract<WorkerResponse, { kind: 'tile.ready' }>['payload'],
-  'rgba' | 'values' | 'range' | 'histogram'
-> {
-  if (component >= tile.componentCount) throw new RangeError('Selected component is unavailable')
-  const length = tile.width * tile.height
-  const values = new Float32Array(length)
-  let minimum = Number.POSITIVE_INFINITY
-  let maximum = Number.NEGATIVE_INFINITY
-  for (let y = 0; y < tile.height; y += 1) {
-    for (let x = 0; x < tile.width; x += 1) {
-      const value = numericValue(tile, x, y, component)
-      values[y * tile.width + x] = value
-      if (Number.isFinite(value)) {
-        minimum = Math.min(minimum, value)
-        maximum = Math.max(maximum, value)
-      }
-    }
-  }
-  if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) {
-    minimum = 0
-    maximum = 1
-  }
-  const automatic = mapping.range === 'auto'
-  const low = mapping.minimum ?? minimum
-  const highCandidate = mapping.maximum ?? maximum
-  const high = highCandidate > low ? highCandidate : low + 1
-  const histogram = Array.from({ length: 64 }, () => 0)
-  const rgba = new Uint8ClampedArray(length * 4)
-  for (let index = 0; index < values.length; index += 1) {
-    const value = values[index] ?? Number.NaN
-    const normalized = Number.isFinite(value)
-      ? Math.max(0, Math.min(1, (value - low) / (high - low)))
-      : 0
-    const display = Math.round(normalized * 255)
-    const rgbaOffset = index * 4
-    rgba[rgbaOffset] = display
-    rgba[rgbaOffset + 1] = display
-    rgba[rgbaOffset + 2] = display
-    rgba[rgbaOffset + 3] = 255
-    if (Number.isFinite(value)) {
-      const bin = Math.min(
-        63,
-        Math.max(0, Math.floor(((value - minimum) / Math.max(1e-12, maximum - minimum)) * 63)),
-      )
-      histogram[bin] = (histogram[bin] ?? 0) + 1
-    }
-  }
-  return {
-    rgba,
-    values,
-    range: { minimum: low, maximum: high, automatic },
-    histogram,
-  }
-}
 
 export class ImagingWorkerHost {
   #active: SourceRecord | undefined
@@ -779,30 +569,6 @@ export class ImagingWorkerHost {
     }
   }
 
-  async #analysisBindings(record: DatasetRecord, roiValue: unknown) {
-    const identity = getScientificDatasetIdentity(record.dataset)
-    if (identity === undefined) throw new Error('The dataset has no stable source identity')
-    const source = {
-      value: record.dataset,
-      identity,
-      characteristics: scientificDatasetCharacteristics(record.dataset),
-    }
-    if (roiValue === undefined) return { source }
-    const roi = normalizeRoi(roiValue, record.dataset.descriptor)
-    const domain = 'purejsimage.roi-semantics.v1'
-    return {
-      source,
-      selection: {
-        value: roi,
-        identity: {
-          kind: 'semantic-json' as const,
-          domain,
-          sha256: await hashCanonicalJson(domain, canonicalNormalizedRoiSemanticsJson(roi)),
-        },
-      },
-    }
-  }
-
   async #dryRunAnalysis(
     request: Extract<WorkerRequest, { kind: 'analysis.dry-run' }>,
     signal: AbortSignal,
@@ -810,7 +576,7 @@ export class ImagingWorkerHost {
     try {
       const record = this.#analysisRecord(request.payload)
       const dryRun = await record.analysis.dryRun(request.payload.graph, {
-        bindings: await this.#analysisBindings(record, request.payload.roi),
+        bindings: await createAnalysisBindings(record, request.payload.roi),
         policy: {
           mode: 'pinned',
           providerId: 'purejsimage.analysis.reference',
@@ -835,7 +601,7 @@ export class ImagingWorkerHost {
     try {
       const record = this.#analysisRecord(request.payload)
       const options = {
-        bindings: await this.#analysisBindings(record, request.payload.roi),
+        bindings: await createAnalysisBindings(record, request.payload.roi),
         policy: {
           mode: 'pinned' as const,
           providerId: 'purejsimage.analysis.reference',
@@ -862,7 +628,7 @@ export class ImagingWorkerHost {
             summary: summarizeResult(validateAnalysisResult(output), { maxPreviewValues: 16 }),
           })
         } catch {
-          if (this.#isScientificDataset(output)) {
+          if (isScientificDataset(output)) {
             outputs.push({
               kind: 'dataset' as const,
               name,
@@ -889,12 +655,6 @@ export class ImagingWorkerHost {
     }
   }
 
-  #isScientificDataset(value: unknown): value is ScientificDataset {
-    if (typeof value !== 'object' || value === null) return false
-    const candidate = value as { readonly descriptor?: unknown; readonly readPlane?: unknown }
-    return typeof candidate.descriptor === 'object' && typeof candidate.readPlane === 'function'
-  }
-
   #analysisExecution(record: DatasetRecord, resultHandleId: AnalysisResultHandleId) {
     const result = record.results.get(resultHandleId)
     if (result === undefined || result.closed) throw this.#stale('analysis result')
@@ -909,7 +669,7 @@ export class ImagingWorkerHost {
       const record = this.#analysisRecord(request.payload)
       const result = this.#analysisExecution(record, request.payload.resultHandleId)
       const output = result.execution.outputs.get(request.payload.output)
-      if (!this.#isScientificDataset(output)) {
+      if (!isScientificDataset(output)) {
         throw new RpcValidationError('INVALID_PAYLOAD', 'The selected output is not a dataset')
       }
       const { region, selection } = request.payload
@@ -974,34 +734,6 @@ export class ImagingWorkerHost {
     }
   }
 
-  #tableCell(column: TableColumn, row: number): number | boolean | string | null {
-    if (column.validity !== undefined) {
-      const byte = column.validity.bits[Math.floor(row / 8)] ?? 0
-      if ((byte & (1 << (row % 8))) === 0) return null
-    }
-    if (column.kind === 'numeric') {
-      const value = column.values[row]
-      if (typeof value === 'bigint')
-        return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : String(value)
-      return value ?? null
-    }
-    if (column.kind === 'boolean') {
-      return ((column.values[Math.floor(row / 8)] ?? 0) & (1 << (row % 8))) !== 0
-    }
-    if (column.kind === 'category') return column.categories[column.codes[row] ?? -1] ?? null
-    const start = column.offsets[row]
-    const end = column.offsets[row + 1]
-    if (start === undefined || end === undefined) return null
-    return new TextDecoder().decode(column.data.subarray(start, end))
-  }
-
-  #numericTableValue(table: TableResult, columnName: string, row: number): number | undefined {
-    const column = table.columns.find((candidate) => candidate.name === columnName)
-    if (column?.kind !== 'numeric') return undefined
-    const value = this.#tableCell(column, row)
-    return typeof value === 'number' ? value : undefined
-  }
-
   #analysisTablePage(
     request: Extract<WorkerRequest, { kind: 'analysis.table-page' }>,
   ): WorkerHostResult {
@@ -1009,50 +741,7 @@ export class ImagingWorkerHost {
       const record = this.#analysisRecord(request.payload)
       const result = this.#analysisExecution(record, request.payload.resultHandleId)
       const table = validateTableResult(result.execution.outputs.get(request.payload.output))
-      let rows = Array.from({ length: table.rowCount }, (_, row) => row)
-      const filter = request.payload.filter
-      if (filter !== undefined) {
-        rows = rows.filter((row) => {
-          const value = this.#numericTableValue(table, filter.column, row)
-          return (
-            value !== undefined &&
-            (filter.minimum === undefined || value >= filter.minimum) &&
-            (filter.maximum === undefined || value <= filter.maximum)
-          )
-        })
-      }
-      const sort = request.payload.sort
-      if (sort !== undefined) {
-        const direction = sort.direction === 'ascending' ? 1 : -1
-        rows.sort((left, right) => {
-          const a = this.#numericTableValue(table, sort.column, left)
-          const b = this.#numericTableValue(table, sort.column, right)
-          if (a === undefined) return b === undefined ? left - right : 1
-          if (b === undefined) return -1
-          return a === b ? left - right : (a - b) * direction
-        })
-      }
-      const pageRows = rows.slice(
-        request.payload.offset,
-        request.payload.offset + request.payload.limit,
-      )
-      const selected =
-        request.payload.columns === undefined
-          ? table.columns
-          : request.payload.columns
-              .map((name) => table.columns.find((column) => column.name === name))
-              .filter((column): column is TableColumn => column !== undefined)
-      return success(request.requestId, 'analysis.table-page', {
-        offset: request.payload.offset,
-        rowCount: pageRows.length,
-        totalRows: rows.length,
-        columns: selected.map((column) => ({
-          name: column.name,
-          kind: column.kind,
-          ...('unit' in column && column.unit !== undefined ? { unit: column.unit } : {}),
-          values: pageRows.map((row) => this.#tableCell(column, row)),
-        })),
-      })
+      return success(request.requestId, 'analysis.table-page', tablePage(table, request.payload))
     } catch (error) {
       return errorResult(request.requestId, structuredError(error, 'INVALID_PAYLOAD'))
     }

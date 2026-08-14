@@ -111,6 +111,21 @@ Linux Chromium is the canonical visual-rendering environment. All hosts compare 
 baseline with at most 1.5% differing pixels to absorb bounded font and GPU rasterization variance.
 Missing or changed goldens must fail; normal test runs never create or update them automatically.
 
+The Playwright environment pins UTC, `en-US`, color scheme, reduced motion, a device scale factor
+of 1, and explicit viewports. Each isolated browser context starts without persisted IndexedDB;
+the harness clears local storage once while preserving within-test reload coverage, and fixes
+visible UUID/time formatting. Screenshots wait for loaded fonts and real application signals:
+
+```text
+data-workbench-ready="true"
+data-render-settled="true"
+data-analysis-settled="true"
+```
+
+The render signal is updated by completed viewport draws without routing camera or tile churn
+through React state. An intentional baseline update requires artifact inspection and three
+consecutive passing no-update runs.
+
 Capture:
 
 - empty state;
@@ -121,6 +136,7 @@ Capture:
 - object table;
 - agent proposal;
 - error state.
+- bounded UI-lab dark/light wide and dark narrow states.
 
 Mask genuinely unstable numeric timing text. Do not mask image content or controls to force passes.
 

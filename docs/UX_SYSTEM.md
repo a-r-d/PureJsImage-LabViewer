@@ -31,6 +31,11 @@ Attributes:
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+The V2 shell adds a compact mode rail before the navigator. Browse, ROI, Analyze, Results,
+Examples, Scripts, and Agent always have a stable location; modes without an implemented safe
+workflow are visibly disabled. Examples opens a local-only empty gallery and performs no network
+request.
+
 ### App bar
 
 Contains only globally important actions:
@@ -240,7 +245,8 @@ Shortcuts must not fire while typing in fields and must be remappable later.
 
 ## Design tokens
 
-Use tokens rather than component-local values:
+Use tokens rather than component-local values. Organize them by neutral and semantic color,
+scientific overlays, typography, density, motion, elevation, and scientific labels:
 
 ```text
 color.background.canvas
@@ -257,9 +263,27 @@ radius.sm / md
 font.ui / mono
 size.toolbar
 size.inspector
+overlay.selection / overlay.warning
+type.body / type.label / type.readout
+density.control / density.toolbar / density.rail
+motion.fast / motion.normal
+elevation.panel / elevation.dialog
+scientific-label.spacing / scientific-label.weight
 ```
 
 Default to a dark neutral workbench because microscopy images often contain dark backgrounds, but support a light theme from the same tokens.
+
+Essential workbench text is 11–13 px. Numerical readouts use tabular monospace. General-purpose
+icons come from the tree-shaken Lucide React package; custom icons are reserved for scientific
+semantics that Lucide cannot express. The viewport grid is an empty-state affordance only and is
+removed as soon as real specimen data is visible.
+
+The operation-browser shell is catalog-backed and exposes search, category, recent, and favorite
+locations. Recent and favorite remain honestly disabled until their persistence contract exists.
+
+`/__ui-lab` is a deterministic development/test route covering wide/narrow and dark/light states,
+controls, tooltips, splitters, ROI lists, operation parameters, plots/tables, and loading, empty,
+error, and approval states. It does not open sources or write normal user state.
 
 Use color sparingly for state, overlays, and scientific palettes. Never use color alone to encode selection or errors.
 

@@ -7,6 +7,7 @@
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "references": [
+    { "path": "../../packages/actions" },
     { "path": "../../packages/contracts" },
     { "path": "../../packages/workspace" },
     { "path": "../../packages/imaging" },

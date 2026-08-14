@@ -6,6 +6,9 @@ import { App } from './App.js'
 import { ErrorBoundary } from './ErrorBoundary.js'
 import { readPublicEnvironment } from './environment.js'
 import './styles.css'
+import './styles/tokens.css'
+import './styles/shell.css'
+import './styles/ui-lab.css'
 
 const rootElement = document.getElementById('root')
 if (rootElement === null) {

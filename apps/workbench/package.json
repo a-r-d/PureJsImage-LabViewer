@@ -16,6 +16,7 @@
     "clean": "node ../../tooling/scripts/clean-package.mjs"
   },
   "dependencies": {
+    "@pji-workbench/actions": "workspace:*",
     "@pji-workbench/agent": "workspace:*",
     "@pji-workbench/contracts": "workspace:*",
     "@pji-workbench/imaging": "workspace:*",

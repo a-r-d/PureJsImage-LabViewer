@@ -4,11 +4,39 @@ import { expect, type Page, test } from '@playwright/test'
 async function openSample(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Try generated calibrated sample' }).click()
   await expect(page.getByRole('img', { name: /Scientific image viewport/ })).toBeVisible()
-  await page.waitForFunction(() => window.__PJI_WORKBENCH_METRICS__.tilesTransferred > 0)
+  await waitForWorkbenchSettled(page)
+}
+
+async function waitForWorkbenchSettled(page: Page): Promise<void> {
+  const workbench = page.locator('[data-workbench-ready]')
+  await expect(workbench).toHaveAttribute('data-workbench-ready', 'true')
+  await expect(workbench).toHaveAttribute('data-render-settled', 'true')
+  await expect(workbench).toHaveAttribute('data-analysis-settled', 'true')
+  await page.evaluate(() => document.fonts.ready)
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const storageResetKey = '__pji_playwright_storage_reset__'
+    if (window.sessionStorage.getItem(storageResetKey) === null) {
+      window.localStorage.clear()
+      window.sessionStorage.setItem(storageResetKey, 'true')
+    }
+    let uuid = 0
+    Object.defineProperty(window.crypto, 'randomUUID', {
+      configurable: true,
+      value: () => {
+        uuid += 1
+        return `00000000-0000-4000-8000-${uuid.toString().padStart(12, '0')}`
+      },
+    })
+    Object.defineProperties(Date.prototype, {
+      toLocaleString: { configurable: true, value: () => 'Jan 15, 2026, 12:00:00 PM' },
+      toLocaleTimeString: { configurable: true, value: () => '12:00:00 PM' },
+    })
+  })
   await page.goto('/')
+  await waitForWorkbenchSettled(page)
 })
 
 test('exposes the workbench landmarks and local-first source controls', async ({ page }) => {
@@ -82,6 +110,12 @@ test('opens, filters, closes, and restores focus around the command palette', as
   await page.keyboard.press('Escape')
   await expect(palette).toBeHidden()
   await expect(trigger).toBeFocused()
+
+  await page.keyboard.press('Control+K')
+  await page.getByRole('textbox', { name: 'Search commands' }).fill('theme')
+  await page.getByRole('option', { name: /Toggle color theme/ }).click()
+  await expect(palette).toBeHidden()
+  await expect(page.locator('.workbench-theme')).toHaveAttribute('data-theme', 'light')
 })
 
 test('@performance keeps pan and zoom outside broad React rendering', async ({ page }) => {
@@ -207,6 +241,7 @@ test('previews, commits, plans, and executes threshold connected components', as
   test.setTimeout(60_000)
   await openSample(page)
   await page.getByRole('tab', { name: 'Analysis' }).click()
+  await waitForWorkbenchSettled(page)
   await page.getByLabel('Threshold value').fill('175')
   await page.getByRole('button', { name: 'Preview', exact: true }).click()
   await expect(page.getByText(/Preview ready in/)).toBeVisible({ timeout: 15_000 })
@@ -293,6 +328,7 @@ test('@visual opened scientific workspace', async ({ browserName, page }) => {
   test.skip(browserName !== 'chromium', 'Chromium owns the deterministic visual baselines.')
   await page.setViewportSize({ width: 1440, height: 900 })
   await openSample(page)
+  await waitForWorkbenchSettled(page)
   await expect(page).toHaveScreenshot('workbench-opened-scientific.png', { animations: 'disabled' })
 })
 
@@ -301,6 +337,7 @@ test('@visual display controls', async ({ browserName, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await openSample(page)
   await page.getByRole('tab', { name: 'Display' }).click()
+  await waitForWorkbenchSettled(page)
   await expect(page).toHaveScreenshot('workbench-display-scientific.png', {
     animations: 'disabled',
   })
@@ -312,6 +349,7 @@ test('@visual agent panel state', async ({ browserName, page }) => {
   await openSample(page)
   await page.getByRole('button', { name: 'Show agent panel' }).click()
   await expect(page.getByTestId('agent-panel')).toBeVisible()
+  await waitForWorkbenchSettled(page)
   await expect(page).toHaveScreenshot('workbench-agent-scientific.png', { animations: 'disabled' })
 })
 

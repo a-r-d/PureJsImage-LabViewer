@@ -1,4 +1,31 @@
 import {
+  Bot,
+  ChartNoAxesColumn,
+  CircleQuestionMark,
+  CodeXml,
+  Command,
+  FlaskConical,
+  Folder,
+  FolderOpen,
+  Images,
+  Layers,
+  type LucideIcon,
+  Moon,
+  MousePointer2,
+  PanelRight,
+  Redo2,
+  Scan,
+  ScanLine,
+  Search,
+  Settings,
+  SlidersHorizontal,
+  SquareDashed,
+  Sun,
+  Table2,
+  Undo2,
+  X,
+} from 'lucide-react'
+import {
   type ButtonHTMLAttributes,
   type CSSProperties,
   type KeyboardEvent,
@@ -19,8 +46,14 @@ export const workbenchTokens = {
   typography: {
     ui: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     mono: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
+    essential: 12,
+    compact: 11,
+    heading: 14,
   },
+  density: { control: 32, toolbar: 40, status: 27, rail: 42 },
   motion: { fast: 100, normal: 160 },
+  elevation: { panel: '0 8px 24px rgb(0 0 0 / 24%)', dialog: '0 18px 60px rgb(0 0 0 / 42%)' },
+  scientificLabel: { letterSpacing: '0.06em', weight: 700 },
 } as const
 
 const colorTokens = {
@@ -34,6 +67,7 @@ const colorTokens = {
     text: '#edf3f7',
     textMuted: '#9baab6',
     accent: '#55b7ef',
+    accentText: '#061018',
     accentSurface: '#12384d',
     success: '#64d49b',
     warning: '#f1bb58',
@@ -51,6 +85,7 @@ const colorTokens = {
     text: '#17212a',
     textMuted: '#596b79',
     accent: '#0878b4',
+    accentText: '#ffffff',
     accentSurface: '#d9effb',
     success: '#17764a',
     warning: '#875900',
@@ -70,6 +105,12 @@ export function themeVariables(theme: ThemeName): CSSProperties {
   const variables: Record<string, string> = {
     '--wb-font-ui': workbenchTokens.typography.ui,
     '--wb-font-mono': workbenchTokens.typography.mono,
+    '--wb-font-size-essential': `${workbenchTokens.typography.essential}px`,
+    '--wb-font-size-compact': `${workbenchTokens.typography.compact}px`,
+    '--wb-control-size': `${workbenchTokens.density.control}px`,
+    '--wb-mode-rail-size': `${workbenchTokens.density.rail}px`,
+    '--wb-elevation-panel': workbenchTokens.elevation.panel,
+    '--wb-elevation-dialog': workbenchTokens.elevation.dialog,
   }
   for (const [name, value] of Object.entries(colorTokens[theme])) {
     variables[`--wb-${name.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`)}`] =
@@ -158,31 +199,57 @@ export function Tooltip({ label, children }: TooltipProps) {
 
 export type IconName =
   | 'agent'
+  | 'analyze'
+  | 'browse'
+  | 'chart'
   | 'close'
+  | 'code'
   | 'command'
+  | 'examples'
   | 'fit'
   | 'folder'
+  | 'help'
   | 'layers'
   | 'moon'
   | 'open'
+  | 'panel'
+  | 'pointer'
+  | 'redo'
+  | 'results'
   | 'roi'
+  | 'search'
+  | 'settings'
+  | 'sliders'
   | 'sun'
+  | 'undo'
   | 'zoom'
 
-const iconPaths: Record<IconName, string> = {
-  agent:
-    'M12 3v3m-6.4.4L7.7 8.5M3 12h3m.4 6.4 2.1-2.1M12 18v3m5.6-2.6-2.1-2.1M18 12h3m-3.4-5.6-2.1 2.1M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z',
-  close: 'm6 6 12 12M18 6 6 18',
-  command:
-    'M9 6H6a3 3 0 1 0 3 3V6Zm0 0v12m0 0H6a3 3 0 1 1 3-3v3Zm6-12h3a3 3 0 1 1-3 3V6Zm0 12h3a3 3 0 1 0-3-3v3Zm0-12v12',
-  fit: 'M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5',
-  folder: 'M3 7h7l2 2h9v10H3V7Zm0 0V5h7l2 2',
-  layers: 'm12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5m-18 4 9 5 9-5',
-  moon: 'M20 15.5A8 8 0 0 1 8.5 4 8 8 0 1 0 20 15.5Z',
-  open: 'M4 5h6l2 2h8v12H4V5Zm0 5h16',
-  roi: 'M5 3H3v4m16-4h2v4M5 21H3v-4m16 4h2v-4M8 8h8v8H8V8Z',
-  sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0-5v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4m0-12.8L17 7M7 17l-1.4 1.4',
-  zoom: 'm20 20-4.5-4.5M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Z',
+const iconComponents: Readonly<Record<IconName, LucideIcon>> = {
+  agent: Bot,
+  analyze: FlaskConical,
+  browse: FolderOpen,
+  chart: ChartNoAxesColumn,
+  close: X,
+  code: CodeXml,
+  command: Command,
+  examples: Images,
+  fit: Scan,
+  folder: Folder,
+  help: CircleQuestionMark,
+  layers: Layers,
+  moon: Moon,
+  open: FolderOpen,
+  panel: PanelRight,
+  pointer: MousePointer2,
+  redo: Redo2,
+  results: Table2,
+  roi: SquareDashed,
+  search: Search,
+  settings: Settings,
+  sliders: SlidersHorizontal,
+  sun: Sun,
+  undo: Undo2,
+  zoom: ScanLine,
 }
 
 export interface IconProps {
@@ -192,23 +259,16 @@ export interface IconProps {
 }
 
 export function Icon({ name, label, size = 18 }: IconProps) {
+  const Component = iconComponents[name]
   return (
-    <svg
+    <Component
       aria-hidden={label === undefined}
       aria-label={label}
       className="ui-icon"
-      fill="none"
-      height={size}
       role={label === undefined ? undefined : 'img'}
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.7"
-      viewBox="0 0 24 24"
-      width={size}
-    >
-      <path d={iconPaths[name]} />
-    </svg>
+      size={size}
+      strokeWidth={1.7}
+    />
   )
 }
 

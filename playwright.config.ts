@@ -19,7 +19,13 @@ export default defineConfig({
   },
   use: {
     baseURL: 'http://127.0.0.1:4173',
+    colorScheme: 'dark',
+    deviceScaleFactor: 1,
+    locale: 'en-US',
+    reducedMotion: 'reduce',
+    timezoneId: 'UTC',
     trace: 'retain-on-failure',
+    viewport: { width: 1440, height: 900 },
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
@@ -36,8 +42,8 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], deviceScaleFactor: 1 } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'], deviceScaleFactor: 1 } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'], deviceScaleFactor: 1 } },
   ],
 })

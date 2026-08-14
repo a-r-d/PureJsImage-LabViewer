@@ -21,6 +21,7 @@
     "clean": "node ../../tooling/scripts/clean-package.mjs"
   },
   "dependencies": {
+    "lucide-react": "1.31.0",
     "react": "19.2.8"
   },
   "devDependencies": {
