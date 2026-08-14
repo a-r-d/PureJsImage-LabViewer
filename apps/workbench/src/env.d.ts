@@ -15,6 +15,7 @@ interface Window {
     invocationIds: string[]
   }
   __PJI_TEST_CRASH_WORKER__?: () => Promise<void>
+  __PJI_UX_METRICS__?: import('./ux-instrumentation.js').UxMetrics
 }
 
 interface ImportMetaEnv {

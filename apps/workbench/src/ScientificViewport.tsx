@@ -27,6 +27,7 @@ import {
 } from '@pji-workbench/viewport'
 import type { WorkspaceSnapshot } from '@pji-workbench/workspace'
 import { useEffect, useRef } from 'react'
+import { measureUxNextPaint } from './ux-instrumentation.js'
 
 const TILE_SIZE = 256
 const PREFETCH_TILES = 1
@@ -778,6 +779,7 @@ export function ScientificViewport({
         coordinateRef.current.textContent = `${Math.floor(world.x)}, ${Math.floor(world.y)} px${physical}${dSpacing}${value === undefined ? '' : ` · ${value.toPrecision(5)}`}`
       }
       if (panning) {
+        measureUxNextPaint('viewport.pan')
         camera = panCamera(
           camera,
           { x: point.x - previousPointer.x, y: point.y - previousPointer.y },
@@ -829,6 +831,7 @@ export function ScientificViewport({
     }
     const handleWheel = (event: WheelEvent): void => {
       event.preventDefault()
+      measureUxNextPaint('viewport.zoom')
       camera = zoomCameraAtScreenPoint(
         camera,
         pointerPosition(event),
@@ -852,6 +855,7 @@ export function ScientificViewport({
       )
         return
       event.preventDefault()
+      measureUxNextPaint('viewport.pan')
       camera = panCamera(
         camera,
         {

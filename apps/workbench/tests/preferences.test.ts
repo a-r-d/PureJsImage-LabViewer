@@ -15,7 +15,7 @@ describe('workbench preferences', () => {
         rightPanelWidth: 9_000,
         bottomPanelHeight: 200,
       }),
-    ).toEqual({ theme: 'light', leftPanelWidth: 184, rightPanelWidth: 420, bottomPanelHeight: 200 })
+    ).toEqual({ theme: 'light', leftPanelWidth: 184, rightPanelWidth: 480, bottomPanelHeight: 200 })
   })
 
   it('persists and restores bounded preferences through the interface', () => {

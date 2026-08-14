@@ -1,4 +1,5 @@
-import type { CSSProperties, ReactNode, Ref } from 'react'
+import { type CSSProperties, type ReactNode, type Ref, useEffect } from 'react'
+import { observeUxLayoutShift } from '../ux-instrumentation.js'
 
 export function WorkbenchShell({
   analysisSettled,
@@ -15,6 +16,8 @@ export function WorkbenchShell({
   readonly style: CSSProperties
   readonly workbenchReady: boolean
 }) {
+  useEffect(() => observeUxLayoutShift(), [])
+
   return (
     <div
       className="workbench"

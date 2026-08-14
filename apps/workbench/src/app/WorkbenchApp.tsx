@@ -39,7 +39,6 @@ import {
 import {
   Button,
   CommandPalette,
-  EmptyState,
   Icon,
   IconButton,
   type PaletteCommand,
@@ -151,6 +150,11 @@ import {
   type ScientificViewportApi,
   type ViewportRoi,
 } from '../ScientificViewport.js'
+import {
+  beginUxTask,
+  initializeUxInstrumentation,
+  measureUxNextPaint,
+} from '../ux-instrumentation.js'
 import { WorkbenchProviders, type WorkbenchServices } from './WorkbenchProviders.js'
 import { WorkbenchShell } from './WorkbenchShell.js'
 
@@ -317,6 +321,11 @@ function WorkbenchRuntime({
   readonly environment: PublicEnvironment
   readonly services: WorkbenchServices
 }) {
+  const uxInstrumentationInitialized = useRef(false)
+  if (!uxInstrumentationInitialized.current) {
+    initializeUxInstrumentation(environment.appEnvironment === 'test')
+    uxInstrumentationInitialized.current = true
+  }
   if (window.__PJI_WORKBENCH_METRICS__ === undefined) {
     window.__PJI_WORKBENCH_METRICS__ = {
       reactRenders: 0,
@@ -501,6 +510,8 @@ function WorkbenchRuntime({
 
   const previewThreshold = useCallback(async (): Promise<void> => {
     if (opened === undefined) return
+    measureUxNextPaint('threshold.preview')
+    const finishUxTask = beginUxTask('threshold.preview')
     analysisAbort.current?.abort(new DOMException('Superseded threshold preview', 'AbortError'))
     const controller = new AbortController()
     analysisAbort.current = controller
@@ -573,6 +584,8 @@ function WorkbenchRuntime({
           message: `${previewError instanceof Error ? previewError.message : 'Preview failed.'} The committed project is unchanged.`,
         }))
       }
+    } finally {
+      finishUxTask()
     }
   }, [
     analysisCalibration,
@@ -908,35 +921,43 @@ function WorkbenchRuntime({
 
   const handleCreateRoi = useCallback(
     (geometry: ViewportRoi['geometry']): void => {
-      void createRoi(geometry)
+      measureUxNextPaint('roi.create')
+      const finish = beginUxTask('roi.create')
+      void createRoi(geometry).finally(finish)
     },
     [createRoi],
   )
 
   const applyThreshold = useCallback(async (): Promise<void> => {
     if (opened === undefined) return
-    const graph = thresholdGraph({ component, threshold, mode: thresholdMode })
-    const dryRun = await client.dryRunAnalysis({
-      datasetHandleId: opened.handleId,
-      generation: opened.generation,
-      graph: graph as unknown as RpcJsonObject,
-      ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
-    })
-    setAnalysisState((current) => ({ ...current, dryRun }))
-    if (!dryRun.valid) {
+    measureUxNextPaint('threshold.commit')
+    const finishUxTask = beginUxTask('threshold.commit')
+    try {
+      const graph = thresholdGraph({ component, threshold, mode: thresholdMode })
+      const dryRun = await client.dryRunAnalysis({
+        datasetHandleId: opened.handleId,
+        generation: opened.generation,
+        graph: graph as unknown as RpcJsonObject,
+        ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
+      })
+      setAnalysisState((current) => ({ ...current, dryRun }))
+      if (!dryRun.valid) {
+        setAnalysisState((current) => ({
+          ...current,
+          message: 'Threshold was not applied because validation failed.',
+        }))
+        return
+      }
+      cancelPreview()
+      applyProjectMutation({ kind: 'analysis.set-graph', graph })
       setAnalysisState((current) => ({
         ...current,
-        message: 'Threshold was not applied because validation failed.',
+        message: 'Threshold committed as one semantic project revision.',
       }))
-      return
+      setBottomTab('pipeline')
+    } finally {
+      finishUxTask()
     }
-    cancelPreview()
-    applyProjectMutation({ kind: 'analysis.set-graph', graph })
-    setAnalysisState((current) => ({
-      ...current,
-      message: 'Threshold committed as one semantic project revision.',
-    }))
-    setBottomTab('pipeline')
   }, [
     analysisCalibration,
     applyProjectMutation,
@@ -1784,6 +1805,7 @@ function WorkbenchRuntime({
       locator: WorkspaceSourceReference['locator'],
       throwOnError = false,
     ): Promise<void> => {
+      const finishUxTask = beginUxTask('source.open')
       openAbort.current?.abort()
       const controller = new AbortController()
       openAbort.current = controller
@@ -1809,6 +1831,8 @@ function WorkbenchRuntime({
         }
         setStatus('ready')
         if (throwOnError) throw openError
+      } finally {
+        finishUxTask()
       }
     },
     [appendLog, finishOpen],
@@ -3212,12 +3236,47 @@ function WorkbenchRuntime({
             </div>
           </div>
           <Toolbar label="Workspace actions">
-            <Button onClick={() => executeCommand('workspace.new')}>New</Button>
-            <Button onClick={() => executeCommand('workspace.openProject')}>Projects</Button>
-            <Button onClick={() => executeCommand('workspace.save')}>Save</Button>
-            <Button onClick={() => void saveProjectAs()}>Save as</Button>
-            <Button onClick={() => executeCommand('workspace.export')}>Export</Button>
-            <Button onClick={() => projectImportInput.current?.click()}>Import</Button>
+            <IconButton
+              className="app-bar__project-action"
+              label="New"
+              onClick={() => executeCommand('workspace.new')}
+            >
+              <Icon name="file-new" />
+            </IconButton>
+            <Button
+              className="app-bar__project-action"
+              onClick={() => executeCommand('workspace.openProject')}
+            >
+              Projects
+            </Button>
+            <IconButton
+              className="app-bar__project-action"
+              label="Save"
+              onClick={() => executeCommand('workspace.save')}
+            >
+              <Icon name="save" />
+            </IconButton>
+            <IconButton
+              className="app-bar__project-action"
+              label="Save as"
+              onClick={() => void saveProjectAs()}
+            >
+              <Icon name="save-as" />
+            </IconButton>
+            <IconButton
+              className="app-bar__project-action"
+              label="Export"
+              onClick={() => executeCommand('workspace.export')}
+            >
+              <Icon name="export" />
+            </IconButton>
+            <IconButton
+              className="app-bar__project-action"
+              label="Import"
+              onClick={() => projectImportInput.current?.click()}
+            >
+              <Icon name="import" />
+            </IconButton>
             <input
               accept=".json,.pji-lab.json"
               aria-label="Import PureJsImage Lab project"
@@ -3227,6 +3286,7 @@ function WorkbenchRuntime({
               type="file"
             />
             <IconButton
+              className="app-bar__project-action"
               disabled={historyState.undo.length === 0}
               label="Undo project change"
               onClick={() => executeCommand('workspace.undo')}
@@ -3234,16 +3294,20 @@ function WorkbenchRuntime({
               <Icon name="undo" />
             </IconButton>
             <IconButton
+              className="app-bar__project-action"
               disabled={historyState.redo.length === 0}
               label="Redo project change"
               onClick={() => executeCommand('workspace.redo')}
             >
               <Icon name="redo" />
             </IconButton>
+            <span aria-hidden="true" className="toolbar-divider" />
             <Button onClick={() => fileInput.current?.click()} variant="primary">
               <Icon name="open" size={15} /> Open files
             </Button>
-            <Button onClick={() => setUrlDialog(true)}>Open URL</Button>
+            <Button onClick={() => setUrlDialog(true)}>
+              <Icon name="link" size={15} /> Open URL
+            </Button>
             <input
               accept=".gsf,.hdr,.envi,.fits,.fit,.fts,.mrc,.map,.ccp4,.cbf,.imgcif,.tif,.tiff,.svs"
               aria-label="Choose local scientific files"
@@ -3253,20 +3317,6 @@ function WorkbenchRuntime({
               ref={fileInput}
               type="file"
             />
-            <IconButton
-              label="Fit image"
-              disabled={!hasDataset}
-              onClick={() => executeCommand('viewport.fit')}
-            >
-              <Icon name="fit" />
-            </IconButton>
-            <IconButton
-              label="Actual pixels"
-              disabled={!hasDataset}
-              onClick={() => executeCommand('viewport.oneToOne')}
-            >
-              <span className="one-to-one">1:1</span>
-            </IconButton>
           </Toolbar>
           <Toolbar label="Application actions">
             <IconButton label="Open command palette" onClick={() => executeCommand('palette.open')}>
@@ -3278,7 +3328,7 @@ function WorkbenchRuntime({
             >
               <Icon name={themeIcon} />
             </IconButton>
-            <IconButton label="Show agent panel" onClick={() => executeCommand('panel.agent')}>
+            <IconButton label="Show agent readiness" onClick={() => executeCommand('panel.agent')}>
               <Icon name="agent" />
             </IconButton>
           </Toolbar>
@@ -3319,7 +3369,16 @@ function WorkbenchRuntime({
         <main className="workbench-main">
           <div className="workbench-primary">
             <nav aria-label="Workbench modes" className="mode-rail">
-              <IconButton className="mode-rail__button" label="Browse mode">
+              <IconButton
+                aria-pressed={
+                  inspectorTab === 'info' ||
+                  inspectorTab === 'display' ||
+                  inspectorTab === 'history'
+                }
+                className="mode-rail__button"
+                label="Browse mode"
+                onClick={() => setInspectorTab('info')}
+              >
                 <Icon name="browse" />
               </IconButton>
               <IconButton
@@ -3417,6 +3476,66 @@ function WorkbenchRuntime({
                     onSelect={() => void selectDataset(dataset.datasetId)}
                   />
                 ))}
+                <p className="tree-group">Layers</p>
+                {workspace.layers.length === 0 ? (
+                  <TreeRow depth={1} label="No display layers" />
+                ) : (
+                  workspace.layers.map((layer) => (
+                    <TreeRow
+                      depth={1}
+                      detail={layer.visible ? `${Math.round(layer.opacity * 100)}%` : 'hidden'}
+                      key={layer.id}
+                      label={layer.label}
+                      selected={workspace.workflow.selectedLayerId === layer.id}
+                      onSelect={() => {
+                        setInspectorTab('display')
+                        applyProjectMutation({
+                          kind: 'project.set-workflow',
+                          workflow: { ...workspace.workflow, selectedLayerId: layer.id },
+                        })
+                      }}
+                    />
+                  ))
+                )}
+                <p className="tree-group">ROIs</p>
+                {workspace.analysis.roiSet.rois.length === 0 ? (
+                  <TreeRow depth={1} label="No regions yet" />
+                ) : (
+                  workspace.analysis.roiSet.rois.map((roi) => (
+                    <TreeRow
+                      depth={1}
+                      detail={roi.geometry.kind}
+                      key={roi.id}
+                      label={roi.name ?? 'Unnamed ROI'}
+                      selected={workspace.workflow.selectedRoiId === roi.id}
+                      onSelect={() => {
+                        selectRoi(roi.id)
+                        setInspectorTab('roi')
+                      }}
+                    />
+                  ))
+                )}
+                <p className="tree-group">Results</p>
+                {workspace.pinnedResults.length === 0 ? (
+                  <TreeRow depth={1} label="No pinned results" />
+                ) : (
+                  workspace.pinnedResults.map((result) => (
+                    <TreeRow
+                      depth={1}
+                      detail={result.kind}
+                      key={result.id}
+                      label={result.label}
+                      selected={workspace.workflow.selectedResultId === result.id}
+                      onSelect={() => {
+                        setBottomTab('results')
+                        applyProjectMutation({
+                          kind: 'project.set-workflow',
+                          workflow: { ...workspace.workflow, selectedResultId: result.id },
+                        })
+                      }}
+                    />
+                  ))
+                )}
                 {workspace.sources.length === 0 && recentSources.length > 0 ? (
                   <p className="tree-group">Recent names</p>
                 ) : null}
@@ -3468,9 +3587,30 @@ function WorkbenchRuntime({
                 </div>
                 <Toolbar label="Viewport tools">
                   <span className="tool-hint">Wheel zoom · Space drag pan · Drop files here</span>
-                  <Button disabled={!hasDataset} onClick={() => void exportViewportPng()}>
-                    Export rendered PNG
-                  </Button>
+                  <span className="context-chip">
+                    {calibrationLabel(calibratedOpened ?? opened)}
+                  </span>
+                  <IconButton
+                    disabled={!hasDataset}
+                    label="Fit image"
+                    onClick={() => executeCommand('viewport.fit')}
+                  >
+                    <Icon name="fit" />
+                  </IconButton>
+                  <IconButton
+                    disabled={!hasDataset}
+                    label="Actual pixels"
+                    onClick={() => executeCommand('viewport.oneToOne')}
+                  >
+                    <span className="one-to-one">1:1</span>
+                  </IconButton>
+                  <IconButton
+                    disabled={!hasDataset}
+                    label="Export rendered PNG"
+                    onClick={() => void exportViewportPng()}
+                  >
+                    <Icon name="download" />
+                  </IconButton>
                 </Toolbar>
               </div>
               <div className={`viewport-stage${hasDataset ? ' viewport-stage--has-data' : ''}`}>
@@ -3504,18 +3644,49 @@ function WorkbenchRuntime({
                     selection={selection}
                   />
                 ) : (
-                  <EmptyState
-                    title="Open an original scientific image"
-                    description="Files remain local. Remote sources use bounded HTTPS Range reads when the server permits them."
-                    action={
+                  <section className="empty-start" aria-labelledby="empty-start-title">
+                    <Icon name="open" size={30} />
+                    <p className="panel-kicker">Local-first scientific imaging</p>
+                    <h2 id="empty-start-title">
+                      Start with an original file or a verified example
+                    </h2>
+                    <p>
+                      Inspect calibration, measure regions, and replay analysis without uploading
+                      local source pixels.
+                    </p>
+                    <div className="empty-start__actions">
+                      <Button onClick={() => fileInput.current?.click()} variant="primary">
+                        <Icon name="open" size={16} /> Open local file
+                      </Button>
+                      <Button
+                        onClick={(event) => {
+                          exampleGalleryReturnFocus.current = event.currentTarget
+                          setExampleGalleryOpen(true)
+                        }}
+                      >
+                        <Icon name="examples" size={16} /> Browse examples
+                      </Button>
+                      <Button onClick={() => setUrlDialog(true)}>
+                        <Icon name="link" size={16} /> Open remote URL
+                      </Button>
+                      <Button onClick={() => executeCommand('workspace.openProject')}>
+                        <Icon name="folder" size={16} /> Open saved project
+                      </Button>
+                    </div>
+                    <div className="empty-start__sample">
                       <Button
                         onClick={() => executeCommand('workspace.openSample')}
-                        variant="primary"
+                        variant="ghost"
                       >
                         Try generated calibrated sample
                       </Button>
-                    }
-                  />
+                      <span>Offline · SEM-like · 0.42 nm/px</span>
+                    </div>
+                    <p className="empty-start__privacy">
+                      Local files stay on this device. Remote sources are fetched only when you
+                      explicitly provide an HTTPS URL.
+                    </p>
+                  </section>
                 )}
               </div>
             </section>
@@ -3542,13 +3713,14 @@ function WorkbenchRuntime({
                 items={inspectorTabs}
                 label="Inspector sections"
                 onSelect={(tab) => {
+                  measureUxNextPaint('inspector.tab')
                   setInspectorTab(tab)
                   applyProjectMutation({
                     kind: 'project.set-workflow',
                     workflow: { ...workspace.workflow, inspector: tab },
                   })
                 }}
-                selectedId={inspectorTab}
+                selectedId={inspectorTab === 'history' ? 'info' : inspectorTab}
               />
               <div className="inspector-scroll">
                 <InspectorContent
@@ -3563,7 +3735,7 @@ function WorkbenchRuntime({
                   roiContent={roiContent}
                   selection={selection}
                   source={source}
-                  tab={inspectorTab}
+                  tab={inspectorTab === 'history' ? 'info' : inspectorTab}
                 />
               </div>
             </Panel>

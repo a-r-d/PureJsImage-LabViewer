@@ -14,14 +14,14 @@ export interface WorkbenchPreferenceStore {
 
 export const DEFAULT_PREFERENCES: WorkbenchPreferences = {
   theme: 'dark',
-  leftPanelWidth: 232,
-  rightPanelWidth: 288,
-  bottomPanelHeight: 176,
+  leftPanelWidth: 248,
+  rightPanelWidth: 344,
+  bottomPanelHeight: 188,
 }
 
 export const PREFERENCE_BOUNDS = {
   leftPanelWidth: { minimum: 184, maximum: 380 },
-  rightPanelWidth: { minimum: 232, maximum: 420 },
+  rightPanelWidth: { minimum: 300, maximum: 480 },
   bottomPanelHeight: { minimum: 126, maximum: 320 },
 } as const
 

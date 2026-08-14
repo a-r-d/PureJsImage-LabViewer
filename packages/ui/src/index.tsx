@@ -4,16 +4,23 @@ import {
   CircleQuestionMark,
   CodeXml,
   Command,
+  Download,
+  FileInput,
+  FileOutput,
+  FilePlus2,
   FlaskConical,
   Folder,
   FolderOpen,
   Images,
   Layers,
+  Link2,
   type LucideIcon,
   Moon,
   MousePointer2,
   PanelRight,
   Redo2,
+  Save,
+  SaveAll,
   Scan,
   ScanLine,
   Search,
@@ -206,11 +213,16 @@ export type IconName =
   | 'close'
   | 'code'
   | 'command'
+  | 'download'
   | 'examples'
+  | 'export'
   | 'fit'
+  | 'file-new'
   | 'folder'
   | 'help'
+  | 'import'
   | 'layers'
+  | 'link'
   | 'moon'
   | 'open'
   | 'panel'
@@ -219,6 +231,8 @@ export type IconName =
   | 'results'
   | 'roi'
   | 'search'
+  | 'save'
+  | 'save-as'
   | 'settings'
   | 'shield'
   | 'sliders'
@@ -234,11 +248,16 @@ const iconComponents: Readonly<Record<IconName, LucideIcon>> = {
   close: X,
   code: CodeXml,
   command: Command,
+  download: Download,
   examples: Images,
+  export: FileOutput,
   fit: Scan,
+  'file-new': FilePlus2,
   folder: Folder,
   help: CircleQuestionMark,
+  import: FileInput,
   layers: Layers,
+  link: Link2,
   moon: Moon,
   open: FolderOpen,
   panel: PanelRight,
@@ -247,6 +266,8 @@ const iconComponents: Readonly<Record<IconName, LucideIcon>> = {
   results: Table2,
   roi: SquareDashed,
   search: Search,
+  save: Save,
+  'save-as': SaveAll,
   settings: Settings,
   shield: ShieldCheck,
   sliders: SlidersHorizontal,

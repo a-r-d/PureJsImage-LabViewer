@@ -168,7 +168,10 @@ export function ExampleGallery({
     searchInput.current?.focus()
     return () => {
       const target = returnFocus.current
-      queueMicrotask(() => target?.focus())
+      const galleryInput = searchInput.current
+      queueMicrotask(() => {
+        if (!galleryInput?.isConnected) target?.focus()
+      })
     }
   }, [])
 

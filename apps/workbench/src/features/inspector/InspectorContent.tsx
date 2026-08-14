@@ -17,7 +17,6 @@ export const inspectorTabs: readonly TabItem<InspectorTab>[] = [
   { id: 'display', label: 'Display' },
   { id: 'roi', label: 'ROI' },
   { id: 'analysis', label: 'Analysis' },
-  { id: 'history', label: 'History' },
   { id: 'agent', label: 'Agent' },
 ]
 
@@ -57,7 +56,7 @@ export function InspectorContent({
         <div className="agent-message">
           The semantic action host is ready. Model access remains disabled until Prompt 14.
         </div>
-        <Button disabled={opened === undefined} variant="primary">
+        <Button disabled variant="primary">
           Review proposed plan
         </Button>
         <p className="panel-note">No model or network request has been made.</p>
