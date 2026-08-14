@@ -109,9 +109,11 @@ Gate:
 
 Use a small deterministic generated corpus and fixed viewport/device settings.
 
-Linux Chromium is the canonical visual-rendering environment. All hosts compare against the same
-baseline with at most 1.5% differing pixels to absorb bounded font and GPU rasterization variance.
-Missing or changed goldens must fail; normal test runs never create or update them automatically.
+Linux Chromium is the canonical CI visual-rendering environment. Darwin and Linux keep separate,
+OS-qualified baselines because browser text rasterization is not pixel-equivalent across those
+platforms. Each host compares against its own baseline with at most 1.5% differing pixels to absorb
+bounded same-platform font and GPU rasterization variance. Missing or changed goldens must fail;
+normal test runs never create or update them automatically.
 
 The Playwright environment pins UTC, `en-US`, color scheme, reduced motion, a device scale factor
 of 1, and explicit viewports. Each isolated browser context starts without persisted IndexedDB;
