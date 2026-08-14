@@ -61,8 +61,9 @@ packages/ui
   Design tokens and accessible reusable React components. No domain data access.
 
 packages/test-corpus
-  Dataset manifest types, license/checksum validation, fetch/extract scripts,
-  and corpus metadata used by tests.
+  Immutable scenario manifests, status/license/integrity normalization, semantic generated-fixture
+  resolution, bounded download/cache/archive delivery, audit reports, and corpus metadata shared by
+  the gallery and tests. It never exposes repository-relative runtime fixture paths.
 ```
 
 ## Dependency direction

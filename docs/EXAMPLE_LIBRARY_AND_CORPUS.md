@@ -10,6 +10,12 @@ The example system serves three purposes simultaneously:
 
 Every example is a versioned scenario, not merely an image thumbnail.
 
+The Prompt 11 baseline implements this contract in `packages/test-corpus`. Five distinct,
+deterministic GSF scenarios are enabled offline and share their descriptors with the workbench
+gallery, fixture resolver, workflow buttons, and tests. Researched real datasets remain in a
+separate candidate/scheduled/excluded queue until every gate below is satisfied. See
+`docs/CORPUS_AUDIT.md` for the per-entry evidence and remaining blockers.
+
 ## Example descriptor
 
 ```ts
@@ -132,3 +138,19 @@ The existing manifest already includes useful generated, NIST, Zenodo, EMPIAR, O
 - data papers containing SEM/TEM plus EDS/diffraction companion imagery.
 
 No candidate becomes an enabled app example merely because its landing page is public.
+
+## Runtime delivery contract
+
+Generated fixtures resolve to semantic sample locators, never repository-relative paths. Bundled
+assets must use application-owned immutable paths. Downloaded assets require exact HTTPS URL, byte
+size, SHA-256, and a verified cache key. Range-backed assets are opened through the imaging
+runtime's bounded Range source and are explicitly refused by the full-file downloader.
+
+The shared delivery layer reports progress, accepts cancellation, caps retries and bytes, verifies
+cache hits before reuse, evicts corruption, and provides an offline-only mode. Archive decoders are
+injected behind a validation boundary; the complete member directory is checked for traversal,
+symlinks, duplicates, file count, member size, expanded bytes, and compression ratio before any
+member is materialized.
+
+Normal CI exercises only generated/bundled data. Controlled scheduled jobs may resolve external
+records after manifest verification; public servers are never an implicit PR gate.

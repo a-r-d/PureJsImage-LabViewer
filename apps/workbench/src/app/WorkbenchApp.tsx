@@ -32,6 +32,11 @@ import {
 } from '@pji-workbench/plugin-sdk'
 import { generateScriptApi, type ScriptActionInvoker } from '@pji-workbench/scripts'
 import {
+  type ExampleScenarioV1,
+  type ExampleWorkflowV1,
+  resolveGeneratedFixture,
+} from '@pji-workbench/test-corpus'
+import {
   Button,
   CommandPalette,
   EmptyState,
@@ -361,6 +366,7 @@ function WorkbenchRuntime({
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteOperationId, setPaletteOperationId] = useState<string>()
   const [exampleGalleryOpen, setExampleGalleryOpen] = useState(false)
+  const exampleGalleryReturnFocus = useRef<HTMLElement>(null)
   const [scriptStudioOpen, setScriptStudioOpen] = useState(false)
   const [recentSources, setRecentSources] = useState(() => readRecentSources(window.localStorage))
   const [log, setLog] = useState<readonly string[]>([])
@@ -374,6 +380,7 @@ function WorkbenchRuntime({
   const [particleSettings, setParticleSettings] =
     useState<ParticleWorkflowSettings>(DEFAULT_PARTICLE_WORKFLOW)
   const [scriptRecipe, setScriptRecipe] = useState<RecipeDocumentV1>()
+  const [scriptArtifactId, setScriptArtifactId] = useState<string>()
   const [analysisCatalog, setAnalysisCatalog] = useState<AnalysisCatalog>()
   const [analysisState, setAnalysisState] = useState<MaterialsPanelState>({
     busy: false,
@@ -1178,6 +1185,7 @@ function WorkbenchRuntime({
   const openParticleRecipeInScripts = useCallback(async (): Promise<void> => {
     const recipe = await createParticleRecipe()
     if (recipe === undefined) return
+    setScriptArtifactId(undefined)
     setScriptRecipe(recipe)
     setScriptStudioOpen(true)
   }, [createParticleRecipe])
@@ -1764,6 +1772,7 @@ function WorkbenchRuntime({
     async (
       opener: (nextGeneration: number, signal: AbortSignal) => Promise<OpenedSourceDescriptor>,
       locator: WorkspaceSourceReference['locator'],
+      throwOnError = false,
     ): Promise<void> => {
       openAbort.current?.abort()
       const controller = new AbortController()
@@ -1789,17 +1798,56 @@ function WorkbenchRuntime({
           setError(`${message} The previous workspace remains unchanged.`)
         }
         setStatus('ready')
+        if (throwOnError) throw openError
       }
     },
     [appendLog, finishOpen],
   )
 
-  const openSample = useCallback((): void => {
-    void runOpen((nextGeneration, signal) => client.openSample(nextGeneration, signal), {
-      kind: 'sample',
-      sampleId: 'generated-calibrated-sem',
-    })
-  }, [client, runOpen])
+  const openSample = useCallback(
+    (sampleId = 'generated.calibrated-particles', throwOnError = false) => {
+      return runOpen(
+        (nextGeneration, signal) => client.openSample(nextGeneration, signal, sampleId),
+        {
+          kind: 'sample',
+          sampleId,
+        },
+        throwOnError,
+      )
+    },
+    [client, runOpen],
+  )
+
+  const openExample = useCallback(
+    async (scenario: ExampleScenarioV1, signal: AbortSignal): Promise<void> => {
+      const fixture = resolveGeneratedFixture(scenario.id)
+      const cancel = (): void => openAbort.current?.abort()
+      signal.addEventListener('abort', cancel, { once: true })
+      try {
+        await openSample(fixture.generatorId, true)
+      } finally {
+        signal.removeEventListener('abort', cancel)
+      }
+    },
+    [openSample],
+  )
+
+  const runExampleWorkflow = useCallback(
+    async (
+      scenario: ExampleScenarioV1,
+      workflow: ExampleWorkflowV1,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      await openExample(scenario, signal)
+      signal.throwIfAborted()
+      setInspectorTab('analysis')
+      setScriptRecipe(undefined)
+      setScriptArtifactId(workflow.artifactId)
+      setScriptStudioOpen(true)
+      appendLog(`Prepared example workflow ${workflow.title} for review`)
+    },
+    [appendLog, openExample],
+  )
 
   const openFiles = useCallback(
     (files: readonly File[]): void => {
@@ -3296,6 +3344,7 @@ function WorkbenchRuntime({
                 className="mode-rail__button"
                 label="Script Studio"
                 onClick={() => {
+                  setScriptArtifactId(undefined)
                   setScriptRecipe(undefined)
                   setScriptStudioOpen(true)
                 }}
@@ -3306,7 +3355,10 @@ function WorkbenchRuntime({
                 aria-pressed={exampleGalleryOpen}
                 className="mode-rail__button"
                 label="Examples mode"
-                onClick={() => setExampleGalleryOpen(true)}
+                onClick={(event) => {
+                  exampleGalleryReturnFocus.current = event.currentTarget
+                  setExampleGalleryOpen(true)
+                }}
               >
                 <Icon name="examples" />
               </IconButton>
@@ -3685,7 +3737,20 @@ function WorkbenchRuntime({
           </section>
         </div>
       )}
-      {exampleGalleryOpen ? <ExampleGallery onClose={() => setExampleGalleryOpen(false)} /> : null}
+      {exampleGalleryOpen ? (
+        <ExampleGallery
+          onClose={() => setExampleGalleryOpen(false)}
+          onInspectWorkflow={(workflow) => {
+            setExampleGalleryOpen(false)
+            setScriptRecipe(undefined)
+            setScriptArtifactId(workflow.artifactId)
+            setScriptStudioOpen(true)
+          }}
+          onOpen={openExample}
+          onRunWorkflow={runExampleWorkflow}
+          returnFocusTo={exampleGalleryReturnFocus.current}
+        />
+      ) : null}
       {scriptStudioOpen ? (
         <Suspense
           fallback={
@@ -3696,6 +3761,7 @@ function WorkbenchRuntime({
         >
           <ScriptStudioSurface
             actionManifest={scriptActionManifest}
+            initialArtifactId={scriptArtifactId}
             invoker={scriptInvoker}
             onClose={() => setScriptStudioOpen(false)}
             onOpenPanel={setBottomTab}

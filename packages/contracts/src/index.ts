@@ -232,7 +232,10 @@ export interface StructuredCloneBlob {
 
 export type WorkerRequest =
   | RpcRequest<'worker.initialize', null>
-  | RpcRequest<'source.open-sample', Readonly<{ generation: number }>>
+  | RpcRequest<
+      'source.open-sample',
+      Readonly<{ generation: number; sampleId?: string | undefined }>
+    >
   | RpcRequest<
       'source.open-local',
       Readonly<{ generation: number; primaryId: string; files: readonly LocalFileAttachment[] }>
@@ -681,7 +684,10 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
       throw new RpcValidationError('INVALID_PAYLOAD', `${kind} payload must be null`)
   } else {
     assertBasePayload(payload)
-    if (kind === 'source.open-sample') assertGeneration(payload)
+    if (kind === 'source.open-sample') {
+      assertGeneration(payload)
+      if (payload['sampleId'] !== undefined) assertString(payload['sampleId'], 'sampleId')
+    }
     if (kind === 'source.open-remote') {
       assertGeneration(payload)
       assertString(payload.url, 'url')

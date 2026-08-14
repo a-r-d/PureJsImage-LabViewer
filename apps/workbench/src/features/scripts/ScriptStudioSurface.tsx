@@ -108,6 +108,7 @@ function sourceFromEditor(record: ScriptStudioRecordV1, text: string): ScriptStu
 
 export function ScriptStudioSurface({
   actionManifest,
+  initialArtifactId,
   invoker,
   onClose,
   onOpenPanel,
@@ -115,6 +116,7 @@ export function ScriptStudioSurface({
   repository,
 }: {
   readonly actionManifest: ActionCapabilityManifestV1
+  readonly initialArtifactId?: string | undefined
   readonly invoker: ScriptActionInvoker
   readonly onClose: () => void
   readonly onOpenPanel: (panel: 'pipeline' | 'results') => void
@@ -130,6 +132,9 @@ export function ScriptStudioSurface({
   const [records, setRecords] = useState<readonly ScriptStudioRecordV1[]>([])
   const [selectedId, setSelectedId] = useState('')
   const selected = records.find(({ id }) => id === selectedId)
+  const selectedFixtureIds =
+    examples.current.find(({ id }) => id === selectedId)?.tests.map(({ fixtureId }) => fixtureId) ??
+    []
   const [text, setText] = useState('')
   const [problems, setProblems] = useState<readonly ScriptLanguageProblem[]>([])
   const [outcome, setOutcome] = useState<ScriptRunOutcome | readonly unknown[]>()
@@ -149,7 +154,7 @@ export function ScriptStudioSurface({
       examples.current = builtIns
       const existing = await repository.list()
       const byId = new Map(existing.map((record) => [record.id, record]))
-      let requestedRecipeId = recipe?.id
+      let requestedRecipeId = recipe?.id ?? initialArtifactId
       let recipeConflictWarning = ''
       for (const example of builtIns) {
         if (!byId.has(example.id)) {
@@ -197,7 +202,7 @@ export function ScriptStudioSurface({
       language.dispose()
       runClient.current?.dispose()
     }
-  }, [language, recipe, repository])
+  }, [initialArtifactId, language, recipe, repository])
 
   useEffect(() => {
     if (selected !== undefined && loadedId.current !== selected.id) {
@@ -694,13 +699,16 @@ export function ScriptStudioSurface({
               )}
             </section>
             <section aria-label="Tests and fixtures">
-              <h3>Tests · generated.calibrated-materials</h3>
+              <h3>Tests · {selectedFixtureIds[0] ?? 'no deterministic fixture'}</h3>
               <label>
                 Fixture
-                <select aria-label="Test fixture" defaultValue="generated.calibrated-materials">
-                  <option value="generated.calibrated-materials">
-                    Generated calibrated materials
-                  </option>
+                <select aria-label="Test fixture" disabled value={selectedFixtureIds[0] ?? ''}>
+                  {selectedFixtureIds.length === 0 ? <option value="">No fixture</option> : null}
+                  {selectedFixtureIds.map((fixtureId) => (
+                    <option key={fixtureId} value={fixtureId}>
+                      {fixtureId}
+                    </option>
+                  ))}
                 </select>
               </label>
               {selected?.testResults.length === 0 ? (

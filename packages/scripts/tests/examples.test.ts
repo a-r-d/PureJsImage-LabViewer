@@ -13,6 +13,13 @@ describe('Script Studio built-in examples', () => {
       'builtin.afm-level-roughness',
       'builtin.batch-measurement',
     ])
+    expect(examples.map(({ tests }) => tests[0]?.fixtureId)).toEqual([
+      'generated.calibrated-particles',
+      'generated.touching-particles',
+      'generated.periodic-lattice',
+      'generated.afm-tilted-surface',
+      'generated.batch-particles',
+    ])
     for (const example of examples) {
       const validation =
         example.artifact.kind === 'recipe'
@@ -20,9 +27,7 @@ describe('Script Studio built-in examples', () => {
           : validateAnalysisScriptDocument(example.artifact)
       expect(validation.issues, example.id).toEqual([])
       expect(example.tests.length).toBeGreaterThan(0)
-      expect(
-        example.tests.every(({ fixtureId }) => fixtureId === 'generated.calibrated-materials'),
-      ).toBe(true)
+      expect(example.tests.every(({ fixtureId }) => fixtureId.startsWith('generated.'))).toBe(true)
     }
   })
 

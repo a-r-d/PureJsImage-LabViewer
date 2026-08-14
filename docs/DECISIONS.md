@@ -157,3 +157,16 @@ Editing changes the digest and produces a visible `changed` state until a fresh 
 script actions use underscore-separated IDs because those names are part of the published roadmap;
 the action-ID validator accepts underscores as bounded separators without relaxing any input,
 permission, or execution policy.
+
+## Prompt 11 uses one manifest for examples, workflows, delivery, and tests
+
+`packages/test-corpus` owns the immutable `ExampleScenarioV1` manifest and its normalization,
+fixture resolution, audit, cache/download, and archive-safety contracts. The workbench gallery
+imports only normalized descriptors. It cannot invent a URL, license, workflow, or expected result,
+and candidates are segregated as an unavailable research queue.
+
+Enabled generated scenarios resolve through semantic `sampleId` values handled by the imaging
+Worker; project replay preserves that identity without a repository path. Existing Script Studio
+recipes/scripts remain the workflow artifacts, so a gallery action opens the exact same
+approval-gated surface rather than creating a privileged execution path. Range-backed assets are
+never converted into full downloads, and normal CI has no uncontrolled network dependency.

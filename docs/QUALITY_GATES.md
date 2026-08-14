@@ -66,9 +66,16 @@ Vitest covers:
 - agent policy and tool loop;
 - plugin manifests/recipes;
 - corpus manifest/downloader safety;
+- enabled-scenario license, exact-file, workflow, expected-result, and budget completeness;
+- corrupt/offline cache, retry, cancellation, byte-limit, and Range/full-download separation;
+- archive traversal, encoded traversal, symlink, duplicate, file-count, expansion, and ratio refusal;
 - PureJsImage integration through only public exports.
 
 Tests should assert cleanup and cancellation, not just output.
+
+Normal PR CI runs generated and small bundled corpus tiers only. Hosted/external scenarios require
+explicit scheduled tags and controlled mirrors; no deterministic gate calls an uncontrolled public
+server. `docs/CORPUS_AUDIT.md` records why each non-enabled entry remains unavailable.
 
 ## Browser tests
 

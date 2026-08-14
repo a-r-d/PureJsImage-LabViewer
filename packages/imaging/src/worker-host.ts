@@ -64,7 +64,12 @@ import type {
   PendingRequest,
   SourceRecord,
 } from './worker-host/runtime.js'
-import { assertRemoteUrl, sampleValues, sourceName } from './worker-host/source-rpc.js'
+import {
+  assertRemoteUrl,
+  generatedSampleDefinition,
+  sampleValues,
+  sourceName,
+} from './worker-host/source-rpc.js'
 import { mapTile, numericValue } from './worker-host/view-rpc.js'
 import { loadReadersForSource, SUPPORTED_READERS } from './worker-readers.js'
 
@@ -251,19 +256,19 @@ export class ImagingWorkerHost {
   ): Promise<WorkerHostResult> {
     try {
       const { encodeGsf } = await import('purejsimage/scientific/readers/gsf')
-      const width = 2_048
-      const height = 1_536
+      const sample = generatedSampleDefinition(request.payload.sampleId)
+      const { width, height } = sample
       const bytes = encodeGsf({
         width,
         height,
-        values: sampleValues(width, height),
-        xyUnit: 'nm',
-        xReal: width * 0.42,
-        yReal: height * 0.42,
-        valueUnit: 'a.u.',
-        metadata: { Title: 'Generated calibrated SEM-like surface' },
+        values: sampleValues(width, height, sample.id),
+        xyUnit: sample.xyUnit,
+        xReal: sample.xReal,
+        yReal: sample.yReal,
+        valueUnit: sample.valueUnit,
+        metadata: { Title: sample.title, CorpusScenario: sample.id },
       })
-      const file = new File([bytes.slice().buffer as ArrayBuffer], 'sample-sem.gsf', {
+      const file = new File([bytes.slice().buffer as ArrayBuffer], sample.filename, {
         type: 'application/octet-stream',
         lastModified: 0,
       })

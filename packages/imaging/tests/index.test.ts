@@ -78,9 +78,13 @@ function payload<Kind extends Extract<WorkerResponse, { ok: true }>['kind']>(
   return response.payload as Extract<WorkerResponse, { kind: Kind }>['payload']
 }
 
-async function openGenerated(host: ImagingWorkerHost, generation = 1) {
+async function openGenerated(
+  host: ImagingWorkerHost,
+  generation = 1,
+  sampleId?: string | undefined,
+) {
   const openedResponse = await host.handle(
-    rpcRequest('sample-open', 'source.open-sample', { generation }),
+    rpcRequest('sample-open', 'source.open-sample', { generation, sampleId }),
   )
   const source = payload(openedResponse.response, 'source.opened') as OpenedSourceDescriptor
   const summary = source.datasets[0]
@@ -977,6 +981,45 @@ describe('PureJsImage Worker host', () => {
     expect(diagnostics.tileRuntime).toMatchObject({ enabled: true })
     expect(diagnostics.releases.tiles).toBe(1)
     await host.dispose()
+  })
+
+  it('resolves every enabled generated corpus source without repository-relative fixtures', async () => {
+    const cases = [
+      ['generated.calibrated-particles', 'sample-sem.gsf', 0.42],
+      ['generated.touching-particles', 'touching-particles.gsf', 0.5],
+      ['generated.periodic-lattice', 'periodic-lattice.gsf', 0.08],
+      ['generated.afm-tilted-surface', 'afm-tilted-surface.gsf', 2],
+      ['generated.batch-particles', 'batch-particles.gsf', 0.42],
+    ] as const
+    for (const [sampleId, filename, step] of cases) {
+      const host = new ImagingWorkerHost()
+      const { source, dataset } = await openGenerated(host, 1, sampleId)
+      expect(source.source.name).toBe(filename)
+      expect(dataset.dataset.axes).toContainEqual(
+        expect.objectContaining({
+          id: 'x',
+          unit: 'nm',
+          coordinates: { type: 'linear', step, origin: 0 },
+        }),
+      )
+      await host.dispose()
+    }
+  })
+
+  it('refuses unknown generated corpus source IDs', async () => {
+    const response = await new ImagingWorkerHost().handle(
+      rpcRequest('unknown-sample', 'source.open-sample', {
+        generation: 1,
+        sampleId: 'generated.unknown',
+      }),
+    )
+    expect(response.response).toMatchObject({
+      ok: false,
+      error: {
+        code: 'SOURCE_OPEN_FAILED',
+        message: 'Unknown generated sample: generated.unknown.',
+      },
+    })
   })
 
   it('rejects stale IDs, returns structured malformed-message errors, and crashes only on the test hook', async () => {

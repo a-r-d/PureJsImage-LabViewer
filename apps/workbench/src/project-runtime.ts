@@ -71,7 +71,7 @@ export class WorkbenchWorkspaceRuntime implements WorkspaceRuntimePort {
     const generation = this.#generation + 1
     let openedSource: OpenedSourceDescriptor
     if (source.locator.kind === 'sample') {
-      openedSource = await this.client.openSample(generation, signal)
+      openedSource = await this.client.openSample(generation, signal, source.locator.sampleId)
     } else if (source.locator.kind === 'remote') {
       openedSource = await this.client.openRemote(source.locator.url, generation, signal)
     } else {

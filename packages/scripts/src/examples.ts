@@ -15,13 +15,12 @@ export interface BuiltInScriptStudioExampleV1 {
   readonly tests: readonly AnalysisScriptTestV1[]
 }
 
-const GENERATED_FIXTURE = 'generated.calibrated-materials'
-
 async function script(
   id: string,
   title: string,
   description: string,
   source: string,
+  fixtureId: string,
   requestedCapabilities: readonly ScriptCapability[],
   expected: AnalysisScriptTestV1['expected'],
 ): Promise<BuiltInScriptStudioExampleV1> {
@@ -29,7 +28,7 @@ async function script(
     {
       id: `${id}.generated`,
       title: `${title} generated fixture`,
-      fixtureId: GENERATED_FIXTURE,
+      fixtureId,
       expected,
     },
   ]
@@ -94,7 +93,7 @@ export async function createBuiltInScriptStudioExamples(): Promise<
     {
       id: 'builtin.particle-count-recipe.generated',
       title: 'Particle graph remains explicit and versioned',
-      fixtureId: GENERATED_FIXTURE,
+      fixtureId: 'generated.calibrated-particles',
       expected: { operationCount: 1, actionId: 'analysis.graph.request-execute' },
     },
   ]
@@ -113,12 +112,13 @@ export async function createBuiltInScriptStudioExamples(): Promise<
       `import { lab } from '@lab/api'
 
 export async function main() {
-  const plan = await lab.analysis.dryRun({ workflow: 'particle', segmentation: 'watershed', fixtureId: '${GENERATED_FIXTURE}' })
+  const plan = await lab.analysis.dryRun({ workflow: 'particle', segmentation: 'watershed', fixtureId: 'generated.touching-particles' })
   return { workflow: 'watershed-particles', planned: true, plan }
 }
 
 globalThis.__scriptMain = main
 `,
+      'generated.touching-particles',
       ['analysis.dry-run'],
       { workflow: 'watershed-particles', planned: true },
     ),
@@ -129,12 +129,13 @@ globalThis.__scriptMain = main
       `import { lab } from '@lab/api'
 
 export async function main() {
-  const plan = await lab.analysis.dryRun({ workflow: 'fft-radial-profile', radialBins: 128, calibrated: true })
+  const plan = await lab.analysis.dryRun({ workflow: 'fft-radial-profile', radialBins: 128, calibrated: true, fixtureId: 'generated.periodic-lattice' })
   return { workflow: 'fft-radial-profile', radialBins: 128, plan }
 }
 
 globalThis.__scriptMain = main
 `,
+      'generated.periodic-lattice',
       ['analysis.dry-run'],
       { workflow: 'fft-radial-profile', radialBins: 128 },
     ),
@@ -145,12 +146,13 @@ globalThis.__scriptMain = main
       `import { lab } from '@lab/api'
 
 export async function main() {
-  const plan = await lab.analysis.dryRun({ workflow: 'afm-level-roughness', correction: 'first-order-plane', metrics: ['Ra', 'Rq', 'Rz'] })
+  const plan = await lab.analysis.dryRun({ workflow: 'afm-level-roughness', correction: 'first-order-plane', metrics: ['Ra', 'Rq', 'Rz'], fixtureId: 'generated.afm-tilted-surface' })
   return { workflow: 'afm-level-roughness', correction: 'first-order-plane', plan }
 }
 
 globalThis.__scriptMain = main
 `,
+      'generated.afm-tilted-surface',
       ['analysis.dry-run'],
       { workflow: 'afm-level-roughness', correction: 'first-order-plane' },
     ),
@@ -161,12 +163,13 @@ globalThis.__scriptMain = main
       `import { lab } from '@lab/api'
 
 export async function main() {
-  const proposal = await lab.analysis.requestBatch({ recipeId: 'builtin.particle-count-recipe', concurrency: 2, target: 'selected-local-items' })
+  const proposal = await lab.analysis.requestBatch({ recipeId: 'builtin.particle-count-recipe', concurrency: 2, target: 'selected-local-items', fixtureId: 'generated.batch-particles' })
   return { workflow: 'batch-measurement', concurrency: 2, proposal }
 }
 
 globalThis.__scriptMain = main
 `,
+      'generated.batch-particles',
       ['analysis.execute'],
       { workflow: 'batch-measurement', concurrency: 2 },
     ),

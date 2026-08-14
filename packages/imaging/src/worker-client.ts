@@ -80,9 +80,13 @@ export class ImagingWorkerClient {
     return this.#payload(await this.#call('worker.initialize', null), 'worker.initialize')
   }
 
-  async openSample(generation: number, signal?: AbortSignal): Promise<OpenedSourceDescriptor> {
+  async openSample(
+    generation: number,
+    signal?: AbortSignal,
+    sampleId = 'generated.calibrated-particles',
+  ): Promise<OpenedSourceDescriptor> {
     return this.#payload(
-      await this.#call('source.open-sample', { generation }, signal),
+      await this.#call('source.open-sample', { generation, sampleId }, signal),
       'source.opened',
     )
   }
