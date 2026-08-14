@@ -13,11 +13,11 @@ later milestones described under [`prompts/`](prompts/).
 
 - Node.js 24 LTS (the exact repository version is in `.nvmrc`)
 - Corepack enabled
-- pnpm 10.34.5, selected through the root `packageManager` field
+- pnpm 11.21.0, selected through the root `packageManager` field
 
 ```sh
 corepack enable
-corepack prepare pnpm@10.34.5 --activate
+corepack prepare pnpm@11.21.0 --activate
 pnpm install --frozen-lockfile
 ```
 

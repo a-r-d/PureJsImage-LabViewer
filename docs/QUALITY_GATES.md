@@ -107,6 +107,10 @@ Gate:
 
 Use a small deterministic generated corpus and fixed viewport/device settings.
 
+Linux Chromium is the canonical visual-rendering environment. All hosts compare against the same
+baseline with at most 1.5% differing pixels to absorb bounded font and GPU rasterization variance.
+Missing or changed goldens must fail; normal test runs never create or update them automatically.
+
 Capture:
 
 - empty state;

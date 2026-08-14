@@ -31,6 +31,9 @@
         "noUnusedImports": "error",
         "noUnusedVariables": "error"
       },
+      "complexity": {
+        "useLiteralKeys": "off"
+      },
       "security": {
         "noDangerouslySetInnerHtml": "error"
       },

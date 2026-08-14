@@ -3,10 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.34.5",
+  "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": ">=24.0.0 <25",
-    "pnpm": ">=10.34.5 <11"
+    "pnpm": ">=11.21.0 <12"
   },
   "scripts": {
     "dev": "corepack pnpm --filter @pji-workbench/app dev",
@@ -38,11 +38,5 @@
     "turbo": "2.10.9",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "workerd"
-    ]
   }
 }
