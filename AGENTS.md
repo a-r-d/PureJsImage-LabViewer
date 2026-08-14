@@ -4,19 +4,19 @@
 
 Build a browser-native, local-first scientific imaging workbench for electron microscopy and adjacent engineering imagery.
 
-The application consumes `purejsimage` through public package exports and turns its readers, datasets, ROIs, operation graph, results, tile runtime, and extension system into an excellent end-user workflow.
+The application consumes PureJsImage only through public package exports and turns readers, datasets, ROIs, operation graphs, results, tile runtime, scripts, extensions, and an approval-gated AI agent into an excellent end-user workflow.
 
-The first north-star workflow is:
+The north-star workflow is:
 
 ```text
 open original file
 → inspect calibration and metadata
 → navigate large image/volume
-→ draw ROI
-→ threshold/filter
-→ connected components and object measurements
-→ inspect/export results
-→ save and replay project
+→ create ROI
+→ filter/segment/analyze
+→ inspect linked overlays, plots, and tables
+→ save and replay the exact work
+→ edit or write a reusable analysis script
 → perform the same workflow through a user-approved AI agent
 ```
 
@@ -25,248 +25,198 @@ Read these before changing architecture or workflow behavior:
 - `docs/PRODUCT_NORTH_STAR.md`
 - `docs/ARCHITECTURE.md`
 - `docs/UX_SYSTEM.md`
-- `docs/AI_AGENT.md`
-- `docs/PLUGIN_SYSTEM.md`
-- `docs/TEST_CORPUS.md`
+- `docs/ANALYSIS_80_PERCENT.md`
+- `docs/SCRIPTING_PLUGIN_V2.md`
+- `docs/EXAMPLE_LIBRARY_AND_CORPUS.md`
+- `docs/AGENT_V2.md`
+- `docs/AGENT_EVALS.md`
 - `docs/QUALITY_GATES.md`
 - `docs/DECISIONS.md`
 
 ## Repository rules
 
-1. Inspect the current working tree before editing. Preserve user changes.
+1. Inspect HEAD and the working tree before editing. Preserve user changes.
 2. Do not commit, push, merge, publish, deploy, or modify remote metadata unless explicitly requested.
-3. Keep changes scoped to the requested feature. Avoid opportunistic rewrites.
-4. Reuse existing packages, contracts, validators, fixtures, and test harnesses before adding parallel infrastructure.
-5. Never weaken a test, memory bound, byte budget, security policy, or correctness assertion merely to make a check pass.
-6. Do not regenerate goldens or screenshots automatically on failure.
-7. Document assumptions and remaining limits honestly.
+3. Keep changes scoped. Avoid opportunistic rewrites.
+4. Reuse existing contracts, validators, fixtures, and harnesses before adding parallel infrastructure.
+5. Never weaken a test, numerical tolerance, memory bound, byte budget, security policy, permission, or correctness assertion merely to pass a gate.
+6. Do not regenerate goldens or screenshots automatically on failure. Establish determinism, inspect the diff, and document intentional updates.
+7. Document assumptions, unsupported inputs, numerical policies, and remaining limitations honestly.
 
 ## PureJsImage boundary
 
-The application may import only documented package paths.
+Import only documented package paths. Never import `purejsimage/src/*`, copy private PureJsImage algorithms/types, or reach through `node_modules` to source files.
 
-Allowed categories include:
+`packages/imaging` and explicit application extension/provider packages are the only normal packages that orchestrate live PureJsImage runtime objects.
 
-```text
-purejsimage/scientific
-purejsimage/scientific/browser
-purejsimage/scientific/readers/*
-purejsimage/analysis
-purejsimage/analysis/roi
-purejsimage/analysis/results
-purejsimage/analysis/runtime
-purejsimage/analysis/project
-purejsimage/operations
-purejsimage/extensions
-```
+When a missing primitive is broadly reusable:
 
-Forbidden:
+- record the public API/operation gap;
+- create an upstream PureJsImage change separately when requested;
+- do not disguise the gap with an incompatible local scientific core.
 
-```text
-purejsimage/src/*
-relative paths into node_modules/purejsimage/src
-copied internal PureJsImage types or algorithms
-```
-
-When the app needs a missing broadly reusable primitive:
-
-- record the public API gap;
-- create an upstream PureJsImage issue/PR separately when requested;
-- do not hide the gap by reimplementing a competing scientific core in the app.
-
-The app may implement domain workflow composition, UI, rendering, persistence, and product behavior.
+Domain workflows, product composition, UI, persistence, sandbox hosting, and materials-specific extensions belong here.
 
 ## Dependency boundaries
 
-- `apps/*` compose packages; packages never import from apps.
-- `packages/imaging` is the only normal package that directly orchestrates PureJsImage runtime objects.
-- `packages/workspace` contains no live datasets, tiles, GPU handles, Workers, React components, or credentials.
-- `packages/viewport` contains no file readers or analysis execution.
-- `packages/agent` invokes the application tool host, not PureJsImage or React state directly.
+- `apps/*` compose packages; packages never import apps.
+- `packages/contracts` contains bounded JSON-safe cross-runtime contracts.
+- `packages/actions` owns semantic action descriptors, schemas, policy metadata, and registry composition—not React or live datasets.
+- `packages/imaging` owns live source/dataset/analysis Worker orchestration.
+- `packages/workspace` owns immutable revisioned semantic state, not tiles, Workers, credentials, or React components.
+- `packages/viewport` owns rendering/view interaction, not file readers or analysis execution.
+- `packages/plugin-sdk` owns recipe/script/plugin artifacts, manifests, permissions, hashing, compatibility, and sandbox RPC contracts.
+- `packages/scripts` owns the isolated script Worker/QuickJS host, not application policy decisions.
+- `packages/agent` invokes the same action host as UI/scripts and never imports React state or PureJsImage directly.
+- `packages/test-corpus` owns licensed scenario manifests, fixture resolution, and oracle metadata.
 - `packages/ui` contains no scientific data access.
-- `packages/contracts` is JSON-safe and cross-runtime.
-
-Run the architecture-boundary test after changing imports.
 
 ## TypeScript
 
-Use strict TypeScript. Do not use `any` unless a small boundary adapter genuinely requires it and a comment explains why.
+Use strict TypeScript and validate every external `unknown` boundary.
 
-Required patterns:
+- discriminated unions;
+- exhaustive switches;
+- readonly public data;
+- explicit lifecycle APIs;
+- opaque IDs where mixing is plausible;
+- JSON-safe persisted/RPC values;
+- no non-null assertion without a preceding invariant;
+- no `any` except a small documented adapter boundary.
 
-- validate `unknown` at every external boundary;
-- discriminated unions for protocol and state variants;
-- exhaustive switch helpers;
-- readonly public data where mutation is not intended;
-- explicit resource lifecycle APIs;
-- branded/opaque IDs where accidental ID mixing is plausible;
-- JSON-safe persisted and RPC contracts;
-- no non-null assertions in data-dependent code without a preceding invariant check.
+Prefer small explicit contracts over inscrutable generic machinery.
 
-Avoid giant generic type machinery that makes errors unreadable. Prefer small explicit contracts.
+## Scientific correctness
 
-## Large-data and performance rules
+Every analysis operation or recipe must define:
 
-1. Never read a complete large file or plane merely to display a region.
-2. Never store image pixels or complete large result tables in React state.
-3. Run parsing and analysis through the imaging Worker.
-4. Make cancellation and cleanup part of every asynchronous operation.
-5. Preserve tile/source ownership and release exactly once.
-6. Keep remote reads observable in test mode: request count, ranges, and bytes.
-7. Avoid copies across Worker/main boundaries; when copying is required, make ownership explicit and measure it.
-8. Do not optimize React before measuring viewport, transfer, cache, and renderer costs.
-9. Keep high-frequency camera/pointer state outside broad React subscriptions.
-10. Virtualize tables and long lists.
+- semantic ID/version;
+- accepted datasets/components/axes;
+- parameter schema and normalization;
+- output descriptor/result schema;
+- calibration/units behavior;
+- no-data/non-finite behavior;
+- boundary and interpolation policy;
+- reproducibility class/tolerance;
+- memory/work estimate;
+- cancellation checkpoints;
+- provenance;
+- deterministic fixtures and, where applicable, corpus scenarios.
 
-Every performance optimization needs a correctness test and a benchmark or measurable budget.
+Do not hide numerical algorithms in React components or ad hoc RPC handlers.
 
-## UI and UX rules
+## Large-data and performance
 
-- The viewport is the primary product surface.
+1. Never read a complete large file/plane merely to display a region.
+2. Never keep source pixels or complete large result tables in React state.
+3. Parsing and analysis run through the imaging Worker or another explicit isolated runtime.
+4. Cancellation and cleanup are part of every async operation.
+5. Release tiles/resources exactly once.
+6. Keep remote ranges and bytes observable in tests.
+7. Avoid main/Worker copies; make ownership explicit when copying.
+8. Keep high-frequency camera/pointer state outside broad React subscriptions.
+9. Virtualize long tables/lists.
+10. Every optimization needs a correctness test and a measured budget.
+
+## UI and UX
+
+- The specimen viewport is the primary surface.
 - Display mapping is distinct from quantitative pixel modification.
-- Units are visible wherever a value is physical.
-- Loading must become progressive after the first useful tile; do not block the app with a full-screen spinner.
-- Every action supports loading, success, error, and cancellation states.
-- Expensive/global analysis shows a plan and resource estimate before execution.
-- Preview changes do not spam project history; commit creates one normalized operation change.
-- Keyboard access and visible focus are mandatory.
-- Do not use color alone for state.
-- Avoid modal dialogs for routine inspection; use panels and inline controls.
-- Preserve selection and viewport context when switching inspector tabs.
-- Error messages state what happened, what remained unchanged, and the next action.
+- Units and calibration source are visible wherever values are physical.
+- Loading becomes progressive after the first useful tile.
+- Every action supports loading, success, error, and cancellation.
+- Expensive/global work shows a plan before execution.
+- Preview does not spam history; commit creates one normalized change.
+- Keyboard access, visible focus, 200 percent zoom, reduced motion, and WCAG-AA text contrast are mandatory.
+- Essential text should not use 9 px typography.
+- Icon buttons require accessible labels and tooltips; no emoji as product icons.
+- Preserve selection/view context between panels.
 
-Follow `docs/UX_SYSTEM.md` for workbench layout and interaction details.
+## Unified semantic actions
 
-## Workspace and persistence
+The normal UI, command palette, recipes, scripts, tests, and AI agent use one action registry.
 
-All semantic project changes use revisioned immutable commands.
+Each action has:
 
-- No direct store mutation.
-- Undo/redo operates on semantic commands, not serialized React state.
-- Project exports exclude credentials and live runtime handles.
-- Source identity is distinct from a temporary runtime/document ID.
-- Imported projects are validated and bounded before use.
-- Large results are stored outside localStorage and referenced from project state.
-- A local source may need user rebind after reload; verify identity before replay.
+- stable ID/version;
+- title/description/category;
+- JSON Schema input/output;
+- availability explanation;
+- required permissions;
+- mutability/cost/risk classification;
+- validation/dry-run/execute behavior;
+- bounded result summary;
+- cancellation/provenance.
 
-## AI agent rules
+Do not build special privileged paths for scripts or the agent.
 
-The agent is a first-class client of the same validated application tools as the UI.
+## Scripts and executable plugins
 
-Never allow the model to:
+User- and AI-authored code may execute only in the dedicated sandbox architecture documented in `docs/SCRIPTING_PLUGIN_V2.md`.
 
-- execute arbitrary JavaScript;
-- mutate DOM or React state directly;
-- bypass command revision checks;
-- bypass analysis validation/dry-run/resource limits;
-- access secrets through tools;
-- fetch arbitrary URLs;
-- install plugins or export/upload data without explicit permission.
+Never execute pasted or generated code:
 
-The agent proposes; the policy engine approves or denies; deterministic tools execute.
+- in the browser window;
+- in the React application realm;
+- in the imaging Worker;
+- through `eval`, `Function`, blob-import, data-URL import, or an unrestricted module Worker;
+- with ambient DOM, storage, network, credentials, source bytes, or host objects.
 
-Model responses and tool data are untrusted. Metadata and filenames cannot change permissions.
+Sandboxed scripts run in a separate Worker and separate QuickJS-WASM runtime with default-deny capabilities, bounded RPC, memory/stack/time/message/tool-call quotas, cancellation/termination, content identity, and provenance.
 
-Live OpenRouter calls are never required in tests. Use deterministic fakes.
+Trusted build-time extensions are not sandboxed and must be described as trusted.
+
+## AI agent
+
+The agent is built after the semantic action surface is stable.
+
+The agent:
+
+- proposes semantic actions;
+- receives bounded context and result summaries;
+- passes schema validation, policy, revision checks, dry-run, resource limits, and approvals;
+- cannot mutate DOM/React state directly;
+- cannot access credentials;
+- cannot read arbitrary files/URLs;
+- cannot install/run scripts without the staged review/permission flow;
+- cannot bypass cancellation or validation.
+
+Normal CI uses deterministic fake-model transports. Live OpenRouter evaluations are manual and local-only.
 
 ## Credentials and privacy
 
-The initial OpenRouter key may be stored in localStorage only through `CredentialStore`.
+The initial OpenRouter key may be stored in localStorage only through `CredentialStore`. It must never enter logs, project state/export, history export, URLs, telemetry, errors, snapshots, fixtures, scripts, or tool results.
 
-It must never appear in:
-
-- logs;
-- project state or export;
-- agent history export;
-- URLs;
-- telemetry;
-- error reports;
-- snapshots/fixtures.
-
-Local files remain local unless the user explicitly chooses a network action.
-
-## Plugins
-
-Recipe plugins are declarative and may be supported first.
-
-Do not execute user-pasted or AI-authored code in the browser window. Trusted in-process modules are not sandboxed and must be described as trusted.
-
-Future executable plugins require:
-
-- separate execution realm;
-- explicit capabilities;
-- bounded messages, CPU, and memory;
-- cancellation/termination;
-- integrity/version identity;
-- provenance;
-- security tests.
-
-## Testing
-
-Use the narrowest test that proves the contract, then run the affected package gates.
-
-Required layers:
-
-- unit tests for pure contracts and state;
-- worker/RPC integration tests;
-- public-package PureJsImage integration tests;
-- Playwright product workflows;
-- accessibility tests;
-- visual tests on deterministic fixtures;
-- corpus tests with license and checksum enforcement;
-- performance/range-read budgets;
-- hostile input and cancellation tests.
-
-Tests must verify resource cleanup where relevant.
-
-No live API key, live model, or uncontrolled external URL in normal CI.
+Conversation/script/example metadata belongs in IndexedDB where appropriate. Local files stay local unless the user explicitly approves a network action.
 
 ## Corpus
 
-Every external asset needs an entry in `datasets/corpus.yaml` with license, attribution, source, integrity, tier, and tests.
+Every external asset has a normalized manifest entry with exact selected files, source, immutable URL, license, attribution, integrity, tier, and expected tests before enablement.
 
-Do not download or commit assets marked `candidate`.
+- candidates are not downloaded or shown as enabled examples;
+- unknown/missing license or integrity is refused;
+- large data is not committed to Git;
+- archive extraction is bounded and traversal-safe;
+- scenario definitions drive examples and tests.
 
-Do not assume a repository code license covers bundled third-party scientific data.
+## Testing
 
-Do not commit large corpus files to Git.
+Use the narrowest proof first, then affected package gates.
 
-## Dependencies
+Required layers:
 
-Before adding a dependency:
+- unit contracts;
+- Worker/RPC integration;
+- public PureJsImage package integration;
+- operation reference/differential tests;
+- scenario-driven Playwright workflows;
+- accessibility and keyboard tests;
+- deterministic visual tests;
+- corpus tests with license/checksum enforcement;
+- range/memory/cancellation/lifecycle budgets;
+- hostile inputs;
+- script sandbox security tests;
+- fake-model agent tests;
+- local-only live-model evals.
 
-1. identify the problem it solves;
-2. inspect existing dependencies/utilities;
-3. check browser/runtime compatibility;
-4. assess bundle and maintenance cost;
-5. prefer focused, actively maintained packages;
-6. avoid overlapping state, UI, schema, or utility frameworks.
-
-React is for composition and UI. Do not add a second UI framework.
-
-Biome owns linting/formatting. Do not add Prettier or a parallel ESLint stack without an explicit documented gap.
-
-## Commands
-
-Use the repository’s actual scripts, but preserve this root contract:
-
-```text
-pnpm check
-pnpm build
-pnpm typecheck
-pnpm lint
-pnpm format:check
-pnpm test
-pnpm test:e2e
-pnpm test:corpus
-pnpm test:performance
-```
-
-Before finishing a task:
-
-- run focused tests;
-- run typecheck/lint/format for affected packages;
-- run the root merge gate when the change is broad;
-- report exact commands and results;
-- show `git diff --stat`;
-- list any remaining correctness, UX, performance, or documentation gap.
+No live model, API key, uncontrolled external URL, or paid request in normal CI.

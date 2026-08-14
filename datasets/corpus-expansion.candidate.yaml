@@ -1,0 +1,80 @@
+schemaVersion: 1
+status: research-only-candidates
+notes:
+  - Do not merge entries into the enabled corpus until exact file URLs, selected paths, SHA-256, license, attribution, and hosting decisions are verified.
+  - Do not assume a paper or code repository license covers the data files.
+
+candidates:
+  - id: nist-sem-detection-limits-expanded
+    modality: SEM
+    task: threshold and segmentation robustness under contrast/noise
+    landingPage: https://doi.org/10.18434/mds2-3838
+    desiredSubset: small representative images spanning noise and contrast conditions
+    expectedWorkflows: [display, threshold-method-comparison, segmentation-metrics]
+
+  - id: zenodo-indentation-sem-masks
+    modality: SEM
+    task: indentation segmentation and ground-truth overlay
+    landingPage: https://doi.org/10.5281/zenodo.7639190
+    desiredSubset: diverse instruments, brightness, contrast, and masks
+    expectedWorkflows: [open, overlay, threshold, segmentation-comparison]
+
+  - id: tem-nanoparticle-labels
+    modality: TEM
+    task: nanoparticle counting and size distribution
+    desiredSubset: calibrated image plus instance or semantic mask
+    expectedWorkflows: [threshold, watershed, connected-components, size-distribution]
+
+  - id: sem-additive-manufacturing-phases
+    modality: SEM
+    task: phase/particle segmentation
+    desiredSubset: several magnifications and masks
+    expectedWorkflows: [background-correction, threshold, morphology, phase-fraction]
+
+  - id: afm-calibrated-height-field
+    modality: AFM
+    task: leveling, roughness, grains, line profile
+    desiredSubset: redistributable GSF or equivalent scalar height field
+    expectedWorkflows: [level, roughness, grain-analysis, profile]
+
+  - id: empiar-fib-sem-small
+    modality: FIB-SEM
+    task: volume navigation, calibration, projection
+    archive: EMPIAR
+    expectedWorkflows: [plane-navigation, projection, cancellation, project-replay]
+
+  - id: empiar-sbf-sem-dm4
+    modality: SBF-SEM
+    task: DM4 reader and calibrated volume
+    archive: EMPIAR
+    expectedWorkflows: [reader, volume-navigation, metadata, range-or-selective-read]
+
+  - id: hrtem-fft-spacing
+    modality: HRTEM
+    task: FFT and known lattice spacing
+    desiredSubset: calibrated source image with published spacing
+    expectedWorkflows: [calibrate, fft, radial-profile, d-spacing]
+
+  - id: diffraction-cbf
+    modality: electron-or-xray-diffraction
+    task: center, radial integration, ring peaks
+    desiredSubset: compact CBF/imgCIF with calibration metadata
+    expectedWorkflows: [open, radial-profile, peak-annotation]
+
+  - id: hyperspectral-envi
+    modality: hyperspectral
+    task: band selection, spectrum, ratio
+    desiredSubset: small redistributable ENVI cube
+    expectedWorkflows: [band-view, spectrum, band-ratio]
+
+  - id: openslide-aperio
+    modality: whole-slide
+    task: pyramid/range-backed analysis
+    landingPage: https://openslide.org/testdata/Aperio/
+    expectedWorkflows: [reader, associated-images, selected-level-analysis, byte-budget]
+
+  - id: empiar-4dstem
+    modality: 4D-STEM
+    task: diffraction/real-space linking and virtual detector
+    archive: EMPIAR
+    expectedWorkflows: [labeled-axes, diffraction-plane, virtual-image]
