@@ -172,6 +172,91 @@ function connectedComponentsGraph(connectivity: 4 | 8): RpcJsonObject {
   }
 }
 
+function particleWorkflowGraph(): RpcJsonObject {
+  const plane = { displayAxes: ['x', 'y'], fixedIndices: [], component: 0 }
+  return {
+    schemaVersion: 1,
+    inputs: [
+      { name: 'source', valueType: { id: scientificDatasetValueTypeId, version: 1 } },
+      { name: 'selection', valueType: { id: roiValueTypeId, version: 1 } },
+    ],
+    nodes: [
+      {
+        id: 'threshold',
+        operation: { id: MATERIALS_OPERATION_IDS.thresholdReference, version: 1 },
+        inputs: [
+          { port: 'dataset', source: { kind: 'input', input: 'source' } },
+          { port: 'roi', source: { kind: 'input', input: 'selection' } },
+        ],
+        parameters: {
+          ...plane,
+          method: 'manual',
+          polarity: 'light',
+          lower: 50,
+          upper: 200,
+          histogramBins: 64,
+          windowRadius: 3,
+          sauvolaK: 0.2,
+          dynamicRange: 128,
+          noDataPolicy: 'background',
+        },
+      },
+      {
+        id: 'fill',
+        operation: { id: MATERIALS_OPERATION_IDS.binaryFillHoles, version: 1 },
+        inputs: [
+          { port: 'dataset', source: { kind: 'node', nodeId: 'threshold', output: 'mask' } },
+        ],
+        parameters: { ...plane, radius: 1, minimumSize: 1, connectivity: 8 },
+      },
+      {
+        id: 'components',
+        operation: { id: analysisConnectedComponentsOperationId, version: 1 },
+        inputs: [{ port: 'dataset', source: { kind: 'node', nodeId: 'fill', output: 'dataset' } }],
+        parameters: { ...plane, connectivity: 8 },
+      },
+      {
+        id: 'particles',
+        operation: { id: MATERIALS_OPERATION_IDS.particleAnalysis, version: 1 },
+        inputs: [
+          {
+            port: 'labels',
+            source: { kind: 'node', nodeId: 'components', output: 'labels' },
+          },
+          { port: 'source', source: { kind: 'input', input: 'source' } },
+          { port: 'roi', source: { kind: 'input', input: 'selection' } },
+        ],
+        parameters: {
+          ...plane,
+          sourceComponent: 0,
+          edgePolicy: 'exclude',
+          minimumArea: 2,
+          maximumArea: 1_000,
+          minimumCircularity: 0,
+          maximumCircularity: 1,
+          minimumAspectRatio: 1,
+          maximumAspectRatio: 100,
+          minimumSolidity: 0,
+          maximumSolidity: 1,
+        },
+      },
+    ],
+    outputs: [
+      { name: 'mask', source: { kind: 'node', nodeId: 'fill', output: 'dataset' } },
+      {
+        name: 'labels',
+        source: { kind: 'node', nodeId: 'particles', output: 'filteredLabels' },
+      },
+      { name: 'objects', source: { kind: 'node', nodeId: 'particles', output: 'objects' } },
+      { name: 'summary', source: { kind: 'node', nodeId: 'particles', output: 'summary' } },
+      {
+        name: 'distribution',
+        source: { kind: 'node', nodeId: 'particles', output: 'distribution' },
+      },
+    ],
+  }
+}
+
 async function requestTile(
   host: ImagingWorkerHost,
   dataset: OpenedDatasetDescriptor,
@@ -450,6 +535,157 @@ describe('PureJsImage Worker host', () => {
     })
     await expect(cancelledExecution).resolves.toMatchObject({
       response: { ok: false, error: { code: 'ABORTED' } },
+    })
+    await host.dispose()
+  })
+
+  it('runs the guided particle graph with calibrated measurements and tile-invariant linked overlays', async () => {
+    const host = new ImagingWorkerHost()
+    const width = 32
+    const height = 24
+    const values = Float32Array.from(
+      { length: width * height },
+      (_value, index) => 10 + (index % width) * 0.1,
+    )
+    const paint = (left: number, top: number, objectWidth: number, objectHeight: number): void => {
+      for (let y = top; y < top + objectHeight; y += 1)
+        for (let x = left; x < left + objectWidth; x += 1) values[y * width + x] = 100
+    }
+    paint(4, 4, 3, 3)
+    paint(12, 3, 5, 1)
+    paint(12, 7, 5, 1)
+    paint(12, 4, 1, 3)
+    paint(16, 4, 1, 3)
+    paint(21, 14, 3, 3)
+    paint(23, 16, 3, 3)
+    paint(0, 18, 2, 3)
+    const dataset = await openGeneratedValues(host, width, height, values)
+    const roi = {
+      schemaVersion: 1,
+      id: 'whole-plane',
+      axisIds: ['x', 'y'],
+      fixedIndices: [],
+      coordinateSpace: 'pixel',
+      geometry: { kind: 'rectangle', x: 0, y: 0, width, height },
+    } as unknown as RpcJsonObject
+    const graph = particleWorkflowGraph()
+    const planned = await host.handle(
+      rpcRequest('particle-plan', 'analysis.dry-run', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph,
+        roi,
+      }),
+    )
+    const particlePlan = payload(planned.response, 'analysis.dry-run')
+    if (!particlePlan.valid) throw new Error(JSON.stringify(particlePlan.issues))
+    const executed = await host.handle(
+      rpcRequest('particle-execute', 'analysis.execute', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph,
+        roi,
+      }),
+    )
+    const execution = payload(executed.response, 'analysis.executed')
+    const pageResult = await host.handle(
+      rpcRequest('particle-page', 'analysis.table-page', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+        output: 'objects',
+        offset: 0,
+        limit: 20,
+      }),
+    )
+    const page = payload(pageResult.response, 'analysis.table-page')
+    expect(page.totalRows).toBe(3)
+    expect(page.columns.map(({ name }) => name)).toEqual(
+      expect.arrayContaining([
+        'pixelArea',
+        'physicalArea',
+        'pixelMajorAxis',
+        'majorAxis',
+        'orientationRadians',
+        'circularity',
+        'solidity',
+        'intensityMean',
+        'integratedIntensity',
+      ]),
+    )
+    expect(page.columns.find(({ name }) => name === 'physicalArea')?.unit).toBe('nm²')
+    expect(page.columns.find(({ name }) => name === 'majorAxis')?.unit).toBe('nm')
+
+    const overlayRequest = (id: string, x: number, overlayWidth: number) =>
+      host.handle(
+        rpcRequest(id, 'analysis.overlay-tile', {
+          datasetHandleId: dataset.handleId,
+          generation: 1,
+          resultHandleId: execution.resultHandleId,
+          output: 'labels',
+          tileId: id,
+          selection: dataset.selection,
+          component: 0,
+          view: 'outline',
+          region: { x, y: 0, width: overlayWidth, height },
+        }),
+      )
+    const whole = payload(
+      (await overlayRequest('particle-outline-whole', 0, width)).response,
+      'analysis.overlay-tile',
+    )
+    const left = payload(
+      (await overlayRequest('particle-outline-left', 0, width / 2)).response,
+      'analysis.overlay-tile',
+    )
+    const right = payload(
+      (await overlayRequest('particle-outline-right', width / 2, width / 2)).response,
+      'analysis.overlay-tile',
+    )
+    const splitAlpha = new Uint8Array(width * height)
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width / 2; x += 1) {
+        splitAlpha[y * width + x] = left.rgba[(y * (width / 2) + x) * 4 + 3] ?? 0
+        splitAlpha[y * width + width / 2 + x] = right.rgba[(y * (width / 2) + x) * 4 + 3] ?? 0
+      }
+    }
+    expect([...splitAlpha]).toEqual(
+      Array.from({ length: width * height }, (_value, index) => whole.rgba[index * 4 + 3] ?? 0),
+    )
+    const tableLabels = page.columns.find(({ name }) => name === 'label')?.values ?? []
+    for (const label of tableLabels) {
+      expect(typeof label).toBe('number')
+      expect([...whole.labels]).toContain(label)
+    }
+    const numberedResult = await host.handle(
+      rpcRequest('particle-numbered', 'analysis.overlay-tile', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+        output: 'labels',
+        tableOutput: 'objects',
+        tileId: 'particle-numbered',
+        selection: dataset.selection,
+        component: 0,
+        view: 'numbered',
+        region: { x: 0, y: 0, width, height },
+      }),
+    )
+    const numbered = payload(numberedResult.response, 'analysis.overlay-tile')
+    expect(numbered.view).toBe('numbered')
+    expect(numbered.annotations).toHaveLength(3)
+    const distributionResult = await host.handle(
+      rpcRequest('particle-distribution', 'analysis.series-export', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+        output: 'distribution',
+        maxRows: 20,
+      }),
+    )
+    expect(payload(distributionResult.response, 'analysis.series-export')).toMatchObject({
+      rowCount: 3,
+      truncated: false,
     })
     await host.dispose()
   })

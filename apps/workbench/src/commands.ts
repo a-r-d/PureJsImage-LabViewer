@@ -26,6 +26,7 @@ export type WorkbenchActionId =
   | 'analysis.describe'
   | 'analysis.dry-run'
   | 'analysis.normalize'
+  | 'analysis.graph.request-execute'
   | 'analysis.request-execute'
   | 'analysis.threshold.commit'
   | 'analysis.threshold.preview'
@@ -399,6 +400,36 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
         outputSchema: { type: 'object' },
       },
     ),
+  },
+  {
+    descriptor: descriptor(
+      'analysis.graph.request-execute',
+      'Request analysis graph execution',
+      'Validate, plan, and execute an explicit visible analysis graph after approval.',
+      'analysis',
+      {
+        mutability: 'mutation',
+        cost: 'expensive',
+        cancellable: true,
+        permissions: ['analysis.execute'],
+        inputSchema: {
+          type: 'object',
+          properties: {
+            graph: { type: 'object', additionalProperties: true },
+            roiId: { type: 'string', minLength: 1, maxLength: 256 },
+          },
+          required: ['graph'],
+          additionalProperties: false,
+        },
+        outputSchema: {
+          type: 'object',
+          properties: { status: { type: 'string', enum: ['completed'] } },
+          required: ['status'],
+          additionalProperties: false,
+        },
+      },
+    ),
+    availability: requiresDataset,
   },
   {
     descriptor: descriptor(

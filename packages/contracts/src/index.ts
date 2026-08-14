@@ -765,6 +765,14 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
       assertPlaneSelection(payload.selection)
       const overlaySelection = payload.selection as PayloadCandidate
       assertInteger(payload.component, 'component')
+      if (
+        payload['view'] !== undefined &&
+        !['labels', 'mask', 'outline', 'numbered', 'centroids', 'ellipses'].includes(
+          String(payload['view']),
+        )
+      )
+        throw new RpcValidationError('INVALID_PAYLOAD', 'overlay view is invalid')
+      if (payload['tableOutput'] !== undefined) assertString(payload['tableOutput'], 'tableOutput')
       assertTile({
         ...payload,
         mapping: { mode: 'linear', range: 'auto' },

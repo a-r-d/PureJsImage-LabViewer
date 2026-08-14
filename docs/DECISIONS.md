@@ -123,3 +123,12 @@ Visual goldens use a pinned Chromium configuration and Linux-named paths on ever
 and WebKit run the functional, keyboard, persistence, performance, and accessibility workflows but
 skip pixel comparison. Baselines change only after deterministic readiness, artifact inspection,
 and three consecutive no-update passes.
+
+## Particle analysis is a visible, bounded extension graph
+
+Segmentation and particle measurement live in the trusted `packages/materials-analysis` extension
+because PureJsImage 0.10.0 does not yet publish these reference primitives. The extension composes
+with the public operation/provider API and reuses PureJsImage connected components. The guided UI
+only builds the same graph used by recipes and tests. Full-plane global transforms have hard
+pixel/peak-memory admission, cancellation, explicit ROI/no-data/calibration policies, and owned
+result lifecycles. See `docs/SEGMENTATION_PARTICLE_ANALYSIS.md` for numerical definitions and limits.

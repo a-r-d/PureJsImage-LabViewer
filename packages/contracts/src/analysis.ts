@@ -99,6 +99,25 @@ export interface AnalysisOverlayTileRequest extends AnalysisDatasetRequest {
   readonly selection: PlaneSelection
   readonly component: number
   readonly region: Region
+  readonly view?: AnalysisOverlayView
+  readonly tableOutput?: string
+}
+
+export type AnalysisOverlayView =
+  | 'labels'
+  | 'mask'
+  | 'outline'
+  | 'numbered'
+  | 'centroids'
+  | 'ellipses'
+
+export interface AnalysisOverlayAnnotation {
+  readonly label: number
+  readonly x: number
+  readonly y: number
+  readonly majorAxis?: number
+  readonly minorAxis?: number
+  readonly orientationRadians?: number
 }
 
 export interface AnalysisDatasetTileRequest extends AnalysisDatasetRequest {
@@ -118,11 +137,13 @@ export interface AnalysisOverlayTile {
   readonly tileId: string
   readonly resultHandleId: AnalysisResultHandleId
   readonly output: string
+  readonly view: AnalysisOverlayView
   readonly region: Region
   readonly width: number
   readonly height: number
   readonly rgba: Uint8ClampedArray
   readonly labels: Uint32Array
+  readonly annotations: readonly AnalysisOverlayAnnotation[]
 }
 
 export interface AnalysisTableFilter {

@@ -90,6 +90,9 @@ This document defines the practical feature target after prompt 04. It uses Imag
 
 ### Particle/object workflow
 
+The current reference semantics, admission limits, and explicit omissions are documented in
+`docs/SEGMENTATION_PARTICLE_ANALYSIS.md`.
+
 - connected components;
 - edge-exclusion policy;
 - size, circularity, aspect-ratio, and solidity filters;

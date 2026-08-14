@@ -26,6 +26,7 @@ import {
 } from 'purejsimage/analysis'
 import {
   summarizeResult,
+  type TableResult,
   validateAnalysisResult,
   validateTableResult,
 } from 'purejsimage/analysis/results'
@@ -75,6 +76,71 @@ function boundedSeriesRows(requested: number, available: number, columns: number
   if (columns < 1 || columns > RPC_LIMITS.maxTablePageColumns)
     throw new RpcValidationError('LIMIT_EXCEEDED', 'Series export exceeds the column limit')
   return Math.min(requested, available, Math.floor(MAX_SERIES_EXPORT_CELLS / columns))
+}
+
+type TableNumericValues = Extract<TableResult['columns'][number], { kind: 'numeric' }>['values']
+
+function tableNumbers(table: TableResult, name: string): TableNumericValues | undefined {
+  const column = table.columns.find((candidate) => candidate.name === name)
+  return column?.kind === 'numeric' ? column.values : undefined
+}
+
+function finiteTableNumber(
+  values: TableNumericValues | undefined,
+  row: number,
+): number | undefined {
+  const value = values?.[row]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function overlayAnnotations(
+  table: TableResult,
+  region: Readonly<{ x: number; y: number; width: number; height: number }>,
+) {
+  const annotations: Array<{
+    label: number
+    x: number
+    y: number
+    majorAxis?: number
+    minorAxis?: number
+    orientationRadians?: number
+  }> = []
+  const labels = tableNumbers(table, 'label')
+  const centroidXs = tableNumbers(table, 'centroidX')
+  const centroidYs = tableNumbers(table, 'centroidY')
+  const majorAxes = tableNumbers(table, 'pixelMajorAxis') ?? tableNumbers(table, 'boundingWidth')
+  const minorAxes = tableNumbers(table, 'pixelMinorAxis') ?? tableNumbers(table, 'boundingHeight')
+  const orientations =
+    tableNumbers(table, 'pixelOrientationRadians') ?? tableNumbers(table, 'orientationRadians')
+  for (let row = 0; row < table.rowCount; row += 1) {
+    const label = finiteTableNumber(labels, row)
+    const x = finiteTableNumber(centroidXs, row)
+    const y = finiteTableNumber(centroidYs, row)
+    if (
+      label === undefined ||
+      x === undefined ||
+      y === undefined ||
+      x < region.x ||
+      y < region.y ||
+      x >= region.x + region.width ||
+      y >= region.y + region.height
+    )
+      continue
+    if (annotations.length >= 2_048)
+      throw new RpcValidationError('LIMIT_EXCEEDED', 'Overlay annotation tile exceeds its limit')
+    const majorAxis = finiteTableNumber(majorAxes, row)
+    const minorAxis = finiteTableNumber(minorAxes, row)
+    const orientationRadians = finiteTableNumber(orientations, row)
+    annotations.push({
+      label,
+      x,
+      y,
+      ...(majorAxis === undefined ? {} : { majorAxis }),
+      ...(minorAxis === undefined ? {} : { minorAxis }),
+      ...(orientationRadians === undefined ? {} : { orientationRadians }),
+    })
+  }
+  return annotations
 }
 
 export interface ImagingWorkerHostOptions {
@@ -784,25 +850,49 @@ export class ImagingWorkerHost {
         throw new RpcValidationError('INVALID_PAYLOAD', 'The selected output is not a dataset')
       }
       const { region, selection } = request.payload
-      const labels = new Uint32Array(region.width * region.height)
+      const view = request.payload.view ?? 'labels'
+      const horizontalLength =
+        output.descriptor.levels
+          .find(({ level }) => level === selection.resolutionLevel)
+          ?.axisLengths.find(({ axisId }) => axisId === selection.displayAxes[0])?.length ??
+        output.descriptor.axes.find(({ id }) => id === selection.displayAxes[0])?.length
+      const verticalLength =
+        output.descriptor.levels
+          .find(({ level }) => level === selection.resolutionLevel)
+          ?.axisLengths.find(({ axisId }) => axisId === selection.displayAxes[1])?.length ??
+        output.descriptor.axes.find(({ id }) => id === selection.displayAxes[1])?.length
+      if (horizontalLength === undefined || verticalLength === undefined)
+        throw new RpcValidationError('INVALID_PAYLOAD', 'Overlay axes are unavailable')
+      const readRegion =
+        view === 'outline'
+          ? {
+              x: Math.max(0, region.x - 1),
+              y: Math.max(0, region.y - 1),
+              width:
+                Math.min(horizontalLength, region.x + region.width + 1) - Math.max(0, region.x - 1),
+              height:
+                Math.min(verticalLength, region.y + region.height + 1) - Math.max(0, region.y - 1),
+            }
+          : region
+      const readLabels = new Uint32Array(readRegion.width * readRegion.height)
       const source = resolveNumericTileSource(output, { targetSampleType: 'float32' })
       for await (const tile of source.readNumericTiles({
         displayAxes: selection.displayAxes,
         fixedIndices: selection.fixedIndices,
         resolutionLevel: selection.resolutionLevel,
-        ...region,
+        ...readRegion,
         targetSampleType: 'float32',
         signal,
       })) {
         try {
-          const xStart = Math.max(region.x, tile.x)
-          const yStart = Math.max(region.y, tile.y)
-          const xEnd = Math.min(region.x + region.width, tile.x + tile.width)
-          const yEnd = Math.min(region.y + region.height, tile.y + tile.height)
+          const xStart = Math.max(readRegion.x, tile.x)
+          const yStart = Math.max(readRegion.y, tile.y)
+          const xEnd = Math.min(readRegion.x + readRegion.width, tile.x + tile.width)
+          const yEnd = Math.min(readRegion.y + readRegion.height, tile.y + tile.height)
           for (let y = yStart; y < yEnd; y += 1) {
             for (let x = xStart; x < xEnd; x += 1) {
               const value = numericValue(tile, x - tile.x, y - tile.y, request.payload.component)
-              labels[(y - region.y) * region.width + x - region.x] =
+              readLabels[(y - readRegion.y) * readRegion.width + x - readRegion.x] =
                 Number.isFinite(value) && value > 0 ? Math.round(value) : 0
             }
           }
@@ -811,15 +901,60 @@ export class ImagingWorkerHost {
           this.#releases.tiles += 1
         }
       }
+      const labels = new Uint32Array(region.width * region.height)
+      for (let y = 0; y < region.height; y += 1) {
+        for (let x = 0; x < region.width; x += 1) {
+          labels[y * region.width + x] =
+            readLabels[
+              (region.y + y - readRegion.y) * readRegion.width + region.x + x - readRegion.x
+            ] ?? 0
+        }
+      }
       const rgba = new Uint8ClampedArray(labels.length * 4)
       for (let index = 0; index < labels.length; index += 1) {
         const label = labels[index] ?? 0
         if (label === 0) continue
+        const x = index % region.width
+        const y = Math.floor(index / region.width)
+        if (view === 'outline') {
+          const sourceX = region.x + x - readRegion.x
+          const sourceY = region.y + y - readRegion.y
+          const at = (candidateX: number, candidateY: number) =>
+            candidateX < 0 ||
+            candidateY < 0 ||
+            candidateX >= readRegion.width ||
+            candidateY >= readRegion.height
+              ? 0
+              : (readLabels[candidateY * readRegion.width + candidateX] ?? 0)
+          if (
+            at(sourceX - 1, sourceY) === label &&
+            at(sourceX + 1, sourceY) === label &&
+            at(sourceX, sourceY - 1) === label &&
+            at(sourceX, sourceY + 1) === label
+          )
+            continue
+        }
+        if (view === 'centroids' || view === 'ellipses') continue
         const offset = index * 4
-        rgba[offset] = (label * 47 + 223) % 256
-        rgba[offset + 1] = (label * 89 + 104) % 256
-        rgba[offset + 2] = (label * 131 + 31) % 256
-        rgba[offset + 3] = 138
+        if (view === 'mask') {
+          rgba[offset] = 76
+          rgba[offset + 1] = 201
+          rgba[offset + 2] = 240
+          rgba[offset + 3] = 132
+        } else {
+          rgba[offset] = (label * 47 + 223) % 256
+          rgba[offset + 1] = (label * 89 + 104) % 256
+          rgba[offset + 2] = (label * 131 + 31) % 256
+          rgba[offset + 3] = view === 'outline' ? 230 : 138
+        }
+      }
+      let annotations: ReturnType<typeof overlayAnnotations> = []
+      if (
+        request.payload.tableOutput !== undefined &&
+        (view === 'numbered' || view === 'centroids' || view === 'ellipses')
+      ) {
+        const table = validateTableResult(result.execution.outputs.get(request.payload.tableOutput))
+        annotations = overlayAnnotations(table, region)
       }
       return {
         response: {
@@ -831,11 +966,13 @@ export class ImagingWorkerHost {
             tileId: request.payload.tileId,
             resultHandleId: result.id,
             output: request.payload.output,
+            view,
             region,
             width: region.width,
             height: region.height,
             rgba,
             labels,
+            annotations,
           },
         },
         transfer: [rgba.buffer, labels.buffer],

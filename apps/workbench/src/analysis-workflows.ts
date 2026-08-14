@@ -1,4 +1,5 @@
 import type { PlaneSelection, RpcJsonObject } from '@pji-workbench/contracts'
+import { MATERIALS_OPERATION_IDS } from '@pji-workbench/materials-analysis'
 import type { WorkspaceSnapshot } from '@pji-workbench/workspace'
 
 export const ANALYSIS_OPERATIONS = Object.freeze({
@@ -10,6 +11,38 @@ export const ANALYSIS_OPERATIONS = Object.freeze({
 })
 
 type AnalysisGraph = WorkspaceSnapshot['analysis']['graph']
+
+export interface ParticleAnalysisGraphOptions {
+  readonly selection: PlaneSelection
+  readonly component: number
+  readonly thresholdMethod: 'manual' | 'otsu' | 'triangle' | 'yen' | 'li' | 'mean' | 'sauvola'
+  readonly polarity: 'light' | 'dark'
+  readonly lower: number
+  readonly upper: number
+  readonly histogramBins: number
+  readonly windowRadius: number
+  readonly sauvolaK: number
+  readonly dynamicRange: number
+  readonly noDataPolicy: 'background' | 'foreground' | 'propagate'
+  readonly backgroundRadius: number
+  readonly openRadius: number
+  readonly closeRadius: number
+  readonly fillHoles: boolean
+  readonly clearBorder: boolean
+  readonly minimumObjectPixels: number
+  readonly watershed: boolean
+  readonly minimumPeakDistance: number
+  readonly connectivity: 4 | 8
+  readonly edgePolicy: 'include' | 'exclude'
+  readonly minimumArea: number
+  readonly maximumArea: number
+  readonly minimumCircularity: number
+  readonly maximumCircularity: number
+  readonly minimumAspectRatio: number
+  readonly maximumAspectRatio: number
+  readonly minimumSolidity: number
+  readonly maximumSolidity: number
+}
 
 const SOURCE_INPUT = Object.freeze({
   name: 'source',
@@ -26,6 +59,199 @@ const sourcePort = (port = 'dataset') =>
 
 const roiPort = () =>
   Object.freeze({ port: 'roi', source: { kind: 'input' as const, input: 'selection' } })
+
+const planeParameters = (selection: PlaneSelection, component: number) => ({
+  displayAxes: [...selection.displayAxes],
+  fixedIndices: selection.fixedIndices.map(({ axisId, index }) => ({ axisId, index })),
+  component,
+})
+
+export function particleThresholdGraph(options: ParticleAnalysisGraphOptions): AnalysisGraph {
+  const nodes: AnalysisGraph['nodes'][number][] = []
+  let datasetSource: AnalysisGraph['nodes'][number]['inputs'][number]['source'] = {
+    kind: 'input',
+    input: 'source',
+  }
+  if (options.backgroundRadius > 0) {
+    nodes.push({
+      id: 'particle-background',
+      label: 'Correct uneven background',
+      operation: { id: MATERIALS_OPERATION_IDS.background, version: 1 },
+      inputs: [{ port: 'dataset', source: datasetSource }],
+      parameters: {
+        ...planeParameters(options.selection, options.component),
+        radius: options.backgroundRadius,
+        offset: 0,
+        invalidPolicy: 'ignore',
+      },
+    })
+    datasetSource = { kind: 'node', nodeId: 'particle-background', output: 'dataset' }
+  }
+  nodes.push({
+    id: 'particle-threshold',
+    label: `${options.thresholdMethod} threshold`,
+    operation: { id: MATERIALS_OPERATION_IDS.thresholdReference, version: 1 },
+    inputs: [{ port: 'dataset', source: datasetSource }, roiPort()],
+    parameters: {
+      ...planeParameters(options.selection, options.component),
+      method: options.thresholdMethod,
+      polarity: options.polarity,
+      lower: options.lower,
+      upper: options.upper,
+      histogramBins: options.histogramBins,
+      windowRadius: options.windowRadius,
+      sauvolaK: options.sauvolaK,
+      dynamicRange: options.dynamicRange,
+      noDataPolicy: options.noDataPolicy,
+    },
+  })
+  return {
+    schemaVersion: 1,
+    inputs: [SOURCE_INPUT, ROI_INPUT],
+    nodes,
+    outputs: [
+      {
+        name: 'mask',
+        source: { kind: 'node', nodeId: 'particle-threshold', output: 'mask' },
+      },
+      {
+        name: 'thresholdHistogram',
+        source: { kind: 'node', nodeId: 'particle-threshold', output: 'histogram' },
+      },
+      {
+        name: 'foregroundFraction',
+        source: { kind: 'node', nodeId: 'particle-threshold', output: 'foregroundFraction' },
+      },
+      {
+        name: 'resolvedThreshold',
+        source: { kind: 'node', nodeId: 'particle-threshold', output: 'resolvedThreshold' },
+      },
+    ],
+  }
+}
+
+export function particleAnalysisGraph(options: ParticleAnalysisGraphOptions): AnalysisGraph {
+  const threshold = particleThresholdGraph(options)
+  const nodes = [...threshold.nodes]
+  let maskSource: AnalysisGraph['nodes'][number]['inputs'][number]['source'] = {
+    kind: 'node',
+    nodeId: 'particle-threshold',
+    output: 'mask',
+  }
+  const addBinaryNode = (
+    id: string,
+    label: string,
+    operationId: string,
+    parameters: RpcJsonObject,
+  ): void => {
+    nodes.push({
+      id,
+      label,
+      operation: { id: operationId, version: 1 },
+      inputs: [{ port: 'dataset', source: maskSource }],
+      parameters: { ...planeParameters(options.selection, 0), ...parameters },
+    })
+    maskSource = { kind: 'node', nodeId: id, output: 'dataset' }
+  }
+  if (options.openRadius > 0)
+    addBinaryNode('particle-open', 'Binary open', MATERIALS_OPERATION_IDS.binaryOpen, {
+      radius: options.openRadius,
+      minimumSize: 1,
+      connectivity: options.connectivity,
+    })
+  if (options.closeRadius > 0)
+    addBinaryNode('particle-close', 'Binary close', MATERIALS_OPERATION_IDS.binaryClose, {
+      radius: options.closeRadius,
+      minimumSize: 1,
+      connectivity: options.connectivity,
+    })
+  if (options.fillHoles)
+    addBinaryNode('particle-fill-holes', 'Fill holes', MATERIALS_OPERATION_IDS.binaryFillHoles, {
+      radius: 1,
+      minimumSize: 1,
+      connectivity: options.connectivity,
+    })
+  if (options.clearBorder)
+    addBinaryNode(
+      'particle-clear-border',
+      'Clear border objects',
+      MATERIALS_OPERATION_IDS.binaryClearBorder,
+      { radius: 1, minimumSize: 1, connectivity: options.connectivity },
+    )
+  if (options.minimumObjectPixels > 1)
+    addBinaryNode(
+      'particle-remove-small',
+      'Remove small objects',
+      MATERIALS_OPERATION_IDS.binaryRemoveSmall,
+      { radius: 1, minimumSize: options.minimumObjectPixels, connectivity: options.connectivity },
+    )
+  if (options.watershed)
+    addBinaryNode(
+      'particle-watershed',
+      'Separate touching particles',
+      MATERIALS_OPERATION_IDS.watershed,
+      {
+        minimumPeakDistance: options.minimumPeakDistance,
+      },
+    )
+  nodes.push({
+    id: 'particle-components',
+    label: 'Connected components',
+    operation: { id: ANALYSIS_OPERATIONS.connectedComponents, version: 1 },
+    inputs: [{ port: 'dataset', source: maskSource }],
+    parameters: { ...planeParameters(options.selection, 0), connectivity: options.connectivity },
+  })
+  nodes.push({
+    id: 'particle-measurements',
+    label: 'Filter and measure particles',
+    operation: { id: MATERIALS_OPERATION_IDS.particleAnalysis, version: 1 },
+    inputs: [
+      {
+        port: 'labels',
+        source: { kind: 'node', nodeId: 'particle-components', output: 'labels' },
+      },
+      { port: 'source', source: { kind: 'input', input: 'source' } },
+      { port: 'roi', source: { kind: 'input', input: 'selection' } },
+    ],
+    parameters: {
+      ...planeParameters(options.selection, 0),
+      sourceComponent: options.component,
+      edgePolicy: options.edgePolicy,
+      minimumArea: options.minimumArea,
+      maximumArea: options.maximumArea,
+      minimumCircularity: options.minimumCircularity,
+      maximumCircularity: options.maximumCircularity,
+      minimumAspectRatio: options.minimumAspectRatio,
+      maximumAspectRatio: options.maximumAspectRatio,
+      minimumSolidity: options.minimumSolidity,
+      maximumSolidity: options.maximumSolidity,
+    },
+  })
+  return {
+    schemaVersion: 1,
+    inputs: threshold.inputs,
+    nodes,
+    outputs: [
+      { name: 'mask', source: maskSource },
+      {
+        name: 'labels',
+        source: { kind: 'node', nodeId: 'particle-measurements', output: 'filteredLabels' },
+      },
+      {
+        name: 'objects',
+        source: { kind: 'node', nodeId: 'particle-measurements', output: 'objects' },
+      },
+      {
+        name: 'particleSummary',
+        source: { kind: 'node', nodeId: 'particle-measurements', output: 'summary' },
+      },
+      {
+        name: 'sizeDistribution',
+        source: { kind: 'node', nodeId: 'particle-measurements', output: 'distribution' },
+      },
+    ],
+  }
+}
 
 export function thresholdGraph(options: {
   readonly component: number

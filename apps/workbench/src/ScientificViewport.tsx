@@ -1,5 +1,6 @@
 import type {
   AnalysisOverlayTile,
+  AnalysisOverlayView,
   AnalysisResultHandleId,
   AxisDescriptor,
   DisplayMapping,
@@ -42,6 +43,8 @@ export type ViewportRoi = WorkspaceSnapshot['analysis']['roiSet']['rois'][number
 export interface AnalysisOverlaySelection {
   readonly resultHandleId: AnalysisResultHandleId
   readonly output: string
+  readonly view?: AnalysisOverlayView
+  readonly tableOutput?: string
 }
 
 export interface AnalysisDatasetSelection extends AnalysisOverlaySelection {
@@ -112,6 +115,7 @@ class CanvasScientificRenderer implements ViewportRenderer {
   #viewport: Size = { width: 1, height: 1 }
   #tiles = new Map<string, CachedTile>()
   #overlays = new Map<string, CachedOverlay>()
+  #selectedLabel: number | undefined
   calibration: { readonly unitsPerPixel: number; readonly unit: string } | undefined
 
   constructor(canvas: HTMLCanvasElement) {
@@ -142,16 +146,16 @@ class CanvasScientificRenderer implements ViewportRenderer {
     this.#tiles.set(tile.tileId, { tile, canvas })
   }
 
-  uploadOverlay(tile: AnalysisOverlayTile, selectedLabel?: number): void {
+  uploadOverlay(tile: AnalysisOverlayTile): void {
     const canvas = document.createElement('canvas')
     canvas.width = tile.width
     canvas.height = tile.height
     const context = canvas.getContext('2d')
     if (context === null) throw new Error('Unable to allocate a bounded overlay tile.')
     const pixels = new Uint8ClampedArray(tile.rgba)
-    if (selectedLabel !== undefined) {
+    if (this.#selectedLabel !== undefined) {
       for (let index = 0; index < tile.labels.length; index += 1) {
-        if (tile.labels[index] !== selectedLabel) continue
+        if (tile.labels[index] !== this.#selectedLabel) continue
         const offset = index * 4
         pixels[offset] = 255
         pixels[offset + 1] = 255
@@ -160,7 +164,51 @@ class CanvasScientificRenderer implements ViewportRenderer {
       }
     }
     context.putImageData(new ImageData(pixels, tile.width, tile.height), 0, 0)
+    context.save()
+    context.strokeStyle = 'rgba(255, 255, 255, 0.95)'
+    context.fillStyle = 'rgba(255, 255, 255, 0.98)'
+    context.lineWidth = 1.5
+    context.font = '600 12px ui-monospace, monospace'
+    context.textBaseline = 'bottom'
+    for (const annotation of tile.annotations) {
+      const x = annotation.x - tile.region.x
+      const y = annotation.y - tile.region.y
+      if (tile.view === 'numbered') {
+        context.fillText(String(annotation.label), x + 4, y - 4)
+      } else if (tile.view === 'centroids') {
+        context.beginPath()
+        context.moveTo(x - 5, y)
+        context.lineTo(x + 5, y)
+        context.moveTo(x, y - 5)
+        context.lineTo(x, y + 5)
+        context.stroke()
+      } else if (
+        tile.view === 'ellipses' &&
+        annotation.majorAxis !== undefined &&
+        annotation.minorAxis !== undefined
+      ) {
+        context.beginPath()
+        context.ellipse(
+          x,
+          y,
+          Math.max(0.5, annotation.majorAxis / 2),
+          Math.max(0.5, annotation.minorAxis / 2),
+          annotation.orientationRadians ?? 0,
+          0,
+          Math.PI * 2,
+        )
+        context.stroke()
+      }
+    }
+    context.restore()
     this.#overlays.set(tile.tileId, { tile, canvas })
+    this.#canvas.dataset['overlayTileCount'] = String(this.#overlays.size)
+  }
+
+  selectLabel(label?: number): void {
+    if (label === this.#selectedLabel) return
+    this.#selectedLabel = label
+    for (const { tile } of [...this.#overlays.values()]) this.uploadOverlay(tile)
   }
 
   has(tileId: string): boolean {
@@ -181,6 +229,7 @@ class CanvasScientificRenderer implements ViewportRenderer {
     for (const key of this.#overlays.keys()) {
       if (!tileIds.has(key)) this.#overlays.delete(key)
     }
+    this.#canvas.dataset['overlayTileCount'] = String(this.#overlays.size)
   }
 
   valueAt(point: Point): number | undefined {
@@ -316,6 +365,7 @@ class CanvasScientificRenderer implements ViewportRenderer {
   dispose(): void {
     this.#tiles.clear()
     this.#overlays.clear()
+    this.#canvas.dataset['overlayTileCount'] = '0'
     this.#context.clearRect(0, 0, this.#viewport.width, this.#viewport.height)
   }
 }
@@ -385,6 +435,10 @@ export function ScientificViewport({
   onSelectLabel,
 }: ScientificViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const rendererRef = useRef<CanvasScientificRenderer | null>(null)
+  const redrawRef = useRef<(() => void) | null>(null)
+  const selectedLabelRef = useRef(selectedLabel)
+  selectedLabelRef.current = selectedLabel
   const coordinateRef = useRef<HTMLSpanElement>(null)
   const zoomRef = useRef<HTMLSpanElement>(null)
   const tileStatusRef = useRef<HTMLSpanElement>(null)
@@ -413,6 +467,8 @@ export function ScientificViewport({
     const horizontalCalibration = calibrationFor(horizontalAxis)
     const verticalCalibration = calibrationFor(verticalAxis)
     const renderer = new CanvasScientificRenderer(canvas)
+    renderer.selectLabel(selectedLabelRef.current)
+    rendererRef.current = renderer
     if (
       horizontalCalibration !== undefined &&
       verticalCalibration !== undefined &&
@@ -453,12 +509,16 @@ export function ScientificViewport({
       cancelAnimationFrame(frameRequest)
       frameRequest = requestAnimationFrame(() => {
         renderer.render(frame())
+        canvas.dataset['cameraCenterX'] = String(camera.center.x)
+        canvas.dataset['cameraCenterY'] = String(camera.center.y)
+        canvas.dataset['cameraZoom'] = String(camera.zoom)
         if (zoomRef.current !== null)
           zoomRef.current.textContent = `${Math.round(camera.zoom * 100)}%`
         window.__PJI_WORKBENCH_METRICS__.viewportFrames += 1
         if (rendererTileIds.size > 0) onRenderSettled?.(true)
       })
     }
+    redrawRef.current = draw
     let rendererTileIds = new Set<string>()
 
     const scheduleTiles = (): void => {
@@ -540,7 +600,7 @@ export function ScientificViewport({
         }
 
         if (analysisOverlay !== undefined) {
-          const overlayTileId = `overlay:${analysisOverlay.resultHandleId}:${analysisOverlay.output}:${candidate.column}:${candidate.row}`
+          const overlayTileId = `overlay:${analysisOverlay.resultHandleId}:${analysisOverlay.output}:${analysisOverlay.view ?? 'labels'}:${analysisOverlay.tableOutput ?? 'none'}:${candidate.column}:${candidate.row}`
           requiredOverlays.add(overlayTileId)
           if (!renderer.hasOverlay(overlayTileId) && !pending.has(overlayTileId)) {
             const overlayController = new AbortController()
@@ -553,6 +613,10 @@ export function ScientificViewport({
                   generation: opened.generation,
                   resultHandleId: analysisOverlay.resultHandleId,
                   output: analysisOverlay.output,
+                  view: analysisOverlay.view ?? 'labels',
+                  ...(analysisOverlay.tableOutput === undefined
+                    ? {}
+                    : { tableOutput: analysisOverlay.tableOutput }),
                   selection,
                   component: 0,
                   region,
@@ -561,7 +625,7 @@ export function ScientificViewport({
               )
               .then((tile) => {
                 if (overlayController.signal.aborted) return
-                renderer.uploadOverlay(tile, selectedLabel)
+                renderer.uploadOverlay(tile)
                 draw()
               })
               .catch((error: unknown) => {
@@ -575,7 +639,7 @@ export function ScientificViewport({
         }
       }
       for (const [tileId, controller] of pending) {
-        if (!required.has(tileId)) controller.abort()
+        if (!required.has(tileId) && !requiredOverlays.has(tileId)) controller.abort()
       }
       rendererTileIds = required
       renderer.retain(required)
@@ -633,7 +697,11 @@ export function ScientificViewport({
         if (hit !== undefined) onSelectRoi?.(hit.id)
         else {
           const world = screenToWorld(screen, camera, viewport)
-          onSelectLabel?.(renderer.labelAt(world))
+          const label = renderer.labelAt(world)
+          canvas.dataset['lastHitLabel'] = String(label ?? 0)
+          canvas.dataset['lastHitX'] = String(world.x)
+          canvas.dataset['lastHitY'] = String(world.y)
+          onSelectLabel?.(label)
         }
         draw()
         return
@@ -770,6 +838,8 @@ export function ScientificViewport({
       canvas.removeEventListener('wheel', handleWheel)
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      if (rendererRef.current === renderer) rendererRef.current = null
+      if (redrawRef.current === draw) redrawRef.current = null
       renderer.dispose()
     }
   }, [
@@ -788,15 +858,21 @@ export function ScientificViewport({
     opened,
     roiTool,
     rois,
-    selectedLabel,
     selectedRoiId,
     selection,
   ])
+
+  useEffect(() => {
+    rendererRef.current?.selectLabel(selectedLabel)
+    redrawRef.current?.()
+  }, [selectedLabel])
 
   return (
     <div className="mock-viewport scientific-viewport">
       <canvas
         aria-label={`Scientific image viewport for ${opened.dataset.name ?? opened.dataset.id}`}
+        data-analysis-overlay={analysisOverlay?.output ?? 'none'}
+        data-analysis-overlay-view={analysisOverlay?.view ?? 'labels'}
         data-panning="false"
         ref={canvasRef}
         role="img"

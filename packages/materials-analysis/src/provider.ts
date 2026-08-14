@@ -583,7 +583,7 @@ function bytesPerSample(sampleType: NumericSampleType): number {
         : 4
 }
 
-function rasterBytes(tile: NumericTile): Uint8Array {
+export function numericTileRasterBytes(tile: NumericTile): Uint8Array {
   const bytes = new Uint8Array(
     tile.width * tile.height * tile.componentCount * bytesPerSample(tile.sampleType),
   )
@@ -651,7 +651,7 @@ function derivedDataset(
     numericTileSource,
     async *readPlane(request) {
       for await (const tile of numericTileSource.readNumericTiles(request)) {
-        const data = rasterBytes(tile)
+        const data = numericTileRasterBytes(tile)
         yield {
           x: tile.x,
           y: tile.y,

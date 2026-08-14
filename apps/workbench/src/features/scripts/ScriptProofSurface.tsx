@@ -1,5 +1,9 @@
 import type { ActionCapabilityManifestV1 } from '@pji-workbench/actions'
-import { validateAnalysisScriptDocument } from '@pji-workbench/plugin-sdk'
+import {
+  type RecipeDocumentV1,
+  validateAnalysisScriptDocument,
+  validateRecipeDocument,
+} from '@pji-workbench/plugin-sdk'
 import {
   createBuiltInScriptFixture,
   generateScriptApi,
@@ -14,10 +18,12 @@ export function ScriptProofSurface({
   actionManifest,
   invoker,
   onClose,
+  recipe,
 }: {
   readonly actionManifest: ActionCapabilityManifestV1
   readonly invoker: ScriptActionInvoker
   readonly onClose: () => void
+  readonly recipe?: RecipeDocumentV1 | undefined
 }) {
   const api = useMemo(() => generateScriptApi(actionManifest), [actionManifest])
   const client = useMemo(() => new ScriptHostClient({ api, invoker }), [api, invoker])
@@ -31,6 +37,8 @@ export function ScriptProofSurface({
   const [source, setSource] = useState('')
   const [capabilities, setCapabilities] = useState<readonly string[]>([])
   const [integrity, setIntegrity] = useState('')
+  const displayedCapabilities = recipe?.requestedCapabilities ?? capabilities
+  const displayedIntegrity = recipe?.integrity.digest ?? integrity
 
   useEffect(() => {
     let alive = true
@@ -50,6 +58,11 @@ export function ScriptProofSurface({
   }, [client])
 
   const validate = (): boolean => {
+    if (recipe !== undefined) {
+      const result = validateRecipeDocument(recipe)
+      setValidation(result.issues.map(({ path, message }) => `${path || '/'} · ${message}`))
+      return result.ok
+    }
     const value = fixture.current
     if (value === undefined) return false
     const result = validateAnalysisScriptDocument(value.document)
@@ -97,7 +110,9 @@ export function ScriptProofSurface({
         <header className="script-proof__header">
           <div>
             <p>Developer proof · restricted execution</p>
-            <h2>Scripts sandbox foundation</h2>
+            <h2>
+              {recipe === undefined ? 'Scripts sandbox foundation' : 'Declarative recipe review'}
+            </h2>
           </div>
           <IconButton label="Close Scripts sandbox" onClick={onClose}>
             <Icon name="close" />
@@ -115,18 +130,18 @@ export function ScriptProofSurface({
 
         <div className="script-proof__grid">
           <Panel className="script-proof__manifest" label="Script manifest">
-            <h3>Threshold and ROI proposal</h3>
+            <h3>{recipe === undefined ? 'Threshold and ROI proposal' : recipe.title}</h3>
             <dl>
               <dt>API</dt>
               <dd>Script API v1 · deterministic</dd>
               <dt>Runtime</dt>
               <dd>QuickJS release · lazy Worker chunk</dd>
               <dt>Integrity</dt>
-              <dd className="script-proof__hash">sha256:{integrity || 'loading'}</dd>
+              <dd className="script-proof__hash">sha256:{displayedIntegrity || 'loading'}</dd>
             </dl>
             <h4>Requested capabilities</h4>
             <ul>
-              {capabilities.map((capability) => (
+              {displayedCapabilities.map((capability) => (
                 <li key={capability}>{capability}</li>
               ))}
             </ul>
@@ -134,12 +149,23 @@ export function ScriptProofSurface({
             <p>{api.endpoints.length} registry-backed endpoints · no raw tiles or tables</p>
           </Panel>
 
-          <Panel className="script-proof__source" label="Built-in sandbox source">
+          <Panel
+            className="script-proof__source"
+            label={recipe === undefined ? 'Built-in sandbox source' : 'Particle analysis recipe'}
+          >
             <div className="script-proof__panel-heading">
-              <h3>builtin.threshold-proposal.mjs</h3>
-              <span>Read-only fixture</span>
+              <h3>{recipe === undefined ? 'builtin.threshold-proposal.mjs' : recipe.title}</h3>
+              <span>
+                {recipe === undefined ? 'Read-only fixture' : 'Declarative · inspect-only'}
+              </span>
             </div>
-            <pre>{loading ? 'Loading built-in fixture…' : source}</pre>
+            <pre>
+              {recipe === undefined
+                ? loading
+                  ? 'Loading built-in fixture…'
+                  : source
+                : JSON.stringify(recipe, null, 2)}
+            </pre>
           </Panel>
 
           <Panel className="script-proof__output" label="Sandbox output and provenance">
@@ -182,7 +208,11 @@ export function ScriptProofSurface({
           <Button disabled={loading || running} onClick={validate}>
             Validate contract
           </Button>
-          <Button disabled={loading || running} onClick={run} variant="primary">
+          <Button
+            disabled={recipe !== undefined || loading || running}
+            onClick={run}
+            variant="primary"
+          >
             Run in sandbox
           </Button>
           <Button disabled={!running} onClick={stop}>

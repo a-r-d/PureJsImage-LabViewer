@@ -6,7 +6,9 @@ import {
 } from '@pji-workbench/actions'
 import type {
   AnalysisCatalog,
+  AnalysisDryRunResponse,
   AnalysisExecutionResponse,
+  AnalysisOverlayView,
   AnalysisResultHandleId,
   AnalysisTableFilter,
   AnalysisTablePage,
@@ -19,6 +21,11 @@ import type {
   RpcJsonObject,
 } from '@pji-workbench/contracts'
 import { ImagingRpcError } from '@pji-workbench/imaging'
+import {
+  type RecipeDocumentV1,
+  recipeContentIntegrity,
+  validateRecipeDocument,
+} from '@pji-workbench/plugin-sdk'
 import type { ScriptActionInvoker } from '@pji-workbench/scripts'
 import {
   Button,
@@ -67,6 +74,8 @@ import {
   connectedComponentsGraph,
   histogramGraph,
   lineProfileGraph,
+  particleAnalysisGraph,
+  particleThresholdGraph,
   statisticsGraph,
   thresholdGraph,
   toolboxOperationGraph,
@@ -109,6 +118,11 @@ import {
   type MaterialsPanelState,
   RoiInspector,
 } from '../MaterialsPanels.js'
+import {
+  DEFAULT_PARTICLE_WORKFLOW,
+  ParticleAnalysisWorkflow,
+  type ParticleWorkflowSettings,
+} from '../ParticleAnalysisWorkflow.js'
 import { PREFERENCE_BOUNDS } from '../preferences.js'
 import {
   type AnalysisDatasetSelection,
@@ -124,6 +138,28 @@ import { WorkbenchShell } from './WorkbenchShell.js'
 type OpenStatus = 'ready' | 'opening' | 'crashed'
 const MAX_EXPORT_ROWS = 100_000
 const MAX_EXPORT_BYTES = 16 * 1_024 * 1_024
+
+function wholePlaneRoi(opened: OpenedDatasetDescriptor, selection: PlaneSelection): ViewportRoi {
+  const level = opened.dataset.levels.find(({ level }) => level === selection.resolutionLevel)
+  const horizontal =
+    level?.axisLengths.find(({ axisId }) => axisId === selection.displayAxes[0])?.length ??
+    opened.dataset.axes.find(({ id }) => id === selection.displayAxes[0])?.length
+  const vertical =
+    level?.axisLengths.find(({ axisId }) => axisId === selection.displayAxes[1])?.length ??
+    opened.dataset.axes.find(({ id }) => id === selection.displayAxes[1])?.length
+  if (horizontal === undefined || vertical === undefined)
+    throw new Error('The active plane dimensions are unavailable.')
+  return {
+    schemaVersion: 1,
+    id: 'particle-whole-plane',
+    name: 'Whole active plane',
+    axisIds: selection.displayAxes,
+    fixedIndices: selection.fixedIndices,
+    coordinateSpace: 'pixel',
+    geometry: { kind: 'rectangle', x: 0, y: 0, width: horizontal, height: vertical },
+    presentation: { style: { visible: false } },
+  } as ViewportRoi
+}
 
 interface ToolboxOperation {
   readonly id: string
@@ -315,11 +351,17 @@ function WorkbenchRuntime({
   >('greater-than')
   const [connectivity, setConnectivity] = useState<4 | 8>(8)
   const [connectedPlanReady, setConnectedPlanReady] = useState(false)
+  const [particleSettings, setParticleSettings] =
+    useState<ParticleWorkflowSettings>(DEFAULT_PARTICLE_WORKFLOW)
+  const [scriptRecipe, setScriptRecipe] = useState<RecipeDocumentV1>()
   const [analysisCatalog, setAnalysisCatalog] = useState<AnalysisCatalog>()
   const [analysisState, setAnalysisState] = useState<MaterialsPanelState>({
     busy: false,
     tableOffset: 0,
   })
+  const [particleMessage, setParticleMessage] = useState<string>()
+  const [particleDryRun, setParticleDryRun] = useState<AnalysisDryRunResponse>()
+  const [particleDryRunIdentity, setParticleDryRunIdentity] = useState<string>()
   const [analysisOverlay, setAnalysisOverlay] = useState<AnalysisOverlaySelection>()
   const [analysisDataset, setAnalysisDataset] = useState<AnalysisDatasetSelection>()
   const [previewEnabled, setPreviewEnabled] = useState(false)
@@ -572,14 +614,21 @@ function WorkbenchRuntime({
       options: {
         readonly roi?: ViewportRoi
         readonly overlay?: string
+        readonly overlayView?: AnalysisOverlayView
+        readonly overlayTableOutput?: string
         readonly commit?: boolean
         readonly preview?: boolean
+        readonly surface?: 'general' | 'particle'
       } = {},
     ): Promise<void> => {
       if (opened === undefined) return
       cancelPreview()
       const controller = new AbortController()
       analysisAbort.current = controller
+      const reportParticleMessage = (message: string): void => {
+        if (options.surface === 'particle') setParticleMessage(message)
+      }
+      reportParticleMessage('Planning analysis…')
       setAnalysisState((current) => ({ ...current, busy: true, message: 'Planning analysis…' }))
       try {
         const request = {
@@ -592,6 +641,7 @@ function WorkbenchRuntime({
         const dryRun = await client.dryRunAnalysis(request, controller.signal)
         setAnalysisState((current) => ({ ...current, dryRun }))
         if (!dryRun.valid) {
+          reportParticleMessage('Analysis validation failed. The committed project is unchanged.')
           setAnalysisState((current) => ({
             ...current,
             busy: false,
@@ -606,6 +656,23 @@ function WorkbenchRuntime({
         if (previous !== undefined) await releaseAnalysisHandle(previous)
         if (options.commit === true) applyProjectMutation({ kind: 'analysis.set-graph', graph })
         const table = await loadTablePage(execution, 0, undefined, undefined)
+        const distributionOutput = execution.outputs.find(
+          ({ kind, name }) =>
+            kind === 'result' && (name === 'sizeDistribution' || name === 'distribution'),
+        )
+        const distribution =
+          distributionOutput?.kind === 'result'
+            ? await client.requestAnalysisSeriesExport(
+                {
+                  datasetHandleId: opened.handleId,
+                  generation: opened.generation,
+                  resultHandleId: execution.resultHandleId,
+                  output: distributionOutput.name,
+                  maxRows: 100_000,
+                },
+                controller.signal,
+              )
+            : undefined
         const derivedDataset =
           options.overlay === undefined
             ? execution.outputs.find(({ kind }) => kind === 'dataset')
@@ -620,21 +687,31 @@ function WorkbenchRuntime({
               }
             : undefined,
         )
+        const completionMessage =
+          options.preview === true
+            ? `Preview ready in ${execution.elapsedMilliseconds.toFixed(1)} ms. No project revision was created.`
+            : `Analysis completed in ${execution.elapsedMilliseconds.toFixed(1)} ms.`
+        reportParticleMessage(completionMessage)
         setAnalysisState({
           busy: false,
           execution,
           dryRun,
           tableOffset: 0,
           ...(table === undefined ? {} : { table }),
-          message:
-            options.preview === true
-              ? `Preview ready in ${execution.elapsedMilliseconds.toFixed(1)} ms. No project revision was created.`
-              : `Analysis completed in ${execution.elapsedMilliseconds.toFixed(1)} ms.`,
+          ...(distribution === undefined ? {} : { distribution }),
+          message: completionMessage,
         })
         setAnalysisOverlay(
           options.overlay === undefined
             ? undefined
-            : { resultHandleId: execution.resultHandleId, output: options.overlay },
+            : {
+                resultHandleId: execution.resultHandleId,
+                output: options.overlay,
+                ...(options.overlayView === undefined ? {} : { view: options.overlayView }),
+                ...(options.overlayTableOutput === undefined
+                  ? {}
+                  : { tableOutput: options.overlayTableOutput }),
+              },
         )
         setBottomTab(
           table === undefined
@@ -648,10 +725,12 @@ function WorkbenchRuntime({
         )
       } catch (executionError) {
         if (!controller.signal.aborted) {
+          const failureMessage = `${executionError instanceof Error ? executionError.message : 'Analysis failed.'} The previous committed project remains intact.`
+          reportParticleMessage(failureMessage)
           setAnalysisState((current) => ({
             ...current,
             busy: false,
-            message: `${executionError instanceof Error ? executionError.message : 'Analysis failed.'} The previous committed project remains intact.`,
+            message: failureMessage,
           }))
         }
       }
@@ -862,6 +941,196 @@ function WorkbenchRuntime({
     threshold,
     thresholdMode,
   ])
+
+  const particleRoi = useMemo(() => {
+    if (opened === undefined || selection === undefined) return undefined
+    const selected = workspace.analysis.roiSet.rois.find(({ id }) => id === particleSettings.roiId)
+    if (
+      selected !== undefined &&
+      selected.geometry.kind !== 'point' &&
+      selected.geometry.kind !== 'line-segment' &&
+      selected.geometry.kind !== 'polyline'
+    )
+      return selected
+    return wholePlaneRoi(calibratedOpened ?? opened, selection)
+  }, [calibratedOpened, opened, particleSettings.roiId, selection, workspace.analysis.roiSet.rois])
+
+  const particleGraph = useMemo(() => {
+    if (selection === undefined) return undefined
+    const { roiId: _roiId, overlayView: _overlayView, ...settings } = particleSettings
+    return particleAnalysisGraph({ ...settings, selection })
+  }, [particleSettings, selection])
+  const particlePlanIdentity = useMemo(
+    () =>
+      opened === undefined || particleGraph === undefined || particleRoi === undefined
+        ? undefined
+        : JSON.stringify({
+            datasetHandleId: opened.handleId,
+            generation: opened.generation,
+            graph: particleGraph,
+            roi: particleRoi,
+          }),
+    [opened, particleGraph, particleRoi],
+  )
+  const currentParticleDryRun =
+    particleDryRunIdentity === particlePlanIdentity ? particleDryRun : undefined
+
+  const previewParticleThreshold = useCallback((): void => {
+    if (selection === undefined || particleRoi === undefined) return
+    const { roiId: _roiId, overlayView: _overlayView, ...settings } = particleSettings
+    const graph = particleThresholdGraph({ ...settings, selection })
+    void executeAnalysisGraph(graph, {
+      roi: particleRoi,
+      overlay: 'mask',
+      preview: true,
+      surface: 'particle',
+    })
+  }, [executeAnalysisGraph, particleRoi, particleSettings, selection])
+
+  const planParticleAnalysis = useCallback(async (): Promise<void> => {
+    if (
+      opened === undefined ||
+      particleGraph === undefined ||
+      particleRoi === undefined ||
+      particlePlanIdentity === undefined
+    )
+      return
+    const controller = new AbortController()
+    analysisAbort.current?.abort(new DOMException('Superseded particle plan', 'AbortError'))
+    analysisAbort.current = controller
+    const planningMessage = 'Planning the complete particle workflow with hard memory admission…'
+    setParticleMessage(planningMessage)
+    setAnalysisState((current) => ({
+      ...current,
+      busy: true,
+      message: planningMessage,
+    }))
+    try {
+      const dryRun = await client.dryRunAnalysis(
+        {
+          datasetHandleId: opened.handleId,
+          generation: opened.generation,
+          graph: particleGraph as unknown as RpcJsonObject,
+          roi: particleRoi as unknown as RpcJsonObject,
+          ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
+        },
+        controller.signal,
+      )
+      const planMessage = dryRun.valid
+        ? 'Particle workflow plan is ready. Review the visible graph and memory estimate before running.'
+        : 'Particle workflow was refused by validation or resource admission.'
+      setParticleMessage(planMessage)
+      setParticleDryRun(dryRun)
+      setParticleDryRunIdentity(particlePlanIdentity)
+      setAnalysisState((current) => ({
+        ...current,
+        busy: false,
+        dryRun,
+        message: planMessage,
+      }))
+    } catch (planError) {
+      if (!controller.signal.aborted) {
+        const failureMessage =
+          planError instanceof Error ? planError.message : 'Particle planning failed.'
+        setParticleMessage(failureMessage)
+        setAnalysisState((current) => ({
+          ...current,
+          busy: false,
+          message: failureMessage,
+        }))
+      }
+    }
+  }, [analysisCalibration, client, opened, particleGraph, particlePlanIdentity, particleRoi])
+
+  const runParticleAnalysis = useCallback((): void => {
+    if (
+      particleGraph === undefined ||
+      particleRoi === undefined ||
+      currentParticleDryRun?.valid !== true
+    )
+      return
+    void executeAnalysisGraph(particleGraph, {
+      roi: particleRoi,
+      overlay: 'labels',
+      overlayView: particleSettings.overlayView,
+      overlayTableOutput: 'objects',
+      commit: true,
+      surface: 'particle',
+    })
+  }, [
+    executeAnalysisGraph,
+    currentParticleDryRun?.valid,
+    particleGraph,
+    particleRoi,
+    particleSettings.overlayView,
+  ])
+
+  useEffect(() => {
+    setAnalysisOverlay((current) =>
+      current?.output === 'labels'
+        ? {
+            ...current,
+            view: particleSettings.overlayView,
+            tableOutput: 'objects',
+          }
+        : current,
+    )
+  }, [particleSettings.overlayView])
+
+  const createParticleRecipe = useCallback(async (): Promise<RecipeDocumentV1 | undefined> => {
+    if (particleGraph === undefined) return undefined
+    const base: Omit<RecipeDocumentV1, 'integrity'> = {
+      schemaVersion: 1,
+      kind: 'recipe',
+      id: 'particle-analysis',
+      version: '1.0.0',
+      title: 'Particle analysis',
+      description:
+        'Visible correction, threshold, binary cleanup, watershed, connected-components, filtering, and measurement graph.',
+      operations: [
+        {
+          actionId: 'analysis.graph.request-execute',
+          actionVersion: 1,
+          input: {
+            graph: particleGraph as unknown as JsonValue,
+            ...(particleSettings.roiId === undefined ? {} : { roiId: particleSettings.roiId }),
+          },
+        },
+      ],
+      requestedCapabilities: ['analysis.execute'],
+      compatibility: { pureJsImage: '^0.10.0', workbench: '>=0.0.0 <1.0.0' },
+    }
+    const recipe: RecipeDocumentV1 = {
+      ...base,
+      integrity: await recipeContentIntegrity(base),
+    }
+    const validated = validateRecipeDocument(recipe)
+    if (!validated.ok || validated.value === undefined) {
+      setError(validated.issues[0]?.message ?? 'Particle recipe validation failed.')
+      return undefined
+    }
+    return validated.value
+  }, [particleGraph, particleSettings.roiId])
+
+  const saveParticleRecipe = useCallback(async (): Promise<void> => {
+    const recipe = await createParticleRecipe()
+    if (recipe === undefined) return
+    const blob = new Blob([JSON.stringify(recipe, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'particle-analysis.recipe.json'
+    anchor.click()
+    URL.revokeObjectURL(url)
+    appendLog('Saved the particle workflow as a validated declarative recipe')
+  }, [appendLog, createParticleRecipe])
+
+  const openParticleRecipeInScripts = useCallback(async (): Promise<void> => {
+    const recipe = await createParticleRecipe()
+    if (recipe === undefined) return
+    setScriptRecipe(recipe)
+    setScriptProofOpen(true)
+  }, [createParticleRecipe])
 
   const measureSelectedRoi = useCallback(
     (kind: 'statistics' | 'histogram' | 'profile'): void => {
@@ -1845,6 +2114,40 @@ function WorkbenchRuntime({
             })),
           ],
           [
+            'analysis.graph.request-execute@1',
+            {
+              execute: async (input, _context, signal) => {
+                signal.throwIfAborted()
+                const request = rpcObject(input)
+                const graph = rpcObject(request?.['graph'])
+                const roiId = request?.['roiId']
+                if (
+                  graph === undefined ||
+                  (roiId !== undefined && typeof roiId !== 'string') ||
+                  opened === undefined ||
+                  selection === undefined
+                )
+                  throw new Error('Analysis graph action input is invalid.')
+                const roi =
+                  typeof roiId === 'string'
+                    ? workspace.analysis.roiSet.rois.find(({ id }) => id === roiId)
+                    : wholePlaneRoi(calibratedOpened ?? opened, selection)
+                if (roi === undefined) throw new Error('The recipe ROI is no longer available.')
+                await executeAnalysisGraph(
+                  graph as unknown as WorkspaceSnapshot['analysis']['graph'],
+                  {
+                    roi,
+                    overlay: 'labels',
+                    overlayView: particleSettings.overlayView,
+                    overlayTableOutput: 'objects',
+                    commit: true,
+                  },
+                )
+                return { status: 'completed' }
+              },
+            },
+          ],
+          [
             'analysis.request-execute@1',
             {
               execute: async (input, _context, signal) => {
@@ -1935,12 +2238,17 @@ function WorkbenchRuntime({
       openSample,
       applyThreshold,
       analysisCatalog,
+      calibratedOpened,
+      executeAnalysisGraph,
+      opened,
+      particleSettings.overlayView,
       planConnectedComponents,
       performHistory,
       preferences.theme,
       runToolboxOperation,
       runConnectedComponents,
       saveProject,
+      selection,
       updatePreferences,
       workspace,
     ],
@@ -2101,36 +2409,71 @@ function WorkbenchRuntime({
       />
     )
   const analysisContent = (
-    <AnalysisInspector
-      catalog={analysisCatalog}
-      {...(paletteOperationId === undefined ? {} : { focusOperationId: paletteOperationId })}
-      component={component}
-      planeLabel={selection?.displayAxes.join(' × ') ?? 'unavailable'}
-      connectedPlanReady={connectedPlanReady}
-      connectivity={connectivity}
-      mode={thresholdMode}
-      onApply={() => executeAction('analysis.threshold.commit')}
-      onCancelPreview={cancelPreview}
-      onConnectivity={(value) => {
-        setConnectivity(value)
-        setConnectedPlanReady(false)
-      }}
-      onMode={(value) => {
-        setThresholdMode(value)
-        setConnectedPlanReady(false)
-      }}
-      onPreview={() => executeAction('analysis.threshold.preview')}
-      onPlanObjects={() => executeAction('analysis.connected-components.plan')}
-      onRunObjects={() => executeAction('analysis.connected-components.execute')}
-      onRunOperation={requestToolboxOperation}
-      sampleType={opened?.dataset.sampleType}
-      onThreshold={(value) => {
-        setThreshold(value)
-        setConnectedPlanReady(false)
-      }}
-      state={analysisState}
-      threshold={threshold}
-    />
+    <div className="analysis-surfaces">
+      {opened === undefined || particleGraph === undefined ? null : (
+        <ParticleAnalysisWorkflow
+          busy={analysisState.busy}
+          componentCount={opened.dataset.components.length}
+          {...(currentParticleDryRun === undefined ? {} : { dryRun: currentParticleDryRun })}
+          graphSteps={particleGraph.nodes.map(({ label, operation }) => label ?? operation.id)}
+          {...(particleMessage === undefined ? {} : { message: particleMessage })}
+          onCancel={() => {
+            cancelPreview()
+            setParticleMessage('Preview cancelled. The committed project is unchanged.')
+          }}
+          onChange={(settings) => {
+            setParticleSettings(settings)
+            setParticleMessage(undefined)
+            setParticleDryRun(undefined)
+            setParticleDryRunIdentity(undefined)
+            setAnalysisState((current) => {
+              const { dryRun: _dryRun, ...rest } = current
+              return rest
+            })
+          }}
+          onOpenScripts={() => void openParticleRecipeInScripts()}
+          onPlan={() => void planParticleAnalysis()}
+          onPreview={previewParticleThreshold}
+          onRun={runParticleAnalysis}
+          onSaveRecipe={() => void saveParticleRecipe()}
+          rois={workspace.analysis.roiSet.rois}
+          settings={particleSettings}
+        />
+      )}
+      <details className="analysis-surfaces__toolbox">
+        <summary>Operation browser and legacy threshold controls</summary>
+        <AnalysisInspector
+          catalog={analysisCatalog}
+          {...(paletteOperationId === undefined ? {} : { focusOperationId: paletteOperationId })}
+          component={component}
+          planeLabel={selection?.displayAxes.join(' × ') ?? 'unavailable'}
+          connectedPlanReady={connectedPlanReady}
+          connectivity={connectivity}
+          mode={thresholdMode}
+          onApply={() => executeAction('analysis.threshold.commit')}
+          onCancelPreview={cancelPreview}
+          onConnectivity={(value) => {
+            setConnectivity(value)
+            setConnectedPlanReady(false)
+          }}
+          onMode={(value) => {
+            setThresholdMode(value)
+            setConnectedPlanReady(false)
+          }}
+          onPreview={() => executeAction('analysis.threshold.preview')}
+          onPlanObjects={() => executeAction('analysis.connected-components.plan')}
+          onRunObjects={() => executeAction('analysis.connected-components.execute')}
+          onRunOperation={requestToolboxOperation}
+          sampleType={opened?.dataset.sampleType}
+          onThreshold={(value) => {
+            setThreshold(value)
+            setConnectedPlanReady(false)
+          }}
+          state={analysisState}
+          threshold={threshold}
+        />
+      </details>
+    </div>
   )
   const analysisResults = (
     <AnalysisResults
@@ -2318,7 +2661,10 @@ function WorkbenchRuntime({
                 aria-pressed={scriptProofOpen}
                 className="mode-rail__button"
                 label="Scripts sandbox proof"
-                onClick={() => setScriptProofOpen(true)}
+                onClick={() => {
+                  setScriptRecipe(undefined)
+                  setScriptProofOpen(true)
+                }}
               >
                 <Icon name="code" />
               </IconButton>
@@ -2717,6 +3063,7 @@ function WorkbenchRuntime({
             actionManifest={scriptActionManifest}
             invoker={scriptInvoker}
             onClose={() => setScriptProofOpen(false)}
+            recipe={scriptRecipe}
           />
         </Suspense>
       ) : null}

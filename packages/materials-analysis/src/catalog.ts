@@ -26,6 +26,18 @@ export const MATERIALS_OPERATION_IDS = Object.freeze({
   laplacian: 'pji-workbench.materials.filter.laplacian',
   outlier: 'pji-workbench.materials.filter.outlier',
   background: 'pji-workbench.materials.filter.background-subtract',
+  thresholdReference: 'pji-workbench.materials.segmentation.threshold-reference',
+  binaryErode: 'pji-workbench.materials.segmentation.binary-erode',
+  binaryDilate: 'pji-workbench.materials.segmentation.binary-dilate',
+  binaryOpen: 'pji-workbench.materials.segmentation.binary-open',
+  binaryClose: 'pji-workbench.materials.segmentation.binary-close',
+  binaryFillHoles: 'pji-workbench.materials.segmentation.binary-fill-holes',
+  binaryClearBorder: 'pji-workbench.materials.segmentation.binary-clear-border',
+  binaryRemoveSmall: 'pji-workbench.materials.segmentation.binary-remove-small',
+  binaryOutline: 'pji-workbench.materials.segmentation.binary-outline',
+  distanceTransform: 'pji-workbench.materials.segmentation.euclidean-distance-transform',
+  watershed: 'pji-workbench.materials.segmentation.watershed',
+  particleAnalysis: 'pji-workbench.materials.particles.analyze',
 } as const)
 
 export type MaterialsOperationId =
@@ -200,6 +212,83 @@ export const TOOLBOX_DOCUMENTATION: readonly ToolboxOperationDocumentation[] = O
       cost: 'expensive',
     },
   ),
+  docs(
+    MATERIALS_OPERATION_IDS.thresholdReference,
+    'Reference manual, Otsu, Triangle, Yen, Li, mean, and adaptive Sauvola thresholding.',
+    {
+      inputPolicy: 'One numeric scientific dataset and one explicit area ROI.',
+      outputPolicy:
+        'A binary mask plus bounded histogram, foreground fraction, and resolved-threshold results.',
+      noDataPolicy: 'Invalid samples are explicitly background, foreground, or propagated as NaN.',
+      cost: 'expensive',
+      preset: 'Particle threshold',
+    },
+  ),
+  ...(
+    [
+      [MATERIALS_OPERATION_IDS.binaryErode, 'Erode a binary mask with a Euclidean disk.'],
+      [MATERIALS_OPERATION_IDS.binaryDilate, 'Dilate a binary mask with a Euclidean disk.'],
+      [MATERIALS_OPERATION_IDS.binaryOpen, 'Erode then dilate a binary mask.'],
+      [MATERIALS_OPERATION_IDS.binaryClose, 'Dilate then erode a binary mask.'],
+      [
+        MATERIALS_OPERATION_IDS.binaryFillHoles,
+        'Fill background regions not connected to the plane border.',
+      ],
+      [
+        MATERIALS_OPERATION_IDS.binaryClearBorder,
+        'Remove foreground objects connected to the plane border.',
+      ],
+      [
+        MATERIALS_OPERATION_IDS.binaryRemoveSmall,
+        'Remove connected foreground objects below a pixel-area limit.',
+      ],
+      [
+        MATERIALS_OPERATION_IDS.binaryOutline,
+        'Retain the one-pixel inner outline of a binary mask.',
+      ],
+    ] as const
+  ).map(([operationId, summary]) =>
+    docs(operationId, summary, {
+      inputPolicy: 'One binary scientific dataset; non-zero finite samples are foreground.',
+      outputPolicy: 'One deterministic uint8 binary scientific dataset.',
+      boundaryPolicy: 'Pixels outside the plane are background; connectivity is explicit.',
+      cost: 'expensive',
+    }),
+  ),
+  docs(
+    MATERIALS_OPERATION_IDS.distanceTransform,
+    'Exact Euclidean distance from each foreground sample to the nearest background sample.',
+    {
+      inputPolicy: 'One binary scientific dataset.',
+      outputPolicy: 'One floating-point distance dataset in pixel units.',
+      boundaryPolicy: 'The plane exterior is background.',
+      cost: 'expensive',
+    },
+  ),
+  docs(
+    MATERIALS_OPERATION_IDS.watershed,
+    'Separate touching foreground objects by flooding the exact Euclidean distance surface.',
+    {
+      inputPolicy: 'One binary scientific dataset.',
+      outputPolicy: 'A binary mask with deterministic watershed boundaries removed.',
+      boundaryPolicy: 'Eight-neighbor flooding with deterministic priority and peak suppression.',
+      cost: 'expensive',
+    },
+  ),
+  docs(
+    MATERIALS_OPERATION_IDS.particleAnalysis,
+    'Filter and measure connected-component labels against a chosen intensity component.',
+    {
+      inputPolicy:
+        'A connected-components label dataset, calibrated source dataset, and explicit area ROI.',
+      outputPolicy:
+        'Filtered labels, a bounded deterministic table, scalar summary, and cumulative size distribution.',
+      calibrationPolicy:
+        'Area, perimeter, equivalent diameter, and fitted ellipse retain explicit pixel and physical units; centroid remains in pixel coordinates.',
+      cost: 'expensive',
+      preview: false,
+    },
+  ),
 ])
 
 export const TOOLBOX_PRESETS = Object.freeze([
@@ -226,5 +315,21 @@ export const TOOLBOX_PRESETS = Object.freeze([
     title: 'Correct uneven background',
     operationId: MATERIALS_OPERATION_IDS.background,
     parameters: { radius: 16, offset: 0, invalidPolicy: 'ignore' },
+  },
+  {
+    id: 'particle-threshold',
+    title: 'Particle threshold',
+    operationId: MATERIALS_OPERATION_IDS.thresholdReference,
+    parameters: {
+      method: 'otsu',
+      polarity: 'light',
+      lower: 0,
+      upper: 255,
+      histogramBins: 256,
+      windowRadius: 15,
+      sauvolaK: 0.2,
+      dynamicRange: 128,
+      noDataPolicy: 'background',
+    },
   },
 ])

@@ -2,6 +2,7 @@ import type {
   AnalysisCatalog,
   AnalysisDryRunResponse,
   AnalysisExecutionResponse,
+  AnalysisSeriesExport,
   AnalysisTablePage,
   OpenedDatasetDescriptor,
   RpcJsonObject,
@@ -20,6 +21,7 @@ export interface MaterialsPanelState {
   readonly dryRun?: AnalysisDryRunResponse
   readonly execution?: AnalysisExecutionResponse
   readonly table?: AnalysisTablePage
+  readonly distribution?: AnalysisSeriesExport
   readonly tableOffset: number
   readonly selectedLabel?: number | undefined
 }
@@ -989,6 +991,11 @@ function keyedValues(values: readonly number[]) {
   })
 }
 
+const PARTICLE_SIZE_BIN_IDS = Array.from(
+  { length: 16 },
+  (_value, index) => `particle-size-bin-${index}`,
+)
+
 function ResultPreviewPlot({ execution }: { readonly execution: AnalysisExecutionResponse }) {
   const result = execution.outputs.find((output) => output.kind === 'result')
   if (result?.kind !== 'result') return null
@@ -1045,6 +1052,79 @@ function ObjectDistributions({ page }: { readonly page: AnalysisTablePage }) {
   )
 }
 
+function ParticleDistribution({ distribution }: { readonly distribution: AnalysisSeriesExport }) {
+  const sizes = distribution.columns[0]?.values.filter(
+    (value): value is number => typeof value === 'number',
+  )
+  const cumulative = distribution.columns[1]?.values.filter(
+    (value): value is number => typeof value === 'number',
+  )
+  if (sizes === undefined || cumulative === undefined || sizes.length === 0) return null
+  const minimum = sizes[0] ?? 0
+  const maximum = sizes[sizes.length - 1] ?? minimum
+  const span = Math.max(Number.EPSILON, maximum - minimum)
+  const quantile = (fraction: number) => sizes[Math.round((sizes.length - 1) * fraction)] ?? minimum
+  const bins = new Array<number>(16).fill(0)
+  for (const size of sizes) {
+    const index = Math.min(15, Math.floor(((size - minimum) / span) * 16))
+    bins[index] = (bins[index] ?? 0) + 1
+  }
+  const maximumBin = Math.max(1, ...bins)
+  return (
+    <section className="particle-distribution" aria-label="Complete particle size distribution">
+      <h3>Complete size distribution</h3>
+      <dl className="particle-distribution__five-number">
+        {[
+          ['Minimum', minimum],
+          ['Q1', quantile(0.25)],
+          ['Median', quantile(0.5)],
+          ['Q3', quantile(0.75)],
+          ['Maximum', maximum],
+        ].map(([label, value]) => (
+          <div key={String(label)}>
+            <dt>{label}</dt>
+            <dd>{Number(value).toPrecision(4)}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="particle-distribution__plots">
+        <figure>
+          <figcaption>Equivalent-diameter histogram</figcaption>
+          <div className="result-plot" role="img" aria-label="Particle diameter histogram">
+            {PARTICLE_SIZE_BIN_IDS.map((id, index) => (
+              <span
+                key={id}
+                style={{ height: `${2 + ((bins[index] ?? 0) / maximumBin) * 52}px` }}
+              />
+            ))}
+          </div>
+        </figure>
+        <figure>
+          <figcaption>Cumulative fraction</figcaption>
+          <svg
+            aria-label="Empirical cumulative particle diameter distribution"
+            preserveAspectRatio="none"
+            role="img"
+            viewBox="0 0 100 60"
+          >
+            <polyline
+              fill="none"
+              points={sizes
+                .map((size, index) => {
+                  const x = ((size - minimum) / span) * 100
+                  const y = 60 - (cumulative[index] ?? 0) * 60
+                  return `${x},${y}`
+                })
+                .join(' ')}
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+        </figure>
+      </div>
+    </section>
+  )
+}
+
 export function AnalysisResults({
   state,
   onPage,
@@ -1078,6 +1158,9 @@ export function AnalysisResults({
         <Button onClick={() => onExport('all', 'json')}>Export JSON</Button>
       </div>
       <ResultPreviewPlot execution={execution} />
+      {state.distribution === undefined ? null : (
+        <ParticleDistribution distribution={state.distribution} />
+      )}
       {table === undefined ? (
         <pre className="result-json">
           {JSON.stringify(
