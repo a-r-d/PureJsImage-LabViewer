@@ -6,6 +6,7 @@ import {
   fitCameraToBounds,
   hitTest,
   panCamera,
+  planVisibleTileRegions,
   resizeCamera,
   screenToWorld,
   translateCamera,
@@ -69,5 +70,70 @@ describe('camera math', () => {
       { id: 'roi-1', bounds: { x: 80, y: 80, width: 40, height: 40 }, priority: 2 },
     ])
     expect(result).toEqual({ id: 'roi-1', worldPoint: { x: 100, y: 100 } })
+  })
+
+  it('plans only visible tiles plus one bounded prefetch margin', () => {
+    const regions = planVisibleTileRegions(
+      { x: 0, y: 0, width: 4_096, height: 3_072 },
+      { x: 1_024, y: 768, width: 600, height: 420 },
+      256,
+      1,
+    )
+    expect(regions.length).toBeLessThan(30)
+    expect(regions[0]).toMatchObject({ priority: 'visible' })
+    expect(Math.max(...regions.map(({ width, height }) => width * height))).toBeLessThanOrEqual(
+      256 * 256,
+    )
+    expect(regions.every(({ x, y }) => x >= 768 && y >= 512)).toBe(true)
+  })
+
+  it('clips edge tiles without requesting outside the image', () => {
+    expect(
+      planVisibleTileRegions(
+        { x: 0, y: 0, width: 300, height: 280 },
+        { x: 250, y: 240, width: 50, height: 40 },
+        256,
+        0,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          column: 0,
+          row: 0,
+          x: 0,
+          y: 0,
+          width: 256,
+          height: 256,
+          priority: 'visible',
+        },
+        {
+          column: 1,
+          row: 0,
+          x: 256,
+          y: 0,
+          width: 44,
+          height: 256,
+          priority: 'visible',
+        },
+        {
+          column: 0,
+          row: 1,
+          x: 0,
+          y: 256,
+          width: 256,
+          height: 24,
+          priority: 'visible',
+        },
+        {
+          column: 1,
+          row: 1,
+          x: 256,
+          y: 256,
+          width: 44,
+          height: 24,
+          priority: 'visible',
+        },
+      ]),
+    )
   })
 })

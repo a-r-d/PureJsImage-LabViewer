@@ -16,6 +16,7 @@ describe('architecture boundary checker', () => {
     ['packages/workspace/src/index.ts', "import React from 'react'"],
     ['packages/viewport/src/index.ts', "import { decode } from 'purejsimage'"],
     ['packages/imaging/src/index.ts', "import value from 'purejsimage/src/internal'"],
+    ['packages/imaging/src/worker.ts', "const privateModule = import('purejsimage/src/reader')"],
     ['packages/contracts/src/index.ts', "import app from '../../../apps/workbench/src/app'"],
     ['apps/workbench/src/app.tsx', "import value from '@pji-workbench/contracts/src/private'"],
   ])('rejects %s crossing a protected boundary', (file, source) => {

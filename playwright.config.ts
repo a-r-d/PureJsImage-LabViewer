@@ -16,7 +16,8 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    command: 'corepack pnpm --filter @pji-workbench/app preview --host 127.0.0.1 --port 4173',
+    command:
+      'VITE_APP_ENV=test corepack pnpm --filter @pji-workbench/app build && corepack pnpm --filter @pji-workbench/app preview --host 127.0.0.1 --port 4173',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
   },

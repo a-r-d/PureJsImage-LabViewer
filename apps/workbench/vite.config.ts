@@ -7,4 +7,7 @@ export default defineConfig({
   build: {
     sourcemap: true,
   },
+  worker: {
+    format: 'es',
+  },
 })

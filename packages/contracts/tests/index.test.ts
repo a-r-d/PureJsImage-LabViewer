@@ -1,22 +1,87 @@
 import { describe, expect, it } from 'vitest'
 
-import { isRpcEnvelope, RPC_SCHEMA_VERSION } from '../src/index.js'
+import {
+  isRpcEnvelope,
+  RPC_LIMITS,
+  RPC_SCHEMA_VERSION,
+  RpcValidationError,
+  rpcRequest,
+  validateWorkerRequest,
+} from '../src/index.js'
 
-describe('RPC envelope', () => {
-  it('accepts the bounded JSON-safe shell', () => {
-    expect(
-      isRpcEnvelope({
-        schemaVersion: RPC_SCHEMA_VERSION,
-        requestId: 'request-1',
-        kind: 'runtime.ping',
-        payload: null,
-      }),
-    ).toBe(true)
+describe('imaging RPC validation', () => {
+  it('accepts every field of a bounded tile request', () => {
+    const request = rpcRequest('tile-1', 'tile.request', {
+      tileId: 'visible-0-0',
+      datasetHandleId: 'dataset-1' as never,
+      generation: 2,
+      displayAxes: ['x', 'y'],
+      fixedIndices: [{ axisId: 'z', index: 4 }],
+      resolutionLevel: 0,
+      component: 0,
+      mapping: { mode: 'linear', range: 'auto' },
+      region: { x: 0, y: 0, width: 256, height: 256 },
+      priority: 'visible',
+    })
+    expect(validateWorkerRequest(request)).toEqual(request)
+    expect(isRpcEnvelope(request)).toBe(true)
   })
 
-  it('rejects unknown versions', () => {
+  it('rejects unknown versions, message kinds, oversized strings, and oversized tiles', () => {
     expect(
-      isRpcEnvelope({ schemaVersion: 2, requestId: 'request-1', kind: 'ping', payload: null }),
+      isRpcEnvelope({
+        schemaVersion: 2,
+        requestId: 'request-1',
+        kind: 'worker.initialize',
+        payload: null,
+      }),
     ).toBe(false)
+    expect(() =>
+      validateWorkerRequest({
+        schemaVersion: RPC_SCHEMA_VERSION,
+        requestId: 'request-1',
+        kind: 'runtime.eval',
+        payload: null,
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'UNKNOWN_KIND' }))
+    expect(() =>
+      validateWorkerRequest(
+        rpcRequest('remote-1', 'source.open-remote', {
+          generation: 1,
+          url: `https://example.invalid/${'x'.repeat(RPC_LIMITS.maxStringLength + 1)}`,
+        }),
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'LIMIT_EXCEEDED' }))
+    expect(() =>
+      validateWorkerRequest(
+        rpcRequest('tile-2', 'tile.request', {
+          tileId: 'oversized',
+          datasetHandleId: 'dataset-1' as never,
+          generation: 1,
+          displayAxes: ['x', 'y'],
+          fixedIndices: [],
+          resolutionLevel: 0,
+          component: 0,
+          mapping: { mode: 'linear', range: 'auto' },
+          region: { x: 0, y: 0, width: 513, height: 513 },
+          priority: 'visible',
+        }),
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'LIMIT_EXCEEDED' }))
+  })
+
+  it('rejects malformed local structured-clone attachments', () => {
+    expect(() =>
+      validateWorkerRequest({
+        schemaVersion: RPC_SCHEMA_VERSION,
+        requestId: 'local-1',
+        kind: 'source.open-local',
+        payload: {
+          generation: 1,
+          primaryId: 'file-0',
+          files: [{ id: 'file-0', name: 'bad.mrc', size: 4, type: '', lastModified: 0, blob: {} }],
+        },
+      }),
+    ).toThrow(RpcValidationError)
   })
 })

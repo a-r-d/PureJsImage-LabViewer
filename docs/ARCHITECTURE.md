@@ -1,5 +1,8 @@
 # Architecture
 
+The concrete scientific source, Worker RPC, and renderer tile lifecycle is documented in
+[`IMAGING_WORKER.md`](./IMAGING_WORKER.md).
+
 ## Design principles
 
 1. **PureJsImage owns scientific data semantics.** The app does not recreate readers, ROIs, analysis graphs, operation validation, results, or tile accounting.

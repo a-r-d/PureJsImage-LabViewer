@@ -1,3 +1,11 @@
+import type {
+  DisplayMapping,
+  OpenedDatasetDescriptor,
+  OpenedSourceDescriptor,
+  PlaneSelection,
+  RenderTile,
+} from '@pji-workbench/contracts'
+import { createImagingWorkerClient, ImagingRpcError } from '@pji-workbench/imaging'
 import {
   Button,
   CommandPalette,
@@ -18,6 +26,7 @@ import {
 import { createEmptyWorkspace } from '@pji-workbench/workspace'
 import {
   type CSSProperties,
+  type FormEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -33,16 +42,16 @@ import {
   workbenchCommands,
 } from './commands.js'
 import type { PublicEnvironment } from './environment.js'
-import { MockViewport, type MockViewportApi } from './MockViewport.js'
 import {
   LocalWorkbenchPreferenceStore,
   PREFERENCE_BOUNDS,
   type WorkbenchPreferences,
 } from './preferences.js'
+import { ScientificViewport, type ScientificViewportApi } from './ScientificViewport.js'
 
 type InspectorTab = 'info' | 'display' | 'roi' | 'analysis' | 'history' | 'agent'
 type BottomTab = 'histogram' | 'profile' | 'results' | 'log'
-type WorkspaceMode = 'empty' | 'opened'
+type OpenStatus = 'ready' | 'opening' | 'crashed'
 
 const inspectorTabs: readonly TabItem<InspectorTab>[] = [
   { id: 'info', label: 'Info' },
@@ -60,10 +69,8 @@ const bottomTabs: readonly TabItem<BottomTab>[] = [
   { id: 'log', label: 'Log' },
 ]
 
-const histogramBars = Array.from({ length: 38 }, (_, index) => ({
-  id: `intensity-bin-${index + 1}`,
-  height: 8 + ((index * 37) % 64),
-}))
+const RECENT_SOURCE_KEY = 'pji-workbench.recent-source-names.v1'
+const HISTOGRAM_BIN_IDS = Array.from({ length: 32 }, (_value, index) => `histogram-${index}`)
 
 function preferenceStyle(preferences: WorkbenchPreferences): CSSProperties {
   return {
@@ -73,93 +80,230 @@ function preferenceStyle(preferences: WorkbenchPreferences): CSSProperties {
   } as CSSProperties
 }
 
+function fileSize(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`
+  if (bytes < 1_024 * 1_024) return `${(bytes / 1_024).toFixed(1)} KB`
+  return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`
+}
+
+function readRecentSources(storage: Storage): readonly string[] {
+  try {
+    const value: unknown = JSON.parse(storage.getItem(RECENT_SOURCE_KEY) ?? '[]')
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string').slice(0, 6)
+      : []
+  } catch {
+    return []
+  }
+}
+
+function axisPairOptions(opened: OpenedDatasetDescriptor): readonly (readonly [string, string])[] {
+  const planeReads = opened.dataset.capabilities.planeReads
+  if (planeReads.kind === 'ordered-axis-pairs') return planeReads.pairs
+  const axes = opened.dataset.axes
+  const pairs: (readonly [string, string])[] = []
+  for (let horizontal = 0; horizontal < axes.length; horizontal += 1) {
+    for (let vertical = horizontal + 1; vertical < axes.length; vertical += 1) {
+      const left = axes[horizontal]
+      const right = axes[vertical]
+      if (left !== undefined && right !== undefined) pairs.push([left.id, right.id])
+    }
+  }
+  return pairs
+}
+
+function calibrationLabel(opened: OpenedDatasetDescriptor | undefined): string {
+  if (opened === undefined) return 'Uncalibrated'
+  const axis = opened.dataset.axes.find(
+    ({ id, coordinates, unit }) =>
+      id === opened.selection.displayAxes[0] && coordinates.type === 'linear' && unit !== undefined,
+  )
+  if (axis?.coordinates.type !== 'linear' || axis.unit === undefined) return 'Uncalibrated'
+  return `${axis.coordinates.step} ${axis.unit}/px`
+}
+
+interface InspectorContentProps {
+  readonly tab: InspectorTab
+  readonly source: OpenedSourceDescriptor | undefined
+  readonly opened: OpenedDatasetDescriptor | undefined
+  readonly selection: PlaneSelection | undefined
+  readonly component: number
+  readonly mapping: DisplayMapping
+  readonly onComponent: (component: number) => void
+  readonly onMapping: (mapping: DisplayMapping) => void
+  readonly onSelection: (selection: PlaneSelection) => void
+}
+
 function InspectorContent({
   tab,
-  mode,
-}: {
-  readonly tab: InspectorTab
-  readonly mode: WorkspaceMode
-}) {
+  source,
+  opened,
+  selection,
+  component,
+  mapping,
+  onComponent,
+  onMapping,
+  onSelection,
+}: InspectorContentProps) {
   if (tab === 'agent') {
     return (
       <div className="inspector-content agent-panel" data-testid="agent-panel">
         <p className="panel-kicker">User-approved tool client</p>
-        <div className="agent-message agent-message--user">
-          Count bright precipitates larger than 20 nm².
-        </div>
         <div className="agent-message">
-          I can propose a threshold and connected-components workflow after a dataset is open. No
-          operation will run without approval.
+          The imaging Worker is ready. Analysis tools arrive in the next workflow prompts.
         </div>
-        <Button disabled={mode === 'empty'} variant="primary">
+        <Button disabled={opened === undefined} variant="primary">
           Review proposed plan
         </Button>
-        <p className="panel-note">Mock conversation · no network request</p>
+        <p className="panel-note">No model or network request has been made.</p>
       </div>
     )
   }
-  if (mode === 'empty') {
+  if (source === undefined || opened === undefined || selection === undefined) {
     return <p className="panel-placeholder">Open a dataset to inspect {tab} settings.</p>
   }
   if (tab === 'display') {
+    const pairs = axisPairOptions(opened)
     return (
       <div className="inspector-content form-stack">
         <label>
-          Display range
-          <input defaultValue="18 – 232" readOnly />
-        </label>
-        <label>
-          Mapping
-          <select defaultValue="linear">
-            <option value="linear">Linear</option>
-            <option value="log">Logarithmic</option>
+          Component
+          <select value={component} onChange={(event) => onComponent(Number(event.target.value))}>
+            {opened.dataset.components.map((candidate, index) => (
+              <option key={candidate.id} value={index}>
+                {candidate.name ?? candidate.id}
+              </option>
+            ))}
           </select>
         </label>
-        <p className="panel-note">Display mapping does not alter quantitative pixels.</p>
+        {pairs.length > 1 ? (
+          <label>
+            Plane axes
+            <select
+              value={selection.displayAxes.join('/')}
+              onChange={(event) => {
+                const pair = pairs.find((candidate) => candidate.join('/') === event.target.value)
+                if (pair === undefined) return
+                onSelection({
+                  ...selection,
+                  displayAxes: pair,
+                  fixedIndices: opened.dataset.axes
+                    .filter(({ id }) => id !== pair[0] && id !== pair[1])
+                    .map(({ id }) => ({ axisId: id, index: 0 })),
+                })
+              }}
+            >
+              {pairs.map((pair) => (
+                <option key={pair.join('/')} value={pair.join('/')}>
+                  {pair.join(' / ')}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {opened.dataset.capabilities.resolutionLevels && opened.dataset.levels.length > 1 ? (
+          <label>
+            Resolution level
+            <select
+              value={selection.resolutionLevel}
+              onChange={(event) =>
+                onSelection({ ...selection, resolutionLevel: Number(event.target.value) })
+              }
+            >
+              {opened.dataset.levels.map(({ level }) => (
+                <option key={level} value={level}>
+                  Level {level}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {selection.fixedIndices.map((fixed) => {
+          const axis = opened.dataset.axes.find(({ id }) => id === fixed.axisId)
+          if (axis === undefined) return null
+          return (
+            <label key={axis.id}>
+              {axis.name ?? axis.id} index
+              <input
+                max={axis.length - 1}
+                min={0}
+                type="number"
+                value={fixed.index}
+                onChange={(event) =>
+                  onSelection({
+                    ...selection,
+                    fixedIndices: selection.fixedIndices.map((candidate) =>
+                      candidate.axisId === fixed.axisId
+                        ? {
+                            ...candidate,
+                            index: Math.max(
+                              0,
+                              Math.min(axis.length - 1, Number(event.target.value)),
+                            ),
+                          }
+                        : candidate,
+                    ),
+                  })
+                }
+              />
+            </label>
+          )
+        })}
+        <label>
+          Display range
+          <select
+            value={mapping.range}
+            onChange={(event) =>
+              onMapping(
+                event.target.value === 'auto'
+                  ? { mode: 'linear', range: 'auto' }
+                  : { mode: 'linear', range: 'manual', minimum: 0, maximum: 255 },
+              )
+            }
+          >
+            <option value="auto">Histogram auto</option>
+            <option value="manual">Manual</option>
+          </select>
+        </label>
+        {mapping.range === 'manual' ? (
+          <div className="display-range-inputs">
+            <label>
+              Minimum
+              <input
+                type="number"
+                value={mapping.minimum ?? 0}
+                onChange={(event) => onMapping({ ...mapping, minimum: Number(event.target.value) })}
+              />
+            </label>
+            <label>
+              Maximum
+              <input
+                type="number"
+                value={mapping.maximum ?? 255}
+                onChange={(event) => onMapping({ ...mapping, maximum: Number(event.target.value) })}
+              />
+            </label>
+          </div>
+        ) : null}
+        <p className="panel-note">Display mapping never changes quantitative source pixels.</p>
       </div>
     )
   }
-  if (tab === 'roi') {
+  if (tab === 'roi' || tab === 'analysis') {
     return (
-      <dl className="inspector-facts">
-        <div>
-          <dt>Name</dt>
-          <dd>Precipitate field</dd>
-        </div>
-        <div>
-          <dt>Geometry</dt>
-          <dd>Rectangle</dd>
-        </div>
-        <div>
-          <dt>Size</dt>
-          <dd>256.2 × 231.0 nm</dd>
-        </div>
-        <div>
-          <dt>Area</dt>
-          <dd>59,182 nm²</dd>
-        </div>
-      </dl>
-    )
-  }
-  if (tab === 'analysis') {
-    return (
-      <div className="inspector-content analysis-plan">
-        <p className="panel-kicker">Preview plan</p>
-        <ol>
-          <li>Gaussian blur · σ 1.2 px</li>
-          <li>Threshold · 172</li>
-          <li>Connected components</li>
-        </ol>
-        <p>Estimated working set: 18 MB</p>
-        <Button variant="primary">Review before run</Button>
+      <div className="inspector-content">
+        <p className="panel-kicker">Runtime ready</p>
+        <p className="panel-note">
+          ROI and analysis composition build on this numeric dataset in the next prompts.
+        </p>
       </div>
     )
   }
   if (tab === 'history') {
     return (
       <ol className="history-list">
-        <li>Opened sample-sem.mrc</li>
-        <li>Created Precipitate field ROI</li>
+        <li>Opened {source.source.name}</li>
+        <li>Selected {opened.dataset.name ?? opened.dataset.id}</li>
       </ol>
     )
   }
@@ -167,102 +311,68 @@ function InspectorContent({
     <dl className="inspector-facts">
       <div>
         <dt>Dataset</dt>
-        <dd>Electron intensity</dd>
+        <dd>{opened.dataset.name ?? opened.dataset.id}</dd>
       </div>
       <div>
-        <dt>Dimensions</dt>
-        <dd>2048 × 1536 px</dd>
+        <dt>Axes</dt>
+        <dd>{opened.dataset.axes.map(({ id, length }) => `${id} ${length}`).join(' × ')}</dd>
       </div>
       <div>
         <dt>Calibration</dt>
-        <dd>0.42 nm / px</dd>
+        <dd>{calibrationLabel(opened)}</dd>
       </div>
       <div>
         <dt>Source</dt>
-        <dd>MRC / CCP4</dd>
+        <dd>{source.reader.format}</dd>
       </div>
       <div>
         <dt>Data type</dt>
-        <dd>uint16</dd>
+        <dd>{opened.dataset.sampleType}</dd>
       </div>
       <div>
         <dt>File size</dt>
-        <dd>6.0 MB · mock</dd>
+        <dd>{fileSize(source.source.size)}</dd>
       </div>
     </dl>
   )
 }
 
-function BottomContent({ tab, mode }: { readonly tab: BottomTab; readonly mode: WorkspaceMode }) {
-  if (mode === 'empty')
+function BottomContent({
+  tab,
+  opened,
+  histogram,
+  log,
+}: {
+  readonly tab: BottomTab
+  readonly opened: OpenedDatasetDescriptor | undefined
+  readonly histogram: readonly number[]
+  readonly log: readonly string[]
+}) {
+  if (opened === undefined)
     return <p className="bottom-placeholder">Results and profiles appear here.</p>
-  if (tab === 'results') {
-    return (
-      <div className="result-table-wrap">
-        <table>
-          <caption className="visually-hidden">Mock connected component measurements</caption>
-          <thead>
-            <tr>
-              <th>Label</th>
-              <th>Area</th>
-              <th>ECD</th>
-              <th>Centroid</th>
-              <th>Aspect</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>17</td>
-              <td>28.6 nm²</td>
-              <td>6.04 nm</td>
-              <td>812, 603 px</td>
-              <td>1.18</td>
-            </tr>
-            <tr>
-              <td>18</td>
-              <td>43.1 nm²</td>
-              <td>7.41 nm</td>
-              <td>946, 712 px</td>
-              <td>1.37</td>
-            </tr>
-            <tr>
-              <td>19</td>
-              <td>21.8 nm²</td>
-              <td>5.27 nm</td>
-              <td>1093, 824 px</td>
-              <td>1.09</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    )
-  }
   if (tab === 'log') {
     return (
       <ol className="log-list">
-        <li>20:14:03 · Mock source opened locally</li>
-        <li>20:14:04 · First useful tile rendered</li>
-        <li>20:14:09 · ROI selected</li>
+        {log.map((entry) => (
+          <li key={entry}>{entry}</li>
+        ))}
       </ol>
     )
   }
-  if (tab === 'profile') {
+  if (tab === 'histogram') {
+    const maximum = Math.max(1, ...histogram)
     return (
-      <div className="mock-profile" aria-label="Mock line profile" role="img">
-        <span>0</span>
-        <svg aria-hidden="true" viewBox="0 0 600 75" preserveAspectRatio="none">
-          <path d="M0 61 L48 55 L96 58 L145 26 L194 48 L242 43 L290 14 L338 37 L386 29 L435 50 L483 38 L531 54 L600 45" />
-        </svg>
-        <span>256 nm</span>
+      <div className="mock-histogram" aria-label="Histogram of the latest numeric tile" role="img">
+        {HISTOGRAM_BIN_IDS.map((id, index) => (
+          <span key={id} style={{ height: `${((histogram[index] ?? 0) / maximum) * 72}px` }} />
+        ))}
       </div>
     )
   }
   return (
-    <div className="mock-histogram" aria-label="Mock intensity histogram" role="img">
-      {histogramBars.map((bar) => (
-        <span key={bar.id} style={{ height: `${bar.height}px` }} />
-      ))}
-    </div>
+    <p className="bottom-placeholder">
+      {tab === 'profile' ? 'Draw a line ROI to create a profile.' : 'Analysis results appear here.'}
+    </p>
   )
 }
 
@@ -274,18 +384,232 @@ interface ResizeConfig {
 
 export function App({ environment }: { readonly environment: PublicEnvironment }) {
   if (window.__PJI_WORKBENCH_METRICS__ === undefined) {
-    window.__PJI_WORKBENCH_METRICS__ = { reactRenders: 0, viewportFrames: 0 }
+    window.__PJI_WORKBENCH_METRICS__ = {
+      reactRenders: 0,
+      viewportFrames: 0,
+      tilesTransferred: 0,
+      tileBytesTransferred: 0,
+      tilePixelsTransferred: 0,
+      largestTilePixels: 0,
+      sourceBytes: 0,
+      datasetPixels: 0,
+      firstTileMilliseconds: null,
+    }
   }
   window.__PJI_WORKBENCH_METRICS__.reactRenders += 1
   const preferenceStore = useMemo(() => new LocalWorkbenchPreferenceStore(window.localStorage), [])
+  const client = useMemo(() => createImagingWorkerClient(), [])
+  const workspace = useMemo(() => createEmptyWorkspace('Untitled microscopy project'), [])
   const [preferences, setPreferences] = useState(() => preferenceStore.load())
-  const [mode, setMode] = useState<WorkspaceMode>('empty')
+  const [source, setSource] = useState<OpenedSourceDescriptor>()
+  const [opened, setOpened] = useState<OpenedDatasetDescriptor>()
+  const [selection, setSelection] = useState<PlaneSelection>()
+  const [component, setComponent] = useState(0)
+  const [mapping, setMapping] = useState<DisplayMapping>({ mode: 'linear', range: 'auto' })
+  const [histogram, setHistogram] = useState<readonly number[]>([])
+  const [status, setStatus] = useState<OpenStatus>('ready')
+  const [error, setError] = useState<string>()
+  const [urlDialog, setUrlDialog] = useState(false)
+  const [remoteUrl, setRemoteUrl] = useState('')
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('info')
   const [bottomTab, setBottomTab] = useState<BottomTab>('histogram')
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const viewportApi = useRef<MockViewportApi | null>(null)
-  const workspace = useMemo(() => createEmptyWorkspace('Untitled microscopy project'), [])
-  const hasDataset = mode === 'opened'
+  const [recentSources, setRecentSources] = useState(() => readRecentSources(window.localStorage))
+  const [log, setLog] = useState<readonly string[]>([])
+  const viewportApi = useRef<ScientificViewportApi | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const openAbort = useRef<AbortController | undefined>(undefined)
+  const generation = useRef(0)
+  const openedAt = useRef(0)
+  const autoRangeLocked = useRef(false)
+  const hasDataset = opened !== undefined && selection !== undefined
+
+  const appendLog = useCallback((message: string): void => {
+    setLog((current) => [...current.slice(-20), `${new Date().toLocaleTimeString()} · ${message}`])
+  }, [])
+
+  useEffect(() => {
+    void client.initialize().catch((initializationError: unknown) => {
+      setError(
+        initializationError instanceof Error
+          ? initializationError.message
+          : 'Worker failed to start',
+      )
+      setStatus('crashed')
+    })
+    return client.onCrash((crash) => {
+      setStatus('crashed')
+      setError(`${crash.message} Your project state is unchanged; restart and reopen the source.`)
+    })
+  }, [client])
+
+  useEffect(() => {
+    if (environment.appEnvironment !== 'test') return
+    window.__PJI_TEST_CRASH_WORKER__ = () => client.crashForTest()
+    return () => {
+      delete window.__PJI_TEST_CRASH_WORKER__
+    }
+  }, [client, environment.appEnvironment])
+
+  const rememberSource = useCallback((name: string): void => {
+    setRecentSources((current) => {
+      const next = [name, ...current.filter((candidate) => candidate !== name)].slice(0, 6)
+      window.localStorage.setItem(RECENT_SOURCE_KEY, JSON.stringify(next))
+      return next
+    })
+  }, [])
+
+  const finishOpen = useCallback(
+    async (nextSource: OpenedSourceDescriptor, signal: AbortSignal): Promise<void> => {
+      const summary = nextSource.datasets[0]
+      if (summary === undefined) throw new Error('The document contains no scientific datasets.')
+      const nextDataset = await client.openDataset(
+        nextSource.documentId,
+        summary.id,
+        nextSource.generation,
+        signal,
+      )
+      setSource(nextSource)
+      setOpened(nextDataset)
+      setSelection(nextDataset.selection)
+      setComponent(0)
+      setMapping({ mode: 'linear', range: 'auto' })
+      autoRangeLocked.current = false
+      setHistogram([])
+      setInspectorTab('info')
+      window.__PJI_WORKBENCH_METRICS__.sourceBytes = nextSource.source.size
+      const horizontal = nextDataset.dataset.axes.find(
+        ({ id }) => id === nextDataset.selection.displayAxes[0],
+      )
+      const vertical = nextDataset.dataset.axes.find(
+        ({ id }) => id === nextDataset.selection.displayAxes[1],
+      )
+      window.__PJI_WORKBENCH_METRICS__.datasetPixels =
+        (horizontal?.length ?? 0) * (vertical?.length ?? 0)
+      openedAt.current = performance.now()
+      rememberSource(nextSource.source.name)
+      appendLog(`Opened ${nextSource.source.name} with ${nextSource.reader.id}`)
+    },
+    [appendLog, client, rememberSource],
+  )
+
+  const runOpen = useCallback(
+    async (
+      opener: (nextGeneration: number, signal: AbortSignal) => Promise<OpenedSourceDescriptor>,
+    ): Promise<void> => {
+      openAbort.current?.abort()
+      const controller = new AbortController()
+      openAbort.current = controller
+      const nextGeneration = generation.current + 1
+      setStatus('opening')
+      setError(undefined)
+      try {
+        const nextSource = await opener(nextGeneration, controller.signal)
+        await finishOpen(nextSource, controller.signal)
+        generation.current = nextGeneration
+        setStatus('ready')
+      } catch (openError) {
+        if (controller.signal.aborted) {
+          appendLog('Source opening cancelled; the previous workspace was retained')
+        } else {
+          const message =
+            openError instanceof ImagingRpcError
+              ? `${openError.message}${openError.detail.guidance === undefined ? '' : ` ${openError.detail.guidance}`}`
+              : openError instanceof Error
+                ? openError.message
+                : 'Unable to open the source.'
+          setError(`${message} The previous workspace remains unchanged.`)
+        }
+        setStatus('ready')
+      }
+    },
+    [appendLog, finishOpen],
+  )
+
+  const openSample = useCallback((): void => {
+    void runOpen((nextGeneration, signal) => client.openSample(nextGeneration, signal))
+  }, [client, runOpen])
+
+  const openFiles = useCallback(
+    (files: readonly File[]): void => {
+      const primary = files[0]
+      if (primary === undefined) return
+      void runOpen((nextGeneration, signal) =>
+        client.openLocal(files, primary, nextGeneration, signal),
+      )
+    },
+    [client, runOpen],
+  )
+
+  const selectDataset = useCallback(
+    async (datasetId: string): Promise<void> => {
+      if (source === undefined || opened?.dataset.id === datasetId) return
+      try {
+        const next = await client.openDataset(source.documentId, datasetId, source.generation)
+        const previous = opened
+        setOpened(next)
+        setSelection(next.selection)
+        setComponent(0)
+        if (previous !== undefined) await client.closeDataset(previous.handleId, source.generation)
+      } catch (datasetError) {
+        setError(datasetError instanceof Error ? datasetError.message : 'Unable to open dataset')
+      }
+    },
+    [client, opened, source],
+  )
+
+  const changeSelection = useCallback(
+    (next: PlaneSelection): void => {
+      if (opened === undefined) return
+      void client
+        .setPlane(opened.handleId, opened.generation, next)
+        .then(() => {
+          autoRangeLocked.current = false
+          setMapping({ mode: 'linear', range: 'auto' })
+          setSelection(next)
+        })
+        .catch((selectionError: unknown) =>
+          setError(
+            selectionError instanceof Error ? selectionError.message : 'Plane selection failed',
+          ),
+        )
+    },
+    [client, opened],
+  )
+
+  const onTile = useCallback((tile: RenderTile, first: boolean): void => {
+    if (first && !autoRangeLocked.current) {
+      setHistogram(tile.histogram)
+      autoRangeLocked.current = true
+      setMapping({
+        mode: 'linear',
+        range: 'auto',
+        minimum: tile.range.minimum,
+        maximum: tile.range.maximum,
+      })
+      const elapsed = performance.now() - openedAt.current
+      window.__PJI_WORKBENCH_METRICS__.firstTileMilliseconds = elapsed
+      setLog((current) => [
+        ...current,
+        `${new Date().toLocaleTimeString()} · First tile in ${elapsed.toFixed(1)} ms`,
+      ])
+    }
+  }, [])
+
+  const changeComponent = useCallback((next: number): void => {
+    autoRangeLocked.current = false
+    setMapping({ mode: 'linear', range: 'auto' })
+    setComponent(next)
+  }, [])
+
+  const changeMapping = useCallback((next: DisplayMapping): void => {
+    autoRangeLocked.current = next.range === 'manual'
+    setMapping(next)
+  }, [])
+
+  const setViewportApi = useCallback((api: ScientificViewportApi | null): void => {
+    viewportApi.current = api
+  }, [])
 
   const updatePreferences = useCallback(
     (update: Partial<WorkbenchPreferences>, persist = true): void => {
@@ -300,22 +624,15 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
 
   const executeCommand = useCallback(
     (id: CommandId): void => {
-      if (id === 'workspace.openSample') {
-        setMode('opened')
-        setInspectorTab('info')
-      } else if (id === 'viewport.fit') {
-        viewportApi.current?.fit()
-      } else if (id === 'viewport.oneToOne') {
-        viewportApi.current?.oneToOne()
-      } else if (id === 'panel.agent') {
-        setInspectorTab('agent')
-      } else if (id === 'theme.toggle') {
+      if (id === 'workspace.openSample') openSample()
+      else if (id === 'viewport.fit') viewportApi.current?.fit()
+      else if (id === 'viewport.oneToOne') viewportApi.current?.oneToOne()
+      else if (id === 'panel.agent') setInspectorTab('agent')
+      else if (id === 'theme.toggle')
         updatePreferences({ theme: preferences.theme === 'dark' ? 'light' : 'dark' })
-      } else {
-        setPaletteOpen(true)
-      }
+      else setPaletteOpen(true)
     },
-    [preferences.theme, updatePreferences],
+    [openSample, preferences.theme, updatePreferences],
   )
 
   useEffect(() => {
@@ -365,12 +682,15 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     [preferences, updatePreferences],
   )
 
-  const setViewportApi = useCallback((api: MockViewportApi | null): void => {
-    viewportApi.current = api
-  }, [])
+  const submitRemote = (event: FormEvent): void => {
+    event.preventDefault()
+    setUrlDialog(false)
+    void runOpen((nextGeneration, signal) => client.openRemote(remoteUrl, nextGeneration, signal))
+  }
 
   const themeIcon = preferences.theme === 'dark' ? 'sun' : 'moon'
   const oppositeTheme: ThemeName = preferences.theme === 'dark' ? 'light' : 'dark'
+  const datasetName = opened?.dataset.name ?? opened?.dataset.id
 
   return (
     <ThemeRoot className="workbench-theme" theme={preferences.theme}>
@@ -390,9 +710,19 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             </div>
           </div>
           <Toolbar label="Workspace actions">
-            <Button onClick={() => executeCommand('workspace.openSample')} variant="primary">
-              <Icon name="open" size={15} /> Open sample
+            <Button onClick={() => fileInput.current?.click()} variant="primary">
+              <Icon name="open" size={15} /> Open files
             </Button>
+            <Button onClick={() => setUrlDialog(true)}>Open URL</Button>
+            <input
+              accept=".gsf,.hdr,.envi,.fits,.fit,.fts,.mrc,.map,.ccp4,.cbf,.imgcif,.tif,.tiff,.svs"
+              aria-label="Choose local scientific files"
+              className="visually-hidden"
+              multiple
+              onChange={(event) => openFiles([...(event.target.files ?? [])])}
+              ref={fileInput}
+              type="file"
+            />
             <IconButton
               label="Fit image"
               disabled={!hasDataset}
@@ -424,6 +754,26 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           </Toolbar>
         </header>
 
+        {error === undefined ? null : (
+          <div className="source-error" role="alert">
+            <span>{error}</span>
+            {status === 'crashed' ? (
+              <Button
+                onClick={() =>
+                  void client.restart().then(() => {
+                    setStatus('ready')
+                    setError(undefined)
+                  })
+                }
+              >
+                Restart imaging Worker
+              </Button>
+            ) : (
+              <Button onClick={() => setError(undefined)}>Dismiss</Button>
+            )}
+          </div>
+        )}
+
         <main className="workbench-main">
           <div className="workbench-primary">
             <Panel className="navigator-panel" label="Workspace navigator">
@@ -436,53 +786,35 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               </div>
               <nav aria-label="Project contents" className="navigator-tree">
                 <p className="tree-group">Sources</p>
-                {hasDataset ? (
+                {source === undefined ? (
+                  <TreeRow label="No source open" />
+                ) : (
                   <TreeRow
-                    label="sample-sem.mrc"
-                    detail="6 MB"
+                    label={source.source.name}
+                    detail={fileSize(source.source.size)}
                     selected
                     onSelect={() => setInspectorTab('info')}
                   />
-                ) : (
-                  <TreeRow label="No source open" />
                 )}
                 <p className="tree-group">Datasets</p>
-                {hasDataset ? (
+                {source?.datasets.map((dataset) => (
                   <TreeRow
                     depth={1}
-                    label="Electron intensity"
-                    detail="2D"
-                    onSelect={() => setInspectorTab('display')}
+                    key={dataset.id}
+                    label={dataset.name ?? dataset.id}
+                    detail={`${dataset.axes.length}D`}
+                    selected={opened?.dataset.id === dataset.id}
+                    onSelect={() => void selectDataset(dataset.id)}
                   />
+                ))}
+                {source === undefined && recentSources.length > 0 ? (
+                  <p className="tree-group">Recent names</p>
                 ) : null}
-                <p className="tree-group">Overlays</p>
-                {hasDataset ? (
-                  <TreeRow
-                    depth={1}
-                    label="Precipitate field"
-                    detail="ROI"
-                    selected={inspectorTab === 'roi'}
-                    onSelect={() => setInspectorTab('roi')}
-                  />
-                ) : null}
-                <p className="tree-group">Analyses</p>
-                {hasDataset ? (
-                  <TreeRow
-                    depth={1}
-                    label="Particle segmentation"
-                    detail="draft"
-                    onSelect={() => setInspectorTab('analysis')}
-                  />
-                ) : null}
-                <p className="tree-group">Results</p>
-                {hasDataset ? (
-                  <TreeRow
-                    depth={1}
-                    label="Object measurements"
-                    detail="3 rows"
-                    onSelect={() => setBottomTab('results')}
-                  />
-                ) : null}
+                {source === undefined
+                  ? recentSources.map((name) => (
+                      <TreeRow depth={1} detail="rebind required" key={name} label={name} />
+                    ))
+                  : null}
               </nav>
               <div className="navigator-footer">
                 <span>Revision {workspace.revision}</span>
@@ -500,39 +832,59 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               value={preferences.leftPanelWidth}
             />
 
-            <section aria-label="Image viewport" className="viewport-panel">
+            <section
+              aria-label="Image viewport"
+              className="viewport-panel"
+              onDragOver={(event) => {
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'copy'
+              }}
+              onDrop={(event) => {
+                event.preventDefault()
+                openFiles([...event.dataTransfer.files])
+              }}
+            >
               <div className="viewport-toolbar">
                 <div className="dataset-breadcrumb">
                   {hasDataset ? (
                     <>
-                      <span>sample-sem.mrc</span>
+                      <span>{source?.source.name}</span>
                       <span aria-hidden="true">/</span>
-                      <strong>Electron intensity</strong>
+                      <strong>{datasetName}</strong>
                     </>
                   ) : (
                     <span>No dataset</span>
                   )}
                 </div>
                 <Toolbar label="Viewport tools">
-                  <IconButton label="Region tool" disabled={!hasDataset}>
-                    <Icon name="roi" />
-                  </IconButton>
-                  <span className="tool-hint">Wheel zoom · Space drag pan</span>
+                  <span className="tool-hint">Wheel zoom · Space drag pan · Drop files here</span>
                 </Toolbar>
               </div>
               <div className="viewport-stage">
-                {hasDataset ? (
-                  <MockViewport onReady={setViewportApi} roiSelected={inspectorTab === 'roi'} />
+                {status === 'opening' ? (
+                  <div className="source-opening" role="status">
+                    <span className="source-opening__bar" />
+                    <strong>Opening source in the imaging Worker…</strong>
+                    <span>The current workspace stays available until opening succeeds.</span>
+                    <Button onClick={() => openAbort.current?.abort()}>Cancel</Button>
+                  </div>
+                ) : hasDataset && opened !== undefined && selection !== undefined ? (
+                  <ScientificViewport
+                    client={client}
+                    component={component}
+                    mapping={mapping}
+                    onReady={setViewportApi}
+                    onTile={onTile}
+                    opened={opened}
+                    selection={selection}
+                  />
                 ) : (
                   <EmptyState
-                    title="Open an original image"
-                    description="Inspect calibration, metadata, and pixels locally in your browser. The sample is deterministic and makes no network request."
+                    title="Open an original scientific image"
+                    description="Files remain local. Remote sources use bounded HTTPS Range reads when the server permits them."
                     action={
-                      <Button
-                        onClick={() => executeCommand('workspace.openSample')}
-                        variant="primary"
-                      >
-                        Try sample SEM image
+                      <Button onClick={openSample} variant="primary">
+                        Try generated calibrated sample
                       </Button>
                     }
                   />
@@ -554,7 +906,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               <div className="panel-heading">
                 <div>
                   <p>Inspector</p>
-                  <h2>{hasDataset ? 'Electron intensity' : 'Nothing selected'}</h2>
+                  <h2>{datasetName ?? 'Nothing selected'}</h2>
                 </div>
               </div>
               <Tabs
@@ -565,7 +917,17 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                 selectedId={inspectorTab}
               />
               <div className="inspector-scroll">
-                <InspectorContent mode={mode} tab={inspectorTab} />
+                <InspectorContent
+                  component={component}
+                  mapping={mapping}
+                  onComponent={changeComponent}
+                  onMapping={changeMapping}
+                  onSelection={changeSelection}
+                  opened={opened}
+                  selection={selection}
+                  source={source}
+                  tab={inspectorTab}
+                />
               </div>
             </Panel>
           </div>
@@ -589,7 +951,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               selectedId={bottomTab}
             />
             <div className="bottom-content">
-              <BottomContent mode={mode} tab={bottomTab} />
+              <BottomContent histogram={histogram} log={log} opened={opened} tab={bottomTab} />
             </div>
           </Panel>
         </main>
@@ -597,16 +959,52 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         <div aria-label="Workbench status" className="status-bar" role="status">
           <StatusItem label="Application status">
             <span className="status-dot" aria-hidden="true" />
-            Ready
+            {status === 'opening' ? 'Opening' : status === 'crashed' ? 'Worker stopped' : 'Ready'}
           </StatusItem>
           <StatusItem label="Source">
-            {hasDataset ? 'sample-sem.mrc · local' : 'No source open'}
+            {source === undefined
+              ? 'No source open'
+              : `${source.source.name} · ${source.source.kind}`}
           </StatusItem>
           <span className="status-spacer" />
-          <StatusItem label="Calibration">{hasDataset ? '0.42 nm/px' : 'Uncalibrated'}</StatusItem>
+          <StatusItem label="Calibration">{calibrationLabel(opened)}</StatusItem>
           <StatusItem label="Privacy">Files stay on this device</StatusItem>
         </div>
       </div>
+
+      {urlDialog ? (
+        <div className="url-dialog-backdrop">
+          <form
+            aria-label="Open remote scientific source"
+            className="url-dialog"
+            onSubmit={submitRemote}
+            role="dialog"
+          >
+            <h2>Open remote source</h2>
+            <p>
+              HTTPS is required outside localhost. The server must support CORS and byte ranges.
+            </p>
+            <label>
+              Source URL
+              <input
+                onChange={(event) => setRemoteUrl(event.target.value)}
+                placeholder="https://example.org/volume.mrc"
+                required
+                type="url"
+                value={remoteUrl}
+              />
+            </label>
+            <div className="url-dialog__actions">
+              <Button onClick={() => setUrlDialog(false)} type="button">
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary">
+                Open URL
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       <CommandPalette
         commands={paletteCommands}
         onClose={() => setPaletteOpen(false)}
