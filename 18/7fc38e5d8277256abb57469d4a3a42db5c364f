@@ -1,0 +1,28 @@
+apps/workbench/wrangler.jsonc
+  s_1fb3c891ca46c1::t_2ac54dadb311b7 5-10
+package.json
+  s_1fb3c891ca46c1::t_ae6debc55ecb2b 26
+apps/workbench/package.json
+  s_1fb3c891ca46c1::t_ae6debc55ecb2b 14
+apps/workbench/public/_headers
+  s_1fb3c891ca46c1::t_c709b5f4a7282e 7-9
+apps/workbench/README.md
+  s_1fb3c891ca46c1::t_2ac54dadb311b7 18-27,29-32
+  s_1fb3c891ca46c1::t_ae6debc55ecb2b 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "187fc38e5d8277256abb57469d4a3a42db5c364f",
+  "prompts": {},
+  "sessions": {
+    "s_1fb3c891ca46c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffd91-96e3-7ea1-897e-f2f6ce1de02a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
