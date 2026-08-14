@@ -4,13 +4,16 @@ import { createBuiltInScriptStudioExamples } from '../src/examples.js'
 import { SCRIPT_API_ENDPOINTS } from '../src/index.js'
 
 describe('Script Studio built-in examples', () => {
-  it('ships five integrity-checked examples with deterministic fixtures', async () => {
+  it('ships integrity-checked generated and real-data examples with deterministic fixtures', async () => {
     const examples = await createBuiltInScriptStudioExamples()
     expect(examples.map(({ id }) => id)).toEqual([
       'builtin.particle-count-recipe',
       'builtin.watershed-particles',
       'builtin.fft-radial-profile',
       'builtin.afm-level-roughness',
+      'builtin.real-ecoli-components',
+      'builtin.real-image-inspection',
+      'builtin.real-hhv6-histogram',
       'builtin.batch-measurement',
     ])
     expect(examples.map(({ tests }) => tests[0]?.fixtureId)).toEqual([
@@ -18,6 +21,9 @@ describe('Script Studio built-in examples', () => {
       'generated.touching-particles',
       'generated.periodic-lattice',
       'generated.afm-tilted-surface',
+      'cdc.ecoli-sem',
+      'nih.hela-cells-3709',
+      'nci.hhv6-em',
       'generated.batch-particles',
     ])
     for (const example of examples) {
@@ -27,7 +33,7 @@ describe('Script Studio built-in examples', () => {
           : validateAnalysisScriptDocument(example.artifact)
       expect(validation.issues, example.id).toEqual([])
       expect(example.tests.length).toBeGreaterThan(0)
-      expect(example.tests.every(({ fixtureId }) => fixtureId.startsWith('generated.'))).toBe(true)
+      expect(example.tests.every(({ fixtureId }) => fixtureId.includes('.'))).toBe(true)
     }
   })
 

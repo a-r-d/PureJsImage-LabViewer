@@ -260,6 +260,30 @@ function locator(value: unknown, path: string): SourceLocator {
   if (candidate.kind === 'sample') {
     return { kind: 'sample', sampleId: stringValue(candidate.sampleId, `${path}.sampleId`) }
   }
+  if (candidate.kind === 'bundled') {
+    const bundledPath = stringValue(candidate['path'], `${path}.path`)
+    const sha256 = stringValue(candidate['sha256'], `${path}.sha256`)
+    if (
+      !bundledPath.startsWith('examples/') ||
+      bundledPath.startsWith('/') ||
+      bundledPath.includes('..') ||
+      bundledPath.includes('\\')
+    )
+      throw new WorkspaceValidationError(
+        'INVALID_PROJECT',
+        `${path}.path must be an application-owned example path`,
+      )
+    if (!/^[a-f0-9]{64}$/.test(sha256))
+      throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.sha256 is invalid`)
+    return {
+      kind: 'bundled',
+      path: bundledPath,
+      name: stringValue(candidate.name, `${path}.name`),
+      size: integer(candidate.size, `${path}.size`),
+      sha256,
+      mediaType: stringValue(candidate['mediaType'], `${path}.mediaType`),
+    }
+  }
   if (candidate.kind === 'remote') {
     const url = stringValue(candidate.url, `${path}.url`)
     let parsed: URL

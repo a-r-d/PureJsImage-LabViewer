@@ -1178,6 +1178,70 @@ describe('PureJsImage Worker host', () => {
     await localHost.dispose()
   })
 
+  it('opens an exact same-origin bundled source and rejects integrity drift', async () => {
+    const bytes = encodeGsf({
+      width: 8,
+      height: 6,
+      values: Float32Array.from({ length: 48 }, (_, index) => index),
+    })
+    const digest = await crypto.subtle.digest('SHA-256', bytes)
+    const sha256 = [...new Uint8Array(digest)]
+      .map((value) => value.toString(16).padStart(2, '0'))
+      .join('')
+    const requested: string[] = []
+    const host = new ImagingWorkerHost({
+      baseUrl: 'https://workbench.invalid/',
+      fetch: async (input) => {
+        requested.push(String(input))
+        return new Response(bytes)
+      },
+    })
+    const locator = {
+      generation: 1,
+      path: 'examples/real/specimen.gsf',
+      name: 'specimen.gsf',
+      size: bytes.byteLength,
+      sha256,
+      mediaType: 'application/octet-stream',
+    }
+    const opened = await host.handle(rpcRequest('bundled-open', 'source.open-bundled', locator))
+    const bundled = payload(opened.response, 'source-bundled.opened')
+    expect(requested).toEqual(['https://workbench.invalid/examples/real/specimen.gsf'])
+    expect(bundled.source.source).toMatchObject({ name: 'specimen.gsf', size: bytes.byteLength })
+    expect(bundled.dataset.dataset.axes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'x', length: 8 }),
+        expect.objectContaining({ id: 'y', length: 6 }),
+      ]),
+    )
+
+    const rejected = await new ImagingWorkerHost({
+      baseUrl: 'https://workbench.invalid/',
+      fetch: async () => new Response(bytes),
+    }).handle(
+      rpcRequest('bundled-drift', 'source.open-bundled', {
+        ...locator,
+        sha256: '0'.repeat(64),
+      }),
+    )
+    expect(rejected.response).toMatchObject({
+      ok: false,
+      error: {
+        code: 'INVALID_PAYLOAD',
+        message: 'Bundled source failed its SHA-256 integrity check',
+      },
+    })
+    const overflow = await new ImagingWorkerHost({
+      baseUrl: 'https://workbench.invalid/',
+      fetch: async () => new Response(new Uint8Array([...bytes, 0])),
+    }).handle(rpcRequest('bundled-overflow', 'source.open-bundled', locator))
+    expect(overflow.response).toMatchObject({
+      ok: false,
+      error: { code: 'LIMIT_EXCEEDED', message: 'Bundled source exceeds its byte budget' },
+    })
+    await host.dispose()
+  })
+
   it('returns CORS/range guidance when a remote server ignores ranges', async () => {
     const host = new ImagingWorkerHost({
       fetch: async () => new Response('whole file', { status: 200 }),

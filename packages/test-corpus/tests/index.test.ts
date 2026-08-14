@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
@@ -9,6 +10,7 @@ import {
   independentOriginValue,
   REQUIRED_PRODUCT_CAPABILITIES,
   researchExampleScenarios,
+  resolveExampleFixture,
   resolveGeneratedFixture,
   scenarioCapabilityMatrix,
   scenarioTestArtifacts,
@@ -29,8 +31,10 @@ describe('generated corpus foundation', () => {
     const validation = validateCorpusManifest(corpusManifest)
     expect(validation.ok).toBe(true)
     expect(Object.isFrozen(corpusManifest)).toBe(true)
-    expect(enabledExampleScenarios()).toHaveLength(5)
-    expect(enabledExampleScenarios().every(({ source }) => source.kind === 'generated')).toBe(true)
+    expect(enabledExampleScenarios()).toHaveLength(8)
+    expect(
+      enabledExampleScenarios().filter(({ source }) => source.kind === 'bundled'),
+    ).toHaveLength(3)
     expect(enabledExampleScenarios().every(({ expected }) => expected.length > 0)).toBe(true)
     expect(researchExampleScenarios().length).toBeGreaterThanOrEqual(8)
     expect(new Set(corpusManifest.scenarios.map(({ id }) => id)).size).toBe(
@@ -50,13 +54,27 @@ describe('generated corpus foundation', () => {
     expect(() => resolveGeneratedFixture('openslide.cmu1-aperio')).toThrow(
       'not an enabled generated fixture',
     )
+    expect(resolveExampleFixture('cdc.ecoli-sem')).toEqual({
+      scenarioId: 'cdc.ecoli-sem',
+      requiresNetwork: false,
+      locator: {
+        kind: 'bundled',
+        path: 'examples/real/e-coli-sem.gsf',
+        name: 'e-coli-sem.gsf',
+        size: 1_330_276,
+        sha256: 'da8cd19072a139b869e070de78f1cecc6aab491cfbcf4c41253acd115b2318e3',
+        mediaType: 'application/octet-stream',
+      },
+    })
   })
 
   it('generates immutable PR artifacts and a complete cross-tier capability matrix', () => {
     const artifacts = scenarioTestArtifacts()
-    expect(artifacts).toHaveLength(5)
+    expect(artifacts).toHaveLength(8)
     expect(Object.isFrozen(artifacts)).toBe(true)
-    expect(artifacts.every(({ fixture }) => fixture.kind === 'generated')).toBe(true)
+    expect(new Set(artifacts.map(({ fixture }) => fixture.kind))).toEqual(
+      new Set(['generated', 'bundled']),
+    )
     expect(artifacts.every(({ steps, expected }) => steps.length > 0 && expected.length > 0)).toBe(
       true,
     )
@@ -74,7 +92,9 @@ describe('generated corpus foundation', () => {
       implementation: 'independent-analytic-generated-fixture-reference',
       version: '1.0.0',
     })
-    expect(oracle.scenarios).toHaveLength(enabledExampleScenarios().length)
+    expect(oracle.scenarios).toHaveLength(
+      enabledExampleScenarios().filter(({ source }) => source.kind === 'generated').length,
+    )
     for (const expected of oracle.scenarios)
       expect(independentOriginValue(expected.id)).toBeCloseTo(expected.originValue, 12)
   })
@@ -127,8 +147,8 @@ describe('generated corpus foundation', () => {
 
   it('keeps unqualified external data out of the enabled catalog with auditable reasons', () => {
     const audit = createCorpusAuditReport(corpusManifest)
-    expect(audit.counts.enabled).toBe(5)
-    expect(audit.entries.filter(({ ready }) => ready)).toHaveLength(5)
+    expect(audit.counts.enabled).toBe(8)
+    expect(audit.entries.filter(({ ready }) => ready)).toHaveLength(8)
     expect(audit.entries.find(({ id }) => id === 'zenodo.indentation-masks')).toMatchObject({
       status: 'candidate',
       ready: false,
@@ -136,6 +156,21 @@ describe('generated corpus foundation', () => {
     expect(
       audit.entries.find(({ id }) => id === 'zenodo.indentation-masks')?.reasons.join(' '),
     ).toContain('SHA-256 is missing')
+  })
+
+  it('pins every bundled real-data byte to the reviewed manifest', async () => {
+    const bundled = enabledExampleScenarios().filter(({ source }) => source.kind === 'bundled')
+    for (const scenario of bundled)
+      for (const file of scenario.source.files) {
+        const bytes = await readFile(
+          new URL(`../../../apps/workbench/public/${file.path}`, import.meta.url),
+        )
+        expect(bytes.byteLength, `${scenario.id}/${file.path}`).toBe(file.sizeBytes)
+        expect(
+          createHash('sha256').update(bytes).digest('hex'),
+          `${scenario.id}/${file.path}`,
+        ).toBe(file.sha256)
+      }
   })
 
   it('keeps the checked-in audit synchronized with every manifest status', async () => {

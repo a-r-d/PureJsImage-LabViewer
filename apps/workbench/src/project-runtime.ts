@@ -70,8 +70,13 @@ export class WorkbenchWorkspaceRuntime implements WorkspaceRuntimePort {
     }
     const generation = this.#generation + 1
     let openedSource: OpenedSourceDescriptor
+    let openedDataset: OpenedDatasetDescriptor | undefined
     if (source.locator.kind === 'sample') {
       openedSource = await this.client.openSample(generation, signal, source.locator.sampleId)
+    } else if (source.locator.kind === 'bundled') {
+      const bundled = await this.client.openBundled(source.locator, generation, signal)
+      openedSource = bundled.source
+      openedDataset = bundled.dataset
     } else if (source.locator.kind === 'remote') {
       openedSource = await this.client.openRemote(source.locator.url, generation, signal)
     } else {
@@ -83,7 +88,7 @@ export class WorkbenchWorkspaceRuntime implements WorkspaceRuntimePort {
       }
       openedSource = await this.client.openLocal(files, primary, generation, signal)
     }
-    const openedDataset = await this.client.openDataset(
+    openedDataset ??= await this.client.openDataset(
       openedSource.documentId,
       dataset.datasetId,
       generation,

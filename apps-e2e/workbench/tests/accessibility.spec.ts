@@ -40,7 +40,34 @@ test('@a11y has no serious violations in empty and opened workspace states', asy
   expect(
     galleryResults.violations.filter(({ impact }) => impact === 'critical' || impact === 'serious'),
   ).toEqual([])
+  await page.getByRole('tab', { name: 'Planned datasets' }).click()
+  const plannedResults = await new AxeBuilder({ page }).include('.example-gallery').analyze()
+  expect(
+    plannedResults.violations.filter(({ impact }) => impact === 'critical' || impact === 'serious'),
+  ).toEqual([])
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog', { name: 'Example library' })).toBeHidden()
   await expect(examplesTrigger).toBeFocused()
+})
+
+test('@a11y project and remote-source dialogs have no serious violations', async ({ page }) => {
+  await page.getByRole('button', { name: 'Projects', exact: true }).click()
+  const projectsResults = await new AxeBuilder({ page }).include('.url-dialog').analyze()
+  expect(
+    projectsResults.violations.filter(
+      ({ impact }) => impact === 'critical' || impact === 'serious',
+    ),
+  ).toEqual([])
+  await page
+    .getByRole('dialog', { name: 'Recent projects' })
+    .getByRole('button', {
+      name: 'Close',
+    })
+    .click()
+
+  await page.locator('.app-bar').getByRole('button', { name: 'Open URL' }).click()
+  const remoteResults = await new AxeBuilder({ page }).include('.url-dialog').analyze()
+  expect(
+    remoteResults.violations.filter(({ impact }) => impact === 'critical' || impact === 'serious'),
+  ).toEqual([])
 })

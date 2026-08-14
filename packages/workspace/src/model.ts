@@ -46,6 +46,14 @@ export type JsonValue =
 export type SourceLocator =
   | Readonly<{ kind: 'sample'; sampleId: string }>
   | Readonly<{
+      kind: 'bundled'
+      path: string
+      name: string
+      size: number
+      sha256: string
+      mediaType: string
+    }>
+  | Readonly<{
       kind: 'local'
       name: string
       size: number

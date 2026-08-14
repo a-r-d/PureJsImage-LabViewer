@@ -375,6 +375,37 @@ describe('workspace model and commands', () => {
 })
 
 describe('history, serialization, migration, and storage', () => {
+  it('round-trips verified application-owned bundled source locators', () => {
+    const bundledSource: WorkspaceSourceReference = {
+      ...source,
+      locator: {
+        kind: 'bundled',
+        path: 'examples/real/e-coli-sem.jpg',
+        name: 'e-coli-sem.jpg',
+        size: 64_119,
+        sha256: 'b9eec4fab4fd1bf3dbae6d69f9a23f1eb3db59876184e1e7c972b4c6b2314114',
+        mediaType: 'image/jpeg',
+      },
+    }
+    const snapshot = apply(empty(), { ...sourceAdd, source: bundledSource })
+    expect(importWorkspaceProject(serializeWorkspaceProject(snapshot)).sources[0]?.locator).toEqual(
+      bundledSource.locator,
+    )
+    expect(() =>
+      importWorkspaceProject(
+        serializeWorkspaceProject({
+          ...snapshot,
+          sources: [
+            {
+              ...bundledSource,
+              locator: { ...bundledSource.locator, path: '../secret.jpg' },
+            },
+          ],
+        }),
+      ),
+    ).toThrow('application-owned example path')
+  })
+
   it('undoes, redoes, and clears redo after a new command', () => {
     const history = new WorkspaceHistory(empty())
     history.dispatch(

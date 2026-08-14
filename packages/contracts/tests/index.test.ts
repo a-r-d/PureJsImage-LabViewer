@@ -85,6 +85,36 @@ describe('imaging RPC validation', () => {
     ).toThrow(RpcValidationError)
   })
 
+  it('accepts only bounded, content-addressed application example locators', () => {
+    const valid = rpcRequest('bundled-1', 'source.open-bundled', {
+      generation: 1,
+      path: 'examples/real/specimen.gsf',
+      name: 'specimen.gsf',
+      size: 4_096,
+      sha256: 'a'.repeat(64),
+      mediaType: 'application/octet-stream',
+    })
+    expect(validateWorkerRequest(valid)).toEqual(valid)
+
+    for (const path of ['/examples/real/specimen.gsf', '../secret.gsf', 'examples/../secret.gsf']) {
+      expect(() =>
+        validateWorkerRequest({ ...valid, payload: { ...valid.payload, path } }),
+      ).toThrow(RpcValidationError)
+    }
+    expect(() =>
+      validateWorkerRequest({
+        ...valid,
+        payload: { ...valid.payload, sha256: 'NOT-A-SHA', size: 0 },
+      }),
+    ).toThrow(RpcValidationError)
+    expect(() =>
+      validateWorkerRequest({
+        ...valid,
+        payload: { ...valid.payload, size: RPC_LIMITS.maxBundledSourceBytes + 1 },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'LIMIT_EXCEEDED' }))
+  })
+
   it('bounds analysis JSON, overlay pixels, and table pages before Worker execution', () => {
     expect(() =>
       validateWorkerRequest({

@@ -19,7 +19,7 @@ test('@scenario levels and measures the generated AFM surface', async ({ page },
     await gallery
       .locator('.example-card')
       .filter({ hasText: afmScenario.scenarioTitle })
-      .getByRole('button', { name: 'Open', exact: true })
+      .getByRole('button', { name: 'Open example', exact: true })
       .click()
     await waitForWorkbenchSettled(page)
     await page.getByRole('tab', { name: 'Analysis' }).click()

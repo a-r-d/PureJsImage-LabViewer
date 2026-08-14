@@ -6,6 +6,7 @@ import {
   type CorpusStatus,
   type CorpusTier,
   type ExampleBudgetsV1,
+  type ExampleInitialAnalysisV1,
   type ExampleScenarioV1,
   type ExampleTestPlanV1,
   type ExampleWorkflowStepAction,
@@ -34,6 +35,15 @@ const REVIEW_REQUIRED: CorpusLicenseV1 = {
   redistribution: 'review-required',
 }
 
+const PUBLIC_DOMAIN_MARK: CorpusLicenseV1 = {
+  id: 'PDM-1.0',
+  name: 'Creative Commons Public Domain Mark 1.0',
+  url: 'https://creativecommons.org/publicdomain/mark/1.0/',
+  attribution: 'Attribution is recorded per scenario from the originating NIH or CDC record.',
+  redistribution: 'approved',
+  verifiedAt: CORPUS_VERIFICATION_DATE,
+}
+
 const GENERATED_BUDGETS: ExampleBudgetsV1 = {
   maxSourceBytes: 16_000_000,
   maxRemoteBytes: 0,
@@ -56,6 +66,18 @@ const EXTERNAL_BUDGETS: ExampleBudgetsV1 = {
   maxCompletionMilliseconds: 120_000,
   maxPeakManagedBytes: 512_000_000,
   maxRangeRequests: 128,
+}
+
+const BUNDLED_BUDGETS: ExampleBudgetsV1 = {
+  maxSourceBytes: 8_000_000,
+  maxRemoteBytes: 0,
+  maxExpandedBytes: 8_000_000,
+  maxArchiveFiles: 1,
+  maxFirstUsefulTileMilliseconds: 4_000,
+  maxCancellationMilliseconds: 500,
+  maxCompletionMilliseconds: 120_000,
+  maxPeakManagedBytes: 256_000_000,
+  maxRangeRequests: 0,
 }
 
 const WORKFLOW_ACTIONS: Readonly<Record<string, readonly ExampleWorkflowStepAction[]>> = {
@@ -92,6 +114,22 @@ const WORKFLOW_ACTIONS: Readonly<Record<string, readonly ExampleWorkflowStepActi
     'project.replay',
   ],
   'generated.particles.batch': ['gallery.open', 'source.inspect', 'analysis.batch', 'script.test'],
+  'real.ecoli.components': [
+    'gallery.open',
+    'source.inspect',
+    'analysis.core',
+    'analysis.particles',
+    'project.replay',
+    'accessibility.scan',
+  ],
+  'real.hela.inspect': ['gallery.open', 'source.inspect', 'viewport.inspect', 'project.replay'],
+  'real.hhv6.histogram': [
+    'gallery.open',
+    'source.inspect',
+    'analysis.core',
+    'project.replay',
+    'accessibility.scan',
+  ],
 }
 
 const GENERATED_TEST_PLANS: Readonly<Record<string, ExampleTestPlanV1>> = {
@@ -150,6 +188,54 @@ const GENERATED_TEST_PLANS: Readonly<Record<string, ExampleTestPlanV1>> = {
     accessibility: false,
     projectReplay: false,
     agentEvalCaseIds: ['run-bounded-batch'],
+  },
+}
+
+const BUNDLED_TEST_PLANS: Readonly<Record<string, ExampleTestPlanV1>> = {
+  'cdc.ecoli-sem': {
+    tier: 'pr',
+    capabilities: [
+      'source.reader-dataset',
+      'source.first-useful-tile',
+      'viewport.navigation-value-readout',
+      'analysis.threshold-morphology-watershed',
+      'analysis.components-filtering-measurements',
+      'project.save-reopen-rebind',
+      'accessibility.keyboard',
+      'results.linked-selection',
+    ],
+    screenshotStates: ['opened', 'analysis'],
+    accessibility: true,
+    projectReplay: true,
+    agentEvalCaseIds: [],
+  },
+  'nih.hela-cells-3709': {
+    tier: 'pr',
+    capabilities: [
+      'source.reader-dataset',
+      'source.first-useful-tile',
+      'viewport.navigation-value-readout',
+      'project.save-reopen-rebind',
+    ],
+    screenshotStates: ['opened'],
+    accessibility: false,
+    projectReplay: true,
+    agentEvalCaseIds: [],
+  },
+  'nci.hhv6-em': {
+    tier: 'pr',
+    capabilities: [
+      'source.reader-dataset',
+      'source.first-useful-tile',
+      'viewport.navigation-value-readout',
+      'analysis.filters-transforms-background',
+      'project.save-reopen-rebind',
+      'accessibility.keyboard',
+    ],
+    screenshotStates: ['opened', 'analysis'],
+    accessibility: true,
+    projectReplay: true,
+    agentEvalCaseIds: [],
   },
 }
 
@@ -264,6 +350,60 @@ function generated(
         throw new Error(`Missing generated test plan for ${id}.`)
       })(),
     testTags: ['pr', 'offline', 'generated'],
+    verifiedAt: CORPUS_VERIFICATION_DATE,
+  }
+}
+
+function bundled(
+  id: string,
+  title: string,
+  summary: string,
+  modality: string,
+  vendor: string,
+  calibration: string,
+  landingPage: string,
+  file: CorpusFileV1,
+  previewFile: CorpusFileV1,
+  attribution: string,
+  tags: readonly string[],
+  learningGoals: readonly string[],
+  workflows: readonly ExampleWorkflowV1[],
+  expected: ExampleScenarioV1['expected'],
+  initialAnalysis?: ExampleInitialAnalysisV1,
+): ExampleScenarioV1 {
+  return {
+    schemaVersion: CORPUS_SCHEMA_VERSION,
+    id,
+    status: 'enabled',
+    tier: 'bundled',
+    statusReason:
+      'Public-domain source provenance, a documented scientific-format derivative, exact integrity, offline delivery, and bounded CI coverage are verified.',
+    title,
+    summary,
+    modality,
+    vendor,
+    format: 'GSF',
+    sizeClass: file.sizeBytes !== undefined && file.sizeBytes < 500_000 ? 'tiny' : 'small',
+    calibration,
+    source: { kind: 'bundled', landingPage, files: [file, previewFile] },
+    license: { ...PUBLIC_DOMAIN_MARK, attribution, citation: landingPage },
+    preview: {
+      kind: 'bundled-image',
+      value: `/${previewFile.path}`,
+      alt: `${title} real-data preview`,
+    },
+    ...(initialAnalysis === undefined ? {} : { initialAnalysis }),
+    tags,
+    learningGoals,
+    workflows,
+    expected,
+    budgets: BUNDLED_BUDGETS,
+    testPlan:
+      BUNDLED_TEST_PLANS[id] ??
+      (() => {
+        throw new Error(`Missing bundled test plan for ${id}.`)
+      })(),
+    testTags: ['pr', 'offline', 'bundled', 'real-data'],
     verifiedAt: CORPUS_VERIFICATION_DATE,
   }
 }
@@ -432,6 +572,177 @@ const scenarios: readonly ExampleScenarioV1[] = [
       ),
     ],
     'batch',
+  ),
+  bundled(
+    'cdc.ecoli-sem',
+    'E. coli colony (real SEM)',
+    'A CDC scanning electron micrograph of an E. coli colony with instrument annotations and a 2 µm scale bar, opened as a full-resolution grayscale GSF derivative.',
+    'SEM (real)',
+    'CDC Public Health Image Library · Janice Haney Carr',
+    'Scale bar visible in source · no machine-readable calibration embedded',
+    'https://commons.wikimedia.org/wiki/File:Scanning_electron_micrograph_of_an_E._coli_colony.jpg',
+    {
+      path: 'examples/real/e-coli-sem.gsf',
+      sizeBytes: 1_330_276,
+      sha256: 'da8cd19072a139b869e070de78f1cecc6aab491cfbcf4c41253acd115b2318e3',
+      mediaType: 'application/octet-stream',
+      delivery: 'bundled',
+    },
+    {
+      path: 'examples/real/e-coli-sem.jpg',
+      sizeBytes: 64_119,
+      sha256: 'b9eec4fab4fd1bf3dbae6d69f9a23f1eb3db59876184e1e7c972b4c6b2314114',
+      mediaType: 'image/jpeg',
+      delivery: 'bundled',
+    },
+    'CDC / Janice Haney Carr, PHIL 10071; public-domain source image. The GSF file is a grayscale intensity derivative retaining the original 700 by 475 dimensions.',
+    ['real-data', 'SEM', 'bacteria', 'threshold', 'connected-components'],
+    [
+      'Inspect authentic acquisition annotations',
+      'Review a bright-object segmentation starting point',
+      'Separate measured pixels from the visible scale-bar annotation',
+    ],
+    [
+      workflow(
+        'real.ecoli.components',
+        'Segment bright structures',
+        'builtin.real-ecoli-components',
+        'script',
+        'A reviewed manual threshold and connected-components result opens with the source.',
+      ),
+    ],
+    [
+      {
+        id: 'real.ecoli.source-dimensions',
+        level: 'exact',
+        description: 'The full-resolution scientific derivative decodes to 700 by 475 pixels.',
+        value: '700x475',
+      },
+      {
+        id: 'real.ecoli.analysis-visible',
+        level: 'product',
+        description: 'The opened workspace includes a committed threshold/components graph.',
+        value: true,
+      },
+    ],
+    {
+      kind: 'connected-components',
+      title: 'Bright-structure segmentation',
+      description:
+        'Grayscale intensity threshold > 46,260 with 8-connected labeling. This is a reviewable starting point, not biological ground truth.',
+      component: 0,
+      threshold: 46_260,
+      mode: 'greater-than',
+      connectivity: 8,
+      overlay: 'labels',
+    },
+  ),
+  bundled(
+    'nih.hela-cells-3709',
+    'Dividing HeLa cells (real EM)',
+    'An NIH electron micrograph showing dividing HeLa cells and dense surface ultrastructure, opened as a bounded 1024-pixel grayscale GSF derivative.',
+    'Electron microscopy (real)',
+    'National Institutes of Health',
+    'No machine-readable calibration embedded · measurements remain in pixels',
+    'https://commons.wikimedia.org/wiki/File:HeLa_Cells_Image_3709-PH.jpg',
+    {
+      path: 'examples/real/hela-cells-3709.gsf',
+      sizeBytes: 3_408_144,
+      sha256: 'b906ea4fed0f24d9108d67e562dfeebdb7ce1911784d4dcfc860c4689c97f881',
+      mediaType: 'application/octet-stream',
+      delivery: 'bundled',
+    },
+    {
+      path: 'examples/real/hela-cells-3709.jpg',
+      sizeBytes: 355_974,
+      sha256: '34d089ecae1e7a7e9afc3b128f4a5f827864945ea1f06f2da8744b05e5af9899',
+      mediaType: 'image/jpeg',
+      delivery: 'bundled',
+    },
+    'National Institutes of Health, image 3709-PH; public-domain source image. The GSF file is a Lanczos-resampled 1024 by 832 grayscale intensity derivative.',
+    ['real-data', 'electron-microscopy', 'HeLa', 'cell-division', 'inspection'],
+    [
+      'Navigate a high-resolution real micrograph',
+      'Inspect intensity and acquisition metadata boundaries',
+      'Create a region before quantitative comparison',
+    ],
+    [
+      workflow(
+        'real.hela.inspect',
+        'Inspect real micrograph',
+        'builtin.real-image-inspection',
+        'script',
+        'The workflow keeps the opened derivative unchanged and prepares ROI-based inspection.',
+      ),
+    ],
+    [
+      {
+        id: 'real.hela.source-dimensions',
+        level: 'exact',
+        description: 'The bounded scientific derivative decodes to 1024 by 832 pixels.',
+        value: '1024x832',
+      },
+    ],
+  ),
+  bundled(
+    'nci.hhv6-em',
+    'HHV-6 virions (real TEM)',
+    'An NCI transmission electron micrograph with mature HHV-6 virions and a labeled structural inset, opened as a bounded 1024-pixel grayscale GSF derivative.',
+    'TEM (real)',
+    'NCI Laboratory of Tumor Cell Biology · Bernard Kramarsky',
+    'No machine-readable calibration embedded · measurements remain in pixels',
+    'https://commons.wikimedia.org/wiki/File:HHV-6_-_EM.jpg',
+    {
+      path: 'examples/real/hhv6-em.gsf',
+      sizeBytes: 2_826_476,
+      sha256: 'a0fea0629ada12c9022130f5e992c63066938bd38eee854ce2b6006c353c539f',
+      mediaType: 'application/octet-stream',
+      delivery: 'bundled',
+    },
+    {
+      path: 'examples/real/hhv6-em.jpg',
+      sizeBytes: 1_674_628,
+      sha256: 'df420ed4c3428c9ae3610fd569331253d7493d97553b5de6fd1a0aa9c10d909e',
+      mediaType: 'image/jpeg',
+      delivery: 'bundled',
+    },
+    'Bernard Kramarsky / NCI Laboratory of Tumor Cell Biology, image 2257; public-domain source image. The GSF file is a Lanczos-resampled 1024 by 690 grayscale intensity derivative.',
+    ['real-data', 'TEM', 'virus', 'HHV-6', 'histogram'],
+    [
+      'Inspect authentic TEM contrast',
+      'Compare dense virion cores with the bright background',
+      'Treat the labeled inset as source annotation rather than measured pixels',
+    ],
+    [
+      workflow(
+        'real.hhv6.histogram',
+        'Inspect intensity distribution',
+        'builtin.real-hhv6-histogram',
+        'script',
+        'A bounded 64-bin intensity histogram opens with the source.',
+      ),
+    ],
+    [
+      {
+        id: 'real.hhv6.source-dimensions',
+        level: 'exact',
+        description: 'The bounded scientific derivative decodes to 1024 by 690 pixels.',
+        value: '1024x690',
+      },
+      {
+        id: 'real.hhv6.histogram-samples',
+        level: 'exact',
+        description: 'The whole-plane histogram covers every decoded pixel.',
+        value: 706_560,
+      },
+    ],
+    {
+      kind: 'histogram',
+      title: 'Whole-plane intensity histogram',
+      description:
+        'A bounded 64-bin histogram is computed over the first component and shown in Results.',
+      component: 0,
+    },
   ),
   external(
     'nist.sem-detection-limits',
@@ -647,6 +958,54 @@ export interface GeneratedFixtureResolutionV1 {
   readonly generatorId: string
   readonly requiresNetwork: false
   readonly locator: Readonly<{ kind: 'sample'; sampleId: string }>
+}
+
+export interface BundledFixtureResolutionV1 {
+  readonly scenarioId: string
+  readonly requiresNetwork: false
+  readonly locator: Readonly<{
+    kind: 'bundled'
+    path: string
+    name: string
+    size: number
+    sha256: string
+    mediaType: string
+  }>
+}
+
+export type ExampleFixtureResolutionV1 = GeneratedFixtureResolutionV1 | BundledFixtureResolutionV1
+
+export function resolveExampleFixture(scenarioId: string): ExampleFixtureResolutionV1 {
+  const scenario = corpusManifest.scenarios.find(({ id }) => id === scenarioId)
+  if (scenario === undefined) throw new Error(`Unknown corpus scenario: ${scenarioId}.`)
+  if (scenario.status !== 'enabled')
+    throw new Error(`Corpus scenario ${scenarioId} is not an enabled fixture.`)
+  if (scenario.source.kind === 'generated') {
+    return {
+      scenarioId,
+      generatorId: scenario.source.generatorId,
+      requiresNetwork: false,
+      locator: { kind: 'sample', sampleId: scenario.source.generatorId },
+    }
+  }
+  if (scenario.source.kind === 'bundled') {
+    const file = scenario.source.files[0]
+    if (file === undefined || file.sizeBytes === undefined || file.sha256 === undefined)
+      throw new Error(`Bundled corpus scenario ${scenarioId} has no exact primary file.`)
+    return {
+      scenarioId,
+      requiresNetwork: false,
+      locator: {
+        kind: 'bundled',
+        path: file.path,
+        name: file.path.split('/').at(-1) ?? file.path,
+        size: file.sizeBytes,
+        sha256: file.sha256,
+        mediaType: file.mediaType,
+      },
+    }
+  }
+  throw new Error(`Corpus scenario ${scenarioId} is not an offline fixture.`)
 }
 
 export function resolveGeneratedFixture(scenarioId: string): GeneratedFixtureResolutionV1 {

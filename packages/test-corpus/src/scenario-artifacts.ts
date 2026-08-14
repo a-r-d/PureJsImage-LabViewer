@@ -2,6 +2,7 @@ import { corpusManifest } from './manifest.js'
 import type {
   ExampleBudgetsV1,
   ExampleExpectedAssertionV1,
+  ExampleInitialAnalysisV1,
   ExampleOracleReferenceV1,
   ExampleScenarioV1,
   ExampleTestPlanV1,
@@ -54,6 +55,7 @@ export interface ScenarioTestArtifactV1 {
     calibration: string
     licenseId: string
   }>
+  readonly initialAnalysis?: ExampleInitialAnalysisV1 | undefined
   readonly steps: readonly ExampleWorkflowStepV1[]
   readonly expected: readonly ExampleExpectedAssertionV1[]
   readonly oracle: ExampleOracleReferenceV1
@@ -87,6 +89,9 @@ function artifactFor(
       calibration: scenario.calibration,
       licenseId: scenario.license.id,
     }),
+    ...(scenario.initialAnalysis === undefined
+      ? {}
+      : { initialAnalysis: scenario.initialAnalysis }),
     steps: workflow.steps,
     expected: workflow.expected,
     oracle: workflow.oracle,

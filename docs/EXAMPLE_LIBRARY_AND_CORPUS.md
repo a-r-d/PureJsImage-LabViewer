@@ -11,9 +11,10 @@ The example system serves three purposes simultaneously:
 Every example is a versioned scenario, not merely an image thumbnail.
 
 The Prompt 11 baseline implements this contract in `packages/test-corpus`. Five distinct,
-deterministic GSF scenarios are enabled offline and share their descriptors with the workbench
-gallery, fixture resolver, workflow buttons, and tests. Researched real datasets remain in a
-separate candidate/scheduled/excluded queue until every gate below is satisfied. See
+deterministic GSF scenarios and three exact public-domain real electron micrographs are enabled
+offline and share their descriptors with the workbench gallery, fixture resolver, workflow
+buttons, initial-analysis presets, project replay, and tests. Other researched datasets remain in
+a separate planned/candidate/scheduled/excluded queue until every gate below is satisfied. See
 `docs/CORPUS_AUDIT.md` for the per-entry evidence and remaining blockers.
 
 ## Example descriptor
@@ -29,6 +30,7 @@ interface ExampleScenarioV1 {
   readonly source: ExampleSource
   readonly license: ExampleLicense
   readonly preview: ExamplePreview
+  readonly initialAnalysis?: ExampleInitialAnalysisV1
   readonly tags: readonly string[]
   readonly learningGoals: readonly string[]
   readonly defaultView?: ExampleViewState
@@ -45,6 +47,7 @@ The same normalized descriptor should drive:
 - the test-corpus downloader/cache;
 - E2E fixture setup;
 - workflow buttons;
+- optional analysis that is executed and committed when the example opens;
 - expected result assertions;
 - agent eval tasks;
 - attribution and source links.

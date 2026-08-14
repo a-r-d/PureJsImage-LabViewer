@@ -21,6 +21,10 @@
   background: var(--wb-accent);
   color: var(--wb-accent-text);
 }
+.ui-button--primary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--wb-accent) 85%, var(--wb-text));
+  background: color-mix(in srgb, var(--wb-accent) 85%, var(--wb-text));
+}
 .ui-button--ghost {
   border-color: transparent;
   background: transparent;

@@ -1,7 +1,11 @@
 import { scenarioTestArtifacts } from '@pji-workbench/test-corpus'
 import { expect, test } from '@playwright/test'
 import { attachScenarioEvidence } from './support/scenario-evidence.js'
-import { openWorkbench, waitForWorkbenchSettled } from './support/workbench.js'
+import {
+  openLegacyAnalysisControls,
+  openWorkbench,
+  waitForWorkbenchSettled,
+} from './support/workbench.js'
 
 const prScenarios = scenarioTestArtifacts(['pr'])
 
@@ -36,16 +40,34 @@ for (const artifact of prScenarios) {
       const gallery = page.getByRole('dialog', { name: 'Example library' })
       await gallery.getByRole('searchbox', { name: 'Search' }).fill(artifact.scenarioTitle)
       const card = gallery.locator('.example-card').filter({ hasText: artifact.scenarioTitle })
-      await card.getByRole('button', { name: 'Open', exact: true }).click()
+      await card
+        .getByRole('button', {
+          name: artifact.initialAnalysis === undefined ? 'Open example' : 'Open analyzed example',
+          exact: true,
+        })
+        .click()
       await expect(gallery).toBeHidden()
       await waitForWorkbenchSettled(page)
       await expect(page.getByRole('img', { name: /Scientific image viewport/u })).toBeVisible()
-      const sourceName = artifact.fixture.files[0]
+      const sourceName = artifact.fixture.files[0]?.split('/').at(-1)
       if (sourceName !== undefined)
-        await expect(page.getByRole('button', { name: `${sourceName} sample` })).toBeVisible()
+        await expect(
+          page.getByRole('button', {
+            name: `${sourceName} ${artifact.fixture.kind === 'bundled' ? 'bundled' : 'sample'}`,
+          }),
+        ).toBeVisible()
       await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText(
-        artifact.metadata.calibration.split(' · ')[0] ?? artifact.metadata.calibration,
+        artifact.fixture.kind === 'bundled'
+          ? 'Uncalibrated'
+          : (artifact.metadata.calibration.split(' · ')[0] ?? artifact.metadata.calibration),
       )
+      if (artifact.initialAnalysis !== undefined) {
+        await expect(page.locator('.analysis-message')).toContainText('Analysis completed')
+        await expect(page.getByRole('tab', { name: 'Results', exact: true })).toHaveAttribute(
+          'aria-selected',
+          'true',
+        )
+      }
 
       const metrics = await page.evaluate(() => Reflect.get(window, '__PJI_WORKBENCH_METRICS__'))
       expect(metrics.sourceBytes).toBeLessThanOrEqual(artifact.budgets.maxSourceBytes)
@@ -64,3 +86,37 @@ for (const artifact of prScenarios) {
     }
   })
 }
+
+test('replays a bundled real source and its committed analysis after reload', async ({ page }) => {
+  const artifact = prScenarios.find(({ scenarioId }) => scenarioId === 'cdc.ecoli-sem')
+  expect(artifact).toBeDefined()
+  if (artifact === undefined) return
+
+  await page.getByRole('button', { name: 'Examples mode' }).click()
+  const gallery = page.getByRole('dialog', { name: 'Example library' })
+  await gallery.getByRole('searchbox', { name: 'Search' }).fill(artifact.scenarioTitle)
+  await gallery
+    .locator('.example-card')
+    .filter({ hasText: artifact.scenarioTitle })
+    .getByRole('button', { name: 'Open analyzed example', exact: true })
+    .click()
+  await expect(gallery).toBeHidden()
+  await waitForWorkbenchSettled(page)
+  await expect(page.locator('.analysis-message')).toContainText('Analysis completed')
+  await page.getByLabel('Project title').fill('Reviewed real SEM')
+  await page.getByLabel('Project title').blur()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('Saved locally', { exact: true })).toBeVisible()
+
+  await page.reload()
+
+  await expect(page.getByLabel('Project title')).toHaveValue('Reviewed real SEM')
+  await expect(page.getByRole('button', { name: 'e-coli-sem.gsf bundled' })).toBeVisible()
+  await expect(page.getByRole('img', { name: /Scientific image viewport/u })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText('Uncalibrated')
+  await page.getByRole('tab', { name: 'Analysis' }).click()
+  await openLegacyAnalysisControls(page)
+  await expect(page.getByText(/Replayed saved numerical analysis/u)).toBeVisible({
+    timeout: 15_000,
+  })
+})

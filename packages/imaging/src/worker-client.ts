@@ -117,6 +117,23 @@ export class ImagingWorkerClient {
     )
   }
 
+  async openBundled(
+    locator: Readonly<{
+      path: string
+      name: string
+      size: number
+      sha256: string
+      mediaType: string
+    }>,
+    generation: number,
+    signal?: AbortSignal,
+  ): Promise<Readonly<{ source: OpenedSourceDescriptor; dataset: OpenedDatasetDescriptor }>> {
+    return this.#payload(
+      await this.#call('source.open-bundled', { generation, ...locator }, signal),
+      'source-bundled.opened',
+    )
+  }
+
   async openRemote(
     url: string,
     generation: number,

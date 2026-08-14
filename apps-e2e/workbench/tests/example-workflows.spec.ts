@@ -10,12 +10,25 @@ test('browses, filters, opens, and prepares verified example workflows without n
 }) => {
   await page.getByRole('button', { name: 'Examples mode' }).click()
   const gallery = page.getByRole('dialog', { name: 'Example library' })
-  await expect(gallery).toContainText('5 ready')
-  await expect(gallery.locator('.example-card')).toHaveCount(5)
+  await expect(gallery).toContainText('8 ready')
+  await expect(gallery.locator('.example-card')).toHaveCount(8)
   await gallery.getByRole('searchbox', { name: 'Search' }).fill('roughness')
   const afm = gallery.locator('.example-card').filter({ hasText: 'Tilted AFM surface' })
   await expect(afm).toContainText('CC0-1.0')
-  await afm.getByRole('button', { name: 'Open', exact: true }).click()
+  const openExample = afm.getByRole('button', { name: 'Open example', exact: true })
+  const [cardBounds, actionBounds] = await Promise.all([
+    afm.boundingBox(),
+    openExample.boundingBox(),
+  ])
+  expect(cardBounds).not.toBeNull()
+  expect(actionBounds).not.toBeNull()
+  if (cardBounds !== null && actionBounds !== null) {
+    expect(actionBounds.y).toBeGreaterThanOrEqual(cardBounds.y)
+    expect(actionBounds.y + actionBounds.height).toBeLessThanOrEqual(
+      cardBounds.y + cardBounds.height,
+    )
+  }
+  await openExample.click()
   await expect(gallery).toBeHidden()
   await expect(page.getByRole('button', { name: 'afm-tilted-surface.gsf sample' })).toBeVisible()
   await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText('2 nm/px')
@@ -43,9 +56,12 @@ test('browses, filters, opens, and prepares verified example workflows without n
   await studio.getByRole('button', { name: 'Close Script Studio' }).click()
 
   await page.getByRole('button', { name: 'Examples mode' }).click()
-  await gallery.getByRole('tab', { name: 'Research queue' }).click()
+  await gallery.getByRole('tab', { name: 'Planned datasets' }).click()
+  await expect(gallery).toContainText('Planned datasets are not available to open yet.')
+  await expect(gallery.getByRole('button', { name: 'Browse ready examples' })).toBeVisible()
   await gallery.getByRole('searchbox', { name: 'Search' }).fill('Aperio')
   const aperio = gallery.locator('.example-card').filter({ hasText: 'Aperio CMU-1 whole slide' })
   await expect(aperio).toContainText('scheduled')
-  await expect(aperio.getByRole('button', { name: 'Open', exact: true })).toHaveCount(0)
+  await expect(aperio).toContainText('Not available:')
+  await expect(aperio.getByRole('button', { name: 'Open example', exact: true })).toHaveCount(0)
 })

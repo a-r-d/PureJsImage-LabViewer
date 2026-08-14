@@ -2,7 +2,6 @@ import { ImagingWorkerHost } from './worker-host.js'
 
 interface ImagingWorkerScope {
   addEventListener(type: 'message', listener: (event: MessageEvent<unknown>) => void): void
-  addEventListener(type: 'close', listener: () => void): void
   postMessage(message: unknown, transfer: Transferable[]): void
 }
 
@@ -18,8 +17,4 @@ worker.addEventListener('message', (event: MessageEvent<unknown>) => {
       })
     },
   )
-})
-
-worker.addEventListener('close', () => {
-  void host.dispose()
 })

@@ -157,6 +157,57 @@ globalThis.__scriptMain = main
       { workflow: 'afm-level-roughness', correction: 'first-order-plane' },
     ),
     await script(
+      'builtin.real-ecoli-components',
+      'Real E. coli segmentation review',
+      'Documents the bounded threshold and connected-components preset applied to the bundled CDC SEM image.',
+      `import { lab } from '@lab/api'
+
+export async function main() {
+  const plan = await lab.analysis.dryRun({ workflow: 'connected-components', threshold: 46260, mode: 'greater-than', connectivity: 8, component: 0, fixtureId: 'cdc.ecoli-sem' })
+  return { workflow: 'real-ecoli-components', threshold: 46260, connectivity: 8, plan }
+}
+
+globalThis.__scriptMain = main
+`,
+      'cdc.ecoli-sem',
+      ['analysis.dry-run'],
+      { workflow: 'real-ecoli-components', threshold: 46_260, connectivity: 8 },
+    ),
+    await script(
+      'builtin.real-image-inspection',
+      'Real micrograph inspection',
+      'Plans an ROI-first inspection without inventing calibration absent from the source file.',
+      `import { lab } from '@lab/api'
+
+export async function main() {
+  const plan = await lab.analysis.dryRun({ workflow: 'roi-inspection', calibrated: false, fixtureId: 'nih.hela-cells-3709' })
+  return { workflow: 'real-image-inspection', calibrated: false, plan }
+}
+
+globalThis.__scriptMain = main
+`,
+      'nih.hela-cells-3709',
+      ['analysis.dry-run'],
+      { workflow: 'real-image-inspection', calibrated: false },
+    ),
+    await script(
+      'builtin.real-hhv6-histogram',
+      'Real TEM intensity histogram',
+      'Documents the bounded whole-plane histogram applied to the bundled HHV-6 TEM image.',
+      `import { lab } from '@lab/api'
+
+export async function main() {
+  const plan = await lab.analysis.dryRun({ workflow: 'histogram', bins: 64, component: 0, fixtureId: 'nci.hhv6-em' })
+  return { workflow: 'real-hhv6-histogram', bins: 64, component: 0, plan }
+}
+
+globalThis.__scriptMain = main
+`,
+      'nci.hhv6-em',
+      ['analysis.dry-run'],
+      { workflow: 'real-hhv6-histogram', bins: 64, component: 0 },
+    ),
+    await script(
       'builtin.batch-measurement',
       'Batch measurement script',
       'Requests a bounded local batch recipe proposal with per-item isolation.',

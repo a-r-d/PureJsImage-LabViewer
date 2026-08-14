@@ -6,6 +6,7 @@ import {
 } from '@pji-workbench/test-corpus'
 import { Button, Icon } from '@pji-workbench/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { handleDialogKeyDown } from '../../app/dialog-keyboard.js'
 
 export const RECENT_EXAMPLES_KEY = 'pji-workbench.recent-examples.v1'
 
@@ -148,6 +149,7 @@ export function ExampleGallery({
       (document.activeElement instanceof HTMLElement ? document.activeElement : null),
   )
   const searchInput = useRef<HTMLInputElement>(null)
+  const viewTabs = useRef<HTMLDivElement>(null)
   const visibleSource = view === 'examples' ? enabled : research
   const filtered = filterExampleScenarios(visibleSource, filters)
   const ordered = [...filtered].sort((left, right) => {
@@ -163,6 +165,17 @@ export function ExampleGallery({
   const taskOptions = [...new Set(visibleSource.flatMap(({ tags }) => tags))].sort((left, right) =>
     left.localeCompare(right),
   )
+
+  const selectView = (next: 'examples' | 'research', focus = false): void => {
+    if (next !== view) setFilters(EMPTY_FILTERS)
+    setView(next)
+    if (focus)
+      queueMicrotask(() =>
+        viewTabs.current
+          ?.querySelector<HTMLButtonElement>(`[data-example-view="${next}"]`)
+          ?.focus(),
+      )
+  }
 
   useEffect(() => {
     searchInput.current?.focus()
@@ -216,9 +229,9 @@ export function ExampleGallery({
         aria-label="Example library"
         aria-modal="true"
         className="url-dialog example-gallery"
-        onKeyDown={(event) => {
-          if (event.key === 'Escape' && activity === undefined) close()
-        }}
+        onKeyDown={(event) =>
+          handleDialogKeyDown(event, activity === undefined ? close : undefined)
+        }
         role="dialog"
       >
         <header className="example-gallery__heading">
@@ -228,74 +241,126 @@ export function ExampleGallery({
             <h2>Example library</h2>
           </div>
           <span className="example-gallery__count">
-            {enabled.length} ready · {research.length} under review
+            {enabled.length} ready · {research.length} planned
           </span>
         </header>
 
-        <div aria-label="Example catalog views" className="example-gallery__views" role="tablist">
+        <div
+          aria-label="Example catalog views"
+          className="example-gallery__views"
+          ref={viewTabs}
+          role="tablist"
+        >
           <Button
+            aria-controls="example-gallery-results"
             aria-selected={view === 'examples'}
-            onClick={() => setView('examples')}
+            data-example-view="examples"
+            onClick={() => selectView('examples')}
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+              event.preventDefault()
+              selectView(
+                event.key === 'End' || event.key === 'ArrowRight' ? 'research' : 'examples',
+                true,
+              )
+            }}
             role="tab"
+            tabIndex={view === 'examples' ? 0 : -1}
             variant={view === 'examples' ? 'primary' : 'secondary'}
           >
             Ready examples
           </Button>
           <Button
+            aria-controls="example-gallery-results"
             aria-selected={view === 'research'}
-            onClick={() => setView('research')}
+            data-example-view="research"
+            onClick={() => selectView('research')}
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+              event.preventDefault()
+              selectView(
+                event.key === 'Home' || event.key === 'ArrowLeft' ? 'examples' : 'research',
+                true,
+              )
+            }}
             role="tab"
+            tabIndex={view === 'research' ? 0 : -1}
             variant={view === 'research' ? 'primary' : 'secondary'}
           >
-            Research queue
+            Planned datasets
           </Button>
         </div>
 
-        <div className="example-gallery__filters">
-          <label>
-            Search
-            <input
-              onChange={(event) => setFilters({ ...filters, query: event.currentTarget.value })}
-              placeholder="particles, FFT, AFM…"
-              ref={searchInput}
-              type="search"
-              value={filters.query}
-            />
-          </label>
-          {[
-            ['Modality', 'modality', options(visibleSource, ({ modality }) => modality)],
-            ['Format', 'format', options(visibleSource, ({ format }) => format)],
-            ['Vendor', 'vendor', options(visibleSource, ({ vendor }) => vendor ?? '')],
-            ['Task', 'task', taskOptions],
-            ['Size', 'size', options(visibleSource, ({ sizeClass }) => sizeClass)],
-          ].map(([label, key, values]) => (
-            <label key={String(key)}>
-              {String(label)}
-              <select
-                onChange={(event) =>
-                  setFilters({ ...filters, [String(key)]: event.currentTarget.value })
-                }
-                value={filters[String(key) as keyof ExampleFilters]}
-              >
-                <option value="">All</option>
-                {(values as readonly string[]).map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
+        <div className="example-gallery__controls">
+          {view === 'research' ? (
+            <aside className="example-gallery__notice">
+              <div>
+                <strong>Planned datasets are not available to open yet.</strong>
+                <p>
+                  These candidates are awaiting license, file-integrity, delivery, and scientific
+                  oracle checks. They are shown for roadmap transparency only.
+                </p>
+              </div>
+              <Button onClick={() => selectView('examples', true)} variant="primary">
+                Browse ready examples
+              </Button>
+            </aside>
+          ) : null}
+
+          <div className="example-gallery__filters">
+            <label>
+              Search
+              <input
+                onChange={(event) => setFilters({ ...filters, query: event.currentTarget.value })}
+                placeholder="particles, FFT, AFM…"
+                ref={searchInput}
+                type="search"
+                value={filters.query}
+              />
             </label>
-          ))}
-          <Button onClick={() => setFilters(EMPTY_FILTERS)}>Clear</Button>
+            {[
+              ['Modality', 'modality', options(visibleSource, ({ modality }) => modality)],
+              ['Format', 'format', options(visibleSource, ({ format }) => format)],
+              ['Vendor', 'vendor', options(visibleSource, ({ vendor }) => vendor ?? '')],
+              ['Task', 'task', taskOptions],
+              ['Size', 'size', options(visibleSource, ({ sizeClass }) => sizeClass)],
+            ].map(([label, key, values]) => (
+              <label key={String(key)}>
+                {String(label)}
+                <select
+                  onChange={(event) =>
+                    setFilters({ ...filters, [String(key)]: event.currentTarget.value })
+                  }
+                  value={filters[String(key) as keyof ExampleFilters]}
+                >
+                  <option value="">All</option>
+                  {(values as readonly string[]).map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            <Button onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</Button>
+          </div>
+
+          {error === undefined ? null : (
+            <div className="example-gallery__error" role="alert">
+              {error}
+            </div>
+          )}
+          <p aria-live="polite" className="visually-hidden">
+            {ordered.length} {view === 'examples' ? 'ready examples' : 'planned datasets'} shown.
+          </p>
         </div>
 
-        {error === undefined ? null : (
-          <div className="example-gallery__error" role="alert">
-            {error}
-          </div>
-        )}
-
-        <div aria-live="polite" className="example-gallery__results">
+        <div
+          aria-label={view === 'examples' ? 'Ready examples' : 'Planned datasets'}
+          className="example-gallery__results"
+          id="example-gallery-results"
+          role="tabpanel"
+        >
           {ordered.length === 0 ? (
             <p className="example-gallery__empty">No examples match these filters.</p>
           ) : (
@@ -304,14 +369,25 @@ export function ExampleGallery({
               const workflow = scenario.workflows[0]
               const local =
                 scenario.source.kind === 'generated' || scenario.source.kind === 'bundled'
+              const analyzed = scenario.initialAnalysis !== undefined
               return (
                 <article className="example-card" key={scenario.id}>
-                  <div
-                    aria-label={scenario.preview.alt}
-                    className="example-card__preview"
-                    data-pattern={scenario.preview.value}
-                    role="img"
-                  />
+                  {scenario.preview.kind === 'bundled-image' ? (
+                    <img
+                      alt={scenario.preview.alt}
+                      className="example-card__preview"
+                      decoding="async"
+                      loading="lazy"
+                      src={scenario.preview.value}
+                    />
+                  ) : (
+                    <div
+                      aria-label={scenario.preview.alt}
+                      className="example-card__preview"
+                      data-pattern={scenario.preview.value}
+                      role="img"
+                    />
+                  )}
                   <div className="example-card__body">
                     <div className="example-card__title">
                       <div>
@@ -320,11 +396,63 @@ export function ExampleGallery({
                         >
                           {scenario.status}
                         </span>
+                        {scenario.source.kind === 'bundled' ? (
+                          <span className="example-card__status example-card__status--real">
+                            real data
+                          </span>
+                        ) : null}
+                        {analyzed ? (
+                          <span className="example-card__status example-card__status--analyzed">
+                            analysis included
+                          </span>
+                        ) : null}
                         <h3>{scenario.title}</h3>
                       </div>
                       {recent.includes(scenario.id) ? <span>Recent</span> : null}
                     </div>
                     <p>{scenario.summary}</p>
+                    {scenario.status === 'enabled' && workflow !== undefined ? (
+                      <div className="example-card__actions">
+                        <Button
+                          disabled={activity !== undefined}
+                          onClick={() =>
+                            void run(scenario, 'Opening', (signal) => onOpen(scenario, signal))
+                          }
+                          variant="primary"
+                        >
+                          {analyzed ? 'Open analyzed example' : 'Open example'}
+                        </Button>
+                        <Button
+                          disabled={activity !== undefined}
+                          onClick={() =>
+                            void run(scenario, 'Preparing workflow', (signal) =>
+                              onRunWorkflow(scenario, workflow, signal),
+                            )
+                          }
+                        >
+                          Run workflow
+                        </Button>
+                        <Button
+                          disabled={activity !== undefined}
+                          onClick={() => onInspectWorkflow(workflow)}
+                        >
+                          Inspect {workflow.artifactKind}
+                        </Button>
+                        {busy ? (
+                          <Button onClick={() => activity?.controller.abort()}>Cancel</Button>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="example-card__unavailable">
+                        <strong>Not available:</strong> {scenario.statusReason}
+                      </p>
+                    )}
+                    {scenario.initialAnalysis === undefined ? null : (
+                      <p className="example-card__analysis">
+                        <strong>Opens analyzed:</strong> {scenario.initialAnalysis.title}.{' '}
+                        {scenario.initialAnalysis.description}
+                      </p>
+                    )}
                     <dl className="example-card__facts">
                       <div>
                         <dt>Modality</dt>
@@ -367,40 +495,6 @@ export function ExampleGallery({
                         </>
                       )}
                     </p>
-                    {scenario.status === 'enabled' && workflow !== undefined ? (
-                      <div className="example-card__actions">
-                        <Button
-                          disabled={activity !== undefined}
-                          onClick={() =>
-                            void run(scenario, 'Opening', (signal) => onOpen(scenario, signal))
-                          }
-                        >
-                          Open
-                        </Button>
-                        <Button
-                          disabled={activity !== undefined}
-                          onClick={() =>
-                            void run(scenario, 'Preparing workflow', (signal) =>
-                              onRunWorkflow(scenario, workflow, signal),
-                            )
-                          }
-                          variant="primary"
-                        >
-                          Run workflow
-                        </Button>
-                        <Button
-                          disabled={activity !== undefined}
-                          onClick={() => onInspectWorkflow(workflow)}
-                        >
-                          Inspect {workflow.artifactKind}
-                        </Button>
-                        {busy ? (
-                          <Button onClick={() => activity?.controller.abort()}>Cancel</Button>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <p className="example-card__unavailable">{scenario.statusReason}</p>
-                    )}
                     {busy ? (
                       <div className="example-card__progress" role="status">
                         <span />

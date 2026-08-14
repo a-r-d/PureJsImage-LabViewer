@@ -229,6 +229,46 @@ function validateWorkflows(value: unknown, path: string, issues: CorpusValidatio
   })
 }
 
+function validateInitialAnalysis(
+  value: unknown,
+  path: string,
+  issues: CorpusValidationIssue[],
+): void {
+  if (!record(value)) {
+    issues.push({ path, message: 'Initial analysis must be an object.' })
+    return
+  }
+  const kind = value['kind']
+  if (kind === 'histogram') {
+    rejectUnknownKeys(value, ['kind', 'title', 'description', 'component'], path, issues)
+  } else if (kind === 'connected-components') {
+    rejectUnknownKeys(
+      value,
+      ['kind', 'title', 'description', 'component', 'threshold', 'mode', 'connectivity', 'overlay'],
+      path,
+      issues,
+    )
+    if (typeof value['threshold'] !== 'number' || !Number.isFinite(value['threshold']))
+      issues.push({ path: `${path}/threshold`, message: 'Threshold must be finite.' })
+    if (
+      !['greater-than', 'greater-than-or-equal', 'less-than', 'less-than-or-equal'].includes(
+        String(value['mode']),
+      )
+    )
+      issues.push({ path: `${path}/mode`, message: 'Threshold mode is unsupported.' })
+    if (value['connectivity'] !== 4 && value['connectivity'] !== 8)
+      issues.push({ path: `${path}/connectivity`, message: 'Connectivity must be 4 or 8.' })
+    if (value['overlay'] !== 'mask' && value['overlay'] !== 'labels')
+      issues.push({ path: `${path}/overlay`, message: 'Overlay must be mask or labels.' })
+  } else {
+    issues.push({ path: `${path}/kind`, message: 'Initial analysis kind is unsupported.' })
+    return
+  }
+  for (const key of ['title', 'description']) text(value[key], `${path}/${key}`, issues)
+  if (!Number.isSafeInteger(value['component']) || Number(value['component']) < 0)
+    issues.push({ path: `${path}/component`, message: 'Component must be a non-negative integer.' })
+}
+
 function validateBudgets(value: unknown, path: string, issues: CorpusValidationIssue[]): void {
   if (!record(value)) {
     issues.push({ path, message: 'Explicit scenario budgets are required.' })
@@ -306,6 +346,7 @@ function validateScenario(value: unknown, index: number, issues: CorpusValidatio
       'source',
       'license',
       'preview',
+      'initialAnalysis',
       'tags',
       'learningGoals',
       'workflows',
@@ -378,6 +419,8 @@ function validateScenario(value: unknown, index: number, issues: CorpusValidatio
     text(preview['value'], `${path}/preview/value`, issues)
     text(preview['alt'], `${path}/preview/alt`, issues)
   }
+  if (value['initialAnalysis'] !== undefined)
+    validateInitialAnalysis(value['initialAnalysis'], `${path}/initialAnalysis`, issues)
 
   const source = value['source']
   if (!record(source)) {
@@ -555,6 +598,9 @@ function freezeScenario(scenario: ExampleScenarioV1): ExampleScenarioV1 {
     }),
     license: Object.freeze({ ...scenario.license }),
     preview: Object.freeze({ ...scenario.preview }),
+    ...(scenario.initialAnalysis === undefined
+      ? {}
+      : { initialAnalysis: Object.freeze({ ...scenario.initialAnalysis }) }),
     budgets: Object.freeze({ ...scenario.budgets }),
     testPlan: Object.freeze({
       ...scenario.testPlan,

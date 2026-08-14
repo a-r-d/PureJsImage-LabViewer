@@ -65,6 +65,101 @@ test('keeps Browse selected for metadata and display inspection', async ({ page 
   await expect(browse).toHaveAttribute('aria-pressed', 'true')
 })
 
+test('@a11y themes modal surfaces, contains keyboard focus, and restores the trigger', async ({
+  page,
+}) => {
+  const projectsTrigger = page.getByRole('button', { name: 'Projects', exact: true })
+  await projectsTrigger.focus()
+  await projectsTrigger.click()
+  const projects = page.getByRole('dialog', { name: 'Recent projects' })
+  const importProject = projects.getByRole('button', { name: 'Import project' })
+  await expect(projects).toHaveAttribute('aria-modal', 'true')
+  await expect(importProject).toBeFocused()
+  await expect
+    .poll(() =>
+      projects.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return {
+          actualBackground: style.backgroundColor,
+          actualText: style.color,
+          expectedBackground: style.getPropertyValue('--wb-surface'),
+          expectedText: style.getPropertyValue('--wb-text'),
+        }
+      }),
+    )
+    .toEqual({
+      actualBackground: 'rgb(16, 21, 27)',
+      actualText: 'rgb(237, 243, 247)',
+      expectedBackground: '#10151b',
+      expectedText: '#edf3f7',
+    })
+  await importProject.press('Tab')
+  await expect(projects.getByRole('button', { name: 'Close' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(projects).toBeHidden()
+  await expect(projectsTrigger).toBeFocused()
+
+  const urlTrigger = page.locator('.app-bar').getByRole('button', { name: 'Open URL' })
+  await urlTrigger.focus()
+  await urlTrigger.click()
+  const remote = page.getByRole('dialog', { name: 'Open remote scientific source' })
+  const sourceUrl = remote.getByLabel('Source URL')
+  await expect(remote).toHaveAttribute('aria-modal', 'true')
+  await expect(sourceUrl).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(remote).toBeHidden()
+  await expect(urlTrigger).toBeFocused()
+})
+
+test('@a11y keeps example actions visible and native filters on the active theme', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: 'Examples mode' }).click()
+  const gallery = page.getByRole('dialog', { name: 'Example library' })
+  const firstCard = gallery.locator('.example-card').first()
+  const primaryAction = firstCard.getByRole('button', { name: 'Open example' })
+  const [cardBounds, actionBounds] = await Promise.all([
+    firstCard.boundingBox(),
+    primaryAction.boundingBox(),
+  ])
+  expect(cardBounds).not.toBeNull()
+  expect(actionBounds).not.toBeNull()
+  if (cardBounds !== null && actionBounds !== null) {
+    expect(actionBounds.y).toBeGreaterThanOrEqual(cardBounds.y)
+    expect(actionBounds.y + actionBounds.height).toBeLessThanOrEqual(
+      cardBounds.y + cardBounds.height,
+    )
+  }
+
+  const readyTab = gallery.getByRole('tab', { name: 'Ready examples' })
+  const plannedTab = gallery.getByRole('tab', { name: 'Planned datasets' })
+  await readyTab.focus()
+  await readyTab.press('ArrowRight')
+  await expect(plannedTab).toBeFocused()
+  await expect(plannedTab).toHaveAttribute('aria-selected', 'true')
+  await plannedTab.press('ArrowLeft')
+  await expect(readyTab).toBeFocused()
+  await expect(readyTab).toHaveAttribute('aria-selected', 'true')
+
+  const modality = gallery.getByLabel('Modality')
+  expect(
+    await modality.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        expectedBackground: style.getPropertyValue('--wb-surface-raised'),
+        expectedColor: style.getPropertyValue('--wb-text'),
+      }
+    }),
+  ).toEqual({
+    background: 'rgb(23, 30, 38)',
+    color: 'rgb(237, 243, 247)',
+    expectedBackground: '#171e26',
+    expectedColor: '#edf3f7',
+  })
+})
+
 test('@a11y remains usable at a 200-percent-equivalent CSS viewport', async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 450 })
   await page.reload()
@@ -77,6 +172,33 @@ test('@a11y remains usable at a 200-percent-equivalent CSS viewport', async ({ p
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth)
   await openSample(page)
   await expect(page.getByRole('img', { name: /Scientific image viewport/u })).toBeVisible()
+})
+
+test('@a11y keeps the example catalog operable at a 200-percent-equivalent viewport', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 640, height: 450 })
+  await page.reload()
+  await waitForWorkbenchSettled(page)
+  await page.getByRole('button', { name: 'Examples mode' }).click()
+  const gallery = page.getByRole('dialog', { name: 'Example library' })
+  const results = gallery.locator('.example-gallery__results')
+  await expect(gallery).toBeVisible()
+  await expect
+    .poll(async () => (await results.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(80)
+  const openExample = gallery
+    .locator('.example-card')
+    .first()
+    .getByRole('button', { name: 'Open example' })
+  await openExample.scrollIntoViewIfNeeded()
+  await expect(openExample).toBeVisible()
+  expect(
+    await gallery.evaluate((element) => element.scrollWidth - element.clientWidth),
+  ).toBeLessThanOrEqual(0)
+
+  await gallery.getByRole('tab', { name: 'Planned datasets' }).click()
+  await expect(gallery.getByRole('button', { name: 'Browse ready examples' })).toBeVisible()
 })
 
 test('@a11y honors reduced motion for interactive shell controls', async ({ page }) => {

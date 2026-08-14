@@ -150,9 +150,51 @@ function overlayAnnotations(
 
 export interface ImagingWorkerHostOptions {
   readonly fetch?: typeof fetch
+  readonly baseUrl?: string
 }
 
 const MiB = 1_024 * 1_024
+
+async function readExactResponse(
+  response: Response,
+  expectedBytes: number,
+  signal: AbortSignal,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const declaredLength = response.headers.get('content-length')
+  if (declaredLength !== null && Number(declaredLength) !== expectedBytes)
+    throw new RpcValidationError('INVALID_PAYLOAD', 'Bundled source size does not match its record')
+  if (response.body === null) {
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (bytes.byteLength !== expectedBytes)
+      throw new RpcValidationError(
+        'INVALID_PAYLOAD',
+        'Bundled source size does not match its record',
+      )
+    return bytes
+  }
+
+  const bytes = new Uint8Array(expectedBytes)
+  const reader = response.body.getReader()
+  let offset = 0
+  try {
+    for (;;) {
+      signal.throwIfAborted()
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value.byteLength > expectedBytes - offset) {
+        await reader.cancel().catch(() => undefined)
+        throw new RpcValidationError('LIMIT_EXCEEDED', 'Bundled source exceeds its byte budget')
+      }
+      bytes.set(value, offset)
+      offset += value.byteLength
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  if (offset !== expectedBytes)
+    throw new RpcValidationError('INVALID_PAYLOAD', 'Bundled source size does not match its record')
+  return bytes
+}
 
 export class ImagingWorkerHost {
   #active: SourceRecord | undefined
@@ -160,9 +202,15 @@ export class ImagingWorkerHost {
   #nextId = 1
   #releases = { documents: 0, datasets: 0, tiles: 0, runtimes: 0 }
   readonly #fetch: typeof fetch | undefined
+  readonly #baseUrl: string | undefined
 
   constructor(options: Readonly<ImagingWorkerHostOptions> = {}) {
     this.#fetch = options.fetch
+    this.#baseUrl =
+      options.baseUrl ??
+      (typeof globalThis.location === 'undefined'
+        ? undefined
+        : new URL('/', globalThis.location.href).href)
   }
 
   async handle(input: unknown): Promise<WorkerHostResult> {
@@ -207,6 +255,8 @@ export class ImagingWorkerHost {
         return this.#openSample(request, signal)
       case 'source.open-local':
         return this.#openLocal(request, signal)
+      case 'source.open-bundled':
+        return this.#openBundled(request, signal)
       case 'source.open-remote':
         return this.#openRemote(request, signal)
       case 'source.close':
@@ -318,11 +368,84 @@ export class ImagingWorkerHost {
     }
   }
 
+  async #openBundled(
+    request: Extract<WorkerRequest, { kind: 'source.open-bundled' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    try {
+      if (this.#baseUrl === undefined)
+        throw new RpcValidationError('INVALID_PAYLOAD', 'Bundled source base URL is unavailable')
+      const url = new URL(request.payload.path, this.#baseUrl)
+      if (url.origin !== new URL(this.#baseUrl).origin)
+        throw new RpcValidationError(
+          'INVALID_PAYLOAD',
+          'Bundled source must resolve to the application origin',
+        )
+      const response = await (this.#fetch ?? globalThis.fetch)(url, {
+        credentials: 'same-origin',
+        signal,
+      })
+      if (!response.ok)
+        throw new RpcValidationError(
+          'INVALID_PAYLOAD',
+          `Bundled source returned HTTP ${response.status}`,
+        )
+      const bytes = await readExactResponse(response, request.payload.size, signal)
+      const digest = await crypto.subtle.digest('SHA-256', bytes)
+      const sha256 = [...new Uint8Array(digest)]
+        .map((value) => value.toString(16).padStart(2, '0'))
+        .join('')
+      if (sha256 !== request.payload.sha256)
+        throw new RpcValidationError(
+          'INVALID_PAYLOAD',
+          'Bundled source failed its SHA-256 integrity check',
+        )
+      const file = new File([bytes.slice().buffer as ArrayBuffer], request.payload.name, {
+        type: request.payload.mediaType,
+        lastModified: 0,
+      })
+      const record = await this.#openFileDocument(
+        file,
+        [file],
+        request.payload.generation,
+        'bundled',
+        signal,
+      )
+      await this.#activate(record)
+      const source = this.#describe(record)
+      const summary = source.datasets[0]
+      if (summary === undefined)
+        throw new RpcValidationError('INVALID_PAYLOAD', 'Bundled document has no datasets')
+      const datasetResult = await this.#openDataset(
+        {
+          schemaVersion: RPC_SCHEMA_VERSION,
+          requestId: request.requestId,
+          kind: 'dataset.open',
+          payload: {
+            documentId: source.documentId,
+            datasetId: summary.id,
+            generation: request.payload.generation,
+          },
+        },
+        signal,
+      )
+      if (!datasetResult.response.ok) return datasetResult
+      if (datasetResult.response.kind !== 'dataset.opened')
+        throw new Error('Bundled dataset open returned an unexpected response')
+      return success(request.requestId, 'source-bundled.opened', {
+        source,
+        dataset: datasetResult.response.payload,
+      })
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'SOURCE_OPEN_FAILED'))
+    }
+  }
+
   async #openFileDocument(
     primary: File,
     files: readonly File[],
     generation: number,
-    kind: 'local' | 'sample',
+    kind: 'bundled' | 'local' | 'sample',
     signal: AbortSignal,
   ): Promise<SourceRecord> {
     const readers = await loadReadersForSource(primary.name)

@@ -28,6 +28,7 @@ export const EXAMPLE_SCENARIO_SCHEMA_V1 = Object.freeze({
     source: { type: 'object' },
     license: { type: 'object' },
     preview: { type: 'object' },
+    initialAnalysis: { type: 'object' },
     tags: { type: 'array', items: { type: 'string', minLength: 1 } },
     learningGoals: { type: 'array', items: { type: 'string', minLength: 1 } },
     workflows: { type: 'array', minItems: 1 },

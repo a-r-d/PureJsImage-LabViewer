@@ -4,6 +4,7 @@ import type {
   DocumentId,
   PlaneSelection,
   SourceId,
+  SourceKind,
 } from '@pji-workbench/contracts'
 import type {
   AnalysisController,
@@ -26,7 +27,7 @@ export interface SourceRecord {
   readonly id: SourceId
   readonly documentId: DocumentId
   readonly generation: number
-  readonly kind: 'local' | 'remote' | 'sample'
+  readonly kind: SourceKind
   readonly name: string
   readonly size: number
   readonly url?: string

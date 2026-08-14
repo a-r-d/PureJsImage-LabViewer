@@ -21,7 +21,11 @@ import type {
   RenderTile,
   RpcJsonObject,
 } from '@pji-workbench/contracts'
-import { createImagingWorkerClient, ImagingRpcError } from '@pji-workbench/imaging'
+import {
+  createImagingWorkerClient,
+  ImagingRpcError,
+  type ImagingWorkerClient,
+} from '@pji-workbench/imaging'
 import { type BatchRecipeRow, runBatchRecipe } from '@pji-workbench/materials-analysis'
 import {
   type AnalysisScriptDocumentV1,
@@ -34,7 +38,7 @@ import { generateScriptApi, type ScriptActionInvoker } from '@pji-workbench/scri
 import {
   type ExampleScenarioV1,
   type ExampleWorkflowV1,
-  resolveGeneratedFixture,
+  resolveExampleFixture,
 } from '@pji-workbench/test-corpus'
 import {
   Button,
@@ -155,6 +159,7 @@ import {
   initializeUxInstrumentation,
   measureUxNextPaint,
 } from '../ux-instrumentation.js'
+import { handleDialogKeyDown } from './dialog-keyboard.js'
 import { WorkbenchProviders, type WorkbenchServices } from './WorkbenchProviders.js'
 import { WorkbenchShell } from './WorkbenchShell.js'
 
@@ -350,6 +355,8 @@ function WorkbenchRuntime({
   const [savedProjectJson, setSavedProjectJson] = useState<string>()
   const [recentProjects, setRecentProjects] = useState<readonly ProjectSummary[]>([])
   const [projectDialog, setProjectDialog] = useState(false)
+  const projectDialogRoot = useRef<HTMLElement>(null)
+  const projectDialogReturnFocus = useRef<HTMLElement>(null)
   const [rebindSourceId, setRebindSourceId] = useState<SemanticSourceId>()
   const [identityMismatch, setIdentityMismatch] = useState<{
     readonly sourceId: SemanticSourceId
@@ -371,6 +378,8 @@ function WorkbenchRuntime({
   const [workerReady, setWorkerReady] = useState(false)
   const [error, setError] = useState<string>()
   const [urlDialog, setUrlDialog] = useState(false)
+  const urlInput = useRef<HTMLInputElement>(null)
+  const urlDialogReturnFocus = useRef<HTMLElement>(null)
   const [remoteUrl, setRemoteUrl] = useState('')
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('info')
   const [bottomTab, setBottomTab] = useState<BottomTab>('histogram')
@@ -423,6 +432,47 @@ function WorkbenchRuntime({
   const generation = useRef(0)
   const openedAt = useRef(0)
   const autoRangeLocked = useRef(false)
+  const openUrlDialog = useCallback((): void => {
+    if (!urlDialogReturnFocus.current?.isConnected)
+      urlDialogReturnFocus.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setUrlDialog(true)
+  }, [])
+  const closeUrlDialog = useCallback((): void => {
+    const target = urlDialogReturnFocus.current
+    setUrlDialog(false)
+    requestAnimationFrame(() => {
+      if (target?.isConnected) target.focus()
+      urlDialogReturnFocus.current = null
+    })
+  }, [])
+  const openProjectDialog = useCallback((): void => {
+    if (!projectDialogReturnFocus.current?.isConnected)
+      projectDialogReturnFocus.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setProjectDialog(true)
+  }, [])
+  const closeProjectDialog = useCallback((): void => {
+    const target = projectDialogReturnFocus.current
+    setProjectDialog(false)
+    requestAnimationFrame(() => {
+      if (target?.isConnected) target.focus()
+      projectDialogReturnFocus.current = null
+    })
+  }, [])
+  useEffect(() => {
+    if (urlDialog) urlInput.current?.focus()
+    else urlDialogReturnFocus.current = null
+  }, [urlDialog])
+  useEffect(() => {
+    if (!projectDialog) {
+      projectDialogReturnFocus.current = null
+      return
+    }
+    projectDialogRoot.current
+      ?.querySelector<HTMLElement>('[data-dialog-initial-focus="true"]')
+      ?.focus()
+  }, [projectDialog])
   openedRef.current = opened
   window.__PJI_WORKBENCH_METRICS__.projectId = workspace.project.id
   window.__PJI_WORKBENCH_METRICS__.invocationIds = [
@@ -475,12 +525,16 @@ function WorkbenchRuntime({
   }, [])
 
   const releaseAnalysisHandle = useCallback(
-    async (handle: AnalysisResultHandleId | undefined): Promise<void> => {
-      if (handle === undefined || opened === undefined) return
+    async (
+      handle: AnalysisResultHandleId | undefined,
+      dataset = opened,
+      workerClient = client,
+    ): Promise<void> => {
+      if (handle === undefined || dataset === undefined) return
       try {
-        await client.releaseAnalysis({
-          datasetHandleId: opened.handleId,
-          generation: opened.generation,
+        await workerClient.releaseAnalysis({
+          datasetHandleId: dataset.handleId,
+          generation: dataset.generation,
           resultHandleId: handle,
         })
       } catch (releaseError) {
@@ -624,12 +678,12 @@ function WorkbenchRuntime({
 
   useEffect(() => {
     return () => {
-      analysisAbort.current?.abort(new DOMException('Dataset changed', 'AbortError'))
       const preview = previewResult.current
       const active = activeResult.current
       previewResult.current = undefined
       activeResult.current = undefined
       if (opened !== undefined) {
+        analysisAbort.current?.abort(new DOMException('Dataset changed', 'AbortError'))
         for (const handle of [preview, active]) {
           if (handle !== undefined) {
             void client
@@ -651,14 +705,16 @@ function WorkbenchRuntime({
       offset: number,
       filter = tableFilter,
       sort = tableSort,
+      dataset = opened,
+      workerClient = client,
     ): Promise<AnalysisTablePage | undefined> => {
       const output = execution.outputs.find(
         (candidate) => candidate.kind === 'result' && candidate.summary['kind'] === 'table',
       )
-      if (opened === undefined || output === undefined) return undefined
-      return client.requestAnalysisTablePage({
-        datasetHandleId: opened.handleId,
-        generation: opened.generation,
+      if (dataset === undefined || output === undefined) return undefined
+      return workerClient.requestAnalysisTablePage({
+        datasetHandleId: dataset.handleId,
+        generation: dataset.generation,
         resultHandleId: execution.resultHandleId,
         output: output.name,
         offset,
@@ -680,10 +736,15 @@ function WorkbenchRuntime({
         readonly overlayTableOutput?: string
         readonly commit?: boolean
         readonly preview?: boolean
+        readonly throwOnError?: boolean
         readonly surface?: 'general' | 'particle' | 'advanced'
+        readonly dataset?: OpenedDatasetDescriptor
+        readonly workerClient?: ImagingWorkerClient
       } = {},
-    ): Promise<void> => {
-      if (opened === undefined) return
+    ): Promise<boolean> => {
+      const target = options.dataset ?? opened
+      const targetClient = options.workerClient ?? client
+      if (target === undefined) return false
       cancelPreview()
       const controller = new AbortController()
       analysisAbort.current = controller
@@ -695,13 +756,13 @@ function WorkbenchRuntime({
       setAnalysisState((current) => ({ ...current, busy: true, message: 'Planning analysis…' }))
       try {
         const request = {
-          datasetHandleId: opened.handleId,
-          generation: opened.generation,
+          datasetHandleId: target.handleId,
+          generation: target.generation,
           graph: graph as unknown as RpcJsonObject,
           ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
           ...(options.roi === undefined ? {} : { roi: options.roi as unknown as RpcJsonObject }),
         }
-        const dryRun = await client.dryRunAnalysis(request, controller.signal)
+        const dryRun = await targetClient.dryRunAnalysis(request, controller.signal)
         setAnalysisState((current) => ({ ...current, dryRun }))
         if (!dryRun.valid) {
           reportParticleMessage('Analysis validation failed. The committed project is unchanged.')
@@ -710,15 +771,15 @@ function WorkbenchRuntime({
             busy: false,
             message: 'Analysis validation failed. The committed project is unchanged.',
           }))
-          return
+          return false
         }
-        const execution = await client.executeAnalysis(request, controller.signal)
+        const execution = await targetClient.executeAnalysis(request, controller.signal)
         const previous = options.preview === true ? previewResult.current : activeResult.current
         if (options.preview === true) previewResult.current = execution.resultHandleId
         else activeResult.current = execution.resultHandleId
-        if (previous !== undefined) await releaseAnalysisHandle(previous)
+        if (previous !== undefined) await releaseAnalysisHandle(previous, target, targetClient)
         if (options.commit === true) applyProjectMutation({ kind: 'analysis.set-graph', graph })
-        const table = await loadTablePage(execution, 0, undefined, undefined)
+        const table = await loadTablePage(execution, 0, undefined, undefined, target, targetClient)
         const tableOutput = execution.outputs.find(
           (candidate) => candidate.kind === 'result' && candidate.summary['kind'] === 'table',
         )?.name
@@ -736,10 +797,10 @@ function WorkbenchRuntime({
         const seriesExports = await Promise.all(
           seriesOutputs.map(async ({ name }) => ({
             name,
-            data: (await client.requestAnalysisSeriesExport(
+            data: (await targetClient.requestAnalysisSeriesExport(
               {
-                datasetHandleId: opened.handleId,
-                generation: opened.generation,
+                datasetHandleId: target.handleId,
+                generation: target.generation,
                 resultHandleId: execution.resultHandleId,
                 output: name,
                 maxRows: 100_000,
@@ -803,6 +864,7 @@ function WorkbenchRuntime({
         appendLog(
           `Executed ${graph.nodes.map(({ label, operation }) => label ?? operation.id).join(' → ')}`,
         )
+        return true
       } catch (executionError) {
         if (!controller.signal.aborted) {
           const failureMessage = `${executionError instanceof Error ? executionError.message : 'Analysis failed.'} The previous committed project remains intact.`
@@ -813,6 +875,8 @@ function WorkbenchRuntime({
             message: failureMessage,
           }))
         }
+        if (options.throwOnError === true) throw executionError
+        return false
       }
     },
     [
@@ -1752,15 +1816,19 @@ function WorkbenchRuntime({
       nextSource: OpenedSourceDescriptor,
       locator: WorkspaceSourceReference['locator'],
       signal: AbortSignal,
-    ): Promise<void> => {
+      workerClient: ImagingWorkerClient,
+      preparedDataset?: OpenedDatasetDescriptor,
+    ): Promise<OpenedDatasetDescriptor> => {
       const summary = nextSource.datasets[0]
       if (summary === undefined) throw new Error('The document contains no scientific datasets.')
-      const nextDataset = await client.openDataset(
-        nextSource.documentId,
-        summary.id,
-        nextSource.generation,
-        signal,
-      )
+      const nextDataset =
+        preparedDataset ??
+        (await workerClient.openDataset(
+          nextSource.documentId,
+          summary.id,
+          nextSource.generation,
+          signal,
+        ))
       const sourceMutation = projectSourceMutation(nextSource, locator)
       const dataset = sourceMutation.datasets[0]
       if (dataset === undefined) throw new Error('The document contains no scientific datasets.')
@@ -1795,16 +1863,24 @@ function WorkbenchRuntime({
       openedAt.current = performance.now()
       rememberSource(nextSource.source.name)
       appendLog(`Opened ${nextSource.source.name} with ${nextSource.reader.id}`)
+      return nextDataset
     },
-    [appendLog, applyProjectMutation, client, rememberSource, runtime],
+    [appendLog, applyProjectMutation, rememberSource, runtime],
   )
 
   const runOpen = useCallback(
     async (
-      opener: (nextGeneration: number, signal: AbortSignal) => Promise<OpenedSourceDescriptor>,
+      opener: (
+        nextGeneration: number,
+        signal: AbortSignal,
+      ) => Promise<
+        | OpenedSourceDescriptor
+        | Readonly<{ source: OpenedSourceDescriptor; dataset: OpenedDatasetDescriptor }>
+      >,
       locator: WorkspaceSourceReference['locator'],
       throwOnError = false,
-    ): Promise<void> => {
+      workerClient = client,
+    ): Promise<OpenedDatasetDescriptor | undefined> => {
       const finishUxTask = beginUxTask('source.open')
       openAbort.current?.abort()
       const controller = new AbortController()
@@ -1813,10 +1889,19 @@ function WorkbenchRuntime({
       setStatus('opening')
       setError(undefined)
       try {
-        const nextSource = await opener(nextGeneration, controller.signal)
-        await finishOpen(nextSource, locator, controller.signal)
+        const openedResult = await opener(nextGeneration, controller.signal)
+        const nextSource = 'dataset' in openedResult ? openedResult.source : openedResult
+        const preparedDataset = 'dataset' in openedResult ? openedResult.dataset : undefined
+        const nextDataset = await finishOpen(
+          nextSource,
+          locator,
+          controller.signal,
+          workerClient,
+          preparedDataset,
+        )
         generation.current = nextGeneration
         setStatus('ready')
+        return nextDataset
       } catch (openError) {
         if (controller.signal.aborted) {
           appendLog('Source opening cancelled; the previous workspace was retained')
@@ -1831,11 +1916,12 @@ function WorkbenchRuntime({
         }
         setStatus('ready')
         if (throwOnError) throw openError
+        return undefined
       } finally {
         finishUxTask()
       }
     },
-    [appendLog, finishOpen],
+    [appendLog, client, finishOpen],
   )
 
   const openSample = useCallback(
@@ -1854,16 +1940,68 @@ function WorkbenchRuntime({
 
   const openExample = useCallback(
     async (scenario: ExampleScenarioV1, signal: AbortSignal): Promise<void> => {
-      const fixture = resolveGeneratedFixture(scenario.id)
-      const cancel = (): void => openAbort.current?.abort()
+      const fixture = resolveExampleFixture(scenario.id)
+      const cancel = (): void => {
+        openAbort.current?.abort()
+        analysisAbort.current?.abort(new DOMException('Example action cancelled', 'AbortError'))
+      }
       signal.addEventListener('abort', cancel, { once: true })
       try {
-        await openSample(fixture.generatorId, true)
+        let openedExample: OpenedDatasetDescriptor | undefined
+        if (fixture.locator.kind === 'sample') {
+          openedExample = await openSample(fixture.locator.sampleId, true)
+        } else {
+          const locator = fixture.locator
+          openedExample = await runOpen(
+            (nextGeneration, openSignal) => client.openBundled(locator, nextGeneration, openSignal),
+            locator,
+            true,
+            client,
+          )
+        }
+        signal.throwIfAborted()
+        const preset = scenario.initialAnalysis
+        if (preset !== undefined && openedExample !== undefined) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          signal.throwIfAborted()
+          setInspectorTab('analysis')
+          const succeeded =
+            preset.kind === 'histogram'
+              ? await executeAnalysisGraph(
+                  histogramGraph(openedExample.selection, preset.component),
+                  {
+                    roi: wholePlaneRoi(openedExample, openedExample.selection),
+                    commit: true,
+                    throwOnError: true,
+                    dataset: openedExample,
+                    workerClient: client,
+                  },
+                )
+              : await executeAnalysisGraph(
+                  connectedComponentsGraph({
+                    component: preset.component,
+                    threshold: preset.threshold,
+                    mode: preset.mode,
+                    selection: openedExample.selection,
+                    connectivity: preset.connectivity,
+                  }),
+                  {
+                    overlay: preset.overlay,
+                    commit: true,
+                    throwOnError: true,
+                    dataset: openedExample,
+                    workerClient: client,
+                  },
+                )
+          if (!succeeded)
+            throw new Error(`${preset.title} could not be applied to ${scenario.title}.`)
+          appendLog(`Opened ${scenario.title} with ${preset.title} already applied`)
+        }
       } finally {
         signal.removeEventListener('abort', cancel)
       }
     },
-    [openSample],
+    [appendLog, client, executeAnalysisGraph, openSample, runOpen],
   )
 
   const runExampleWorkflow = useCallback(
@@ -2395,7 +2533,12 @@ function WorkbenchRuntime({
       new WorkbenchActionHost(
         workbenchActionRegistry,
         new Map<string, ActionHandler<CommandContext>>([
-          ['workspace.openSample@1', commandAction(openSample)],
+          [
+            'workspace.openSample@1',
+            commandAction(async () => {
+              await openSample()
+            }),
+          ],
           [
             'workspace.summary.read@1',
             fixtureAction(() => ({
@@ -2853,7 +2996,7 @@ function WorkbenchRuntime({
             }),
           ],
           ['workspace.new@1', commandAction(newProject)],
-          ['workspace.openProject@1', commandAction(() => setProjectDialog(true))],
+          ['workspace.openProject@1', commandAction(openProjectDialog)],
           ['workspace.save@1', commandAction(saveProject)],
           ['workspace.export@1', commandAction(() => downloadProject(workspace))],
           ['workspace.undo@1', commandAction(() => performHistory('undo'))],
@@ -2882,6 +3025,7 @@ function WorkbenchRuntime({
       calibratedOpened,
       executeAnalysisGraph,
       opened,
+      openProjectDialog,
       particleSettings.overlayView,
       planConnectedComponents,
       performHistory,
@@ -2999,7 +3143,7 @@ function WorkbenchRuntime({
 
   const submitRemote = (event: FormEvent): void => {
     event.preventDefault()
-    setUrlDialog(false)
+    closeUrlDialog()
     void runOpen((nextGeneration, signal) => client.openRemote(remoteUrl, nextGeneration, signal), {
       kind: 'remote',
       url: remoteUrl,
@@ -3245,7 +3389,10 @@ function WorkbenchRuntime({
             </IconButton>
             <Button
               className="app-bar__project-action"
-              onClick={() => executeCommand('workspace.openProject')}
+              onClick={(event) => {
+                projectDialogReturnFocus.current = event.currentTarget
+                executeCommand('workspace.openProject')
+              }}
             >
               Projects
             </Button>
@@ -3305,7 +3452,12 @@ function WorkbenchRuntime({
             <Button onClick={() => fileInput.current?.click()} variant="primary">
               <Icon name="open" size={15} /> Open files
             </Button>
-            <Button onClick={() => setUrlDialog(true)}>
+            <Button
+              onClick={(event) => {
+                urlDialogReturnFocus.current = event.currentTarget
+                openUrlDialog()
+              }}
+            >
               <Icon name="link" size={15} /> Open URL
             </Button>
             <input
@@ -3666,10 +3818,20 @@ function WorkbenchRuntime({
                       >
                         <Icon name="examples" size={16} /> Browse examples
                       </Button>
-                      <Button onClick={() => setUrlDialog(true)}>
+                      <Button
+                        onClick={(event) => {
+                          urlDialogReturnFocus.current = event.currentTarget
+                          openUrlDialog()
+                        }}
+                      >
                         <Icon name="link" size={16} /> Open remote URL
                       </Button>
-                      <Button onClick={() => executeCommand('workspace.openProject')}>
+                      <Button
+                        onClick={(event) => {
+                          projectDialogReturnFocus.current = event.currentTarget
+                          executeCommand('workspace.openProject')
+                        }}
+                      >
                         <Icon name="folder" size={16} /> Open saved project
                       </Button>
                     </div>
@@ -3806,7 +3968,9 @@ function WorkbenchRuntime({
         <div className="url-dialog-backdrop">
           <form
             aria-label="Open remote scientific source"
+            aria-modal="true"
             className="url-dialog"
+            onKeyDown={(event) => handleDialogKeyDown(event, closeUrlDialog)}
             onSubmit={submitRemote}
             role="dialog"
           >
@@ -3819,13 +3983,14 @@ function WorkbenchRuntime({
               <input
                 onChange={(event) => setRemoteUrl(event.target.value)}
                 placeholder="https://example.org/volume.mrc"
+                ref={urlInput}
                 required
                 type="url"
                 value={remoteUrl}
               />
             </label>
             <div className="url-dialog__actions">
-              <Button onClick={() => setUrlDialog(false)} type="button">
+              <Button onClick={closeUrlDialog} type="button">
                 Cancel
               </Button>
               <Button type="submit" variant="primary">
@@ -3837,7 +4002,14 @@ function WorkbenchRuntime({
       ) : null}
       {projectDialog ? (
         <div className="url-dialog-backdrop">
-          <section aria-label="Recent projects" className="url-dialog" role="dialog">
+          <section
+            aria-label="Recent projects"
+            aria-modal="true"
+            className="url-dialog"
+            onKeyDown={(event) => handleDialogKeyDown(event, closeProjectDialog)}
+            ref={projectDialogRoot}
+            role="dialog"
+          >
             <h2>Recent projects</h2>
             <p>Projects and bounded result artifacts are stored only in this browser profile.</p>
             <div className="recent-projects">
@@ -3845,6 +4017,7 @@ function WorkbenchRuntime({
               {recentProjects.map((project) => (
                 <button
                   className="recent-project"
+                  data-dialog-initial-focus={project === recentProjects[0]}
                   key={project.id}
                   onClick={() => {
                     void projectStore
@@ -3854,7 +4027,7 @@ function WorkbenchRuntime({
                         throw new Error('The selected project no longer exists.')
                       })
                       .catch((openError: unknown) => {
-                        setProjectDialog(false)
+                        closeProjectDialog()
                         setError(
                           openError instanceof Error
                             ? openError.message
@@ -3872,8 +4045,12 @@ function WorkbenchRuntime({
               ))}
             </div>
             <div className="url-dialog__actions">
-              <Button onClick={() => setProjectDialog(false)}>Close</Button>
-              <Button onClick={() => projectImportInput.current?.click()} variant="primary">
+              <Button onClick={closeProjectDialog}>Close</Button>
+              <Button
+                data-dialog-initial-focus={recentProjects.length === 0}
+                onClick={() => projectImportInput.current?.click()}
+                variant="primary"
+              >
                 Import project
               </Button>
             </div>

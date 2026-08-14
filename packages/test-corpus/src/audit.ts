@@ -12,7 +12,11 @@ function auditScenario(scenario: ExampleScenarioV1): CorpusAuditEntryV1 {
     reasons.push('Redistribution is not approved.')
   for (const file of scenario.source.files) {
     if (scenario.source.kind !== 'generated') {
-      if (file.url === undefined) reasons.push(`${file.path}: immutable download URL is missing.`)
+      if (
+        (scenario.source.kind === 'hosted' || scenario.source.kind === 'external') &&
+        file.url === undefined
+      )
+        reasons.push(`${file.path}: immutable download URL is missing.`)
       if (file.sizeBytes === undefined) reasons.push(`${file.path}: exact byte size is missing.`)
       if (file.sha256 === undefined) reasons.push(`${file.path}: SHA-256 is missing.`)
     }

@@ -90,6 +90,24 @@ export interface ExamplePreviewV1 {
   readonly alt: string
 }
 
+export type ExampleInitialAnalysisV1 =
+  | Readonly<{
+      kind: 'histogram'
+      title: string
+      description: string
+      component: number
+    }>
+  | Readonly<{
+      kind: 'connected-components'
+      title: string
+      description: string
+      component: number
+      threshold: number
+      mode: 'greater-than' | 'greater-than-or-equal' | 'less-than' | 'less-than-or-equal'
+      connectivity: 4 | 8
+      overlay: 'mask' | 'labels'
+    }>
+
 export interface ExampleExpectedAssertionV1 {
   readonly id: string
   readonly level: ExpectedResultLevel
@@ -160,6 +178,7 @@ export interface ExampleScenarioV1 {
   readonly source: ExampleSourceV1
   readonly license: CorpusLicenseV1
   readonly preview: ExamplePreviewV1
+  readonly initialAnalysis?: ExampleInitialAnalysisV1 | undefined
   readonly tags: readonly string[]
   readonly learningGoals: readonly string[]
   readonly workflows: readonly ExampleWorkflowV1[]

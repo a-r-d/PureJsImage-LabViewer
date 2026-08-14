@@ -4,6 +4,7 @@ export const RPC_LIMITS = Object.freeze({
   maxStringLength: 4_096,
   maxItems: 256,
   maxMetadataDepth: 8,
+  maxBundledSourceBytes: 8_000_000,
   maxTilePixels: 512 * 512,
   maxTablePageRows: 200,
   maxTablePageColumns: 32,
@@ -36,7 +37,7 @@ import type {
 
 export * from './analysis.js'
 
-export type SourceKind = 'local' | 'remote' | 'sample'
+export type SourceKind = 'bundled' | 'local' | 'remote' | 'sample'
 export type TilePriority = 'visible' | 'near-visible' | 'background'
 export type DisplayMapping = Readonly<{
   mode: 'linear'
@@ -240,6 +241,17 @@ export type WorkerRequest =
       'source.open-local',
       Readonly<{ generation: number; primaryId: string; files: readonly LocalFileAttachment[] }>
     >
+  | RpcRequest<
+      'source.open-bundled',
+      Readonly<{
+        generation: number
+        path: string
+        name: string
+        size: number
+        sha256: string
+        mediaType: string
+      }>
+    >
   | RpcRequest<'source.open-remote', Readonly<{ generation: number; url: string }>>
   | RpcRequest<'source.close', Readonly<{ sourceId: SourceId; generation: number }>>
   | RpcRequest<
@@ -276,6 +288,10 @@ export interface RpcRequest<Kind extends string, Payload> {
 export type WorkerResponse =
   | RpcSuccess<'worker.initialize', Readonly<{ readers: readonly ReaderDescriptor[] }>>
   | RpcSuccess<'source.opened', OpenedSourceDescriptor>
+  | RpcSuccess<
+      'source-bundled.opened',
+      Readonly<{ source: OpenedSourceDescriptor; dataset: OpenedDatasetDescriptor }>
+    >
   | RpcSuccess<'source.closed', Readonly<{ sourceId: SourceId }>>
   | RpcSuccess<'dataset.opened', OpenedDatasetDescriptor>
   | RpcSuccess<'dataset.closed', Readonly<{ handleId: DatasetHandleId }>>
@@ -315,6 +331,7 @@ const REQUEST_KINDS = new Set<string>([
   'worker.initialize',
   'source.open-sample',
   'source.open-local',
+  'source.open-bundled',
   'source.open-remote',
   'source.close',
   'dataset.open',
@@ -691,6 +708,25 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
     if (kind === 'source.open-remote') {
       assertGeneration(payload)
       assertString(payload.url, 'url')
+    }
+    if (kind === 'source.open-bundled') {
+      assertGeneration(payload)
+      assertString(payload['path'], 'bundled path')
+      assertString(payload['name'], 'bundled name')
+      assertInteger(payload['size'], 'bundled size', 1)
+      if (payload['size'] > RPC_LIMITS.maxBundledSourceBytes)
+        throw new RpcValidationError('LIMIT_EXCEEDED', 'bundled source exceeds the byte limit')
+      assertString(payload['sha256'], 'bundled SHA-256')
+      assertString(payload['mediaType'], 'bundled media type')
+      if (
+        !payload['path'].startsWith('examples/') ||
+        payload['path'].startsWith('/') ||
+        payload['path'].includes('..') ||
+        payload['path'].includes('\\')
+      )
+        throw new RpcValidationError('INVALID_PAYLOAD', 'bundled path is outside examples/')
+      if (!/^[a-f0-9]{64}$/u.test(payload['sha256']))
+        throw new RpcValidationError('INVALID_PAYLOAD', 'bundled SHA-256 must be lowercase hex')
     }
     if (kind === 'source.open-local') {
       assertGeneration(payload)
