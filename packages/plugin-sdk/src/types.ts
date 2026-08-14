@@ -210,6 +210,12 @@ export interface SandboxReadyEventV1 {
   readonly kind: 'sandbox.ready'
 }
 
+export interface SandboxExecutingEventV1 {
+  readonly schemaVersion: 1
+  readonly kind: 'sandbox.executing'
+  readonly requestId: string
+}
+
 export interface SandboxCapabilityRequestV1 {
   readonly schemaVersion: 1
   readonly kind: 'sandbox.capability-request'
@@ -243,6 +249,7 @@ export type SandboxHostMessageV1 =
 export type SandboxWorkerMessageV1 =
   | SandboxCapabilityRequestV1
   | SandboxCompleteEventV1
+  | SandboxExecutingEventV1
   | SandboxLogEventV1
   | SandboxReadyEventV1
 

@@ -91,6 +91,8 @@ async function run(
           message: logMessage,
         }),
       aborted: () => cancelled,
+      onExecutionStart: () =>
+        send({ schemaVersion: 1, kind: 'sandbox.executing', requestId: message.requestId }),
     })
     complete({ requestId: message.requestId, status: 'completed', output: result.output })
   } catch (error) {

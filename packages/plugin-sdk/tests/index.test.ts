@@ -16,6 +16,7 @@ import {
   validatePluginManifest,
   validateRecipeDocument,
   validateSandboxHostMessage,
+  validateSandboxWorkerMessage,
   validateScriptProvenance,
   validateScriptTestResult,
 } from '../src/index.js'
@@ -123,6 +124,13 @@ describe('plugin SDK bounded contracts', () => {
       installation.issues.some(({ message }) => message.includes('both granted and denied')),
     ).toBe(true)
     expect(validateSandboxHostMessage({ schemaVersion: 1, kind: 'sandbox.start' }).ok).toBe(false)
+    expect(
+      validateSandboxWorkerMessage({
+        schemaVersion: 1,
+        kind: 'sandbox.executing',
+        requestId: 'request-1',
+      }).ok,
+    ).toBe(true)
     expect(
       validateSandboxHostMessage({
         schemaVersion: 1,

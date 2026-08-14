@@ -560,7 +560,13 @@ function validateSandboxMessage(
   if (value['schemaVersion'] !== 1 || typeof value['kind'] !== 'string')
     addIssue(issues, '', 'Malformed sandbox envelope.')
   const kinds = worker
-    ? ['sandbox.ready', 'sandbox.capability-request', 'sandbox.log', 'sandbox.complete']
+    ? [
+        'sandbox.ready',
+        'sandbox.executing',
+        'sandbox.capability-request',
+        'sandbox.log',
+        'sandbox.complete',
+      ]
     : ['sandbox.start', 'sandbox.cancel', 'sandbox.capability-result']
   if (!kinds.includes(String(value['kind'])))
     addIssue(issues, '/kind', 'Unexpected sandbox message kind.')

@@ -61,6 +61,12 @@ describe('ScriptHostClient lifecycle', () => {
       workerFactory: () => worker as unknown as Worker,
     })
     const result = client.run({ document: fixture.document, permissionGrant: fixture.grant })
+    const startMessage = worker.messages[0] as { readonly requestId: string }
+    worker.emitMessage({
+      schemaVersion: 1,
+      kind: 'sandbox.executing',
+      requestId: startMessage.requestId,
+    })
     worker.emitMessage({ schemaVersion: 1, kind: 'sandbox.complete', requestId: '../wrong' })
     await expect(result).resolves.toMatchObject({
       status: 'failed',
@@ -79,13 +85,18 @@ describe('ScriptHostClient lifecycle', () => {
       invoker: fixtureInvoker,
       workerFactory: () => stalledWorker as unknown as Worker,
     })
-    await expect(
-      stalledClient.run({
-        document: fixture.document,
-        permissionGrant: fixture.grant,
-        limits: { ...testLimits, deadlineMilliseconds: 10 },
-      }),
-    ).resolves.toMatchObject({
+    const stalledResult = stalledClient.run({
+      document: fixture.document,
+      permissionGrant: fixture.grant,
+      limits: { ...testLimits, deadlineMilliseconds: 10 },
+    })
+    const stalledStart = stalledWorker.messages[0] as { readonly requestId: string }
+    stalledWorker.emitMessage({
+      schemaVersion: 1,
+      kind: 'sandbox.executing',
+      requestId: stalledStart.requestId,
+    })
+    await expect(stalledResult).resolves.toMatchObject({
       status: 'limit-exceeded',
       error: 'Sandbox execution deadline exceeded.',
     })
@@ -103,6 +114,11 @@ describe('ScriptHostClient lifecycle', () => {
       limits: { ...testLimits, messageBytes: 256 },
     })
     const startMessage = oversizedWorker.messages[0] as { readonly requestId: string }
+    oversizedWorker.emitMessage({
+      schemaVersion: 1,
+      kind: 'sandbox.executing',
+      requestId: startMessage.requestId,
+    })
     oversizedWorker.emitMessage({
       schemaVersion: 1,
       kind: 'sandbox.log',

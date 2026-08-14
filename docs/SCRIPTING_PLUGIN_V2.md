@@ -133,6 +133,11 @@ Use defense in depth:
 
 Do not claim this has been independently security audited. Describe it as a restricted execution environment with explicit limitations.
 
+The Worker has a separate bounded startup watchdog. The configured script execution deadline begins
+only after QuickJS loading, context hardening, and host bridge installation, at the explicit
+`sandbox.executing` transition. This keeps slow platform bootstrap from consuming guest CPU time
+without weakening the interrupt deadline applied to untrusted execution.
+
 ### Prompt 10 implementation status
 
 The Scripts rail now opens the first-class, local-first Script Studio. It provides a CodeMirror 6

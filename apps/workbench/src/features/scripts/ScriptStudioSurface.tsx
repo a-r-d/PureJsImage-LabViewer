@@ -135,6 +135,7 @@ export function ScriptStudioSurface({
   const [outcome, setOutcome] = useState<ScriptRunOutcome | readonly unknown[]>()
   const [notice, setNotice] = useState('Loading local Script Studio…')
   const [running, setRunning] = useState(false)
+  const [editorVersion, setEditorVersion] = useState(0)
   const [review, setReview] = useState<'dry-run' | 'execute' | 'install'>()
   const [apiSearch, setApiSearch] = useState('')
   const importInput = useRef<HTMLInputElement>(null)
@@ -530,6 +531,7 @@ export function ScriptStudioSurface({
             onClick={() => {
               if (selected === undefined) return
               setText(documentText(selected.savedDocument))
+              setEditorVersion((version) => version + 1)
               setNotice('Restored the last reviewed snapshot in the editor; save to apply.')
             }}
           >
@@ -612,7 +614,10 @@ export function ScriptStudioSurface({
               <Suspense fallback={<p role="status">Loading editor language tools…</p>}>
                 <CodeMirrorEditor
                   apiNames={apiNames}
-                  key={selected.id}
+                  initialValue={
+                    loadedId.current === selected.id ? text : documentText(selected.document)
+                  }
+                  key={`${selected.id}:${editorVersion}`}
                   language={
                     selected.document.kind === 'recipe' ? 'json' : selected.document.language
                   }
@@ -620,7 +625,6 @@ export function ScriptStudioSurface({
                   onEditorState={(state) => {
                     editorState.current = state
                   }}
-                  value={text}
                 />
               </Suspense>
             )}

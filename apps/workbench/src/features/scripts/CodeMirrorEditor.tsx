@@ -1,6 +1,5 @@
 import { autocompletion, type CompletionContext } from '@codemirror/autocomplete'
 import { javascript } from '@codemirror/lang-javascript'
-import { Transaction } from '@codemirror/state'
 import { basicSetup, EditorView } from 'codemirror'
 import { useEffect, useRef } from 'react'
 
@@ -20,12 +19,13 @@ function apiCompletion(apiNames: readonly string[]) {
 
 export function CodeMirrorEditor({
   apiNames,
+  initialValue,
   language,
   onChange,
   onEditorState,
-  value,
 }: Readonly<{
   apiNames: readonly string[]
+  initialValue: string
   language: 'javascript' | 'json' | 'typescript'
   onChange(value: string): void
   onEditorState?(state: {
@@ -33,11 +33,9 @@ export function CodeMirrorEditor({
     readonly selectionHead: number
     readonly scrollTop: number
   }): void
-  value: string
 }>) {
   const parent = useRef<HTMLDivElement>(null)
-  const view = useRef<EditorView | undefined>(undefined)
-  const initialValue = useRef(value)
+  const initialDocument = useRef(initialValue)
   const onChangeRef = useRef(onChange)
   const onEditorStateRef = useRef(onEditorState)
   onChangeRef.current = onChange
@@ -47,7 +45,7 @@ export function CodeMirrorEditor({
     const element = parent.current
     if (element === null) return
     const editor = new EditorView({
-      doc: initialValue.current,
+      doc: initialDocument.current,
       parent: element,
       extensions: [
         basicSetup,
@@ -72,21 +70,8 @@ export function CodeMirrorEditor({
         }),
       ],
     })
-    view.current = editor
-    return () => {
-      view.current = undefined
-      editor.destroy()
-    }
+    return () => editor.destroy()
   }, [apiNames, language])
-
-  useEffect(() => {
-    const editor = view.current
-    if (editor === undefined || editor.state.doc.toString() === value) return
-    editor.dispatch({
-      changes: { from: 0, to: editor.state.doc.length, insert: value },
-      annotations: Transaction.addToHistory.of(false),
-    })
-  }, [value])
 
   return <div className="script-studio__editor" ref={parent} />
 }

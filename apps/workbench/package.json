@@ -18,7 +18,6 @@
   "dependencies": {
     "@codemirror/autocomplete": "6.20.3",
     "@codemirror/lang-javascript": "6.2.5",
-    "@codemirror/state": "6.7.1",
     "@pji-workbench/actions": "workspace:*",
     "@pji-workbench/agent": "workspace:*",
     "@pji-workbench/contracts": "workspace:*",

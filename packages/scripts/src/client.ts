@@ -36,10 +36,13 @@ interface ActiveRun {
   readonly resolve: (outcome: ScriptRunOutcome) => void
   messages: number
   settled: boolean
-  deadlineTimer: ReturnType<typeof setTimeout>
+  startupTimer: ReturnType<typeof setTimeout>
+  deadlineTimer?: ReturnType<typeof setTimeout>
+  executionStarted: boolean
 }
 
 let requestSequence = 0
+const SANDBOX_STARTUP_DEADLINE_MILLISECONDS = 30_000
 
 function createSandboxWorker(): Worker {
   return new Worker(new URL('./sandbox.worker.ts', import.meta.url), {
@@ -98,10 +101,10 @@ export class ScriptHostClient {
     })
     return new Promise((resolve) => {
       let active: ActiveRun
-      const deadlineTimer = setTimeout(() => {
+      const startupTimer = setTimeout(() => {
         active.worker.terminate()
-        this.#finish(active, 'limit-exceeded', undefined, 'Sandbox execution deadline exceeded.')
-      }, limits.deadlineMilliseconds)
+        this.#finish(active, 'failed', undefined, 'Sandbox Worker startup deadline exceeded.')
+      }, SANDBOX_STARTUP_DEADLINE_MILLISECONDS)
       active = {
         requestId,
         worker,
@@ -113,7 +116,8 @@ export class ScriptHostClient {
         resolve,
         messages: 0,
         settled: false,
-        deadlineTimer,
+        startupTimer,
+        executionStarted: false,
       }
       this.#active = active
       worker.addEventListener('message', (event: MessageEvent<unknown>) =>
@@ -175,6 +179,25 @@ export class ScriptHostClient {
       this.#finish(active, 'failed', undefined, 'Sandbox request identity mismatch.')
       return
     }
+    if (message.kind === 'sandbox.executing') {
+      if (active.executionStarted) {
+        active.worker.terminate()
+        this.#finish(active, 'failed', undefined, 'Malformed sandbox Worker lifecycle.')
+        return
+      }
+      active.executionStarted = true
+      clearTimeout(active.startupTimer)
+      active.deadlineTimer = setTimeout(() => {
+        active.worker.terminate()
+        this.#finish(active, 'limit-exceeded', undefined, 'Sandbox execution deadline exceeded.')
+      }, active.limits.deadlineMilliseconds)
+      return
+    }
+    if (!active.executionStarted) {
+      active.worker.terminate()
+      this.#finish(active, 'failed', undefined, 'Malformed sandbox Worker lifecycle.')
+      return
+    }
     if (message.kind === 'sandbox.log') {
       active.logs.push(`${message.level}: ${message.message}`)
       return
@@ -222,7 +245,8 @@ export class ScriptHostClient {
   ): void {
     if (active.settled) return
     active.settled = true
-    clearTimeout(active.deadlineTimer)
+    clearTimeout(active.startupTimer)
+    if (active.deadlineTimer !== undefined) clearTimeout(active.deadlineTimer)
     active.worker.terminate()
     if (this.#active === active) this.#active = undefined
     const hostResult = active.host.result()

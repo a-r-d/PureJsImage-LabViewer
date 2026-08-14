@@ -26,6 +26,7 @@ export interface QuickJsRunOptions {
   readonly log: (level: 'info' | 'warn' | 'error', message: string) => void
   readonly module?: QuickJSWASMModule
   readonly aborted?: () => boolean
+  readonly onExecutionStart?: () => void
 }
 
 export interface QuickJsRunResult {
@@ -158,14 +159,17 @@ function serializeHandle(vm: QuickJSContext, handle: QuickJSHandle): string {
 }
 
 function configureRuntime(runtime: QuickJSRuntime, options: QuickJsRunOptions): void {
-  const deadline = performance.now() + options.limits.deadlineMilliseconds
   runtime.setMemoryLimit(options.limits.memoryBytes)
   runtime.setMaxStackSize(options.limits.stackBytes)
-  runtime.setInterruptHandler(() => performance.now() > deadline || options.aborted?.() === true)
   runtime.setModuleLoader((moduleName) => {
     if (moduleName !== '@lab/api') throw new Error(`Module is not permitted: ${moduleName}`)
     return options.api.moduleSource
   })
+}
+
+function startExecutionDeadline(runtime: QuickJSRuntime, options: QuickJsRunOptions): void {
+  const deadline = performance.now() + options.limits.deadlineMilliseconds
+  runtime.setInterruptHandler(() => performance.now() > deadline || options.aborted?.() === true)
 }
 
 function hardenContext(vm: QuickJSContext): void {
@@ -232,6 +236,8 @@ export async function runQuickJs(options: QuickJsRunOptions): Promise<QuickJsRun
     configureRuntime(runtime, options)
     hardenContext(vm)
     installBridge(vm, options, counters)
+    startExecutionDeadline(runtime, options)
+    options.onExecutionStart?.()
     const moduleResult = vm.evalCode(options.document.source, `${options.document.id}.mjs`, {
       type: 'module',
     })
