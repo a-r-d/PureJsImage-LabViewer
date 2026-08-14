@@ -15,3 +15,18 @@ graph as direct application dependencies.
 `tsconfig.app.json`, every workspace package, and the PureJsImage public-boundary smoke compile
 retain `skipLibCheck: false`. Remove this exception when the upstream tooling declarations are
 self-contained.
+
+## Production deployment
+
+The static workbench is deployed as a Cloudflare Worker with Vite-managed assets and an SPA
+fallback. The production Custom Domain is <https://lab.purejsimage.com>.
+
+From the repository root:
+
+```text
+pnpm deploy:dry-run
+pnpm deploy:production
+```
+
+Wrangler provisions the Custom Domain's DNS record and certificate from the `routes` declaration
+in `wrangler.jsonc`. Do not create a separate CNAME for the same hostname.

@@ -2,6 +2,12 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "purejsimage-materials-workbench",
   "compatibility_date": "2026-08-13",
+  "routes": [
+    {
+      "pattern": "lab.purejsimage.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "not_found_handling": "single-page-application"
   }
