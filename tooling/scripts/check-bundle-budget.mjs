@@ -3,6 +3,7 @@ import path from 'node:path'
 import { gzipSync } from 'node:zlib'
 
 const MAX_ROUTE_CHUNK_GZIP_BYTES = 300 * 1024
+const MAX_LAZY_LANGUAGE_WORKER_GZIP_BYTES = 1_000 * 1024
 const root = process.cwd()
 const buildRoot = path.join(root, 'apps/workbench/dist')
 
@@ -27,9 +28,15 @@ for (const file of files.sort()) {
   const bytes = await readFile(file)
   const gzipBytes = gzipSync(bytes).byteLength
   const relative = path.relative(root, file)
+  const budget = path.basename(file).startsWith('language.worker-')
+    ? MAX_LAZY_LANGUAGE_WORKER_GZIP_BYTES
+    : MAX_ROUTE_CHUNK_GZIP_BYTES
+  const budgetKind = path.basename(file).startsWith('language.worker-')
+    ? 'lazy language Worker'
+    : 'route chunk'
   console.log(`${relative}: ${gzipBytes} bytes gzip`)
-  if (gzipBytes > MAX_ROUTE_CHUNK_GZIP_BYTES) {
-    console.error(`${relative} exceeds the ${MAX_ROUTE_CHUNK_GZIP_BYTES}-byte route chunk budget`)
+  if (gzipBytes > budget) {
+    console.error(`${relative} exceeds the ${budget}-byte ${budgetKind} budget`)
     failed = true
   }
 }

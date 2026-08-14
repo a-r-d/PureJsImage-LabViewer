@@ -142,3 +142,18 @@ FFT complex values remain execution-private until a truthful public complex-data
 Registration uses explicit integer-shift tolerance and deterministic edge policy; AFM corrections
 preserve raw data as visible graph steps; batch files execute in isolated Workers with independent
 status. See `docs/MATERIALS_FFT_SURFACE_STACK_BATCH.md`.
+
+## Prompt 10 keeps Studio persistence and compilation local and identity-bound
+
+Script and recipe contracts, normalized hashes, installation snapshots, and repository validation
+remain in `packages/plugin-sdk`; IndexedDB and the React/CodeMirror authoring surface remain in the
+workbench application. TypeScript 6 is installed under the `typescript-compiler` package alias so
+the repository's TypeScript 7 build toolchain is not changed. Its compiler is bundled only into the
+dedicated lazy language Worker, with a measured 1,000 KiB gzip Worker budget distinct from the
+300 KiB route-chunk budget. QuickJS remains the only execution realm for sandboxed code.
+
+Local installation records retain the exact reviewed document, digest, and permission grant.
+Editing changes the digest and produces a visible `changed` state until a fresh review. Staged
+script actions use underscore-separated IDs because those names are part of the published roadmap;
+the action-ID validator accepts underscores as bounded separators without relaxing any input,
+permission, or execution policy.

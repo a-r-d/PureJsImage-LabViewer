@@ -24,11 +24,13 @@ import type {
 import { createImagingWorkerClient, ImagingRpcError } from '@pji-workbench/imaging'
 import { type BatchRecipeRow, runBatchRecipe } from '@pji-workbench/materials-analysis'
 import {
+  type AnalysisScriptDocumentV1,
+  normalizeStudioDocument,
   type RecipeDocumentV1,
   recipeContentIntegrity,
   validateRecipeDocument,
 } from '@pji-workbench/plugin-sdk'
-import type { ScriptActionInvoker } from '@pji-workbench/scripts'
+import { generateScriptApi, type ScriptActionInvoker } from '@pji-workbench/scripts'
 import {
   Button,
   CommandPalette,
@@ -260,8 +262,8 @@ function withCalibrationOverride(
   }
 }
 
-const ScriptProofSurface = lazy(() =>
-  import('../features/scripts/ScriptProofSurface.js').then(({ ScriptProofSurface: Surface }) => ({
+const ScriptStudioSurface = lazy(() =>
+  import('../features/scripts/ScriptStudioSurface.js').then(({ ScriptStudioSurface: Surface }) => ({
     default: Surface,
   })),
 )
@@ -289,6 +291,12 @@ function fixtureAction(
   }
 }
 
+function executeOnlyAction(
+  execute: (input: JsonValue) => JsonValue | Promise<JsonValue>,
+): ActionHandler<CommandContext> {
+  return { execute: (input) => execute(input) }
+}
+
 export function WorkbenchApp({ environment }: { readonly environment: PublicEnvironment }) {
   return (
     <WorkbenchProviders>
@@ -299,7 +307,7 @@ export function WorkbenchApp({ environment }: { readonly environment: PublicEnvi
 
 function WorkbenchRuntime({
   environment,
-  services: { client, preferenceStore, projectStore, runtime, reconciler },
+  services: { client, preferenceStore, projectStore, scriptStore, runtime, reconciler },
 }: {
   readonly environment: PublicEnvironment
   readonly services: WorkbenchServices
@@ -353,7 +361,7 @@ function WorkbenchRuntime({
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteOperationId, setPaletteOperationId] = useState<string>()
   const [exampleGalleryOpen, setExampleGalleryOpen] = useState(false)
-  const [scriptProofOpen, setScriptProofOpen] = useState(false)
+  const [scriptStudioOpen, setScriptStudioOpen] = useState(false)
   const [recentSources, setRecentSources] = useState(() => readRecentSources(window.localStorage))
   const [log, setLog] = useState<readonly string[]>([])
   const [roiTool, setRoiTool] = useState<RoiTool>('select')
@@ -1171,7 +1179,7 @@ function WorkbenchRuntime({
     const recipe = await createParticleRecipe()
     if (recipe === undefined) return
     setScriptRecipe(recipe)
-    setScriptProofOpen(true)
+    setScriptStudioOpen(true)
   }, [createParticleRecipe])
 
   const advancedRoi = useCallback(
@@ -2299,6 +2307,7 @@ function WorkbenchRuntime({
     }),
     [hasDataset, historyState.redo.length, historyState.undo.length],
   )
+  const actionHostRef = useRef<WorkbenchActionHost<CommandContext> | undefined>(undefined)
   const actionHost = useMemo(
     () =>
       new WorkbenchActionHost(
@@ -2353,6 +2362,14 @@ function WorkbenchRuntime({
             'roi.create@1',
             fixtureAction((input) => ({
               proposalId: 'proposal:roi-1',
+              status: 'requires-approval',
+              normalized: input,
+            })),
+          ],
+          [
+            'roi.update@1',
+            fixtureAction((input) => ({
+              proposalId: 'proposal:roi-update',
               status: 'requires-approval',
               normalized: input,
             })),
@@ -2456,12 +2473,43 @@ function WorkbenchRuntime({
             },
           ],
           [
+            'analysis.batch.request-execute@1',
+            fixtureAction((input) => ({
+              proposalId: 'proposal:batch',
+              status: 'requires-approval',
+              bounded: true,
+              request: input,
+            })),
+          ],
+          [
+            'analysis.cancel@1',
+            executeOnlyAction(() => {
+              analysisAbort.current?.abort(
+                new DOMException('Cancelled by semantic action.', 'AbortError'),
+              )
+              return { status: 'cancel-requested' }
+            }),
+          ],
+          [
             'result.summary.read@1',
             fixtureAction(() => ({ resultId: 'result:fixture', rowCount: 12, bounded: true })),
           ],
           [
             'result.page.read@1',
             fixtureAction(() => ({ resultId: 'result:fixture', offset: 0, rows: [] })),
+          ],
+          [
+            'pipeline.read@1',
+            fixtureAction(() => workspace.analysis.graph as unknown as JsonValue),
+          ],
+          [
+            'result.export.propose@1',
+            fixtureAction((input) => ({
+              proposalId: 'proposal:result-export',
+              status: 'requires-approval',
+              format: 'csv',
+              request: input,
+            })),
           ],
           [
             'viewport.state.read@1',
@@ -2485,6 +2533,241 @@ function WorkbenchRuntime({
               if (typeof message === 'string')
                 setLog((current) => [...current, `Script · ${message}`])
               return null
+            }),
+          ],
+          [
+            'script.create_draft@1',
+            executeOnlyAction(async (input) => {
+              const request = rpcObject(input)
+              const id = request?.['id']
+              const title = request?.['title']
+              if (typeof id !== 'string' || typeof title !== 'string')
+                throw new Error('Script draft requires bounded id and title fields.')
+              const document = (await normalizeStudioDocument({
+                schemaVersion: 1,
+                kind: 'analysis-script',
+                id,
+                title,
+                language: 'typescript',
+                source: `export async function main() { return {} }\nglobalThis.__scriptMain = main\n`,
+                manifest: {
+                  scriptApiVersion: 1,
+                  requestedCapabilities: [],
+                  pureJsImageCompatibility: '^4.0.0',
+                  workbenchCompatibility: '^0.0.0',
+                  entrypoint: 'main',
+                  deterministic: true,
+                },
+                tests: [],
+                integrity: { algorithm: 'sha256', digest: '0'.repeat(64) },
+              })) as AnalysisScriptDocumentV1
+              const record = {
+                schemaVersion: 1 as const,
+                id,
+                kind: 'analysis-script' as const,
+                document,
+                savedDocument: document,
+                editor: {
+                  schemaVersion: 1 as const,
+                  selectionAnchor: 0,
+                  selectionHead: 0,
+                  scrollTop: 0,
+                  activePanel: 'problems' as const,
+                },
+                testResults: [],
+              }
+              await scriptStore.put(record)
+              return { id, digest: document.integrity.digest }
+            }),
+          ],
+          [
+            'script.read@1',
+            fixtureAction(async (input) => {
+              const id = rpcObject(input)?.['id']
+              if (typeof id !== 'string') throw new Error('Script read requires an id.')
+              const record = await scriptStore.get(id)
+              if (record === undefined) throw new Error('Script or recipe was not found.')
+              return record as unknown as JsonValue
+            }),
+          ],
+          [
+            'script.apply_patch@1',
+            executeOnlyAction(async (input) => {
+              const request = rpcObject(input)
+              const id = request?.['id']
+              const expectedDigest = request?.['expectedDigest']
+              const source = request?.['source']
+              if (
+                typeof id !== 'string' ||
+                typeof expectedDigest !== 'string' ||
+                typeof source !== 'string'
+              )
+                throw new Error('Script patch requires id, expectedDigest, and source.')
+              const record = await scriptStore.get(id)
+              if (record?.document.kind !== 'analysis-script')
+                throw new Error('Only sandboxed script source can be patched by this action.')
+              if (record.document.integrity.digest !== expectedDigest)
+                throw new Error('Script changed since the requested patch was prepared.')
+              const document = (await normalizeStudioDocument({
+                ...record.document,
+                source,
+              })) as AnalysisScriptDocumentV1
+              await scriptStore.put({ ...record, document, testResults: [] })
+              return { id, digest: document.integrity.digest, status: 'draft-updated' }
+            }),
+          ],
+          [
+            'script.typecheck@1',
+            fixtureAction(async (input) => {
+              const request = rpcObject(input)
+              const id = request?.['id']
+              const expectedDigest = request?.['expectedDigest']
+              if (typeof id !== 'string' || typeof expectedDigest !== 'string')
+                throw new Error('Script typecheck requires id and expectedDigest.')
+              const record = await scriptStore.get(id)
+              if (record?.document.kind !== 'analysis-script')
+                throw new Error('Typecheck requires a sandboxed script.')
+              if (record.document.integrity.digest !== expectedDigest)
+                throw new Error('Script changed since typecheck was requested.')
+              const [{ ScriptLanguageClient }] = await Promise.all([
+                import('../features/scripts/language-client.js'),
+              ])
+              const client = new ScriptLanguageClient()
+              try {
+                const result = await client.check(
+                  record.document.source,
+                  record.document.language,
+                  generateScriptApi(workbenchActionRegistry.manifest()),
+                )
+                return {
+                  id,
+                  digest: record.document.integrity.digest,
+                  problems: result.problems,
+                } as unknown as JsonValue
+              } finally {
+                client.dispose()
+              }
+            }),
+          ],
+          [
+            'script.run_tests@1',
+            executeOnlyAction(async (input) => {
+              const request = rpcObject(input)
+              const id = request?.['id']
+              const expectedDigest = request?.['expectedDigest']
+              if (typeof id !== 'string' || typeof expectedDigest !== 'string')
+                throw new Error('Script tests require id and expectedDigest.')
+              const record = await scriptStore.get(id)
+              if (record === undefined) throw new Error('Script or recipe was not found.')
+              if (record.document.integrity.digest !== expectedDigest)
+                throw new Error('Script changed since tests were requested.')
+              const host = actionHostRef.current
+              if (host === undefined) throw new Error('Script action host is unavailable.')
+              const [studio, languageModule, scriptModule] = await Promise.all([
+                import('../features/scripts/studio-operations.js'),
+                import('../features/scripts/language-client.js'),
+                import('@pji-workbench/scripts/examples'),
+              ])
+              const languageClient = new languageModule.ScriptLanguageClient()
+              try {
+                const examples = await scriptModule.createBuiltInScriptStudioExamples()
+                const example = examples.find((candidate) => candidate.id === id)
+                const results = await studio.runDocumentTests({
+                  document: record.document,
+                  ...(example === undefined ? {} : { recipeTests: example.tests }),
+                  language: languageClient,
+                  api: generateScriptApi(workbenchActionRegistry.manifest()),
+                  invoker: {
+                    invoke: (actionId, version, actionInput, mode) =>
+                      mode === 'dry-run'
+                        ? host.dryRun(
+                            actionId,
+                            version,
+                            actionInput,
+                            { hasDataset: true },
+                            ACTIVE_ACTION_SIGNAL,
+                          )
+                        : host.execute(
+                            actionId,
+                            version,
+                            actionInput,
+                            { hasDataset: true },
+                            ACTIVE_ACTION_SIGNAL,
+                          ),
+                  },
+                })
+                await scriptStore.put({ ...record, testResults: results })
+                return {
+                  id,
+                  digest: record.document.integrity.digest,
+                  results,
+                  status: results.every(({ status }) => status === 'passed') ? 'passed' : 'failed',
+                } as unknown as JsonValue
+              } finally {
+                languageClient.dispose()
+              }
+            }),
+          ],
+          [
+            'script.diff@1',
+            fixtureAction(async (input) => {
+              const request = rpcObject(input)
+              const id = request?.['id']
+              const expectedDigest = request?.['expectedDigest']
+              if (typeof id !== 'string' || typeof expectedDigest !== 'string')
+                throw new Error('Script diff requires id and expectedDigest.')
+              const record = await scriptStore.get(id)
+              if (record === undefined) throw new Error('Script or recipe was not found.')
+              if (record.document.integrity.digest !== expectedDigest)
+                throw new Error('Script changed since diff was requested.')
+              const { boundedLineDiff, documentText } = await import(
+                '../features/scripts/studio-operations.js'
+              )
+              return {
+                id,
+                lines: boundedLineDiff(
+                  documentText(record.savedDocument),
+                  documentText(record.document),
+                ),
+              }
+            }),
+          ],
+          [
+            'script.request_install@1',
+            fixtureAction(async (input) => {
+              const request = rpcObject(input)
+              const id = request?.['id']
+              const expectedDigest = request?.['expectedDigest']
+              if (typeof id !== 'string' || typeof expectedDigest !== 'string')
+                throw new Error('Installation request requires id and expectedDigest.')
+              const record = await scriptStore.get(id)
+              if (record === undefined) throw new Error('Script or recipe was not found.')
+              if (record.document.integrity.digest !== expectedDigest)
+                throw new Error('Script changed since installation was requested.')
+              return {
+                id,
+                digest: record.document.integrity.digest,
+                status: 'requires-user-review',
+              }
+            }),
+          ],
+          [
+            'script.request_execute@1',
+            fixtureAction(async (input) => {
+              const request = rpcObject(input)
+              const id = request?.['id']
+              const expectedDigest = request?.['expectedDigest']
+              if (typeof id !== 'string' || typeof expectedDigest !== 'string')
+                throw new Error('Execution request requires id and expectedDigest.')
+              const record = await scriptStore.get(id)
+              if (record === undefined) throw new Error('Script or recipe was not found.')
+              if (record.document.integrity.digest !== expectedDigest)
+                throw new Error('Script changed since execution was requested.')
+              return {
+                id,
+                digest: record.document.integrity.digest,
+                status: 'requires-user-review',
+              }
             }),
           ],
           ['workspace.new@1', commandAction(newProject)],
@@ -2525,10 +2808,12 @@ function WorkbenchRuntime({
       runConnectedComponents,
       saveProject,
       selection,
+      scriptStore,
       updatePreferences,
       workspace,
     ],
   )
+  actionHostRef.current = actionHost
 
   const scriptInvoker = useMemo<ScriptActionInvoker>(
     () => ({
@@ -2536,6 +2821,10 @@ function WorkbenchRuntime({
         mode === 'dry-run'
           ? actionHost.dryRun(id, version, input, { hasDataset: true }, ACTIVE_ACTION_SIGNAL)
           : actionHost.execute(id, version, input, { hasDataset: true }, ACTIVE_ACTION_SIGNAL),
+      cancel: () =>
+        analysisAbort.current?.abort(
+          new DOMException('Cancelled with the active sandbox script.', 'AbortError'),
+        ),
     }),
     [actionHost],
   )
@@ -3003,12 +3292,12 @@ function WorkbenchRuntime({
                 <Icon name="results" />
               </IconButton>
               <IconButton
-                aria-pressed={scriptProofOpen}
+                aria-pressed={scriptStudioOpen}
                 className="mode-rail__button"
-                label="Scripts sandbox proof"
+                label="Script Studio"
                 onClick={() => {
                   setScriptRecipe(undefined)
-                  setScriptProofOpen(true)
+                  setScriptStudioOpen(true)
                 }}
               >
                 <Icon name="code" />
@@ -3397,19 +3686,21 @@ function WorkbenchRuntime({
         </div>
       )}
       {exampleGalleryOpen ? <ExampleGallery onClose={() => setExampleGalleryOpen(false)} /> : null}
-      {scriptProofOpen ? (
+      {scriptStudioOpen ? (
         <Suspense
           fallback={
-            <div className="script-proof-backdrop" role="status">
+            <div className="script-studio-backdrop" role="status">
               Loading sandbox tools…
             </div>
           }
         >
-          <ScriptProofSurface
+          <ScriptStudioSurface
             actionManifest={scriptActionManifest}
             invoker={scriptInvoker}
-            onClose={() => setScriptProofOpen(false)}
+            onClose={() => setScriptStudioOpen(false)}
+            onOpenPanel={setBottomTab}
             recipe={scriptRecipe}
+            repository={scriptStore}
           />
         </Suspense>
       ) : null}

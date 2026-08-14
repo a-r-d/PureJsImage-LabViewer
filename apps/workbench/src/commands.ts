@@ -23,27 +23,40 @@ export type WorkbenchActionId =
   | 'analysis.connected-components.execute'
   | 'analysis.connected-components.plan'
   | 'analysis.catalog.read'
+  | 'analysis.cancel'
   | 'analysis.describe'
   | 'analysis.dry-run'
   | 'analysis.normalize'
   | 'analysis.graph.request-execute'
   | 'analysis.request-execute'
+  | 'analysis.batch.request-execute'
   | 'analysis.threshold.commit'
   | 'analysis.threshold.preview'
   | 'dataset.describe'
   | 'dataset.list'
   | 'panel.select'
   | 'pipeline.node.remove'
+  | 'pipeline.read'
+  | 'result.export.propose'
   | 'result.page.read'
   | 'result.summary.read'
   | 'roi.create'
   | 'roi.list'
+  | 'roi.update'
   | 'roi.remove'
   | 'roi.select'
   | 'source.open-local'
   | 'source.open-remote'
   | 'source.list'
   | 'script.log'
+  | 'script.apply_patch'
+  | 'script.create_draft'
+  | 'script.diff'
+  | 'script.read'
+  | 'script.request_execute'
+  | 'script.request_install'
+  | 'script.run_tests'
+  | 'script.typecheck'
   | 'viewport.state.read'
   | 'viewport.state.propose'
   | 'workspace.summary.read'
@@ -65,6 +78,45 @@ export interface WorkbenchCommand extends CommandPresentation {
 
 const EMPTY_INPUT = { type: 'object', additionalProperties: false } as const
 const NULL_OUTPUT = { type: 'null' } as const
+const SCRIPT_ID = { type: 'string', minLength: 1, maxLength: 128 } as const
+const SCRIPT_DIGEST = { type: 'string', minLength: 64, maxLength: 64 } as const
+
+function scriptActionInput(id: Extract<WorkbenchActionId, `script.${string}`>) {
+  if (id === 'script.create_draft')
+    return {
+      type: 'object' as const,
+      properties: {
+        id: SCRIPT_ID,
+        title: { type: 'string' as const, minLength: 1, maxLength: 256 },
+      },
+      required: ['id', 'title'] as const,
+      additionalProperties: false,
+    }
+  if (id === 'script.apply_patch')
+    return {
+      type: 'object' as const,
+      properties: {
+        id: SCRIPT_ID,
+        expectedDigest: SCRIPT_DIGEST,
+        source: { type: 'string' as const, maxLength: 256 * 1024 },
+      },
+      required: ['id', 'expectedDigest', 'source'] as const,
+      additionalProperties: false,
+    }
+  if (id === 'script.read')
+    return {
+      type: 'object' as const,
+      properties: { id: SCRIPT_ID },
+      required: ['id'] as const,
+      additionalProperties: false,
+    }
+  return {
+    type: 'object' as const,
+    properties: { id: SCRIPT_ID, expectedDigest: SCRIPT_DIGEST },
+    required: ['id', 'expectedDigest'] as const,
+    additionalProperties: false,
+  }
+}
 
 function descriptor(
   id: WorkbenchActionId,
@@ -328,6 +380,28 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
     ),
   },
   {
+    descriptor: descriptor(
+      'roi.update',
+      'Propose ROI update',
+      'Validate a bounded ROI update proposal without applying it.',
+      'roi',
+      {
+        mutability: 'proposal',
+        permissions: ['roi.propose'],
+        inputSchema: {
+          type: 'object',
+          properties: {
+            roiId: { type: 'string', minLength: 1, maxLength: 256 },
+            patch: { type: 'object', additionalProperties: true },
+          },
+          required: ['roiId', 'patch'],
+          additionalProperties: false,
+        },
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
     descriptor: descriptor('roi.select', 'Select ROI', 'Select a workspace ROI.', 'roi', {
       permissions: ['roi.propose'],
     }),
@@ -460,6 +534,35 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
   },
   {
     descriptor: descriptor(
+      'analysis.batch.request-execute',
+      'Request local batch execution',
+      'Create a bounded batch-recipe proposal without opening files or executing items.',
+      'analysis',
+      {
+        mutability: 'proposal',
+        cost: 'expensive',
+        cancellable: true,
+        permissions: ['analysis.execute'],
+        inputSchema: { type: 'object', additionalProperties: true },
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'analysis.cancel',
+      'Cancel active analysis',
+      'Request cancellation of the currently active analysis operation.',
+      'analysis',
+      {
+        cost: 'interactive',
+        permissions: ['analysis.execute'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
       'analysis.threshold.preview',
       'Preview threshold',
       'Run a bounded threshold preview without project history.',
@@ -544,6 +647,34 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
   },
   {
     descriptor: descriptor(
+      'pipeline.read',
+      'Read analysis pipeline',
+      'Return the bounded committed operation graph.',
+      'pipeline',
+      {
+        mutability: 'read',
+        permissions: ['workspace.read'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'result.export.propose',
+      'Propose result CSV export',
+      'Validate a bounded result export proposal without creating a file.',
+      'results',
+      {
+        mutability: 'proposal',
+        cost: 'external',
+        permissions: ['file.export'],
+        inputSchema: { type: 'object', additionalProperties: true },
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
       'panel.select',
       'Select workbench panel',
       'Open a named workbench surface.',
@@ -579,6 +710,70 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
       },
     ),
   },
+  ...(
+    [
+      [
+        'script.create_draft',
+        'Create script draft',
+        'Create a bounded local draft for review.',
+        'workspace.propose',
+      ],
+      ['script.read', 'Read script', 'Read one bounded local script or recipe.', 'workspace.read'],
+      [
+        'script.apply_patch',
+        'Apply script patch',
+        'Apply a revision-checked source replacement to a draft.',
+        'workspace.propose',
+      ],
+      [
+        'script.typecheck',
+        'Typecheck script',
+        'Typecheck a script in the lazy language Worker.',
+        'workspace.read',
+      ],
+      [
+        'script.run_tests',
+        'Run script tests',
+        'Run deterministic fixture tests in the restricted runtime.',
+        'analysis.execute',
+      ],
+      [
+        'script.diff',
+        'Read script diff',
+        'Return a bounded saved-versus-draft diff.',
+        'workspace.read',
+      ],
+      [
+        'script.request_install',
+        'Request local script installation',
+        'Create an installation proposal for exact reviewed content.',
+        'workspace.propose',
+      ],
+      [
+        'script.request_execute',
+        'Request script execution',
+        'Create an execution proposal for exact reviewed content.',
+        'analysis.execute',
+      ],
+    ] as const
+  ).map(([id, title, description, permission]) => ({
+    descriptor: descriptor(id, title, description, 'scripts', {
+      mutability:
+        id === 'script.read' || id === 'script.typecheck' || id === 'script.diff'
+          ? 'read'
+          : 'proposal',
+      cost:
+        id === 'script.run_tests' || id === 'script.request_execute'
+          ? 'expensive'
+          : id === 'script.request_install'
+            ? 'external'
+            : 'interactive',
+      cancellable: false,
+      permissions: [permission],
+      inputSchema: scriptActionInput(id),
+      outputSchema: { type: 'object' },
+    }),
+  })),
   {
     descriptor: descriptor(
       'panel.agent',

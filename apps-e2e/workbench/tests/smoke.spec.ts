@@ -552,8 +552,8 @@ test('completes the keyboard-guided particle workflow with linked results and re
     expect(recipe.operations?.[0]?.actionId).toBe('analysis.graph.request-execute')
   }
   await workflow.getByRole('button', { name: 'Open recipe in Scripts' }).click()
-  const scriptDialog = page.getByRole('dialog', { name: 'Sandbox script proof' })
-  await expect(scriptDialog).toContainText('Declarative recipe')
+  const scriptDialog = page.getByRole('dialog', { name: 'Script Studio' })
+  await expect(scriptDialog).toContainText('Recipe')
   await expect(scriptDialog).toContainText('analysis.graph.request-execute')
   await expect(scriptDialog).toContainText('"actionVersion": 1')
 
@@ -561,7 +561,7 @@ test('completes the keyboard-guided particle workflow with linked results and re
   expect(
     accessibility.violations.filter(({ impact }) => impact === 'critical' || impact === 'serious'),
   ).toEqual([])
-  await scriptDialog.getByRole('button', { name: 'Close Scripts sandbox' }).click()
+  await scriptDialog.getByRole('button', { name: 'Close Script Studio' }).click()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.reload()
   await waitForWorkbenchSettled(page)

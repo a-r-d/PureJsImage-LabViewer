@@ -45,12 +45,17 @@ packages/agent
 
 packages/plugin-sdk
   Manifest schemas, recipe plugins, capability declarations, installation records,
-  bounded script/recipe contracts, integrity, provenance, and sandbox RPC protocol.
+  bounded script/recipe and Script Studio repository contracts, integrity, provenance,
+  import/export validation, and sandbox RPC protocol.
 
 packages/scripts
   Dedicated script Worker client, QuickJS-WASM runtime, generated script API, capability RPC,
-  quotas, cancellation/termination, and sandbox conformance tests. Application policy stays in
-  the composition root.
+  deterministic fixtures and built-ins, quotas, cancellation/termination, and sandbox conformance
+  tests. Application policy stays in the composition root.
+
+apps/workbench/features/scripts
+  Lazy CodeMirror Studio UI, versioned IndexedDB repository implementation, and dedicated lazy
+  TypeScript language Worker. It composes package contracts but owns no scientific algorithm.
 
 packages/ui
   Design tokens and accessible reusable React components. No domain data access.

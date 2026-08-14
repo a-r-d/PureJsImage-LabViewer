@@ -25,12 +25,13 @@ class FakeWorker extends EventTarget {
 describe('ScriptHostClient lifecycle', () => {
   it('cancels by terminating the dedicated Worker and returns immutable provenance', async () => {
     const worker = new FakeWorker()
+    let actionCancelled = false
     const fixture = await scriptFixture(
       `export function main() { while (true) {} }\nglobalThis.__scriptMain = main`,
     )
     const client = new ScriptHostClient({
       api: testApi,
-      invoker: fixtureInvoker,
+      invoker: { ...fixtureInvoker, cancel: () => (actionCancelled = true) },
       workerFactory: () => worker as unknown as Worker,
     })
     const result = client.run({ document: fixture.document, permissionGrant: fixture.grant })
@@ -46,6 +47,7 @@ describe('ScriptHostClient lifecycle', () => {
       },
     })
     expect(worker.terminated).toBe(true)
+    expect(actionCancelled).toBe(true)
   })
 
   it('terminates the Worker on malformed or cross-request messages', async () => {

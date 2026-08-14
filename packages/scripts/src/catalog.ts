@@ -59,8 +59,22 @@ export const SCRIPT_API_ENDPOINTS: readonly Omit<ScriptApiEndpointV1, 'descripti
     mode: 'execute',
   },
   {
+    api: 'rois.create',
+    actionId: 'roi.create',
+    actionVersion: 1,
+    permission: 'roi.propose',
+    mode: 'dry-run',
+  },
+  {
     api: 'rois.propose',
     actionId: 'roi.create',
+    actionVersion: 1,
+    permission: 'roi.propose',
+    mode: 'dry-run',
+  },
+  {
+    api: 'rois.update',
+    actionId: 'roi.update',
     actionVersion: 1,
     permission: 'roi.propose',
     mode: 'dry-run',
@@ -94,11 +108,32 @@ export const SCRIPT_API_ENDPOINTS: readonly Omit<ScriptApiEndpointV1, 'descripti
     mode: 'dry-run',
   },
   {
+    api: 'analysis.execute',
+    actionId: 'analysis.graph.request-execute',
+    actionVersion: 1,
+    permission: 'analysis.execute',
+    mode: 'dry-run',
+  },
+  {
     api: 'analysis.requestExecute',
     actionId: 'analysis.request-execute',
     actionVersion: 1,
     permission: 'analysis.execute',
     mode: 'dry-run',
+  },
+  {
+    api: 'analysis.requestBatch',
+    actionId: 'analysis.batch.request-execute',
+    actionVersion: 1,
+    permission: 'analysis.execute',
+    mode: 'dry-run',
+  },
+  {
+    api: 'analysis.cancel',
+    actionId: 'analysis.cancel',
+    actionVersion: 1,
+    permission: 'analysis.execute',
+    mode: 'execute',
   },
   {
     api: 'results.summarize',
@@ -115,11 +150,25 @@ export const SCRIPT_API_ENDPOINTS: readonly Omit<ScriptApiEndpointV1, 'descripti
     mode: 'execute',
   },
   {
+    api: 'pipeline.get',
+    actionId: 'pipeline.read',
+    actionVersion: 1,
+    permission: 'workspace.read',
+    mode: 'execute',
+  },
+  {
     api: 'viewport.getState',
     actionId: 'viewport.state.read',
     actionVersion: 1,
     permission: 'viewport.read',
     mode: 'execute',
+  },
+  {
+    api: 'export.proposeCsv',
+    actionId: 'result.export.propose',
+    actionVersion: 1,
+    permission: 'file.export',
+    mode: 'dry-run',
   },
   {
     api: 'viewport.proposeState',
@@ -210,7 +259,7 @@ function declaration(endpoints: readonly ScriptApiEndpointV1[]): string {
         .join('\n')}\n    }`
     })
     .join('\n')
-  return `declare module '@lab/api' {\n  export interface LabApi {\n${fields}\n  }\n  export const lab: LabApi\n  export default lab\n}`
+  return `declare var __scriptMain: (() => unknown) | undefined\ndeclare module '@lab/api' {\n  export interface LabApi {\n${fields}\n  }\n  export const lab: LabApi\n  export default lab\n}`
 }
 
 export function generateScriptApi(manifest: ActionCapabilityManifestV1): GeneratedScriptApiV1 {

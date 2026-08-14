@@ -165,7 +165,7 @@ function descriptorKey(id: string, version: number): string {
 
 function assertDescriptor(descriptor: WorkbenchActionDescriptorV1): void {
   if (descriptor.schemaVersion !== 1) throw new Error('Unsupported action descriptor schema.')
-  if (!/^[a-z][A-Za-z0-9]*(?:[.-][A-Za-z0-9]+)*$/u.test(descriptor.id))
+  if (!/^[a-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/u.test(descriptor.id))
     throw new Error(`Invalid action id: ${descriptor.id}`)
   if (!Number.isSafeInteger(descriptor.version) || descriptor.version < 1)
     throw new Error(`Invalid action version: ${descriptor.id}@${descriptor.version}`)

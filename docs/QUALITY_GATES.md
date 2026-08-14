@@ -204,6 +204,11 @@ Suggested jobs:
 
 Use concurrency cancellation for superseded pull-request runs.
 
+The normal route/editor/script chunks retain the 300 KiB gzip per-chunk ceiling. The dedicated
+TypeScript language Worker has a separate 1,000 KiB gzip ceiling because it contains the compiler;
+browser coverage proves that this Worker is not requested on normal startup and is requested only
+after a language action. Both ceilings are enforced by `tooling/scripts/check-bundle-budget.mjs`.
+
 ## Definition of done for a feature
 
 A feature is not done until:

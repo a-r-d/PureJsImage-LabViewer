@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { getCommandAvailability, resolveShortcut } from '../src/commands.js'
+import {
+  getCommandAvailability,
+  resolveShortcut,
+  workbenchActionRegistry,
+} from '../src/commands.js'
 
 const event = {
   key: 'f',
@@ -50,5 +54,37 @@ describe('workbench commands', () => {
         { hasDataset: true },
       ),
     ).toBeUndefined()
+  })
+
+  it('registers bounded, revision-checked Script Studio actions', () => {
+    const ids = workbenchActionRegistry
+      .list()
+      .filter(({ category }) => category === 'scripts')
+      .map(({ id }) => id)
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'script.create_draft',
+        'script.read',
+        'script.apply_patch',
+        'script.typecheck',
+        'script.run_tests',
+        'script.diff',
+        'script.request_install',
+        'script.request_execute',
+      ]),
+    )
+    expect(
+      workbenchActionRegistry.validate('script.apply_patch', 1, {
+        id: 'local.script',
+        expectedDigest: 'a'.repeat(64),
+        source: 'x'.repeat(256 * 1024 + 1),
+      }),
+    ).toContainEqual({ path: '/source', message: 'Value must contain at most 262144 characters.' })
+    expect(
+      workbenchActionRegistry.validate('script.request_execute', 1, {
+        id: 'local.script',
+        expectedDigest: 'short',
+      }),
+    ).not.toEqual([])
   })
 })

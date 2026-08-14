@@ -16,6 +16,9 @@
     "clean": "node ../../tooling/scripts/clean-package.mjs"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "6.20.3",
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/state": "6.7.1",
     "@pji-workbench/actions": "workspace:*",
     "@pji-workbench/agent": "workspace:*",
     "@pji-workbench/contracts": "workspace:*",
@@ -27,8 +30,10 @@
     "@pji-workbench/ui": "workspace:*",
     "@pji-workbench/viewport": "workspace:*",
     "@pji-workbench/workspace": "workspace:*",
+    "codemirror": "6.0.2",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "typescript-compiler": "npm:typescript@6.0.2"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.52.1",

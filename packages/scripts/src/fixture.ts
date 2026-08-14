@@ -13,7 +13,7 @@ export async function main() {
   const rois = await lab.rois.list()
   const catalog = await lab.analysis.catalog()
   const plan = await lab.analysis.dryRun({ operationId: 'threshold.manual', parameters: { lower: 96 } })
-  const proposal = await lab.rois.propose({ kind: 'rectangle', label: 'script-proposal', x: 12, y: 16, width: 96, height: 64 })
+  const proposal = await lab.rois.create({ kind: 'rectangle', label: 'script-proposal', x: 12, y: 16, width: 96, height: 64 })
   await lab.log({ message: 'Prepared a bounded threshold proposal.' })
   return {
     workspace,

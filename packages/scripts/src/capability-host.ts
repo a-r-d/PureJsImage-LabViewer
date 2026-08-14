@@ -16,6 +16,7 @@ export interface ScriptActionInvoker {
     input: JsonValue,
     mode: 'dry-run' | 'execute',
   ): Promise<JsonValue>
+  cancel?(): void
 }
 
 export interface ScriptCapabilityHostResult {
@@ -92,7 +93,10 @@ export class ScriptCapabilityHost {
       if (
         endpoint.mode === 'dry-run' &&
         (endpoint.permission.endsWith('propose') ||
-          endpoint.actionId === 'analysis.request-execute')
+          endpoint.actionId === 'analysis.request-execute' ||
+          endpoint.actionId === 'analysis.graph.request-execute' ||
+          endpoint.actionId === 'analysis.batch.request-execute' ||
+          endpoint.actionId === 'result.export.propose')
       )
         this.#proposals.push(result)
       return result

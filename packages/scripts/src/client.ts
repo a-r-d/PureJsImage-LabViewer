@@ -137,6 +137,7 @@ export class ScriptHostClient {
   cancel(): void {
     const active = this.#active
     if (active === undefined) return
+    this.#invoker.cancel?.()
     active.worker.postMessage({
       schemaVersion: 1,
       kind: 'sandbox.cancel',
