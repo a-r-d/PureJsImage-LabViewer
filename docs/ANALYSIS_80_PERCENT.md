@@ -106,6 +106,9 @@ The current reference semantics, admission limits, and explicit omissions are do
 
 ### Frequency and crystallographic helpers
 
+The current bounded reference semantics and explicit non-claims are documented in
+`docs/MATERIALS_FFT_SURFACE_STACK_BATCH.md`.
+
 - 2D FFT;
 - magnitude and power spectrum;
 - centered/log display;
@@ -118,6 +121,9 @@ The current reference semantics, admission limits, and explicit omissions are do
 
 ### Stacks and volumes
 
+Arbitrary-axis navigation plus min/max/mean projection use PureJsImage's public built-ins; the
+materials extension supplies bounded sum, montage, statistics, and phase-correlation alignment.
+
 - arbitrary-axis plane selection;
 - Z or selected-axis min/max/mean/sum projections;
 - montage/contact sheet;
@@ -128,6 +134,8 @@ The current reference semantics, admission limits, and explicit omissions are do
 - crop/ROI propagation through a stack.
 
 ### AFM/SPM and height fields
+
+The AFM preset preserves raw heights and commits correction and measurement as visible graph nodes.
 
 - mean plane and first-order plane leveling;
 - row/line median correction;
@@ -140,6 +148,9 @@ The current reference semantics, admission limits, and explicit omissions are do
 - preserve physical Z units independently from X/Y units.
 
 ### Batch and recipes
+
+The local runner isolates each selected file in its own imaging Worker and records deterministic
+per-row source and recipe identity.
 
 - run one validated recipe over multiple local files or selected planes;
 - bounded concurrency and cancellation;

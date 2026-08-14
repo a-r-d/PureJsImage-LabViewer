@@ -132,3 +132,13 @@ with the public operation/provider API and reuses PureJsImage connected componen
 only builds the same graph used by recipes and tests. Full-plane global transforms have hard
 pixel/peak-memory admission, cancellation, explicit ROI/no-data/calibration policies, and owned
 result lifecycles. See `docs/SEGMENTATION_PARTICLE_ANALYSIS.md` for numerical definitions and limits.
+
+## Prompt 09 materials workflows share one bounded extension bundle
+
+PureJsImage 0.10.0 remains the source of truth for arbitrary-axis slicing and min/max/mean
+projection. The trusted materials extension adds FFT/diffraction inspection, sum/montage/stack
+statistics, phase-correlation alignment, AFM correction/roughness, and local batch orchestration.
+FFT complex values remain execution-private until a truthful public complex-dataset contract exists.
+Registration uses explicit integer-shift tolerance and deterministic edge policy; AFM corrections
+preserve raw data as visible graph steps; batch files execute in isolated Workers with independent
+status. See `docs/MATERIALS_FFT_SURFACE_STACK_BATCH.md`.

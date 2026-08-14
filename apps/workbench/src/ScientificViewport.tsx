@@ -68,6 +68,7 @@ interface ScientificViewportProps {
   readonly onDeleteRoi?: (roiId: string) => void
   readonly analysisOverlay?: AnalysisOverlaySelection | undefined
   readonly analysisDataset?: AnalysisDatasetSelection | undefined
+  readonly analysisPoints?: readonly Readonly<{ x: number; y: number; label: string }>[]
   readonly selectedLabel?: number | undefined
   readonly onSelectLabel?: (label?: number) => void
 }
@@ -431,6 +432,7 @@ export function ScientificViewport({
   onDeleteRoi,
   analysisOverlay,
   analysisDataset,
+  analysisPoints = [],
   selectedLabel,
   onSelectLabel,
 }: ScientificViewportProps) {
@@ -449,7 +451,7 @@ export function ScientificViewport({
     onRenderSettled?.(false)
     const renderedOpened =
       analysisDataset === undefined ? opened : { ...opened, dataset: analysisDataset.descriptor }
-    const renderedSelection =
+    const resolutionSelection =
       analysisDataset === undefined ||
       analysisDataset.descriptor.levels.some(({ level }) => level === selection.resolutionLevel)
         ? selection
@@ -457,6 +459,13 @@ export function ScientificViewport({
             ...selection,
             resolutionLevel: analysisDataset.descriptor.levels[0]?.level ?? 0,
           }
+    const renderedAxes = new Set(renderedOpened.dataset.axes.map(({ id }) => id))
+    const renderedSelection = {
+      ...resolutionSelection,
+      fixedIndices: resolutionSelection.fixedIndices.filter(({ axisId }) =>
+        renderedAxes.has(axisId),
+      ),
+    }
     const bounds = imageBounds(renderedOpened, renderedSelection)
     const horizontalAxis = renderedOpened.dataset.axes.find(
       ({ id }) => id === renderedSelection.displayAxes[0],
@@ -494,6 +503,15 @@ export function ScientificViewport({
     let previousPointer: Point = { x: 0, y: 0 }
     const pending = new Map<string, AbortController>()
 
+    const frequencyWorkspace =
+      analysisDataset?.output === 'magnitude' || analysisDataset?.output === 'power'
+    const annotations = [
+      ...(frequencyWorkspace
+        ? [{ x: bounds.width / 2, y: bounds.height / 2, label: 'Beam center' }]
+        : []),
+      ...analysisPoints,
+    ]
+    canvas.dataset['analysisAnnotationCount'] = String(annotations.length)
     const frame = (): ViewportRenderFrame => ({
       camera,
       viewport,
@@ -503,7 +521,23 @@ export function ScientificViewport({
         bounds: { x: 0, y: 0, width: 1, height: 1 },
         opacity: 1,
       })),
-      overlays: rois.map((roi) => roiOverlay(roi, roi.id === selectedRoiId)),
+      overlays: [
+        ...(analysisDataset === undefined
+          ? rois.map((roi) => roiOverlay(roi, roi.id === selectedRoiId))
+          : []),
+        ...annotations.map(({ x, y, label }, index) => ({
+          id: `analysis-annotation-${index}`,
+          kind: 'rectangle' as const,
+          points: [
+            { x: x - 2, y: y - 2 },
+            { x: x + 2, y: y - 2 },
+            { x: x + 2, y: y + 2 },
+            { x: x - 2, y: y + 2 },
+          ],
+          selected: false,
+          label,
+        })),
+      ],
     })
     const draw = (): void => {
       cancelAnimationFrame(frameRequest)
@@ -718,11 +752,30 @@ export function ScientificViewport({
       const world = screenToWorld(point, camera, viewport)
       if (coordinateRef.current !== null) {
         const value = renderer.valueAt(world)
+        const physicalX =
+          horizontalCalibration === undefined
+            ? undefined
+            : horizontalCalibration.origin + world.x * horizontalCalibration.unitsPerPixel
+        const physicalY =
+          verticalCalibration === undefined
+            ? undefined
+            : verticalCalibration.origin + world.y * verticalCalibration.unitsPerPixel
         const physical =
           horizontalCalibration === undefined || verticalCalibration === undefined
             ? ''
-            : ` · ${(horizontalCalibration.origin + world.x * horizontalCalibration.unitsPerPixel).toFixed(2)}, ${(verticalCalibration.origin + world.y * verticalCalibration.unitsPerPixel).toFixed(2)} ${horizontalCalibration.unit}`
-        coordinateRef.current.textContent = `${Math.floor(world.x)}, ${Math.floor(world.y)} px${physical}${value === undefined ? '' : ` · ${value.toPrecision(5)}`}`
+            : ` · ${physicalX?.toFixed(4)}, ${physicalY?.toFixed(4)} ${horizontalCalibration.unit}`
+        const dSpacing =
+          physicalX === undefined ||
+          physicalY === undefined ||
+          !horizontalCalibration?.unit.startsWith('1/')
+            ? ''
+            : (() => {
+                const radialFrequency = Math.hypot(physicalX, physicalY)
+                return radialFrequency <= 0
+                  ? ''
+                  : ` · d=${(1 / radialFrequency).toFixed(4)} ${horizontalCalibration.unit.slice(2)}`
+              })()
+        coordinateRef.current.textContent = `${Math.floor(world.x)}, ${Math.floor(world.y)} px${physical}${dSpacing}${value === undefined ? '' : ` · ${value.toPrecision(5)}`}`
       }
       if (panning) {
         camera = panCamera(
@@ -845,6 +898,7 @@ export function ScientificViewport({
   }, [
     analysisOverlay,
     analysisDataset,
+    analysisPoints,
     client,
     component,
     mapping,

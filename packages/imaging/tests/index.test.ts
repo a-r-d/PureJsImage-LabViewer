@@ -1191,6 +1191,123 @@ describe('PureJsImage Worker host', () => {
     await host.dispose()
   })
 
+  it('executes the calibrated FFT workspace through public extension and Worker contracts', async () => {
+    const width = 32
+    const height = 32
+    const values = Float32Array.from({ length: width * height }, (_value, index) =>
+      Math.cos((2 * Math.PI * 4 * (index % width)) / width),
+    )
+    const host = new ImagingWorkerHost()
+    const dataset = await openGeneratedValues(host, width, height, values)
+    const roi = {
+      schemaVersion: 1,
+      id: 'fft-roi',
+      axisIds: ['x', 'y'],
+      fixedIndices: [],
+      coordinateSpace: 'pixel',
+      geometry: { kind: 'rectangle', x: 0, y: 0, width, height },
+    } as unknown as RpcJsonObject
+    const graph = {
+      schemaVersion: 1,
+      inputs: [
+        { name: 'source', valueType: { id: scientificDatasetValueTypeId, version: 1 } },
+        { name: 'selection', valueType: { id: roiValueTypeId, version: 1 } },
+      ],
+      nodes: [
+        {
+          id: 'fft',
+          operation: { id: MATERIALS_OPERATION_IDS.fft2d, version: 1 },
+          inputs: [
+            { port: 'dataset', source: { kind: 'input', input: 'source' } },
+            { port: 'roi', source: { kind: 'input', input: 'selection' } },
+          ],
+          parameters: {
+            displayAxes: ['x', 'y'],
+            fixedIndices: [],
+            component: 0,
+            roiX: 0,
+            roiY: 0,
+            roiWidth: width,
+            roiHeight: height,
+            spectrumDisplay: 'raw',
+            radialBins: 32,
+            azimuthalBins: 36,
+            azimuthalMinimumRadius: 0,
+            azimuthalMaximumRadius: 2,
+            peakThreshold: 400,
+            minimumPeakDistance: 2,
+            maximumPeaks: 8,
+            maskKind: 'bandpass',
+            minimumRadius: 0.05,
+            maximumRadius: 0.25,
+            notchX: 0,
+            notchY: 0,
+            notchRadius: 0.02,
+          },
+        },
+      ],
+      outputs: [
+        { name: 'magnitude', source: { kind: 'node', nodeId: 'fft', output: 'magnitude' } },
+        { name: 'radialProfile', source: { kind: 'node', nodeId: 'fft', output: 'radialProfile' } },
+        { name: 'peaks', source: { kind: 'node', nodeId: 'fft', output: 'peaks' } },
+        {
+          name: 'frequencySummary',
+          source: { kind: 'node', nodeId: 'fft', output: 'frequencySummary' },
+        },
+      ],
+    } as unknown as RpcJsonObject
+    const dryRunResponse = await host.handle(
+      rpcRequest('fft-plan', 'analysis.dry-run', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph,
+        roi,
+      }),
+    )
+    expect(payload(dryRunResponse.response, 'analysis.dry-run')).toMatchObject({ valid: true })
+    const executedResponse = await host.handle(
+      rpcRequest('fft-execute', 'analysis.execute', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph,
+        roi,
+      }),
+    )
+    const execution = payload(executedResponse.response, 'analysis.executed')
+    expect(execution.outputs.map(({ name }) => name)).toEqual([
+      'magnitude',
+      'radialProfile',
+      'peaks',
+      'frequencySummary',
+    ])
+    const peakPageResponse = await host.handle(
+      rpcRequest('fft-peaks', 'analysis.table-page', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+        output: 'peaks',
+        offset: 0,
+        limit: 10,
+      }),
+    )
+    const peaks = payload(peakPageResponse.response, 'analysis.table-page')
+    expect(peaks.totalRows).toBe(2)
+    expect(peaks.columns.map(({ name }) => name)).toContain('dSpacing')
+    const radialResponse = await host.handle(
+      rpcRequest('fft-radial', 'analysis.series-export', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+        output: 'radialProfile',
+        maxRows: 64,
+      }),
+    )
+    expect(payload(radialResponse.response, 'analysis.series-export')).toMatchObject({
+      rowCount: 32,
+    })
+    await host.dispose()
+  })
+
   it('keeps opaque ID types distinct at compile time', () => {
     const ids: readonly [SourceId, DocumentId, DatasetHandleId] = [
       'source' as SourceId,

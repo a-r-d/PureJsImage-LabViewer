@@ -10,6 +10,7 @@ import type {
   AnalysisExecutionResponse,
   AnalysisOverlayView,
   AnalysisResultHandleId,
+  AnalysisSeriesExport,
   AnalysisTableFilter,
   AnalysisTablePage,
   AnalysisTableSort,
@@ -20,7 +21,8 @@ import type {
   RenderTile,
   RpcJsonObject,
 } from '@pji-workbench/contracts'
-import { ImagingRpcError } from '@pji-workbench/imaging'
+import { createImagingWorkerClient, ImagingRpcError } from '@pji-workbench/imaging'
+import { type BatchRecipeRow, runBatchRecipe } from '@pji-workbench/materials-analysis'
 import {
   type RecipeDocumentV1,
   recipeContentIntegrity,
@@ -69,14 +71,24 @@ import {
   useState,
 } from 'react'
 import {
+  AdvancedMaterialsWorkflows,
+  type AdvancedPlanState,
+  type FftWorkspaceSettings,
+  type StackWorkspaceSettings,
+  type SurfaceWorkspaceSettings,
+} from '../AdvancedMaterialsWorkflows.js'
+import {
   ANALYSIS_OPERATIONS,
   appendDatasetAnalysisGraph,
   connectedComponentsGraph,
+  fftWorkflowGraph,
   histogramGraph,
   lineProfileGraph,
   particleAnalysisGraph,
   particleThresholdGraph,
+  stackWorkflowGraph,
   statisticsGraph,
+  surfaceWorkflowGraph,
   thresholdGraph,
   toolboxOperationGraph,
 } from '../analysis-workflows.js'
@@ -362,6 +374,9 @@ function WorkbenchRuntime({
   const [particleMessage, setParticleMessage] = useState<string>()
   const [particleDryRun, setParticleDryRun] = useState<AnalysisDryRunResponse>()
   const [particleDryRunIdentity, setParticleDryRunIdentity] = useState<string>()
+  const [advancedPlan, setAdvancedPlan] = useState<AdvancedPlanState>()
+  const [advancedMessage, setAdvancedMessage] = useState<string>()
+  const [batchRows, setBatchRows] = useState<readonly BatchRecipeRow<unknown>[]>([])
   const [analysisOverlay, setAnalysisOverlay] = useState<AnalysisOverlaySelection>()
   const [analysisDataset, setAnalysisDataset] = useState<AnalysisDatasetSelection>()
   const [previewEnabled, setPreviewEnabled] = useState(false)
@@ -369,6 +384,8 @@ function WorkbenchRuntime({
   const [tableSort, setTableSort] = useState<AnalysisTableSort>()
   const openedRef = useRef<OpenedDatasetDescriptor | undefined>(undefined)
   const analysisAbort = useRef<AbortController | undefined>(undefined)
+  const batchCancel = useRef<(() => void) | undefined>(undefined)
+  const batchCancelItem = useRef<((itemId: string) => boolean) | undefined>(undefined)
   const previewResult = useRef<AnalysisResultHandleId | undefined>(undefined)
   const activeResult = useRef<AnalysisResultHandleId | undefined>(undefined)
   const viewportApi = useRef<ScientificViewportApi | null>(null)
@@ -397,6 +414,15 @@ function WorkbenchRuntime({
           unitsPerPixel: activeCalibration.unitsPerPixel,
           unit: activeCalibration.unit,
         }
+
+  const advancedContextIdentity = JSON.stringify({
+    datasetHandleId: opened?.handleId,
+    generation: opened?.generation,
+    selection,
+    component,
+  })
+  const advancedPlanIdentity = (settings: unknown): string =>
+    JSON.stringify({ context: advancedContextIdentity, settings })
 
   const setRenderSettled = useCallback((settled: boolean): void => {
     workbenchRoot.current?.setAttribute('data-render-settled', settled ? 'true' : 'false')
@@ -588,17 +614,15 @@ function WorkbenchRuntime({
       filter = tableFilter,
       sort = tableSort,
     ): Promise<AnalysisTablePage | undefined> => {
-      if (
-        opened === undefined ||
-        !execution.outputs.some(({ name, kind }) => name === 'objects' && kind === 'result')
-      ) {
-        return undefined
-      }
+      const output = execution.outputs.find(
+        (candidate) => candidate.kind === 'result' && candidate.summary['kind'] === 'table',
+      )
+      if (opened === undefined || output === undefined) return undefined
       return client.requestAnalysisTablePage({
         datasetHandleId: opened.handleId,
         generation: opened.generation,
         resultHandleId: execution.resultHandleId,
-        output: 'objects',
+        output: output.name,
         offset,
         limit: 50,
         ...(filter === undefined ? {} : { filter }),
@@ -618,7 +642,7 @@ function WorkbenchRuntime({
         readonly overlayTableOutput?: string
         readonly commit?: boolean
         readonly preview?: boolean
-        readonly surface?: 'general' | 'particle'
+        readonly surface?: 'general' | 'particle' | 'advanced'
       } = {},
     ): Promise<void> => {
       if (opened === undefined) return
@@ -627,6 +651,7 @@ function WorkbenchRuntime({
       analysisAbort.current = controller
       const reportParticleMessage = (message: string): void => {
         if (options.surface === 'particle') setParticleMessage(message)
+        if (options.surface === 'advanced') setAdvancedMessage(message)
       }
       reportParticleMessage('Planning analysis…')
       setAnalysisState((current) => ({ ...current, busy: true, message: 'Planning analysis…' }))
@@ -656,23 +681,38 @@ function WorkbenchRuntime({
         if (previous !== undefined) await releaseAnalysisHandle(previous)
         if (options.commit === true) applyProjectMutation({ kind: 'analysis.set-graph', graph })
         const table = await loadTablePage(execution, 0, undefined, undefined)
-        const distributionOutput = execution.outputs.find(
+        const tableOutput = execution.outputs.find(
+          (candidate) => candidate.kind === 'result' && candidate.summary['kind'] === 'table',
+        )?.name
+        const seriesOutputs = execution.outputs.filter(
           ({ kind, name }) =>
-            kind === 'result' && (name === 'sizeDistribution' || name === 'distribution'),
+            kind === 'result' &&
+            [
+              'sizeDistribution',
+              'distribution',
+              'radialProfile',
+              'azimuthalProfile',
+              'surfaceProfile',
+            ].includes(name),
         )
-        const distribution =
-          distributionOutput?.kind === 'result'
-            ? await client.requestAnalysisSeriesExport(
-                {
-                  datasetHandleId: opened.handleId,
-                  generation: opened.generation,
-                  resultHandleId: execution.resultHandleId,
-                  output: distributionOutput.name,
-                  maxRows: 100_000,
-                },
-                controller.signal,
-              )
-            : undefined
+        const seriesExports = await Promise.all(
+          seriesOutputs.map(async ({ name }) => ({
+            name,
+            data: (await client.requestAnalysisSeriesExport(
+              {
+                datasetHandleId: opened.handleId,
+                generation: opened.generation,
+                resultHandleId: execution.resultHandleId,
+                output: name,
+                maxRows: 100_000,
+              },
+              controller.signal,
+            )) as AnalysisSeriesExport,
+          })),
+        )
+        const distribution = seriesExports.find(
+          ({ name }) => name === 'sizeDistribution' || name === 'distribution',
+        )?.data
         const derivedDataset =
           options.overlay === undefined
             ? execution.outputs.find(({ kind }) => kind === 'dataset')
@@ -698,7 +738,9 @@ function WorkbenchRuntime({
           dryRun,
           tableOffset: 0,
           ...(table === undefined ? {} : { table }),
+          ...(tableOutput === undefined ? {} : { tableOutput }),
           ...(distribution === undefined ? {} : { distribution }),
+          ...(seriesExports.length === 0 ? {} : { seriesExports }),
           message: completionMessage,
         })
         setAnalysisOverlay(
@@ -1132,6 +1174,230 @@ function WorkbenchRuntime({
     setScriptProofOpen(true)
   }, [createParticleRecipe])
 
+  const advancedRoi = useCallback(
+    (roiId: string): ViewportRoi | undefined => {
+      if (opened === undefined || selection === undefined) return undefined
+      if (roiId === 'whole-plane') return wholePlaneRoi(calibratedOpened ?? opened, selection)
+      return workspace.analysis.roiSet.rois.find(({ id }) => id === roiId)
+    },
+    [calibratedOpened, opened, selection, workspace.analysis.roiSet.rois],
+  )
+
+  const planAdvanced = useCallback(
+    async (
+      kind: AdvancedPlanState['kind'],
+      identity: string,
+      graph: WorkspaceSnapshot['analysis']['graph'],
+      roi?: ViewportRoi,
+    ): Promise<void> => {
+      if (opened === undefined) return
+      analysisAbort.current?.abort(new DOMException('Superseded advanced plan', 'AbortError'))
+      const controller = new AbortController()
+      analysisAbort.current = controller
+      setAdvancedPlan(undefined)
+      setAdvancedMessage(`Planning ${kind} workflow…`)
+      setAnalysisState((current) => ({ ...current, busy: true }))
+      try {
+        const dryRun = await client.dryRunAnalysis(
+          {
+            datasetHandleId: opened.handleId,
+            generation: opened.generation,
+            graph: graph as unknown as RpcJsonObject,
+            ...(roi === undefined ? {} : { roi: roi as unknown as RpcJsonObject }),
+            ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
+          },
+          controller.signal,
+        )
+        setAdvancedPlan({ kind, identity, dryRun })
+        setAdvancedMessage(
+          dryRun.valid
+            ? `${kind.toUpperCase()} plan admitted. Review memory/work and run when ready.`
+            : `${kind.toUpperCase()} plan refused; the project is unchanged.`,
+        )
+        setAnalysisState((current) => ({ ...current, busy: false, dryRun }))
+      } catch (planError) {
+        if (!controller.signal.aborted)
+          setAdvancedMessage(
+            planError instanceof Error ? planError.message : 'Advanced planning failed.',
+          )
+        setAnalysisState((current) => ({ ...current, busy: false }))
+      }
+    },
+    [analysisCalibration, client, opened],
+  )
+
+  const fftGraphFor = useCallback(
+    (settings: FftWorkspaceSettings) => {
+      if (selection === undefined) return undefined
+      const roi = advancedRoi(settings.roiId)
+      if (roi?.geometry.kind !== 'rectangle') return undefined
+      return {
+        roi,
+        graph: fftWorkflowGraph({
+          selection,
+          component,
+          roi: roi.geometry,
+          spectrumDisplay: settings.spectrumDisplay,
+          radialBins: settings.radialBins,
+          azimuthalBins: settings.azimuthalBins,
+          azimuthalMinimumRadius: 0,
+          azimuthalMaximumRadius: 1,
+          peakThreshold: settings.peakThreshold,
+          minimumPeakDistance: settings.minimumPeakDistance,
+          maximumPeaks: settings.maximumPeaks,
+          maskKind: settings.maskKind,
+          minimumRadius: settings.minimumRadius,
+          maximumRadius: settings.maximumRadius,
+          notchX: settings.notchX,
+          notchY: settings.notchY,
+          notchRadius: settings.notchRadius,
+        }),
+      }
+    },
+    [advancedRoi, component, selection],
+  )
+
+  const stackGraphFor = useCallback(
+    (settings: StackWorkspaceSettings) =>
+      selection === undefined
+        ? undefined
+        : stackWorkflowGraph({ ...settings, selection, component }),
+    [component, selection],
+  )
+
+  const surfaceGraphFor = useCallback(
+    (settings: SurfaceWorkspaceSettings) => {
+      if (selection === undefined) return undefined
+      const roi = advancedRoi(settings.roiId)
+      if (roi === undefined) return undefined
+      return {
+        roi,
+        graph: surfaceWorkflowGraph({
+          selection,
+          component,
+          correction: settings.correction,
+          polynomialDegree: settings.polynomialDegree,
+          histogramBins: settings.histogramBins,
+          profileX0: settings.profileX0,
+          profileY0: settings.profileY0,
+          profileX1: settings.profileX1,
+          profileY1: settings.profileY1,
+          profileSamples: settings.profileSamples,
+          grainMethod: settings.grainMethod,
+          grainPolarity: settings.grainPolarity,
+          grainLower: settings.grainLower,
+          grainUpper: settings.grainUpper,
+        }),
+      }
+    },
+    [advancedRoi, component, selection],
+  )
+
+  const runBatchFiles = useCallback(
+    async (files: readonly File[], concurrency: number): Promise<void> => {
+      if (files.length === 0) return
+      const graph = workspace.analysis.graph
+      if (graph.nodes.length === 0) {
+        setAdvancedMessage('Commit a validated recipe graph before starting a file batch.')
+        return
+      }
+      const encoded = new TextEncoder().encode(JSON.stringify(graph))
+      const digest = await crypto.subtle.digest('SHA-256', encoded)
+      const recipeHash = [...new Uint8Array(digest)]
+        .map((value) => value.toString(16).padStart(2, '0'))
+        .join('')
+      const items = files.map((file, index) => ({
+        id: `batch-${index}-${file.name}-${file.size}-${file.lastModified}`,
+        sourceIdentity: `local-file:${file.name}:${file.size}:${file.lastModified}`,
+        sourceName: file.name,
+        input: file,
+      }))
+      setBatchRows([])
+      setAdvancedMessage(
+        `Running ${items.length} local batch items with concurrency ${concurrency}…`,
+      )
+      setAnalysisState((current) => ({ ...current, busy: true }))
+      try {
+        const runner = runBatchRecipe<
+          File,
+          Readonly<{
+            sourceIdentity: string
+            outputs: readonly Readonly<{ kind: string; name: string }>[]
+          }>
+        >(items, {
+          runId: crypto.randomUUID(),
+          recipeHash,
+          concurrency,
+          outputSourceIdentity: (output) => output.sourceIdentity,
+          onRow(row) {
+            setBatchRows((current) => {
+              const index = items.findIndex(({ id }) => id === row.itemId)
+              const next = [...current]
+              next[index] = row
+              return next.filter(
+                (candidate): candidate is BatchRecipeRow<unknown> => candidate !== undefined,
+              )
+            })
+          },
+          async execute(item, signal) {
+            const batchClient = createImagingWorkerClient()
+            try {
+              await batchClient.initialize()
+              const source = await batchClient.openLocal([item.input], item.input, 1, signal)
+              const descriptor = source.datasets[0]
+              if (descriptor === undefined)
+                throw new Error('Batch source has no scientific dataset.')
+              const openedDataset = await batchClient.openDataset(
+                source.documentId,
+                descriptor.id,
+                1,
+                signal,
+              )
+              const roi = wholePlaneRoi(openedDataset, openedDataset.selection)
+              const request = {
+                datasetHandleId: openedDataset.handleId,
+                generation: openedDataset.generation,
+                graph: graph as unknown as RpcJsonObject,
+                roi: roi as unknown as RpcJsonObject,
+              }
+              const dryRun = await batchClient.dryRunAnalysis(request, signal)
+              if (!dryRun.valid) throw new Error('Recipe is not valid for this dataset.')
+              const execution = await batchClient.executeAnalysis(request, signal)
+              await batchClient.releaseAnalysis({
+                datasetHandleId: openedDataset.handleId,
+                generation: openedDataset.generation,
+                resultHandleId: execution.resultHandleId,
+              })
+              return {
+                sourceIdentity: JSON.stringify(source.identity),
+                outputs: execution.outputs.map(({ kind, name }) => ({ kind, name })),
+              }
+            } finally {
+              batchClient.dispose()
+            }
+          },
+        })
+        batchCancel.current = () => runner.cancelAll()
+        batchCancelItem.current = (itemId) => runner.cancelItem(itemId)
+        const result = await runner.result
+        setBatchRows(result.rows)
+        const succeeded = result.rows.filter(({ status }) => status === 'succeeded').length
+        const failed = result.rows.filter(({ status }) => status === 'failed').length
+        const cancelled = result.rows.filter(({ status }) => status === 'cancelled').length
+        setAdvancedMessage(
+          `Batch complete: ${succeeded} succeeded, ${failed} failed, ${cancelled} cancelled. Unrelated items remained isolated.`,
+        )
+      } catch (batchError) {
+        setAdvancedMessage(batchError instanceof Error ? batchError.message : 'Batch setup failed.')
+      } finally {
+        batchCancel.current = undefined
+        batchCancelItem.current = undefined
+        setAnalysisState((current) => ({ ...current, busy: false }))
+      }
+    },
+    [workspace.analysis.graph],
+  )
+
   const measureSelectedRoi = useCallback(
     (kind: 'statistics' | 'histogram' | 'profile'): void => {
       if (selection === undefined) return
@@ -1212,6 +1478,15 @@ function WorkbenchRuntime({
     )
   }, [])
 
+  const frequencyAnnotations = useMemo(() => {
+    if (analysisState.tableOutput !== 'peaks' || analysisState.table === undefined) return []
+    return analysisPageRows(analysisState.table).flatMap((row, index) =>
+      typeof row['x'] === 'number' && typeof row['y'] === 'number'
+        ? [{ x: row['x'], y: row['y'], label: `Peak ${index + 1}` }]
+        : [],
+    )
+  }, [analysisPageRows, analysisState.table, analysisState.tableOutput])
+
   const downloadAnalysis = useCallback(
     async (scope: 'selected' | 'all', format: 'csv' | 'json'): Promise<void> => {
       const execution = analysisState.execution
@@ -1288,7 +1563,7 @@ function WorkbenchRuntime({
               datasetHandleId: opened.handleId,
               generation: opened.generation,
               resultHandleId: execution.resultHandleId,
-              output: 'objects',
+              output: analysisState.tableOutput ?? 'objects',
               offset,
               limit: 200,
               ...(tableFilter === undefined ? {} : { filter: tableFilter }),
@@ -1323,6 +1598,7 @@ function WorkbenchRuntime({
       analysisPageRows,
       analysisState.execution,
       analysisState.table,
+      analysisState.tableOutput,
       appendLog,
       client,
       opened,
@@ -2440,6 +2716,75 @@ function WorkbenchRuntime({
           settings={particleSettings}
         />
       )}
+      {opened === undefined || selection === undefined ? null : (
+        <AdvancedMaterialsWorkflows
+          axes={opened.dataset.axes}
+          batchRows={batchRows}
+          busy={analysisState.busy}
+          contextIdentity={advancedContextIdentity}
+          {...(advancedMessage === undefined ? {} : { message: advancedMessage })}
+          onBatchFiles={(files, concurrency) => void runBatchFiles(files, concurrency)}
+          onCancelBatchItem={(itemId) => {
+            if (batchCancelItem.current?.(itemId) === true)
+              setAdvancedMessage(`Cancelled batch item ${itemId}. Other items continue.`)
+          }}
+          onCancel={() => {
+            analysisAbort.current?.abort(new DOMException('Advanced work cancelled', 'AbortError'))
+            batchCancel.current?.()
+            setAdvancedMessage('Advanced work cancelled. The committed project is unchanged.')
+            setAnalysisState((current) => ({ ...current, busy: false }))
+          }}
+          onPlanFft={(settings) => {
+            const workflow = fftGraphFor(settings)
+            if (workflow === undefined) {
+              setAdvancedMessage('FFT requires a rectangular source ROI.')
+              return
+            }
+            void planAdvanced('fft', advancedPlanIdentity(settings), workflow.graph, workflow.roi)
+          }}
+          onPlanStack={(settings) => {
+            const graph = stackGraphFor(settings)
+            if (graph !== undefined)
+              void planAdvanced('stack', advancedPlanIdentity(settings), graph)
+          }}
+          onPlanSurface={(settings) => {
+            const workflow = surfaceGraphFor(settings)
+            if (workflow !== undefined)
+              void planAdvanced(
+                'surface',
+                advancedPlanIdentity(settings),
+                workflow.graph,
+                workflow.roi,
+              )
+          }}
+          onRunFft={(settings) => {
+            const workflow = fftGraphFor(settings)
+            if (workflow !== undefined)
+              void executeAnalysisGraph(workflow.graph, {
+                roi: workflow.roi,
+                commit: true,
+                surface: 'advanced',
+              })
+          }}
+          onRunStack={(settings) => {
+            const graph = stackGraphFor(settings)
+            if (graph !== undefined)
+              void executeAnalysisGraph(graph, { commit: true, surface: 'advanced' })
+          }}
+          onRunSurface={(settings) => {
+            const workflow = surfaceGraphFor(settings)
+            if (workflow !== undefined)
+              void executeAnalysisGraph(workflow.graph, {
+                roi: workflow.roi,
+                commit: true,
+                surface: 'advanced',
+              })
+          }}
+          {...(advancedPlan === undefined ? {} : { plan: advancedPlan })}
+          rois={workspace.analysis.roiSet.rois}
+          selection={selection}
+        />
+      )}
       <details className="analysis-surfaces__toolbox">
         <summary>Operation browser and legacy threshold controls</summary>
         <AnalysisInspector
@@ -2788,6 +3133,7 @@ function WorkbenchRuntime({
                 ) : hasDataset && opened !== undefined && selection !== undefined ? (
                   <ScientificViewport
                     analysisDataset={analysisDataset}
+                    analysisPoints={frequencyAnnotations}
                     analysisOverlay={analysisOverlay}
                     client={client}
                     component={component}

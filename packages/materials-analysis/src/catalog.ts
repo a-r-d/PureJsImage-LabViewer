@@ -38,6 +38,13 @@ export const MATERIALS_OPERATION_IDS = Object.freeze({
   distanceTransform: 'pji-workbench.materials.segmentation.euclidean-distance-transform',
   watershed: 'pji-workbench.materials.segmentation.watershed',
   particleAnalysis: 'pji-workbench.materials.particles.analyze',
+  fft2d: 'pji-workbench.materials.frequency.fft-2d',
+  stackSumProjection: 'pji-workbench.materials.stack.sum-projection',
+  stackMontage: 'pji-workbench.materials.stack.montage',
+  stackStatistics: 'pji-workbench.materials.stack.statistics',
+  stackAlignment: 'pji-workbench.materials.stack.phase-correlation-align',
+  surfaceCorrect: 'pji-workbench.materials.surface.correct',
+  surfaceAnalyze: 'pji-workbench.materials.surface.analyze',
 } as const)
 
 export type MaterialsOperationId =
@@ -289,6 +296,85 @@ export const TOOLBOX_DOCUMENTATION: readonly ToolboxOperationDocumentation[] = O
       preview: false,
     },
   ),
+  docs(
+    MATERIALS_OPERATION_IDS.fft2d,
+    'Centered 2D FFT magnitude/power spectra and calibrated profiles.',
+    {
+      inputPolicy: 'One finite numeric plane and an optional bounded rectangular ROI.',
+      outputPolicy:
+        'Raw quantitative magnitude, power, and mask datasets plus radial/azimuthal profiles and bounded peaks.',
+      noDataPolicy:
+        'Non-finite input samples are explicitly replaced by zero and counted in provenance.',
+      calibrationPolicy:
+        'Linear X/Y spacing becomes reciprocal spatial frequency; d-spacing is emitted only when both axes are calibrated.',
+      cost: 'expensive',
+      preset: 'FFT workspace',
+    },
+  ),
+  docs(
+    MATERIALS_OPERATION_IDS.stackSumProjection,
+    'Sum all admitted planes along one selected stack axis.',
+    {
+      inputPolicy: 'One numeric dataset with two display axes and one finite stack axis.',
+      outputPolicy: 'A floating-point two-dimensional projection dataset.',
+      noDataPolicy: 'Finite samples are summed; an all-invalid pixel remains NaN.',
+      cost: 'expensive',
+    },
+  ),
+  docs(
+    MATERIALS_OPERATION_IDS.stackMontage,
+    'Create a deterministic contact sheet from selected stack planes.',
+    {
+      inputPolicy: 'One numeric stack with bounded frame count and explicit column count.',
+      outputPolicy: 'A floating-point two-dimensional montage; unused cells are NaN.',
+      cost: 'expensive',
+    },
+  ),
+  docs(MATERIALS_OPERATION_IDS.stackStatistics, 'Calculate bounded per-plane stack statistics.', {
+    inputPolicy: 'One numeric stack with an explicit stack axis.',
+    outputPolicy: 'A bounded table of count, min, max, mean, and standard deviation per frame.',
+    cost: 'expensive',
+  }),
+  docs(
+    MATERIALS_OPERATION_IDS.stackAlignment,
+    'Align stack frames by normalized phase correlation.',
+    {
+      inputPolicy:
+        'One numeric stack, explicit reference frame, integer-shift tolerance, and edge policy.',
+      outputPolicy:
+        'An aligned stack plus drift/tolerance table; rejected frames fail without partial output.',
+      boundaryPolicy: 'Pad with an explicit value or crop to the common integer-shift overlap.',
+      cost: 'expensive',
+      preview: false,
+    },
+  ),
+  docs(
+    MATERIALS_OPERATION_IDS.surfaceCorrect,
+    'Apply one explicit AFM/SPM background correction.',
+    {
+      inputPolicy: 'One scalar height plane with an independent Z component unit.',
+      outputPolicy: 'A corrected floating height dataset; raw source values are never modified.',
+      noDataPolicy: 'Non-finite and excluded samples do not influence the fit.',
+      calibrationPolicy: 'X/Y and Z units remain independent and unchanged.',
+      cost: 'expensive',
+      preset: 'AFM surface',
+    },
+  ),
+  docs(
+    MATERIALS_OPERATION_IDS.surfaceAnalyze,
+    'Measure AFM/SPM roughness, histogram, profile, and grains.',
+    {
+      inputPolicy: 'One corrected or raw scalar height plane with an optional exclusion mask.',
+      outputPolicy:
+        'Height histogram, Ra/Rq/Rz summary, calibrated profile, and shared-threshold grain mask.',
+      noDataPolicy:
+        'Non-finite and excluded samples are omitted from metrics and threshold selection.',
+      calibrationPolicy:
+        'Profile distance uses X/Y spacing; height metrics retain the component Z unit.',
+      cost: 'expensive',
+      preview: false,
+    },
+  ),
 ])
 
 export const TOOLBOX_PRESETS = Object.freeze([
@@ -331,5 +417,25 @@ export const TOOLBOX_PRESETS = Object.freeze([
       dynamicRange: 128,
       noDataPolicy: 'background',
     },
+  },
+  {
+    id: 'fft-workspace',
+    title: 'FFT workspace',
+    operationId: MATERIALS_OPERATION_IDS.fft2d,
+    parameters: {
+      spectrumDisplay: 'log1p',
+      radialBins: 128,
+      azimuthalBins: 180,
+      peakThreshold: 0,
+      minimumPeakDistance: 4,
+      maximumPeaks: 32,
+      maskKind: 'none',
+    },
+  },
+  {
+    id: 'afm-surface',
+    title: 'AFM surface',
+    operationId: MATERIALS_OPERATION_IDS.surfaceCorrect,
+    parameters: { correction: 'first-order-plane', polynomialDegree: 1 },
   },
 ])

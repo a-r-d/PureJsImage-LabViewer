@@ -484,3 +484,228 @@ export function toolboxOperationGraph(options: {
     ],
   }
 }
+
+export interface FftWorkflowOptions {
+  readonly selection: PlaneSelection
+  readonly component: number
+  readonly roi: Readonly<{ x: number; y: number; width: number; height: number }>
+  readonly spectrumDisplay: 'raw' | 'log1p'
+  readonly radialBins: number
+  readonly azimuthalBins: number
+  readonly azimuthalMinimumRadius: number
+  readonly azimuthalMaximumRadius: number
+  readonly peakThreshold: number
+  readonly minimumPeakDistance: number
+  readonly maximumPeaks: number
+  readonly maskKind: 'none' | 'bandpass' | 'notch'
+  readonly minimumRadius: number
+  readonly maximumRadius: number
+  readonly notchX: number
+  readonly notchY: number
+  readonly notchRadius: number
+}
+
+export function fftWorkflowGraph(options: FftWorkflowOptions): AnalysisGraph {
+  const nodeId = 'materials-fft-workspace'
+  return {
+    schemaVersion: 1,
+    inputs: [SOURCE_INPUT, ROI_INPUT],
+    nodes: [
+      {
+        id: nodeId,
+        label: '2D FFT workspace',
+        operation: { id: MATERIALS_OPERATION_IDS.fft2d, version: 1 },
+        inputs: [sourcePort(), roiPort()],
+        parameters: {
+          ...planeParameters(options.selection, options.component),
+          roiX: Math.floor(options.roi.x),
+          roiY: Math.floor(options.roi.y),
+          roiWidth: Math.floor(options.roi.width),
+          roiHeight: Math.floor(options.roi.height),
+          spectrumDisplay: options.spectrumDisplay,
+          radialBins: options.radialBins,
+          azimuthalBins: options.azimuthalBins,
+          azimuthalMinimumRadius: options.azimuthalMinimumRadius,
+          azimuthalMaximumRadius: options.azimuthalMaximumRadius,
+          peakThreshold: options.peakThreshold,
+          minimumPeakDistance: options.minimumPeakDistance,
+          maximumPeaks: options.maximumPeaks,
+          maskKind: options.maskKind,
+          minimumRadius: options.minimumRadius,
+          maximumRadius: options.maximumRadius,
+          notchX: options.notchX,
+          notchY: options.notchY,
+          notchRadius: options.notchRadius,
+        },
+      },
+    ],
+    outputs: [
+      { name: 'magnitude', source: { kind: 'node', nodeId, output: 'magnitude' } },
+      { name: 'power', source: { kind: 'node', nodeId, output: 'power' } },
+      { name: 'frequencyMask', source: { kind: 'node', nodeId, output: 'frequencyMask' } },
+      { name: 'radialProfile', source: { kind: 'node', nodeId, output: 'radialProfile' } },
+      { name: 'azimuthalProfile', source: { kind: 'node', nodeId, output: 'azimuthalProfile' } },
+      { name: 'peaks', source: { kind: 'node', nodeId, output: 'peaks' } },
+      { name: 'frequencySummary', source: { kind: 'node', nodeId, output: 'frequencySummary' } },
+    ],
+  }
+}
+
+export interface StackWorkflowOptions {
+  readonly selection: PlaneSelection
+  readonly component: number
+  readonly stackAxis: string
+  readonly startIndex: number
+  readonly endIndex: number
+  readonly mode: 'min' | 'max' | 'mean' | 'sum' | 'montage' | 'statistics' | 'align'
+  readonly columns: number
+  readonly referenceIndex: number
+  readonly maximumShift: number
+  readonly minimumPeakRatio: number
+  readonly edgePolicy: 'pad' | 'crop-overlap'
+  readonly fillValue: number
+}
+
+export function stackWorkflowGraph(options: StackWorkflowOptions): AnalysisGraph {
+  const nodeId = `materials-stack-${options.mode}`
+  const builtInProjection =
+    options.mode === 'min' || options.mode === 'max' || options.mode === 'mean'
+  const operationId = builtInProjection
+    ? 'purejsimage.analysis.projection'
+    : options.mode === 'sum'
+      ? MATERIALS_OPERATION_IDS.stackSumProjection
+      : options.mode === 'montage'
+        ? MATERIALS_OPERATION_IDS.stackMontage
+        : options.mode === 'statistics'
+          ? MATERIALS_OPERATION_IDS.stackStatistics
+          : MATERIALS_OPERATION_IDS.stackAlignment
+  const parameters: RpcJsonObject = builtInProjection
+    ? {
+        displayAxes: [...options.selection.displayAxes],
+        fixedIndices: options.selection.fixedIndices
+          .filter(({ axisId }) => axisId !== options.stackAxis)
+          .map(({ axisId, index }) => ({ axisId, index })),
+        reductionAxis: options.stackAxis,
+        mode: options.mode,
+        invalidPolicy: 'ignore',
+        outputSampleType: 'float32',
+      }
+    : {
+        ...planeParameters(options.selection, options.component),
+        stackAxis: options.stackAxis,
+        startIndex: options.startIndex,
+        endIndex: options.endIndex,
+        ...(options.mode === 'montage' ? { columns: options.columns } : {}),
+        ...(options.mode === 'align'
+          ? {
+              referenceIndex: options.referenceIndex,
+              maximumShift: options.maximumShift,
+              minimumPeakRatio: options.minimumPeakRatio,
+              edgePolicy: options.edgePolicy,
+              fillValue: options.fillValue,
+            }
+          : {}),
+      }
+  const outputNames =
+    builtInProjection || options.mode === 'sum'
+      ? [builtInProjection ? 'dataset' : 'projection']
+      : options.mode === 'montage'
+        ? ['montage']
+        : options.mode === 'statistics'
+          ? ['statistics']
+          : ['alignedStack', 'drift']
+  return {
+    schemaVersion: 1,
+    inputs: [SOURCE_INPUT],
+    nodes: [
+      {
+        id: nodeId,
+        label: builtInProjection ? `${options.mode} projection` : `Stack ${options.mode}`,
+        operation: { id: operationId, version: 1 },
+        inputs: [sourcePort()],
+        parameters,
+      },
+    ],
+    outputs: outputNames.map((name) => ({
+      name,
+      source: { kind: 'node' as const, nodeId, output: name },
+    })),
+  }
+}
+
+export interface SurfaceWorkflowOptions {
+  readonly selection: PlaneSelection
+  readonly component: number
+  readonly correction: 'none' | 'subtract-mean' | 'first-order-plane' | 'row-median' | 'polynomial'
+  readonly polynomialDegree: 0 | 1 | 2
+  readonly histogramBins: number
+  readonly profileX0: number
+  readonly profileY0: number
+  readonly profileX1: number
+  readonly profileY1: number
+  readonly profileSamples: number
+  readonly grainMethod: 'manual' | 'otsu' | 'triangle' | 'yen' | 'li' | 'mean'
+  readonly grainPolarity: 'light' | 'dark'
+  readonly grainLower: number
+  readonly grainUpper: number
+}
+
+export function surfaceWorkflowGraph(options: SurfaceWorkflowOptions): AnalysisGraph {
+  const correctionNode = 'materials-surface-correction'
+  const analysisNode = 'materials-surface-analysis'
+  return {
+    schemaVersion: 1,
+    inputs: [SOURCE_INPUT, ROI_INPUT],
+    nodes: [
+      {
+        id: correctionNode,
+        label: `Surface correction: ${options.correction}`,
+        operation: { id: MATERIALS_OPERATION_IDS.surfaceCorrect, version: 1 },
+        inputs: [sourcePort(), roiPort()],
+        parameters: {
+          ...planeParameters(options.selection, options.component),
+          correction: options.correction,
+          polynomialDegree: options.polynomialDegree,
+        },
+      },
+      {
+        id: analysisNode,
+        label: 'Surface roughness, profile, and grains',
+        operation: { id: MATERIALS_OPERATION_IDS.surfaceAnalyze, version: 1 },
+        inputs: [
+          {
+            port: 'dataset',
+            source: { kind: 'node', nodeId: correctionNode, output: 'corrected' },
+          },
+          roiPort(),
+        ],
+        parameters: {
+          ...planeParameters(options.selection, 0),
+          histogramBins: options.histogramBins,
+          profileX0: options.profileX0,
+          profileY0: options.profileY0,
+          profileX1: options.profileX1,
+          profileY1: options.profileY1,
+          profileSamples: options.profileSamples,
+          grainMethod: options.grainMethod,
+          grainPolarity: options.grainPolarity,
+          grainLower: options.grainLower,
+          grainUpper: options.grainUpper,
+        },
+      },
+    ],
+    outputs: [
+      { name: 'corrected', source: { kind: 'node', nodeId: correctionNode, output: 'corrected' } },
+      {
+        name: 'heightHistogram',
+        source: { kind: 'node', nodeId: analysisNode, output: 'heightHistogram' },
+      },
+      { name: 'roughness', source: { kind: 'node', nodeId: analysisNode, output: 'roughness' } },
+      {
+        name: 'surfaceProfile',
+        source: { kind: 'node', nodeId: analysisNode, output: 'surfaceProfile' },
+      },
+      { name: 'grainMask', source: { kind: 'node', nodeId: analysisNode, output: 'grainMask' } },
+    ],
+  }
+}

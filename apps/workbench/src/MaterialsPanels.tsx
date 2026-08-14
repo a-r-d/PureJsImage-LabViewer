@@ -21,7 +21,12 @@ export interface MaterialsPanelState {
   readonly dryRun?: AnalysisDryRunResponse
   readonly execution?: AnalysisExecutionResponse
   readonly table?: AnalysisTablePage
+  readonly tableOutput?: string
   readonly distribution?: AnalysisSeriesExport
+  readonly seriesExports?: readonly Readonly<{
+    name: string
+    data: AnalysisSeriesExport
+  }>[]
   readonly tableOffset: number
   readonly selectedLabel?: number | undefined
 }
@@ -1125,6 +1130,94 @@ function ParticleDistribution({ distribution }: { readonly distribution: Analysi
   )
 }
 
+function ScientificSeriesPlot({
+  name,
+  series,
+}: Readonly<{ name: string; series: AnalysisSeriesExport }>) {
+  const xColumn = series.columns[0]
+  const yColumn = series.columns[1]
+  if (xColumn === undefined || yColumn === undefined) return null
+  const points = xColumn.values.flatMap((x, index) => {
+    const y = yColumn.values[index]
+    return typeof x === 'number' &&
+      Number.isFinite(x) &&
+      typeof y === 'number' &&
+      Number.isFinite(y)
+      ? [{ x, y }]
+      : []
+  })
+  if (points.length === 0) return null
+  const minimumX = Math.min(...points.map(({ x }) => x))
+  const maximumX = Math.max(...points.map(({ x }) => x))
+  const minimumY = Math.min(...points.map(({ y }) => y))
+  const maximumY = Math.max(...points.map(({ y }) => y))
+  const spanX = Math.max(Number.EPSILON, maximumX - minimumX)
+  const spanY = Math.max(Number.EPSILON, maximumY - minimumY)
+  return (
+    <figure className="scientific-series">
+      <figcaption>
+        {name} · {xColumn.name}
+        {xColumn.unit === undefined ? '' : ` (${xColumn.unit})`} / {yColumn.name}
+        {yColumn.unit === undefined ? '' : ` (${yColumn.unit})`}
+      </figcaption>
+      <svg
+        aria-label={`${name} scientific profile`}
+        preserveAspectRatio="none"
+        role="img"
+        viewBox="0 0 100 60"
+      >
+        <polyline
+          fill="none"
+          points={points
+            .map(
+              ({ x, y }) =>
+                `${((x - minimumX) / spanX) * 100},${60 - ((y - minimumY) / spanY) * 60}`,
+            )
+            .join(' ')}
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <small>
+        {points.length.toLocaleString()} points · X {minimumX.toPrecision(4)}–
+        {maximumX.toPrecision(4)} · Y {minimumY.toPrecision(4)}–{maximumY.toPrecision(4)}
+      </small>
+    </figure>
+  )
+}
+
+function DriftTrajectory({ page }: { readonly page: AnalysisTablePage }) {
+  const xColumn = page.columns.find(({ name }) => name === 'offsetX')
+  const yColumn = page.columns.find(({ name }) => name === 'offsetY')
+  if (xColumn === undefined || yColumn === undefined) return null
+  const points = xColumn.values.flatMap((x, index) => {
+    const y = yColumn.values[index]
+    return typeof x === 'number' && typeof y === 'number' ? [{ x, y }] : []
+  })
+  if (points.length === 0) return null
+  const extent = Math.max(1, ...points.flatMap(({ x, y }) => [Math.abs(x), Math.abs(y)]))
+  return (
+    <figure className="scientific-series">
+      <figcaption>Registered frame drift trajectory (pixels)</figcaption>
+      <svg
+        aria-label="Drift trajectory plot"
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        viewBox="0 0 100 100"
+      >
+        <line x1="50" x2="50" y1="0" y2="100" />
+        <line x1="0" x2="100" y1="50" y2="50" />
+        <polyline
+          fill="none"
+          points={points
+            .map(({ x, y }) => `${50 + (x / extent) * 45},${50 - (y / extent) * 45}`)
+            .join(' ')}
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    </figure>
+  )
+}
+
 export function AnalysisResults({
   state,
   onPage,
@@ -1147,6 +1240,7 @@ export function AnalysisResults({
     return <p className="bottom-placeholder">Run an ROI measurement or object workflow.</p>
   }
   const table = state.table
+  const objectTable = state.tableOutput === undefined || state.tableOutput === 'objects'
   return (
     <div className="analysis-results" data-testid="analysis-results">
       <div className="result-summary-row">
@@ -1158,8 +1252,15 @@ export function AnalysisResults({
         <Button onClick={() => onExport('all', 'json')}>Export JSON</Button>
       </div>
       <ResultPreviewPlot execution={execution} />
-      {state.distribution === undefined ? null : (
+      {state.seriesExports === undefined && state.distribution !== undefined ? (
         <ParticleDistribution distribution={state.distribution} />
+      ) : null}
+      {state.seriesExports?.map(({ name, data }) =>
+        name === 'sizeDistribution' || name === 'distribution' ? (
+          <ParticleDistribution distribution={data} key={name} />
+        ) : (
+          <ScientificSeriesPlot key={name} name={name} series={data} />
+        ),
       )}
       {table === undefined ? (
         <pre className="result-json">
@@ -1172,24 +1273,37 @@ export function AnalysisResults({
       ) : (
         <>
           <div className="result-summary-row">
-            <strong>{table.totalRows.toLocaleString()} objects</strong>
-            <label>
-              Minimum area
-              <input
-                aria-label="Minimum area filter"
-                min={0}
-                onChange={(event) =>
-                  onFilter(
-                    'pixelArea',
-                    event.target.value === '' ? undefined : Number(event.target.value),
-                  )
-                }
-                type="number"
-              />
-            </label>
+            <strong>
+              {table.totalRows.toLocaleString()}{' '}
+              {objectTable ? 'objects' : `${state.tableOutput ?? 'result'} rows`}
+            </strong>
+            {objectTable ? (
+              <label>
+                Minimum area
+                <input
+                  aria-label="Minimum area filter"
+                  min={0}
+                  onChange={(event) =>
+                    onFilter(
+                      'pixelArea',
+                      event.target.value === '' ? undefined : Number(event.target.value),
+                    )
+                  }
+                  type="number"
+                />
+              </label>
+            ) : null}
           </div>
-          <ObjectDistributions page={table} />
-          <section className="virtual-table" aria-label="Paged object measurements">
+          {objectTable ? <ObjectDistributions page={table} /> : null}
+          {state.tableOutput === 'drift' ? <DriftTrajectory page={table} /> : null}
+          <section
+            className="virtual-table"
+            aria-label={
+              objectTable
+                ? 'Paged object measurements'
+                : `Paged ${state.tableOutput ?? 'analysis'} results`
+            }
+          >
             <table>
               <thead>
                 <tr>
