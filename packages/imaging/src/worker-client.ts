@@ -1,5 +1,6 @@
 import {
   type AnalysisCatalog,
+  type AnalysisDatasetTileRequest,
   type AnalysisDryRunResponse,
   type AnalysisExecutionResponse,
   type AnalysisGraphRequest,
@@ -9,6 +10,8 @@ import {
   type AnalysisParameterNormalization,
   type AnalysisReleaseRequest,
   type AnalysisRoiNormalization,
+  type AnalysisSeriesExport,
+  type AnalysisSeriesExportRequest,
   type AnalysisTablePage,
   type AnalysisTablePageRequest,
   type DatasetHandleId,
@@ -209,12 +212,30 @@ export class ImagingWorkerClient {
     )
   }
 
+  requestAnalysisDatasetTile(
+    request: AnalysisDatasetTileRequest,
+    signal?: AbortSignal,
+  ): Promise<RenderTile> {
+    return this.#call('analysis.dataset-tile', request, signal).then((response) =>
+      this.#payload(response, 'analysis.dataset-tile'),
+    )
+  }
+
   requestAnalysisTablePage(
     request: AnalysisTablePageRequest,
     signal?: AbortSignal,
   ): Promise<AnalysisTablePage> {
     return this.#call('analysis.table-page', request, signal).then((response) =>
       this.#payload(response, 'analysis.table-page'),
+    )
+  }
+
+  requestAnalysisSeriesExport(
+    request: AnalysisSeriesExportRequest,
+    signal?: AbortSignal,
+  ): Promise<AnalysisSeriesExport> {
+    return this.#call('analysis.series-export', request, signal).then((response) =>
+      this.#payload(response, 'analysis.series-export'),
     )
   }
 

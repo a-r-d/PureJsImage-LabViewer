@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, type Page, test } from '@playwright/test'
 
@@ -13,6 +14,26 @@ async function waitForWorkbenchSettled(page: Page): Promise<void> {
   await expect(workbench).toHaveAttribute('data-render-settled', 'true')
   await expect(workbench).toHaveAttribute('data-analysis-settled', 'true')
   await page.evaluate(() => document.fonts.ready)
+}
+
+async function centerViewportReadout(page: Page): Promise<string> {
+  const canvas = page.getByRole('img', { name: /Scientific image viewport/ })
+  const box = await canvas.boundingBox()
+  expect(box).not.toBeNull()
+  if (box === null) return ''
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  const value = page.locator('.mock-viewport__readout span').first()
+  await expect
+    .poll(
+      async () => {
+        await page.mouse.move(center.x + 1, center.y)
+        await page.mouse.move(center.x, center.y)
+        return (await value.textContent()) ?? ''
+      },
+      { timeout: 15_000 },
+    )
+    .toMatch(/px · .+ · -?\d+(?:\.\d+)?$/)
+  return (await value.textContent()) ?? ''
 }
 
 test.beforeEach(async ({ page }) => {
@@ -201,8 +222,22 @@ test('persists theme, panel preferences, and source names without file contents'
   await expect(page.getByText('rebind required')).toBeVisible()
 })
 
-test('saves and replays a semantic project after a browser reload', async ({ page }) => {
+test('saves and numerically replays a semantic project after a browser reload', async ({
+  page,
+}) => {
   await openSample(page)
+  await page.getByRole('tab', { name: 'Analysis' }).click()
+  await page.getByLabel('Search operations').fill('add constant')
+  await page
+    .getByRole('button', { name: /Add constant/ })
+    .first()
+    .click()
+  const detail = page.getByRole('region', { name: 'Selected operation' })
+  await detail.getByLabel('Constant').fill('10')
+  await detail.getByRole('button', { name: 'Apply' }).click()
+  await expect(page.getByText(/Analysis completed in/)).toBeVisible({ timeout: 15_000 })
+  await waitForWorkbenchSettled(page)
+  const beforeReload = await centerViewportReadout(page)
   await page.getByLabel('Project title').fill('Reloaded SEM project')
   await page.getByLabel('Project title').blur()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -212,6 +247,9 @@ test('saves and replays a semantic project after a browser reload', async ({ pag
 
   await expect(page.getByLabel('Project title')).toHaveValue('Reloaded SEM project')
   await expect(page.getByRole('img', { name: /Scientific image viewport/ })).toBeVisible()
+  await expect(page.getByText(/Replayed saved numerical analysis/)).toBeVisible({ timeout: 15_000 })
+  await waitForWorkbenchSettled(page)
+  expect(await centerViewportReadout(page)).toBe(beforeReload)
   await expect(page.getByText('Saved locally', { exact: true })).toBeVisible()
 })
 
@@ -243,7 +281,7 @@ test('previews, commits, plans, and executes threshold connected components', as
   await page.getByRole('tab', { name: 'Analysis' }).click()
   await waitForWorkbenchSettled(page)
   await page.getByLabel('Threshold value').fill('175')
-  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await page.getByRole('button', { name: 'Preview threshold' }).click()
   await expect(page.getByText(/Preview ready in/)).toBeVisible({ timeout: 15_000 })
   await page.getByRole('button', { name: 'Apply threshold' }).click()
   await expect(
@@ -268,7 +306,7 @@ test('supports a keyboard-only threshold commit path', async ({ page }) => {
   await page.getByLabel('Threshold value').focus()
   await page.keyboard.press('ControlOrMeta+A')
   await page.keyboard.type('175')
-  await page.getByRole('button', { name: 'Preview', exact: true }).focus()
+  await page.getByRole('button', { name: 'Preview threshold' }).focus()
   await page.keyboard.press('Enter')
   await expect(page.getByText(/Preview ready in/)).toBeVisible({ timeout: 15_000 })
   await page.getByRole('button', { name: 'Apply threshold' }).focus()
@@ -276,6 +314,113 @@ test('supports a keyboard-only threshold commit path', async ({ page }) => {
   await expect(
     page.getByText('Threshold committed as one semantic project revision.'),
   ).toBeVisible()
+})
+
+test('searches, favorites, previews, cancels, and applies a toolbox operation', async ({
+  page,
+}) => {
+  await openSample(page)
+  await page.getByRole('tab', { name: 'Analysis' }).click()
+  await page.getByLabel('Search operations').fill('unsharp')
+  await page
+    .getByRole('button', { name: /Unsharp mask/ })
+    .first()
+    .click()
+  const detail = page.getByRole('region', { name: 'Selected operation' })
+  await expect(detail.getByRole('heading', { name: 'Unsharp mask' })).toBeVisible()
+  await page.getByRole('button', { name: 'Add Unsharp mask to favorites' }).click()
+  await detail.getByRole('button', { name: 'Preview' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByText(/Preview ready in/)).toBeVisible({ timeout: 15_000 })
+  await detail.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByText(/Preview cancelled/)).toBeVisible()
+  await detail.getByRole('button', { name: 'Apply' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByText(/Analysis completed in/)).toBeVisible({ timeout: 15_000 })
+  await page.getByLabel('Search operations').fill('')
+  await page.getByRole('button', { name: 'Recent' }).click()
+  await expect(page.getByRole('button', { name: /Unsharp mask/ }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Favorites', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Unsharp mask/ }).first()).toBeVisible()
+})
+
+test('chains crop and filtering into a line profile and bounded CSV export', async ({ page }) => {
+  test.setTimeout(60_000)
+  await openSample(page)
+  await page.getByRole('tab', { name: 'Analysis' }).click()
+  await page.getByLabel('Search operations').fill('crop scientific')
+  await page
+    .getByRole('button', { name: /Crop scientific dataset/ })
+    .first()
+    .click()
+  const detail = page.getByRole('region', { name: 'Selected operation' })
+  await detail.getByLabel('x', { exact: true }).fill('0')
+  await detail.getByLabel('y', { exact: true }).fill('0')
+  await detail.getByLabel('width', { exact: true }).fill('64')
+  await detail.getByLabel('height', { exact: true }).fill('64')
+  await detail.getByRole('button', { name: 'Apply' }).click()
+  await expect(page.getByText(/Analysis completed in/)).toBeVisible({ timeout: 15_000 })
+
+  await page.getByLabel('Search operations').fill('mean box')
+  await page
+    .getByRole('button', { name: /Mean \/ box filter/ })
+    .first()
+    .click()
+  await detail.getByRole('button', { name: 'Apply' }).click()
+  await expect(page.getByText(/Analysis completed in/)).toBeVisible({ timeout: 15_000 })
+
+  await page.getByRole('tab', { name: 'ROI' }).click()
+  await page.getByRole('button', { name: 'line', exact: true }).click()
+  const canvas = page.getByRole('img', { name: /Scientific image viewport/ })
+  const box = await canvas.boundingBox()
+  expect(box).not.toBeNull()
+  if (box === null) return
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.5)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5)
+  await page.mouse.up()
+  await page.getByRole('button', { name: 'Line profile' }).click()
+  const results = page.getByTestId('analysis-results')
+  await expect(results).toContainText('profile', { timeout: 15_000 })
+  const downloadPromise = page.waitForEvent('download')
+  await results.getByRole('button', { name: 'Export all CSV' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe('purejsimage-analysis.csv')
+  const path = await download.path()
+  expect(path).not.toBeNull()
+  if (path !== null) {
+    const csv = await readFile(path, 'utf8')
+    expect(csv).toContain('distance')
+    expect(csv.trim().split('\n').length).toBeGreaterThan(2)
+  }
+})
+
+test('calibrates from a known line, measures in physical units, and reloads the override', async ({
+  page,
+}) => {
+  await openSample(page)
+  await page.getByRole('tab', { name: 'ROI' }).click()
+  await page.getByRole('button', { name: 'line', exact: true }).click()
+  const canvas = page.getByRole('img', { name: /Scientific image viewport/ })
+  const box = await canvas.boundingBox()
+  expect(box).not.toBeNull()
+  if (box === null) return
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.5)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5)
+  await page.mouse.up()
+  await page.getByLabel('Known line distance').fill('10')
+  await page.getByRole('button', { name: 'Calibrate from selected line' }).click()
+  await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText(
+    'project known-line override',
+  )
+  await expect(page.getByRole('list', { name: 'Regions of interest' })).toContainText('10.00 nm')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.reload()
+  await waitForWorkbenchSettled(page)
+  await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText(
+    'project known-line override',
+  )
 })
 
 test('@a11y analysis controls and results have no serious violations', async ({ page }) => {

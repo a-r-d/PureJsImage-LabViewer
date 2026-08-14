@@ -99,6 +99,16 @@ export interface DisplayLayerState {
   readonly palette: string
 }
 
+export interface CalibrationOverride {
+  readonly datasetReferenceId: DatasetReferenceId
+  readonly axisIds: readonly [string, string]
+  readonly unitsPerPixel: readonly [number, number]
+  readonly unit: string
+  readonly source: 'known-line' | 'manual'
+  readonly knownDistance?: number
+  readonly measuredPixels?: number
+}
+
 export interface WorkspaceAnalysisState {
   readonly graph: AnalysisGraph
   readonly roiSet: RoiSet
@@ -132,6 +142,7 @@ export interface WorkspaceSnapshot {
   readonly datasets: readonly WorkspaceDatasetReference[]
   readonly active?: WorkspaceSelection | undefined
   readonly layers: readonly DisplayLayerState[]
+  readonly calibrations: readonly CalibrationOverride[]
   readonly analysis: WorkspaceAnalysisState
   readonly pinnedResults: readonly PinnedResultReference[]
   readonly notes: string
@@ -175,6 +186,7 @@ export function createEmptyWorkspace(
     sources: [],
     datasets: [],
     layers: [],
+    calibrations: [],
     analysis: {
       graph: EMPTY_GRAPH,
       roiSet: EMPTY_ROI_SET,

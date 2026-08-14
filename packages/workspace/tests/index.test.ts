@@ -207,6 +207,44 @@ function expectRoundTrip(base: WorkspaceSnapshot, mutation: WorkspaceMutation): 
 }
 
 describe('workspace model and commands', () => {
+  it('stores anisotropic known-line calibration as an invertible semantic command', () => {
+    const base = populated()
+    const mutation: WorkspaceMutation = {
+      kind: 'calibration.set',
+      calibration: {
+        datasetReferenceId: DATASET_ID,
+        axisIds: ['x', 'y'],
+        unitsPerPixel: [0.25, 0.5],
+        unit: 'nm',
+        source: 'known-line',
+        knownDistance: 10,
+        measuredPixels: 40,
+      },
+    }
+    const calibrated = apply(base, mutation)
+    expect(calibrated.calibrations[0]).toMatchObject({
+      unitsPerPixel: [0.25, 0.5],
+      source: 'known-line',
+    })
+    expect(calibrated.datasets[0]?.descriptor).toEqual(descriptor)
+    expectRoundTrip(base, mutation)
+    expect(importWorkspaceProject(serializeWorkspaceProject(calibrated)).calibrations).toEqual(
+      calibrated.calibrations,
+    )
+    expect(() =>
+      apply(base, {
+        kind: 'calibration.set',
+        calibration: {
+          datasetReferenceId: DATASET_ID,
+          axisIds: ['x', 'x'],
+          unitsPerPixel: [0.25, 0.5],
+          unit: 'nm',
+          source: 'manual',
+        },
+      }),
+    ).toThrow(WorkspaceCommandError)
+  })
+
   it('starts normalized without credentials, runtime IDs, or bytes', () => {
     const snapshot = empty()
     expect(snapshot).toMatchObject({ schemaVersion: 1, revision: 0, sources: [], datasets: [] })

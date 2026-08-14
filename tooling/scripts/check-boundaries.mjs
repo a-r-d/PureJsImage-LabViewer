@@ -35,7 +35,9 @@ export function inspectSource(relativeFile, source) {
       const deliberateTypeContract =
         (file.startsWith('packages/contracts/') || file.startsWith('packages/workspace/')) &&
         /^import\s+type\b/.test(match[0])
-      if (!file.startsWith('packages/imaging/') && !deliberateTypeContract) {
+      const trustedScientificRuntime =
+        file.startsWith('packages/imaging/') || file.startsWith('packages/materials-analysis/')
+      if (!trustedScientificRuntime && !deliberateTypeContract) {
         violations.push(`${file}: PureJsImage import outside packages/imaging '${specifier}'`)
       }
     }

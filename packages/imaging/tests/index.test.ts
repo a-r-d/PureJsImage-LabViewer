@@ -9,6 +9,7 @@ import type {
   WorkerResponse,
 } from '@pji-workbench/contracts'
 import { rpcRequest } from '@pji-workbench/contracts'
+import { MATERIALS_OPERATION_IDS } from '@pji-workbench/materials-analysis'
 import {
   analysisConnectedComponentsOperationId,
   analysisLineProfileOperationId,
@@ -71,8 +72,8 @@ function payload<Kind extends Extract<WorkerResponse, { ok: true }>['kind']>(
   response: WorkerResponse,
   kind: Kind,
 ): Extract<WorkerResponse, { kind: Kind }>['payload'] {
-  expect(response.ok).toBe(true)
   if (!response.ok) throw new Error(response.error.message)
+  expect(response.ok).toBe(true)
   expect(response.kind).toBe(kind)
   return response.payload as Extract<WorkerResponse, { kind: Kind }>['payload']
 }
@@ -211,6 +212,123 @@ function rangeFetch(bytes: Uint8Array): typeof fetch {
 }
 
 describe('PureJsImage Worker host', () => {
+  it('composes the trusted materials catalog and renders a bounded derived preview tile', async () => {
+    const host = new ImagingWorkerHost()
+    const dataset = await openGeneratedValues(host, 3, 2, Float32Array.from([1, 2, 3, 4, 5, 6]))
+    const catalogResult = await host.handle(
+      rpcRequest('materials-catalog', 'analysis.catalog', {
+        datasetHandleId: dataset.handleId,
+        generation: dataset.generation,
+      }),
+    )
+    const catalog = payload(catalogResult.response, 'analysis.catalog')
+    const descriptors = catalog.capabilities['operationDescriptors']
+    expect(Array.isArray(descriptors)).toBe(true)
+    expect(catalog.documentation.length).toBeGreaterThan(20)
+    expect(catalog.presets.length).toBeGreaterThan(2)
+
+    const graph: RpcJsonObject = {
+      schemaVersion: 1,
+      inputs: [{ name: 'source', valueType: { id: scientificDatasetValueTypeId, version: 1 } }],
+      nodes: [
+        {
+          id: 'add',
+          operation: { id: MATERIALS_OPERATION_IDS.addConstant, version: 1 },
+          inputs: [{ port: 'dataset', source: { kind: 'input', input: 'source' } }],
+          parameters: {
+            displayAxes: dataset.selection.displayAxes,
+            fixedIndices: dataset.selection.fixedIndices,
+            value: 2,
+          },
+        },
+      ],
+      outputs: [{ name: 'dataset', source: { kind: 'node', nodeId: 'add', output: 'dataset' } }],
+    }
+    const executeResult = await host.handle(
+      rpcRequest('materials-execute', 'analysis.execute', {
+        datasetHandleId: dataset.handleId,
+        generation: dataset.generation,
+        graph,
+      }),
+    )
+    const execution = payload(executeResult.response, 'analysis.executed')
+    expect(execution.outputs[0]?.kind).toBe('dataset')
+    const tileResult = await host.handle(
+      rpcRequest('materials-tile', 'analysis.dataset-tile', {
+        datasetHandleId: dataset.handleId,
+        generation: dataset.generation,
+        resultHandleId: execution.resultHandleId,
+        output: 'dataset',
+        tileId: 'materials-preview',
+        displayAxes: dataset.selection.displayAxes,
+        fixedIndices: dataset.selection.fixedIndices,
+        resolutionLevel: 0,
+        component: 0,
+        mapping: { mode: 'linear', range: 'manual', minimum: 0, maximum: 10 },
+        region: { x: 0, y: 0, width: 3, height: 2 },
+        priority: 'visible',
+      }),
+    )
+    const tile = payload(tileResult.response, 'analysis.dataset-tile')
+    expect([...tile.values]).toEqual([3, 4, 5, 6, 7, 8])
+
+    const filterGraph: RpcJsonObject = {
+      ...graph,
+      nodes: [
+        {
+          id: 'box',
+          operation: { id: MATERIALS_OPERATION_IDS.box, version: 1 },
+          inputs: [{ port: 'dataset', source: { kind: 'input', input: 'source' } }],
+          parameters: {
+            displayAxes: dataset.selection.displayAxes,
+            fixedIndices: dataset.selection.fixedIndices,
+            radius: 1,
+            boundary: 'clamp',
+            constantValue: 0,
+            invalidPolicy: 'propagate',
+          },
+        },
+      ],
+      outputs: [{ name: 'dataset', source: { kind: 'node', nodeId: 'box', output: 'dataset' } }],
+    }
+    const filterExecutionResult = await host.handle(
+      rpcRequest('materials-filter-execute', 'analysis.execute', {
+        datasetHandleId: dataset.handleId,
+        generation: dataset.generation,
+        graph: filterGraph,
+      }),
+    )
+    const filterExecution = payload(filterExecutionResult.response, 'analysis.executed')
+    const filterTileResult = await host.handle(
+      rpcRequest('materials-filter-tile', 'analysis.dataset-tile', {
+        datasetHandleId: dataset.handleId,
+        generation: dataset.generation,
+        resultHandleId: filterExecution.resultHandleId,
+        output: 'dataset',
+        tileId: 'materials-filter-preview',
+        displayAxes: dataset.selection.displayAxes,
+        fixedIndices: dataset.selection.fixedIndices,
+        resolutionLevel: 0,
+        component: 0,
+        mapping: { mode: 'linear', range: 'manual', minimum: 0, maximum: 10 },
+        region: { x: 0, y: 0, width: 3, height: 2 },
+        priority: 'visible',
+      }),
+    )
+    const filtered = payload(filterTileResult.response, 'analysis.dataset-tile')
+    expect([...filtered.values]).toEqual(
+      expect.arrayContaining([
+        expect.closeTo(7 / 3, 5),
+        expect.closeTo(3, 5),
+        expect.closeTo(11 / 3, 5),
+        expect.closeTo(10 / 3, 5),
+        expect.closeTo(4, 5),
+        expect.closeTo(14 / 3, 5),
+      ]),
+    )
+    await host.dispose()
+  })
+
   it('executes and releases a bounded threshold-to-object-table workflow through public APIs', async () => {
     const host = new ImagingWorkerHost()
     const values = new Float32Array(8 * 8)
@@ -467,6 +585,21 @@ describe('PureJsImage Worker host', () => {
       distance: [0, 1, 2, 3],
       value: [1, 2, 3, 4],
     })
+    const exportResult = await host.handle(
+      rpcRequest('export-profile', 'analysis.series-export', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: profile.resultHandleId,
+        output: 'profile',
+        maxRows: 16,
+      }),
+    )
+    const exported = payload(exportResult.response, 'analysis.series-export')
+    expect(exported).toMatchObject({ rowCount: 4, truncated: false })
+    expect(exported.columns.map(({ values }) => values)).toEqual([
+      [0, 1, 2, 3],
+      [1, 2, 3, 4],
+    ])
     await host.dispose()
   })
 

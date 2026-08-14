@@ -5,6 +5,7 @@ import type { RoiSet } from 'purejsimage/analysis/roi'
 
 import {
   type ArtifactReferenceId,
+  type CalibrationOverride,
   type DatasetReferenceId,
   type DisplayLayerState,
   type JsonValue,
@@ -43,10 +44,12 @@ interface Candidate extends Record<string, unknown> {
   readonly artifactId?: unknown
   readonly axes?: unknown
   readonly axisId?: unknown
+  readonly axisIds?: unknown
   readonly bindings?: unknown
   readonly bottom?: unknown
   readonly bound?: unknown
   readonly capabilities?: unknown
+  readonly calibrations?: unknown
   readonly companionNames?: unknown
   readonly component?: unknown
   readonly components?: unknown
@@ -104,6 +107,7 @@ interface Candidate extends Record<string, unknown> {
   readonly selectedRoiId?: unknown
   readonly size?: unknown
   readonly sourceId?: unknown
+  readonly source?: unknown
   readonly sourceReferences?: unknown
   readonly sources?: unknown
   readonly summary?: unknown
@@ -112,6 +116,10 @@ interface Candidate extends Record<string, unknown> {
   readonly url?: unknown
   readonly version?: unknown
   readonly visible?: unknown
+  readonly unit?: unknown
+  readonly unitsPerPixel?: unknown
+  readonly knownDistance?: unknown
+  readonly measuredPixels?: unknown
   readonly workflow?: unknown
 }
 
@@ -569,6 +577,54 @@ function pinnedResult(value: unknown, path: string): PinnedResultReference {
   }
 }
 
+function calibrationOverride(value: unknown, path: string): CalibrationOverride {
+  const candidate = record(value, path)
+  const axisIds = boundedArray(candidate.axisIds, `${path}.axisIds`, 2)
+  const units = boundedArray(candidate.unitsPerPixel, `${path}.unitsPerPixel`, 2)
+  if (axisIds.length !== 2 || units.length !== 2)
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path} requires two calibrated axes`)
+  const source = stringValue(candidate.source, `${path}.source`)
+  if (source !== 'known-line' && source !== 'manual')
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.source is unsupported`)
+  const knownDistance =
+    candidate.knownDistance === undefined
+      ? undefined
+      : finite(candidate.knownDistance, `${path}.knownDistance`)
+  const measuredPixels =
+    candidate.measuredPixels === undefined
+      ? undefined
+      : finite(candidate.measuredPixels, `${path}.measuredPixels`)
+  const x = finite(units[0], `${path}.unitsPerPixel[0]`)
+  const y = finite(units[1], `${path}.unitsPerPixel[1]`)
+  if (
+    x <= 0 ||
+    y <= 0 ||
+    axisIds[0] === axisIds[1] ||
+    (knownDistance !== undefined && knownDistance <= 0) ||
+    (measuredPixels !== undefined && measuredPixels <= 0) ||
+    (source === 'known-line' && (knownDistance === undefined || measuredPixels === undefined))
+  )
+    throw new WorkspaceValidationError(
+      'INVALID_PROJECT',
+      `${path} calibration values must be positive`,
+    )
+  return {
+    datasetReferenceId: stringValue(
+      candidate.datasetReferenceId,
+      `${path}.datasetReferenceId`,
+    ) as DatasetReferenceId,
+    axisIds: [
+      stringValue(axisIds[0], `${path}.axisIds[0]`),
+      stringValue(axisIds[1], `${path}.axisIds[1]`),
+    ],
+    unitsPerPixel: [x, y],
+    unit: stringValue(candidate.unit, `${path}.unit`),
+    source,
+    ...(knownDistance === undefined ? {} : { knownDistance }),
+    ...(measuredPixels === undefined ? {} : { measuredPixels }),
+  }
+}
+
 function unique(values: readonly string[], path: string): void {
   if (new Set(values).size !== values.length) {
     throw new WorkspaceValidationError('INVALID_PROJECT', `${path} contains duplicate IDs`)
@@ -600,6 +656,11 @@ export function validateWorkspaceProjectV1(value: unknown): WorkspaceSnapshot {
     'project.pinnedResults',
     WORKSPACE_LIMITS.maxPinnedResults,
   ).map((item, index) => pinnedResult(item, `project.pinnedResults[${index}]`))
+  const calibrations = boundedArray(
+    candidate.calibrations ?? [],
+    'project.calibrations',
+    WORKSPACE_LIMITS.maxDatasets,
+  ).map((item, index) => calibrationOverride(item, `project.calibrations[${index}]`))
   unique(
     sources.map(({ id }) => id),
     'project.sources',
@@ -616,6 +677,10 @@ export function validateWorkspaceProjectV1(value: unknown): WorkspaceSnapshot {
     pinnedResults.map(({ id }) => id),
     'project.pinnedResults',
   )
+  unique(
+    calibrations.map(({ datasetReferenceId }) => datasetReferenceId),
+    'project.calibrations',
+  )
   const sourceIds = new Set(sources.map(({ id }) => id))
   const datasetIds = new Set(datasets.map(({ id }) => id))
   for (const item of datasets) {
@@ -627,6 +692,19 @@ export function validateWorkspaceProjectV1(value: unknown): WorkspaceSnapshot {
     if (!datasetIds.has(item.datasetReferenceId)) {
       throw new WorkspaceValidationError('INVALID_PROJECT', `layer ${item.id} has no dataset`)
     }
+  }
+  for (const item of calibrations) {
+    const dataset = datasets.find(({ id }) => id === item.datasetReferenceId)
+    if (dataset === undefined)
+      throw new WorkspaceValidationError(
+        'INVALID_PROJECT',
+        `calibration ${item.datasetReferenceId} has no dataset`,
+      )
+    if (item.axisIds.some((axisId) => !dataset.descriptor.axes.some(({ id }) => id === axisId)))
+      throw new WorkspaceValidationError(
+        'INVALID_PROJECT',
+        `calibration ${item.datasetReferenceId} references an unknown axis`,
+      )
   }
   let active: WorkspaceSelection | undefined
   if (candidate.active !== undefined) {
@@ -656,6 +734,7 @@ export function validateWorkspaceProjectV1(value: unknown): WorkspaceSnapshot {
     datasets,
     ...(active === undefined ? {} : { active }),
     layers,
+    calibrations,
     analysis: analysis(candidate.analysis, 'project.analysis'),
     pinnedResults,
     notes,

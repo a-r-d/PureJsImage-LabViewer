@@ -130,5 +130,18 @@ describe('imaging RPC validation', () => {
         },
       }),
     ).toThrowError(expect.objectContaining({ code: 'LIMIT_EXCEEDED' }))
+    expect(() =>
+      validateWorkerRequest({
+        schemaVersion: RPC_SCHEMA_VERSION,
+        requestId: 'analysis-series',
+        kind: 'analysis.series-export',
+        payload: {
+          datasetHandleId: 'dataset-1',
+          generation: 1,
+          resultHandleId: 'result-1',
+          maxRows: 10,
+        },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_PAYLOAD' }))
   })
 })

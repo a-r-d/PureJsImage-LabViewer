@@ -2,6 +2,12 @@
 
 These decisions are defaults for the first repository skeleton. Change them only with a short architecture decision record explaining the problem and measurable tradeoff.
 
+## Scientific toolbox operations use a trusted public extension
+
+The workbench composes `packages/materials-analysis` through PureJsImage's public extension host. Applicable built-in scientific operations remain the source of truth; missing scientific transforms and materials-oriented filters use a namespaced reference provider with lazy bounded reads. The app does not adapt quantitative scientific datasets through the display-image operation model, import private package paths, or create a second planner/executor.
+
+Calibration corrections are revisioned project overrides. The original dataset descriptor stays unchanged so provenance can distinguish file metadata from a user correction.
+
 ## React over Preact
 
 Use React.

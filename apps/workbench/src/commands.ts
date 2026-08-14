@@ -411,10 +411,21 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
         cost: 'expensive',
         cancellable: true,
         permissions: ['analysis.execute'],
-        inputSchema: { type: 'object', additionalProperties: true },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            operationId: { type: 'string', minLength: 1, maxLength: 4_096 },
+            operationVersion: { type: 'integer', minimum: 1 },
+            parameters: { type: 'object', additionalProperties: true },
+            mode: { type: 'string', enum: ['preview', 'apply'] },
+          },
+          required: ['operationId', 'operationVersion', 'parameters', 'mode'],
+          additionalProperties: false,
+        },
         outputSchema: { type: 'object' },
       },
     ),
+    availability: requiresDataset,
   },
   {
     descriptor: descriptor(

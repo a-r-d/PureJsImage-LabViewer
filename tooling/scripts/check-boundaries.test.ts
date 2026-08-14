@@ -21,6 +21,15 @@ describe('architecture boundary checker', () => {
     ).toEqual([])
   })
 
+  it('allows the explicit trusted scientific extension to use public PureJsImage APIs', () => {
+    expect(
+      inspectSource(
+        'packages/materials-analysis/src/provider.ts',
+        "import { createOperationProvider } from 'purejsimage/operations'",
+      ),
+    ).toEqual([])
+  })
+
   it.each([
     ['packages/workspace/src/index.ts', "import React from 'react'"],
     ['packages/viewport/src/index.ts', "import { decode } from 'purejsimage'"],

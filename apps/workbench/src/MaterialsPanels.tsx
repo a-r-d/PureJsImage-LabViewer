@@ -1,12 +1,16 @@
 import type {
+  AnalysisCatalog,
   AnalysisDryRunResponse,
   AnalysisExecutionResponse,
   AnalysisTablePage,
   OpenedDatasetDescriptor,
+  RpcJsonObject,
+  RpcJsonValue,
 } from '@pji-workbench/contracts'
+import { convertCalibration } from '@pji-workbench/materials-analysis'
 import { Button } from '@pji-workbench/ui'
-import type { WorkspaceSnapshot } from '@pji-workbench/workspace'
-import { useMemo, useState } from 'react'
+import type { CalibrationOverride, WorkspaceSnapshot } from '@pji-workbench/workspace'
+import { useEffect, useMemo, useState } from 'react'
 
 import type { RoiTool, ViewportRoi } from './ScientificViewport.js'
 
@@ -18,6 +22,160 @@ export interface MaterialsPanelState {
   readonly table?: AnalysisTablePage
   readonly tableOffset: number
   readonly selectedLabel?: number | undefined
+}
+
+const FAVORITE_OPERATIONS_KEY = 'pji-workbench.analysis.favorite-operations.v1'
+const RECENT_OPERATIONS_KEY = 'pji-workbench.analysis.recent-operations.v1'
+
+interface BrowserOperation {
+  readonly id: string
+  readonly version: number
+  readonly title: string
+  readonly description: string
+  readonly category: string
+  readonly tags: readonly string[]
+  readonly inputs: readonly RpcJsonObject[]
+  readonly outputs: readonly RpcJsonObject[]
+  readonly parameters: RpcJsonObject
+}
+
+function asRecord(value: unknown): RpcJsonObject | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as RpcJsonObject)
+    : undefined
+}
+
+function operationFrom(value: unknown): BrowserOperation | undefined {
+  const record = asRecord(value)
+  if (record === undefined || typeof record['id'] !== 'string') return undefined
+  const title = typeof record['title'] === 'string' ? record['title'] : record['id']
+  return {
+    id: record['id'],
+    version: typeof record['version'] === 'number' ? record['version'] : 1,
+    title,
+    description: typeof record['description'] === 'string' ? record['description'] : '',
+    category: typeof record['category'] === 'string' ? record['category'] : 'other',
+    tags: Array.isArray(record['tags'])
+      ? record['tags'].filter((tag): tag is string => typeof tag === 'string')
+      : [],
+    inputs: Array.isArray(record['inputs'])
+      ? record['inputs'].flatMap((input) => {
+          const candidate = asRecord(input)
+          return candidate === undefined ? [] : [candidate]
+        })
+      : [],
+    outputs: Array.isArray(record['outputs'])
+      ? record['outputs'].flatMap((output) => {
+          const candidate = asRecord(output)
+          return candidate === undefined ? [] : [candidate]
+        })
+      : [],
+    parameters: asRecord(record['parameters']) ?? {},
+  }
+}
+
+function readOperationIds(key: string): readonly string[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(key) ?? '[]')
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === 'string').slice(0, 12)
+      : []
+  } catch {
+    return []
+  }
+}
+
+function defaultParameters(schema: RpcJsonObject): RpcJsonObject {
+  const properties = asRecord(schema['properties'])
+  if (properties === undefined) return {}
+  return Object.fromEntries(
+    Object.entries(properties).flatMap(([name, property]) => {
+      if (name === 'displayAxes' || name === 'fixedIndices') return []
+      const item = asRecord(property)
+      if (item === undefined || item['default'] === undefined) return []
+      return [[name, item['default']]]
+    }),
+  )
+}
+
+function ParameterControl({
+  name,
+  schema,
+  value,
+  onChange,
+}: {
+  readonly name: string
+  readonly schema: RpcJsonObject
+  readonly value: RpcJsonValue | undefined
+  readonly onChange: (value: RpcJsonValue) => void
+}) {
+  const title = typeof schema['title'] === 'string' ? schema['title'] : name
+  const type = schema['type']
+  const enumValues = Array.isArray(schema['values']) ? schema['values'] : undefined
+  if (type === 'boolean')
+    return (
+      <label className="inline-check">
+        <input
+          checked={value === true}
+          onChange={(event) => onChange(event.target.checked)}
+          type="checkbox"
+        />
+        {title}
+      </label>
+    )
+  if (type === 'enum' && enumValues !== undefined)
+    return (
+      <label>
+        {title}
+        <select
+          onChange={(event) => {
+            const selected = enumValues[event.target.selectedIndex]
+            if (selected !== undefined) onChange(selected)
+          }}
+          value={String(value ?? '')}
+        >
+          {enumValues.map((option) => (
+            <option key={String(option)} value={String(option)}>
+              {String(option)}
+            </option>
+          ))}
+        </select>
+      </label>
+    )
+  if (type === 'number' || type === 'integer')
+    return (
+      <label>
+        {title}
+        <input
+          max={typeof schema['maximum'] === 'number' ? schema['maximum'] : undefined}
+          min={typeof schema['minimum'] === 'number' ? schema['minimum'] : undefined}
+          onChange={(event) => onChange(Number(event.target.value))}
+          step={type === 'integer' ? 1 : 'any'}
+          type="number"
+          value={typeof value === 'number' ? value : ''}
+        />
+      </label>
+    )
+  if (type === 'array')
+    return (
+      <label>
+        {title}
+        <textarea
+          aria-describedby={`${name}-array-help`}
+          onChange={(event) => {
+            const next = event.target.value
+              .split(/[\s,]+/u)
+              .filter(Boolean)
+              .map(Number)
+            if (next.every(Number.isFinite)) onChange(next)
+          }}
+          rows={3}
+          value={Array.isArray(value) ? value.join(', ') : ''}
+        />
+        <small id={`${name}-array-help`}>Comma-separated bounded coefficients.</small>
+      </label>
+    )
+  return null
 }
 
 function roiMeasurement(roi: ViewportRoi, opened: OpenedDatasetDescriptor): string {
@@ -48,6 +206,59 @@ function roiMeasurement(roi: ViewportRoi, opened: OpenedDatasetDescriptor): stri
               }, 0) / 2,
             )
           : undefined
+  const polygonPerimeter = (polygon: readonly { readonly x: number; readonly y: number }[]) =>
+    polygon.reduce((sum, point, index) => {
+      const next = polygon[(index + 1) % polygon.length]
+      return next === undefined ? sum : sum + Math.hypot(next.x - point.x, next.y - point.y)
+    }, 0)
+  const pixelPerimeter =
+    roi.geometry.kind === 'rectangle'
+      ? 2 * (roi.geometry.width + roi.geometry.height)
+      : roi.geometry.kind === 'ellipse'
+        ? Math.PI *
+          (3 * (roi.geometry.radiusX + roi.geometry.radiusY) -
+            Math.sqrt(
+              (3 * roi.geometry.radiusX + roi.geometry.radiusY) *
+                (roi.geometry.radiusX + 3 * roi.geometry.radiusY),
+            ))
+        : roi.geometry.kind === 'polygon'
+          ? polygonPerimeter(roi.geometry.points)
+          : undefined
+  const pixelCentroid =
+    roi.geometry.kind === 'rectangle'
+      ? { x: roi.geometry.x + roi.geometry.width / 2, y: roi.geometry.y + roi.geometry.height / 2 }
+      : roi.geometry.kind === 'ellipse'
+        ? roi.geometry.center
+        : roi.geometry.kind === 'polygon' && pixelArea !== undefined && pixelArea > 0
+          ? {
+              x:
+                roi.geometry.points.reduce((sum, point, index, polygon) => {
+                  const next = polygon[(index + 1) % polygon.length]
+                  return next === undefined
+                    ? sum
+                    : sum + (point.x + next.x) * (point.x * next.y - next.x * point.y)
+                }, 0) /
+                ((6 *
+                  roi.geometry.points.reduce((sum, point, index, polygon) => {
+                    const next = polygon[(index + 1) % polygon.length]
+                    return next === undefined ? sum : sum + point.x * next.y - next.x * point.y
+                  }, 0)) /
+                  2),
+              y:
+                roi.geometry.points.reduce((sum, point, index, polygon) => {
+                  const next = polygon[(index + 1) % polygon.length]
+                  return next === undefined
+                    ? sum
+                    : sum + (point.y + next.y) * (point.x * next.y - next.x * point.y)
+                }, 0) /
+                ((6 *
+                  roi.geometry.points.reduce((sum, point, index, polygon) => {
+                    const next = polygon[(index + 1) % polygon.length]
+                    return next === undefined ? sum : sum + point.x * next.y - next.x * point.y
+                  }, 0)) /
+                  2),
+            }
+          : undefined
   const pixel =
     pixelArea === undefined
       ? lineLength > 0
@@ -55,7 +266,7 @@ function roiMeasurement(roi: ViewportRoi, opened: OpenedDatasetDescriptor): stri
         : points[0] === undefined
           ? 'pixel coordinates'
           : `${points[0].x.toFixed(1)}, ${points[0].y.toFixed(1)} px`
-      : `${pixelArea.toFixed(2)} px²`
+      : `area ${pixelArea.toFixed(2)} px²${pixelPerimeter === undefined ? '' : ` · perimeter ${pixelPerimeter.toFixed(2)} px`}${pixelCentroid === undefined ? '' : ` · centroid ${pixelCentroid.x.toFixed(2)}, ${pixelCentroid.y.toFixed(2)} px`}`
   const horizontal = opened.dataset.axes.find(({ id }) => id === roi.axisIds[0])
   const vertical = opened.dataset.axes.find(({ id }) => id === roi.axisIds[1])
   if (
@@ -68,6 +279,7 @@ function roiMeasurement(roi: ViewportRoi, opened: OpenedDatasetDescriptor): stri
   }
   const scaleX = Math.abs(horizontal.coordinates.step)
   const scaleY = Math.abs(vertical.coordinates.step)
+  const physicalPoint = points[0]
   const physical =
     pixelArea === undefined
       ? points.length > 1
@@ -81,8 +293,32 @@ function roiMeasurement(roi: ViewportRoi, opened: OpenedDatasetDescriptor): stri
                     Math.hypot((point.x - previous.x) * scaleX, (point.y - previous.y) * scaleY)
             }, 0)
             .toFixed(2)} ${horizontal.unit}`
-        : 'calibrated point'
-      : `${(pixelArea * scaleX * scaleY).toFixed(2)} ${horizontal.unit}²`
+        : physicalPoint === undefined
+          ? 'calibrated coordinates'
+          : `${(horizontal.coordinates.origin + physicalPoint.x * horizontal.coordinates.step).toFixed(2)}, ${(vertical.coordinates.origin + physicalPoint.y * vertical.coordinates.step).toFixed(2)} ${horizontal.unit}`
+      : `area ${(pixelArea * scaleX * scaleY).toFixed(2)} ${horizontal.unit}²${
+          pixelPerimeter === undefined
+            ? ''
+            : ` · perimeter ${(
+                roi.geometry.kind === 'rectangle'
+                  ? 2 * (roi.geometry.width * scaleX + roi.geometry.height * scaleY)
+                  : roi.geometry.kind === 'ellipse'
+                    ? Math.PI *
+                      (3 * (roi.geometry.radiusX * scaleX + roi.geometry.radiusY * scaleY) -
+                        Math.sqrt(
+                          (3 * roi.geometry.radiusX * scaleX + roi.geometry.radiusY * scaleY) *
+                            (roi.geometry.radiusX * scaleX + 3 * roi.geometry.radiusY * scaleY),
+                        ))
+                    : roi.geometry.kind === 'polygon'
+                      ? polygonPerimeter(
+                          roi.geometry.points.map((point) => ({
+                            x: point.x * scaleX,
+                            y: point.y * scaleY,
+                          })),
+                        )
+                      : 0
+              ).toFixed(2)} ${horizontal.unit}`
+        }${pixelCentroid === undefined ? '' : ` · centroid ${(horizontal.coordinates.origin + pixelCentroid.x * horizontal.coordinates.step).toFixed(2)}, ${(vertical.coordinates.origin + pixelCentroid.y * vertical.coordinates.step).toFixed(2)} ${horizontal.unit}`}`
   return `${pixel} · ${physical}`
 }
 
@@ -96,6 +332,8 @@ export function RoiInspector({
   onVisibility,
   onDelete,
   onMeasure,
+  calibration,
+  onCalibration,
   opened,
 }: {
   readonly rois: readonly ViewportRoi[]
@@ -107,6 +345,8 @@ export function RoiInspector({
   readonly onVisibility: (roi: ViewportRoi, visible: boolean) => void
   readonly onDelete: (id: string) => void
   readonly onMeasure: (kind: 'statistics' | 'histogram' | 'profile') => void
+  readonly calibration?: CalibrationOverride | undefined
+  readonly onCalibration: (calibration?: Omit<CalibrationOverride, 'datasetReferenceId'>) => void
   readonly opened: OpenedDatasetDescriptor
 }) {
   const tools: readonly RoiTool[] = [
@@ -119,6 +359,23 @@ export function RoiInspector({
     'polygon',
   ]
   const selected = rois.find(({ id }) => id === selectedRoiId)
+  const horizontal = opened.dataset.axes.find(({ id }) => id === opened.selection.displayAxes[0])
+  const vertical = opened.dataset.axes.find(({ id }) => id === opened.selection.displayAxes[1])
+  const fileX =
+    horizontal?.coordinates.type === 'linear' ? Math.abs(horizontal.coordinates.step) : 1
+  const fileY = vertical?.coordinates.type === 'linear' ? Math.abs(vertical.coordinates.step) : 1
+  const [scaleX, setScaleX] = useState(calibration?.unitsPerPixel[0] ?? fileX)
+  const [scaleY, setScaleY] = useState(calibration?.unitsPerPixel[1] ?? fileY)
+  const [scaleUnit, setScaleUnit] = useState(calibration?.unit ?? horizontal?.unit ?? 'px')
+  const [knownDistance, setKnownDistance] = useState(calibration?.knownDistance ?? 1)
+  const [conversionUnit, setConversionUnit] = useState('µm')
+  const linePixels =
+    selected?.geometry.kind === 'line-segment'
+      ? Math.hypot(
+          selected.geometry.end.x - selected.geometry.start.x,
+          selected.geometry.end.y - selected.geometry.start.y,
+        )
+      : undefined
   return (
     <div className="inspector-content form-stack" data-testid="roi-inspector">
       <fieldset className="tool-grid">
@@ -187,6 +444,126 @@ export function RoiInspector({
           Line profile
         </Button>
       </div>
+      <fieldset className="calibration-editor">
+        <legend>Calibration</legend>
+        <p className="panel-note">
+          File metadata remains preserved. A correction is stored as a revisioned project override.
+        </p>
+        <div className="calibration-grid">
+          <label>
+            X units / pixel
+            <input
+              min="0"
+              onChange={(event) => setScaleX(Number(event.target.value))}
+              step="any"
+              type="number"
+              value={scaleX}
+            />
+          </label>
+          <label>
+            Y units / pixel
+            <input
+              min="0"
+              onChange={(event) => setScaleY(Number(event.target.value))}
+              step="any"
+              type="number"
+              value={scaleY}
+            />
+          </label>
+          <label>
+            Unit
+            <input
+              maxLength={64}
+              onChange={(event) => setScaleUnit(event.target.value)}
+              value={scaleUnit}
+            />
+          </label>
+        </div>
+        <div className="button-row">
+          <Button
+            disabled={scaleX <= 0 || scaleY <= 0 || scaleUnit.trim() === ''}
+            onClick={() =>
+              onCalibration({
+                axisIds: opened.selection.displayAxes,
+                unitsPerPixel: [scaleX, scaleY],
+                unit: scaleUnit.trim(),
+                source: 'manual',
+              })
+            }
+          >
+            Set anisotropic scale
+          </Button>
+          <Button disabled={calibration === undefined} onClick={() => onCalibration(undefined)}>
+            Restore file calibration
+          </Button>
+        </div>
+        <div className="button-row">
+          <label>
+            Convert scale to
+            <select
+              onChange={(event) => setConversionUnit(event.target.value)}
+              value={conversionUnit}
+            >
+              {['pm', 'nm', 'µm', 'mm', 'cm', 'm', 'Å'].map((unit) => (
+                <option key={unit} value={unit}>
+                  {unit}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            onClick={() => {
+              try {
+                const converted = convertCalibration(
+                  { x: scaleX, y: scaleY, unit: scaleUnit },
+                  conversionUnit,
+                )
+                setScaleX(converted.x)
+                setScaleY(converted.y)
+                setScaleUnit(converted.unit)
+              } catch {
+                // Unsupported free-form source units remain unchanged until the user chooses a supported unit.
+              }
+            }}
+          >
+            Convert units
+          </Button>
+        </div>
+        <label>
+          Known line distance
+          <input
+            min="0"
+            onChange={(event) => setKnownDistance(Number(event.target.value))}
+            step="any"
+            type="number"
+            value={knownDistance}
+          />
+        </label>
+        <Button
+          disabled={
+            linePixels === undefined ||
+            linePixels <= 0 ||
+            knownDistance <= 0 ||
+            scaleUnit.trim() === ''
+          }
+          onClick={() => {
+            if (linePixels === undefined || linePixels <= 0) return
+            const scale = knownDistance / linePixels
+            setScaleX(scale)
+            setScaleY(scale)
+            onCalibration({
+              axisIds: opened.selection.displayAxes,
+              unitsPerPixel: [scale, scale],
+              unit: scaleUnit.trim(),
+              source: 'known-line',
+              knownDistance,
+              measuredPixels: linePixels,
+            })
+          }}
+        >
+          Calibrate from selected line
+        </Button>
+      </fieldset>
     </div>
   )
 }
@@ -197,8 +574,7 @@ export function AnalysisInspector({
   connectivity,
   component,
   planeLabel,
-  operationCount,
-  operationNames,
+  catalog,
   state,
   onThreshold,
   onMode,
@@ -208,6 +584,9 @@ export function AnalysisInspector({
   onApply,
   onRunObjects,
   onPlanObjects,
+  onRunOperation,
+  focusOperationId,
+  sampleType,
   connectedPlanReady,
 }: {
   readonly threshold: number
@@ -215,8 +594,7 @@ export function AnalysisInspector({
   readonly connectivity: 4 | 8
   readonly component: number
   readonly planeLabel: string
-  readonly operationCount: number
-  readonly operationNames: readonly string[]
+  readonly catalog?: AnalysisCatalog | undefined
   readonly state: MaterialsPanelState
   readonly onThreshold: (value: number) => void
   readonly onMode: (value: typeof mode) => void
@@ -226,17 +604,106 @@ export function AnalysisInspector({
   readonly onApply: () => void
   readonly onRunObjects: () => void
   readonly onPlanObjects: () => void
+  readonly onRunOperation: (
+    operation: Readonly<{
+      id: string
+      version: number
+      title: string
+      inputs: readonly RpcJsonObject[]
+      outputs: readonly RpcJsonObject[]
+      parameters: RpcJsonObject
+    }>,
+    parameters: RpcJsonObject,
+    mode: 'preview' | 'apply',
+  ) => void
+  readonly focusOperationId?: string | undefined
+  readonly sampleType?: string | undefined
   readonly connectedPlanReady: boolean
 }) {
   const [operationQuery, setOperationQuery] = useState('')
   const [operationCategory, setOperationCategory] = useState('all')
+  const [operationView, setOperationView] = useState<'all' | 'recent' | 'favorites'>('all')
+  const [favoriteIds, setFavoriteIds] = useState(() => readOperationIds(FAVORITE_OPERATIONS_KEY))
+  const [recentIds, setRecentIds] = useState(() => readOperationIds(RECENT_OPERATIONS_KEY))
+  const descriptors = catalog?.capabilities['operationDescriptors']
+  const operations = useMemo(
+    () =>
+      Array.isArray(descriptors) ? descriptors.flatMap((value) => operationFrom(value) ?? []) : [],
+    [descriptors],
+  )
+  const categories = useMemo(
+    () => [...new Set(operations.map(({ category }) => category))].sort(),
+    [operations],
+  )
   const filteredOperations = useMemo(
     () =>
-      operationNames
-        .filter((name) => name.toLocaleLowerCase().includes(operationQuery.toLocaleLowerCase()))
-        .slice(0, 6),
-    [operationNames, operationQuery],
+      operations.filter((operation) => {
+        if (operationCategory !== 'all' && operation.category !== operationCategory) return false
+        if (operationView === 'recent' && !recentIds.includes(operation.id)) return false
+        if (operationView === 'favorites' && !favoriteIds.includes(operation.id)) return false
+        const query = operationQuery.trim().toLocaleLowerCase()
+        return (
+          query === '' ||
+          [operation.title, operation.description, operation.id, ...operation.tags]
+            .join(' ')
+            .toLocaleLowerCase()
+            .includes(query)
+        )
+      }),
+    [favoriteIds, operationCategory, operationQuery, operationView, operations, recentIds],
   )
+  const [selectedOperationId, setSelectedOperationId] = useState<string>()
+  const selectedOperation =
+    operations.find(({ id }) => id === selectedOperationId) ?? filteredOperations[0]
+  const [operationParameters, setOperationParameters] = useState<RpcJsonObject>({})
+  useEffect(() => {
+    if (selectedOperationId !== undefined || selectedOperation === undefined) return
+    setSelectedOperationId(selectedOperation.id)
+    setOperationParameters(defaultParameters(selectedOperation.parameters))
+  }, [selectedOperation, selectedOperationId])
+  const documentation = catalog?.documentation.find(
+    (item) => item['operationId'] === selectedOperation?.id,
+  )
+  const presets =
+    catalog?.presets.filter((preset) => preset['operationId'] === selectedOperation?.id) ?? []
+  const parameterProperties = asRecord(selectedOperation?.parameters['properties'])
+  const unavailableReason =
+    selectedOperation === undefined
+      ? 'Select an operation.'
+      : selectedOperation.inputs.some((input) => {
+            const valueType = asRecord(input['valueType'])
+            return valueType?.['id'] === 'purejsimage.roi'
+          })
+        ? 'Select an ROI and run this measurement from the ROI inspector so its geometry is explicit.'
+        : selectedOperation.inputs.length > 1
+          ? 'This project currently has one bound dataset; bind a compatible second dataset to use the image calculator.'
+          : sampleType === 'uint64' && selectedOperation.id.startsWith('pji-workbench.materials.')
+            ? 'The reference materials provider refuses uint64 because conversion through JavaScript numbers would lose integer precision.'
+            : selectedOperation.outputs.length === 0
+              ? 'This operation has no publishable output.'
+              : undefined
+  const selectOperation = (operation: BrowserOperation): void => {
+    setSelectedOperationId(operation.id)
+    setOperationParameters(defaultParameters(operation.parameters))
+  }
+  useEffect(() => {
+    if (focusOperationId === undefined) return
+    const operation = operations.find(({ id }) => id === focusOperationId)
+    if (operation !== undefined) {
+      setSelectedOperationId(operation.id)
+      setOperationParameters(defaultParameters(operation.parameters))
+    }
+  }, [focusOperationId, operations])
+  const rememberOperation = (operation: BrowserOperation): void => {
+    const next = [operation.id, ...recentIds.filter((id) => id !== operation.id)].slice(0, 12)
+    setRecentIds(next)
+    window.localStorage.setItem(RECENT_OPERATIONS_KEY, JSON.stringify(next))
+  }
+  const runOperation = (mode: 'preview' | 'apply'): void => {
+    if (selectedOperation === undefined || unavailableReason !== undefined) return
+    rememberOperation(selectedOperation)
+    onRunOperation(selectedOperation, operationParameters, mode)
+  }
   const estimate = state.dryRun?.plan?.['totalEstimate']
   const estimateRecord: Readonly<Record<string, unknown>> | null =
     typeof estimate === 'object' && estimate !== null && !Array.isArray(estimate)
@@ -244,7 +711,7 @@ export function AnalysisInspector({
       : null
   return (
     <div className="inspector-content form-stack" data-testid="analysis-inspector">
-      <p className="panel-kicker">PureJsImage operation catalog · {operationCount} operations</p>
+      <p className="panel-kicker">PureJsImage operation catalog · {operations.length} operations</p>
       <section className="operation-browser" aria-label="Operation browser">
         <label>
           Search operations
@@ -263,22 +730,150 @@ export function AnalysisInspector({
               value={operationCategory}
             >
               <option value="all">All</option>
-              <option value="analysis">Analysis</option>
-              <option value="measurement">Measurement</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
             </select>
           </label>
-          <Button aria-pressed="false" disabled>
+          <Button
+            aria-pressed={operationView === 'recent'}
+            onClick={() => setOperationView(operationView === 'recent' ? 'all' : 'recent')}
+          >
             Recent
           </Button>
-          <Button aria-pressed="false" disabled>
+          <Button
+            aria-pressed={operationView === 'favorites'}
+            onClick={() => setOperationView(operationView === 'favorites' ? 'all' : 'favorites')}
+          >
             Favorites
           </Button>
         </div>
         <ul className="operation-browser__results">
-          {filteredOperations.map((name) => (
-            <li key={name}>{name}</li>
+          {filteredOperations.map((operation) => (
+            <li data-selected={operation.id === selectedOperation?.id} key={operation.id}>
+              <button type="button" onClick={() => selectOperation(operation)}>
+                <strong>{operation.title}</strong>
+                <small>{operation.category}</small>
+              </button>
+              <Button
+                aria-label={`${favoriteIds.includes(operation.id) ? 'Remove' : 'Add'} ${operation.title} ${favoriteIds.includes(operation.id) ? 'from' : 'to'} favorites`}
+                aria-pressed={favoriteIds.includes(operation.id)}
+                onClick={() => {
+                  const next = favoriteIds.includes(operation.id)
+                    ? favoriteIds.filter((id) => id !== operation.id)
+                    : [operation.id, ...favoriteIds].slice(0, 12)
+                  setFavoriteIds(next)
+                  window.localStorage.setItem(FAVORITE_OPERATIONS_KEY, JSON.stringify(next))
+                }}
+              >
+                Favorite
+              </Button>
+            </li>
           ))}
         </ul>
+        {selectedOperation === undefined ? null : (
+          <section className="operation-browser__detail" aria-label="Selected operation">
+            <h3>{selectedOperation.title}</h3>
+            <p>{selectedOperation.description}</p>
+            {unavailableReason === undefined ? (
+              <p className="availability available">Available for the active dataset.</p>
+            ) : (
+              <p className="availability unavailable">Unavailable: {unavailableReason}</p>
+            )}
+            {presets.length === 0 ? null : (
+              <label>
+                Workflow preset
+                <select
+                  defaultValue=""
+                  onChange={(event) => {
+                    const preset = presets.find(({ id }) => id === event.target.value)
+                    const parameters = asRecord(preset?.['parameters'])
+                    if (parameters !== undefined) setOperationParameters(parameters)
+                  }}
+                >
+                  <option value="">Custom</option>
+                  {presets.map((preset) => (
+                    <option key={String(preset['id'])} value={String(preset['id'])}>
+                      {String(preset['title'])}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {parameterProperties === undefined
+              ? null
+              : Object.entries(parameterProperties).map(([name, property]) => {
+                  if (name === 'displayAxes' || name === 'fixedIndices') return null
+                  const schema = asRecord(property)
+                  return schema === undefined ? null : (
+                    <ParameterControl
+                      key={name}
+                      name={name}
+                      onChange={(value) =>
+                        setOperationParameters((current) => ({ ...current, [name]: value }))
+                      }
+                      schema={schema}
+                      value={operationParameters[name]}
+                    />
+                  )
+                })}
+            {documentation === undefined ? null : (
+              <dl className="operation-docs">
+                <div>
+                  <dt>Output</dt>
+                  <dd>{String(documentation['outputPolicy'])}</dd>
+                </div>
+                <div>
+                  <dt>No data</dt>
+                  <dd>{String(documentation['noDataPolicy'])}</dd>
+                </div>
+                <div>
+                  <dt>Boundary</dt>
+                  <dd>{String(documentation['boundaryPolicy'])}</dd>
+                </div>
+                <div>
+                  <dt>Calibration</dt>
+                  <dd>{String(documentation['calibrationPolicy'])}</dd>
+                </div>
+                <div>
+                  <dt>Cost</dt>
+                  <dd>{String(documentation['cost'])}</dd>
+                </div>
+                <div>
+                  <dt>Action</dt>
+                  <dd>
+                    {String(documentation['actionId'])}@{String(documentation['actionVersion'])}
+                  </dd>
+                </div>
+              </dl>
+            )}
+            <div className="button-row">
+              <Button
+                disabled={state.busy || unavailableReason !== undefined}
+                onClick={() => runOperation('preview')}
+              >
+                Preview
+              </Button>
+              <Button onClick={onCancelPreview}>Cancel</Button>
+              <Button
+                disabled={state.busy || unavailableReason !== undefined}
+                onClick={() => runOperation('apply')}
+                variant="primary"
+              >
+                Apply
+              </Button>
+              <Button
+                onClick={() =>
+                  setOperationParameters(defaultParameters(selectedOperation.parameters))
+                }
+              >
+                Reset
+              </Button>
+            </div>
+          </section>
+        )}
       </section>
       <label>
         Comparison
@@ -301,7 +896,7 @@ export function AnalysisInspector({
       </label>
       <div className="button-row">
         <Button disabled={state.busy} onClick={onPreview}>
-          Preview
+          Preview threshold
         </Button>
         <Button onClick={onCancelPreview}>Cancel preview</Button>
         <Button disabled={state.busy} onClick={onApply} variant="primary">

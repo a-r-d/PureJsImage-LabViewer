@@ -4,6 +4,7 @@
     { "path": "./packages/actions" },
     { "path": "./packages/contracts" },
     { "path": "./packages/workspace" },
+    { "path": "./packages/materials-analysis" },
     { "path": "./packages/imaging" },
     { "path": "./packages/viewport" },
     { "path": "./packages/agent" },

@@ -20,6 +20,7 @@
     "@pji-workbench/agent": "workspace:*",
     "@pji-workbench/contracts": "workspace:*",
     "@pji-workbench/imaging": "workspace:*",
+    "@pji-workbench/materials-analysis": "workspace:*",
     "@pji-workbench/plugin-sdk": "workspace:*",
     "@pji-workbench/scripts": "workspace:*",
     "@pji-workbench/test-corpus": "workspace:*",

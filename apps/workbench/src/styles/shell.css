@@ -254,10 +254,60 @@ table,
 }
 
 .operation-browser__results li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px;
+  align-items: center;
   padding: 5px 6px;
   border-left: 2px solid var(--wb-accent);
   background: var(--wb-surface);
   font-size: 11px;
+}
+
+.operation-browser__results li[data-selected="true"] {
+  border-left-color: var(--wb-focus);
+  background: var(--wb-accent-surface);
+}
+
+.operation-browser__results li > button:first-child {
+  display: grid;
+  gap: 2px;
+  padding: 2px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.operation-browser__detail,
+.calibration-editor {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-sm);
+}
+
+.operation-browser__detail h3,
+.operation-browser__detail p {
+  margin: 0;
+}
+
+.operation-docs,
+.calibration-grid {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.operation-docs div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.operation-docs dd {
+  margin: 0;
 }
 
 @media (max-width: 1100px) {

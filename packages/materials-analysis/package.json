@@ -1,5 +1,5 @@
 {
-  "name": "@pji-workbench/imaging",
+  "name": "@pji-workbench/materials-analysis",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,12 +16,10 @@
     "check": "corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build",
     "lint": "biome check src tests",
     "typecheck": "tsc --noEmit --composite false --incremental false -p tsconfig.json",
-    "test": "vitest run --root ../.. packages/imaging",
+    "test": "vitest run --root ../.. packages/materials-analysis",
     "clean": "node ../../tooling/scripts/clean-package.mjs"
   },
   "dependencies": {
-    "@pji-workbench/contracts": "workspace:*",
-    "@pji-workbench/materials-analysis": "workspace:*",
     "purejsimage": "0.10.0"
   },
   "devDependencies": {

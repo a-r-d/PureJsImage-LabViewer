@@ -3,6 +3,7 @@ import {
   type DatasetHandleId,
   type DocumentId,
   type OpenedDatasetDescriptor,
+  RPC_LIMITS,
   RPC_SCHEMA_VERSION,
   RpcValidationError,
   type SourceId,
@@ -12,6 +13,11 @@ import {
   type WorkerRequest,
   type WorkerResponse,
 } from '@pji-workbench/contracts'
+import {
+  createMaterialsAnalysisExtension,
+  TOOLBOX_DOCUMENTATION,
+  TOOLBOX_PRESETS,
+} from '@pji-workbench/materials-analysis'
 import {
   type AnalysisExecutionResult,
   createAnalysisController,
@@ -29,6 +35,7 @@ import {
   createTileRuntime,
   numericTileSourceToTileSource,
 } from 'purejsimage/analysis/runtime'
+import { createExtensionHost } from 'purejsimage/extensions'
 import {
   createScientificLibrary,
   type NumericTile,
@@ -61,6 +68,14 @@ import { mapTile, numericValue } from './worker-host/view-rpc.js'
 import { loadReadersForSource, SUPPORTED_READERS } from './worker-readers.js'
 
 export type { WorkerHostResult } from './worker-host/protocol.js'
+
+const MAX_SERIES_EXPORT_CELLS = 1_000_000
+
+function boundedSeriesRows(requested: number, available: number, columns: number): number {
+  if (columns < 1 || columns > RPC_LIMITS.maxTablePageColumns)
+    throw new RpcValidationError('LIMIT_EXCEEDED', 'Series export exceeds the column limit')
+  return Math.min(requested, available, Math.floor(MAX_SERIES_EXPORT_CELLS / columns))
+}
 
 export interface ImagingWorkerHostOptions {
   readonly fetch?: typeof fetch
@@ -145,8 +160,12 @@ export class ImagingWorkerHost {
         return this.#executeAnalysis(request, signal)
       case 'analysis.overlay-tile':
         return this.#analysisOverlayTile(request, signal)
+      case 'analysis.dataset-tile':
+        return this.#analysisDatasetTile(request, signal)
       case 'analysis.table-page':
         return this.#analysisTablePage(request)
+      case 'analysis.series-export':
+        return this.#analysisSeriesExport(request)
       case 'analysis.release':
         return this.#releaseAnalysisRequest(request)
       case 'diagnostics.get':
@@ -360,8 +379,16 @@ export class ImagingWorkerHost {
         metrics: true,
       })
       const bundle = createBuiltInAnalysisBundle({ descriptor: dataset.descriptor, runtime })
+      const extensions = createExtensionHost({
+        extensions: [createMaterialsAnalysisExtension()],
+        operations: bundle.operations.definitions(),
+        valueTypes: bundle.valueTypes.definitions(),
+        providers: bundle.providers,
+      })
       const analysis = createAnalysisController({
-        ...bundle,
+        operations: extensions.operations,
+        valueTypes: extensions.valueTypes,
+        providers: extensions.providers,
         roi: { descriptor: dataset.descriptor },
         library: { version: '0.10.0', buildFingerprint: 'pji-workbench-worker-v1' },
       })
@@ -518,6 +545,8 @@ export class ImagingWorkerHost {
       const record = this.#analysisRecord(request.payload)
       return success(request.requestId, 'analysis.catalog', {
         capabilities: record.analysis.capabilities,
+        documentation: TOOLBOX_DOCUMENTATION,
+        presets: TOOLBOX_PRESETS,
       })
     } catch (error) {
       return errorResult(request.requestId, structuredError(error, 'INVALID_PAYLOAD'))
@@ -576,11 +605,13 @@ export class ImagingWorkerHost {
     try {
       const record = this.#analysisRecord(request.payload)
       const dryRun = await record.analysis.dryRun(request.payload.graph, {
-        bindings: await createAnalysisBindings(record, request.payload.roi),
+        bindings: await createAnalysisBindings(
+          record,
+          request.payload.roi,
+          request.payload.calibration,
+        ),
         policy: {
-          mode: 'pinned',
-          providerId: 'purejsimage.analysis.reference',
-          providerVersion: 1,
+          mode: 'reference-only',
         },
         signal,
       })
@@ -601,11 +632,13 @@ export class ImagingWorkerHost {
     try {
       const record = this.#analysisRecord(request.payload)
       const options = {
-        bindings: await createAnalysisBindings(record, request.payload.roi),
+        bindings: await createAnalysisBindings(
+          record,
+          request.payload.roi,
+          request.payload.calibration,
+        ),
         policy: {
-          mode: 'pinned' as const,
-          providerId: 'purejsimage.analysis.reference',
-          providerVersion: 1,
+          mode: 'reference-only' as const,
         },
         signal,
       }
@@ -659,6 +692,84 @@ export class ImagingWorkerHost {
     const result = record.results.get(resultHandleId)
     if (result === undefined || result.closed) throw this.#stale('analysis result')
     return result
+  }
+
+  #analysisSeriesExport(
+    request: Extract<WorkerRequest, { kind: 'analysis.series-export' }>,
+  ): WorkerHostResult {
+    try {
+      const record = this.#analysisRecord(request.payload)
+      const execution = this.#analysisExecution(record, request.payload.resultHandleId)
+      const result = validateAnalysisResult(execution.execution.outputs.get(request.payload.output))
+      const limit = request.payload.maxRows
+      const numeric = (value: number | bigint): number | null => {
+        if (typeof value === 'number') return Number.isFinite(value) ? value : null
+        const converted = Number(value)
+        return Number.isSafeInteger(converted) ? converted : null
+      }
+      if (result.kind === 'histogram') {
+        const rowCount = boundedSeriesRows(limit, result.counts.length, 3)
+        return success(request.requestId, 'analysis.series-export', {
+          rowCount,
+          truncated: rowCount < result.counts.length,
+          columns: [
+            {
+              name: 'binMinimum',
+              ...(result.unit === undefined ? {} : { unit: result.unit }),
+              values: Array.from(result.binEdges.slice(0, rowCount), numeric),
+            },
+            {
+              name: 'binMaximum',
+              ...(result.unit === undefined ? {} : { unit: result.unit }),
+              values: Array.from(result.binEdges.slice(1, rowCount + 1), numeric),
+            },
+            { name: 'count', values: Array.from(result.counts.slice(0, rowCount), numeric) },
+          ],
+        })
+      }
+      if (result.kind === 'profile') {
+        const rowCount = boundedSeriesRows(
+          limit,
+          result.axis.values.length,
+          result.series.length + 1,
+        )
+        return success(request.requestId, 'analysis.series-export', {
+          rowCount,
+          truncated: rowCount < result.axis.values.length,
+          columns: [
+            {
+              name: result.axis.name,
+              ...(result.axis.unit === undefined ? {} : { unit: result.axis.unit }),
+              values: Array.from(result.axis.values.slice(0, rowCount), numeric),
+            },
+            ...result.series.map((series) => ({
+              name: series.name,
+              ...(series.unit === undefined ? {} : { unit: series.unit }),
+              values: Array.from(series.values.slice(0, rowCount), numeric),
+            })),
+          ],
+        })
+      }
+      if (result.kind === 'scalar') {
+        return success(request.requestId, 'analysis.series-export', {
+          rowCount: 1,
+          truncated: false,
+          columns: [
+            {
+              name: 'value',
+              ...(result.unit === undefined ? {} : { unit: result.unit }),
+              values: [numeric(result.value)],
+            },
+          ],
+        })
+      }
+      throw new RpcValidationError(
+        'INVALID_PAYLOAD',
+        'Only scalar, histogram, and profile outputs use series export.',
+      )
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INVALID_PAYLOAD'))
+    }
   }
 
   async #analysisOverlayTile(
@@ -729,6 +840,85 @@ export class ImagingWorkerHost {
         },
         transfer: [rgba.buffer, labels.buffer],
       }
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
+    }
+  }
+
+  async #analysisDatasetTile(
+    request: Extract<WorkerRequest, { kind: 'analysis.dataset-tile' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    const started = performance.now()
+    try {
+      const record = this.#analysisRecord(request.payload)
+      const result = this.#analysisExecution(record, request.payload.resultHandleId)
+      const output = result.execution.outputs.get(request.payload.output)
+      if (!isScientificDataset(output))
+        throw new RpcValidationError('INVALID_PAYLOAD', 'The selected output is not a dataset')
+      const source = resolveNumericTileSource(output, { targetSampleType: 'float32' })
+      const { region } = request.payload
+      const componentCount = output.descriptor.components.length
+      const data = new Float32Array(region.width * region.height * componentCount)
+      data.fill(Number.NaN)
+      let emitted = 0
+      for await (const candidate of source.readNumericTiles({
+        displayAxes: request.payload.displayAxes,
+        fixedIndices: request.payload.fixedIndices,
+        resolutionLevel: request.payload.resolutionLevel,
+        ...request.payload.region,
+        targetSampleType: 'float32',
+        signal,
+      })) {
+        try {
+          emitted += 1
+          const xStart = Math.max(region.x, candidate.x)
+          const yStart = Math.max(region.y, candidate.y)
+          const xEnd = Math.min(region.x + region.width, candidate.x + candidate.width)
+          const yEnd = Math.min(region.y + region.height, candidate.y + candidate.height)
+          for (let y = yStart; y < yEnd; y += 1)
+            for (let x = xStart; x < xEnd; x += 1)
+              for (let component = 0; component < componentCount; component += 1)
+                data[((y - region.y) * region.width + x - region.x) * componentCount + component] =
+                  numericValue(candidate, x - candidate.x, y - candidate.y, component)
+        } finally {
+          candidate.release()
+          this.#releases.tiles += 1
+        }
+      }
+      if (emitted === 0) throw new Error('The derived dataset returned no tile.')
+      signal.throwIfAborted()
+      const tile: NumericTile = {
+        x: region.x,
+        y: region.y,
+        width: region.width,
+        height: region.height,
+        sampleType: 'float32',
+        componentCount,
+        layout: 'interleaved',
+        rowStrideElements: region.width * componentCount,
+        data,
+        release: () => undefined,
+      }
+      const mapped = mapTile(tile, request.payload.component, request.payload.mapping)
+      const response: Extract<WorkerResponse, { kind: 'analysis.dataset-tile' }> = {
+        schemaVersion: RPC_SCHEMA_VERSION,
+        requestId: request.requestId,
+        ok: true,
+        kind: 'analysis.dataset-tile',
+        payload: {
+          tileId: request.payload.tileId,
+          datasetHandleId: request.payload.datasetHandleId,
+          generation: request.payload.generation,
+          region: request.payload.region,
+          component: request.payload.component,
+          width: tile.width,
+          height: tile.height,
+          ...mapped,
+          elapsedMilliseconds: performance.now() - started,
+        },
+      }
+      return { response, transfer: [mapped.rgba.buffer, mapped.values.buffer] }
     } catch (error) {
       return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
     }

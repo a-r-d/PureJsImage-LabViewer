@@ -16,6 +16,7 @@ export type DatasetHandleId = string & { readonly __datasetHandleId: unique symb
 import type {
   AnalysisCatalog,
   AnalysisDatasetRequest,
+  AnalysisDatasetTileRequest,
   AnalysisDryRunResponse,
   AnalysisExecutionResponse,
   AnalysisGraphRequest,
@@ -27,6 +28,8 @@ import type {
   AnalysisReleaseRequest,
   AnalysisResultHandleId,
   AnalysisRoiNormalization,
+  AnalysisSeriesExport,
+  AnalysisSeriesExportRequest,
   AnalysisTablePage,
   AnalysisTablePageRequest,
 } from './analysis.js'
@@ -252,7 +255,9 @@ export type WorkerRequest =
   | RpcRequest<'analysis.dry-run', AnalysisGraphRequest>
   | RpcRequest<'analysis.execute', AnalysisGraphRequest>
   | RpcRequest<'analysis.overlay-tile', AnalysisOverlayTileRequest>
+  | RpcRequest<'analysis.dataset-tile', AnalysisDatasetTileRequest>
   | RpcRequest<'analysis.table-page', AnalysisTablePageRequest>
+  | RpcRequest<'analysis.series-export', AnalysisSeriesExportRequest>
   | RpcRequest<'analysis.release', AnalysisReleaseRequest>
   | RpcRequest<'request.cancel', Readonly<{ targetRequestId: string }>>
   | RpcRequest<'diagnostics.get', null>
@@ -279,7 +284,9 @@ export type WorkerResponse =
   | RpcSuccess<'analysis.dry-run', AnalysisDryRunResponse>
   | RpcSuccess<'analysis.executed', AnalysisExecutionResponse>
   | RpcSuccess<'analysis.overlay-tile', AnalysisOverlayTile>
+  | RpcSuccess<'analysis.dataset-tile', RenderTile>
   | RpcSuccess<'analysis.table-page', AnalysisTablePage>
+  | RpcSuccess<'analysis.series-export', AnalysisSeriesExport>
   | RpcSuccess<'analysis.released', Readonly<{ resultHandleId: AnalysisResultHandleId }>>
   | RpcSuccess<'request.cancelled', Readonly<{ targetRequestId: string; found: boolean }>>
   | RpcSuccess<'diagnostics', WorkerDiagnostics>
@@ -317,7 +324,9 @@ const REQUEST_KINDS = new Set<string>([
   'analysis.dry-run',
   'analysis.execute',
   'analysis.overlay-tile',
+  'analysis.dataset-tile',
   'analysis.table-page',
+  'analysis.series-export',
   'analysis.release',
   'request.cancel',
   'diagnostics.get',
@@ -602,6 +611,24 @@ function assertAnalysisTablePage(payload: PayloadCandidate): void {
   }
 }
 
+function assertAnalysisCalibration(value: unknown): void {
+  if (!isRecord(value))
+    throw new RpcValidationError('INVALID_PAYLOAD', 'calibration must be an object')
+  const candidate = value as PayloadCandidate
+  if (!Array.isArray(candidate['axisIds']) || candidate['axisIds'].length !== 2)
+    throw new RpcValidationError('INVALID_PAYLOAD', 'calibration needs two axis IDs')
+  candidate['axisIds'].forEach((axisId) => {
+    assertString(axisId, 'calibration axis ID')
+  })
+  if (!Array.isArray(candidate['unitsPerPixel']) || candidate['unitsPerPixel'].length !== 2)
+    throw new RpcValidationError('INVALID_PAYLOAD', 'calibration needs two axis spacings')
+  candidate['unitsPerPixel'].forEach((spacing) => {
+    if (typeof spacing !== 'number' || !Number.isFinite(spacing) || spacing <= 0)
+      throw new RpcValidationError('INVALID_PAYLOAD', 'calibration spacing must be positive')
+  })
+  assertString(candidate['unit'], 'calibration unit')
+}
+
 function utf8Bytes(value: string): number {
   let bytes = 0
   for (const character of value) {
@@ -723,6 +750,7 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
         throw new RpcValidationError('INVALID_PAYLOAD', 'graph must be an object')
       }
       assertJsonValue(payload.graph, 'graph')
+      if (payload['calibration'] !== undefined) assertAnalysisCalibration(payload['calibration'])
       if (payload.roi !== undefined) {
         if (!isRecord(payload.roi)) {
           throw new RpcValidationError('INVALID_PAYLOAD', 'roi must be an object')
@@ -746,7 +774,19 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
         resolutionLevel: overlaySelection.resolutionLevel,
       })
     }
+    if (kind === 'analysis.dataset-tile') {
+      assertAnalysisResult(payload)
+      assertString(payload.output, 'output')
+      assertTile(payload)
+    }
     if (kind === 'analysis.table-page') assertAnalysisTablePage(payload)
+    if (kind === 'analysis.series-export') {
+      assertAnalysisResult(payload)
+      assertString(payload.output, 'output')
+      assertInteger(payload['maxRows'], 'maxRows')
+      if ((payload['maxRows'] as number) < 1 || (payload['maxRows'] as number) > 100_000)
+        throw new RpcValidationError('LIMIT_EXCEEDED', 'series export row limit is invalid')
+    }
     if (kind === 'analysis.release') assertAnalysisResult(payload)
     if (kind === 'request.cancel') assertString(payload.targetRequestId, 'targetRequestId')
   }

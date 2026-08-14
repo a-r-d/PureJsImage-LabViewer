@@ -1,4 +1,10 @@
-import type { DatasetHandleId, PlaneSelection, Region } from './index.js'
+import type {
+  DatasetHandleId,
+  DisplayMapping,
+  PlaneSelection,
+  Region,
+  TilePriority,
+} from './index.js'
 
 export type RpcJsonPrimitive = null | boolean | number | string
 export type RpcJsonValue =
@@ -33,10 +39,19 @@ export interface AnalysisNormalizeRoiRequest extends AnalysisDatasetRequest {
 export interface AnalysisGraphRequest extends AnalysisDatasetRequest {
   readonly graph: RpcJsonObject
   readonly roi?: RpcJsonObject
+  readonly calibration?: AnalysisCalibrationOverride
+}
+
+export interface AnalysisCalibrationOverride {
+  readonly axisIds: readonly [string, string]
+  readonly unitsPerPixel: readonly [number, number]
+  readonly unit: string
 }
 
 export interface AnalysisCatalog {
   readonly capabilities: RpcJsonObject
+  readonly documentation: readonly RpcJsonObject[]
+  readonly presets: readonly RpcJsonObject[]
 }
 
 export interface AnalysisParameterNormalization {
@@ -86,6 +101,19 @@ export interface AnalysisOverlayTileRequest extends AnalysisDatasetRequest {
   readonly region: Region
 }
 
+export interface AnalysisDatasetTileRequest extends AnalysisDatasetRequest {
+  readonly resultHandleId: AnalysisResultHandleId
+  readonly output: string
+  readonly tileId: string
+  readonly displayAxes: readonly [string, string]
+  readonly fixedIndices: PlaneSelection['fixedIndices']
+  readonly resolutionLevel: number
+  readonly component: number
+  readonly mapping: DisplayMapping
+  readonly region: Region
+  readonly priority: TilePriority
+}
+
 export interface AnalysisOverlayTile {
   readonly tileId: string
   readonly resultHandleId: AnalysisResultHandleId
@@ -130,6 +158,22 @@ export interface AnalysisTablePage {
   readonly rowCount: number
   readonly totalRows: number
   readonly columns: readonly AnalysisTableColumnPage[]
+}
+
+export interface AnalysisSeriesExportRequest extends AnalysisDatasetRequest {
+  readonly resultHandleId: AnalysisResultHandleId
+  readonly output: string
+  readonly maxRows: number
+}
+
+export interface AnalysisSeriesExport {
+  readonly rowCount: number
+  readonly truncated: boolean
+  readonly columns: readonly Readonly<{
+    name: string
+    unit?: string
+    values: readonly (number | null)[]
+  }>[]
 }
 
 export interface AnalysisReleaseRequest extends AnalysisDatasetRequest {

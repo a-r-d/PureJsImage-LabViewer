@@ -33,6 +33,7 @@ const PREFETCH_TILES = 1
 export interface ScientificViewportApi {
   fit(): void
   oneToOne(): void
+  exportPng(): Promise<Blob>
 }
 
 export type RoiTool = 'select' | 'point' | 'line' | 'polyline' | 'rectangle' | 'ellipse' | 'polygon'
@@ -41,6 +42,10 @@ export type ViewportRoi = WorkspaceSnapshot['analysis']['roiSet']['rois'][number
 export interface AnalysisOverlaySelection {
   readonly resultHandleId: AnalysisResultHandleId
   readonly output: string
+}
+
+export interface AnalysisDatasetSelection extends AnalysisOverlaySelection {
+  readonly descriptor: OpenedDatasetDescriptor['dataset']
 }
 
 interface ScientificViewportProps {
@@ -59,6 +64,7 @@ interface ScientificViewportProps {
   readonly onSelectRoi?: (roiId?: string) => void
   readonly onDeleteRoi?: (roiId: string) => void
   readonly analysisOverlay?: AnalysisOverlaySelection | undefined
+  readonly analysisDataset?: AnalysisDatasetSelection | undefined
   readonly selectedLabel?: number | undefined
   readonly onSelectLabel?: (label?: number) => void
 }
@@ -374,6 +380,7 @@ export function ScientificViewport({
   onSelectRoi,
   onDeleteRoi,
   analysisOverlay,
+  analysisDataset,
   selectedLabel,
   onSelectLabel,
 }: ScientificViewportProps) {
@@ -386,9 +393,23 @@ export function ScientificViewport({
     const canvas = canvasRef.current
     if (canvas === null) return
     onRenderSettled?.(false)
-    const bounds = imageBounds(opened, selection)
-    const horizontalAxis = opened.dataset.axes.find(({ id }) => id === selection.displayAxes[0])
-    const verticalAxis = opened.dataset.axes.find(({ id }) => id === selection.displayAxes[1])
+    const renderedOpened =
+      analysisDataset === undefined ? opened : { ...opened, dataset: analysisDataset.descriptor }
+    const renderedSelection =
+      analysisDataset === undefined ||
+      analysisDataset.descriptor.levels.some(({ level }) => level === selection.resolutionLevel)
+        ? selection
+        : {
+            ...selection,
+            resolutionLevel: analysisDataset.descriptor.levels[0]?.level ?? 0,
+          }
+    const bounds = imageBounds(renderedOpened, renderedSelection)
+    const horizontalAxis = renderedOpened.dataset.axes.find(
+      ({ id }) => id === renderedSelection.displayAxes[0],
+    )
+    const verticalAxis = renderedOpened.dataset.axes.find(
+      ({ id }) => id === renderedSelection.displayAxes[1],
+    )
     const horizontalCalibration = calibrationFor(horizontalAxis)
     const verticalCalibration = calibrationFor(verticalAxis)
     const renderer = new CanvasScientificRenderer(canvas)
@@ -458,7 +479,7 @@ export function ScientificViewport({
           height: candidate.height,
         }
         const mappingKey = `${mapping.range}:${mapping.minimum ?? 'pending'}:${mapping.maximum ?? 'pending'}`
-        const tileId = `${opened.generation}:${requestGeneration}:${selection.displayAxes.join('-')}:${selection.resolutionLevel}:${component}:${mappingKey}:${candidate.column}:${candidate.row}`
+        const tileId = `${opened.generation}:${analysisDataset?.resultHandleId ?? 'source'}:${requestGeneration}:${renderedSelection.displayAxes.join('-')}:${renderedSelection.resolutionLevel}:${component}:${mappingKey}:${candidate.column}:${candidate.row}`
         required.add(tileId)
         if (!renderer.has(tileId) && !pending.has(tileId)) {
           const controller = new AbortController()
@@ -466,22 +487,30 @@ export function ScientificViewport({
           const currentGeneration = requestGeneration
           const requestId = tileSequence
           tileSequence += 1
-          void client
-            .requestTile(
-              {
-                tileId,
-                datasetHandleId: opened.handleId,
-                generation: opened.generation,
-                displayAxes: selection.displayAxes,
-                fixedIndices: selection.fixedIndices,
-                resolutionLevel: selection.resolutionLevel,
-                component,
-                mapping,
-                region,
-                priority: candidate.priority,
-              },
-              controller.signal,
-            )
+          const tileRequest = {
+            tileId,
+            datasetHandleId: opened.handleId,
+            generation: opened.generation,
+            displayAxes: renderedSelection.displayAxes,
+            fixedIndices: renderedSelection.fixedIndices,
+            resolutionLevel: renderedSelection.resolutionLevel,
+            component,
+            mapping,
+            region,
+            priority: candidate.priority,
+          }
+          const requested =
+            analysisDataset === undefined
+              ? client.requestTile(tileRequest, controller.signal)
+              : client.requestAnalysisDatasetTile(
+                  {
+                    ...tileRequest,
+                    resultHandleId: analysisDataset.resultHandleId,
+                    output: analysisDataset.output,
+                  },
+                  controller.signal,
+                )
+          void requested
             .then((tile) => {
               if (currentGeneration !== requestGeneration || controller.signal.aborted) return
               renderer.upload(tile)
@@ -562,6 +591,13 @@ export function ScientificViewport({
       camera = resizeCamera({ center: camera.center, zoom: 1 }, viewport, viewport, bounds)
       scheduleTiles()
     }
+    const exportPng = (): Promise<Blob> =>
+      new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob === null) reject(new Error('The rendered viewport could not be encoded as PNG.'))
+          else resolve(blob)
+        }, 'image/png')
+      })
     const resizeObserver = new ResizeObserver(([entry]) => {
       if (entry === undefined) return
       const previous = viewport
@@ -717,7 +753,7 @@ export function ScientificViewport({
     canvas.addEventListener('wheel', handleWheel, { passive: false })
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
-    onReady({ fit, oneToOne })
+    onReady({ exportPng, fit, oneToOne })
 
     return () => {
       requestGeneration += 1
@@ -738,6 +774,7 @@ export function ScientificViewport({
     }
   }, [
     analysisOverlay,
+    analysisDataset,
     client,
     component,
     mapping,

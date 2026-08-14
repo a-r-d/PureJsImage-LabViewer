@@ -7,7 +7,7 @@ import type {
 } from 'purejsimage/analysis'
 import type { PersistedInputBinding } from 'purejsimage/analysis/project'
 import type { Roi } from 'purejsimage/analysis/roi'
-import type { DisplayLayerState } from './model.js'
+import type { CalibrationOverride, DisplayLayerState } from './model.js'
 
 import {
   type DatasetReferenceId,
@@ -57,6 +57,8 @@ export type WorkspaceMutation =
   | Readonly<{ kind: 'roi.select'; roiId?: string }>
   | Readonly<{ kind: 'display.set-layer'; layer: DisplayLayerState }>
   | Readonly<{ kind: 'display.remove-layer'; layerId: string }>
+  | Readonly<{ kind: 'calibration.set'; calibration: CalibrationOverride }>
+  | Readonly<{ kind: 'calibration.remove'; datasetReferenceId: DatasetReferenceId }>
   | Readonly<{ kind: 'analysis.add-node'; node: AnalysisGraphNode }>
   | Readonly<{ kind: 'analysis.set-graph'; graph: AnalysisGraph }>
   | Readonly<{ kind: 'analysis.update-node'; nodeId: string; node: AnalysisGraphNode }>
@@ -128,6 +130,8 @@ const COMMAND_KINDS = new Set<WorkspaceMutation['kind']>([
   'roi.select',
   'display.set-layer',
   'display.remove-layer',
+  'calibration.set',
+  'calibration.remove',
   'analysis.add-node',
   'analysis.set-graph',
   'analysis.update-node',
@@ -335,6 +339,9 @@ function applyMutation(
         layers: snapshot.layers.filter(
           ({ datasetReferenceId }) => !removedDatasetIds.has(datasetReferenceId),
         ),
+        calibrations: snapshot.calibrations.filter(
+          ({ datasetReferenceId }) => !removedDatasetIds.has(datasetReferenceId),
+        ),
         analysis: {
           ...snapshot.analysis,
           sourceReferences: snapshot.analysis.sourceReferences.filter(
@@ -457,6 +464,47 @@ function applyMutation(
         conflict(`layer ${mutation.layerId} does not exist`)
       }
       return { ...snapshot, layers: snapshot.layers.filter(({ id }) => id !== mutation.layerId) }
+    case 'calibration.set': {
+      const dataset = snapshot.datasets.find(
+        ({ id }) => id === mutation.calibration.datasetReferenceId,
+      )
+      if (dataset === undefined)
+        conflict(`calibration dataset ${mutation.calibration.datasetReferenceId} does not exist`)
+      const calibration = mutation.calibration
+      if (
+        calibration.axisIds[0] === calibration.axisIds[1] ||
+        calibration.axisIds.some(
+          (axisId) => !dataset.descriptor.axes.some(({ id }) => id === axisId),
+        ) ||
+        calibration.unitsPerPixel.some((spacing) => !Number.isFinite(spacing) || spacing <= 0) ||
+        calibration.unit.trim() === '' ||
+        (calibration.knownDistance !== undefined &&
+          (!Number.isFinite(calibration.knownDistance) || calibration.knownDistance <= 0)) ||
+        (calibration.measuredPixels !== undefined &&
+          (!Number.isFinite(calibration.measuredPixels) || calibration.measuredPixels <= 0)) ||
+        (calibration.source === 'known-line' &&
+          (calibration.knownDistance === undefined || calibration.measuredPixels === undefined))
+      )
+        conflict('calibration values are invalid for the selected dataset')
+      return {
+        ...snapshot,
+        calibrations: replaceById(
+          snapshot.calibrations.map((calibration) => ({
+            ...calibration,
+            id: calibration.datasetReferenceId,
+          })),
+          { ...mutation.calibration, id: mutation.calibration.datasetReferenceId },
+          true,
+        ).map(({ id: _id, ...calibration }) => calibration),
+      }
+    }
+    case 'calibration.remove':
+      return {
+        ...snapshot,
+        calibrations: snapshot.calibrations.filter(
+          ({ datasetReferenceId }) => datasetReferenceId !== mutation.datasetReferenceId,
+        ),
+      }
     case 'analysis.add-node':
       if (snapshot.analysis.graph.nodes.some(({ id }) => id === mutation.node.id)) {
         conflict(`analysis node ${mutation.node.id} already exists`)
@@ -746,6 +794,25 @@ export function invertWorkspaceMutation(
       if (layer === undefined) conflict(`layer ${mutation.layerId} does not exist`)
       return [{ kind: 'display.set-layer', layer }]
     }
+    case 'calibration.set': {
+      const calibration = snapshot.calibrations.find(
+        ({ datasetReferenceId }) => datasetReferenceId === mutation.calibration.datasetReferenceId,
+      )
+      return calibration === undefined
+        ? [
+            {
+              kind: 'calibration.remove',
+              datasetReferenceId: mutation.calibration.datasetReferenceId,
+            },
+          ]
+        : [{ kind: 'calibration.set', calibration }]
+    }
+    case 'calibration.remove': {
+      const calibration = snapshot.calibrations.find(
+        ({ datasetReferenceId }) => datasetReferenceId === mutation.datasetReferenceId,
+      )
+      return calibration === undefined ? [] : [{ kind: 'calibration.set', calibration }]
+    }
     case 'analysis.add-node':
       return [{ kind: 'analysis.remove-node', nodeId: mutation.node.id }]
     case 'analysis.set-graph':
@@ -871,6 +938,10 @@ export function describeWorkspaceCommand(command: WorkspaceMutation): string {
       return `Updated display layer ${command.layer.label}`
     case 'display.remove-layer':
       return `Removed display layer ${command.layerId}`
+    case 'calibration.set':
+      return `Calibrated dataset ${command.calibration.datasetReferenceId}`
+    case 'calibration.remove':
+      return `Restored file calibration for ${command.datasetReferenceId}`
     case 'analysis.add-node':
       return `Added analysis step ${command.node.label ?? command.node.operation.id}`
     case 'analysis.set-graph':

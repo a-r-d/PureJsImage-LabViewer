@@ -155,3 +155,106 @@ export function lineProfileGraph(selection: PlaneSelection, component: number): 
     invalidPolicy: 'nan',
   })
 }
+
+export function appendDatasetAnalysisGraph(
+  base: AnalysisGraph,
+  measurement: AnalysisGraph,
+): AnalysisGraph {
+  if (base.nodes.length === 0) return measurement
+  const baseOutput = base.outputs[0]
+  if (base.outputs.length !== 1 || baseOutput === undefined)
+    throw new Error('The current analysis graph must have one dataset output.')
+  const sourceInput = measurement.inputs.find(({ name }) => name === SOURCE_INPUT.name)
+  if (sourceInput === undefined) throw new Error('The measurement graph has no dataset input.')
+  const measurementNodeIds = new Set(measurement.nodes.map(({ id }) => id))
+  if (base.nodes.some(({ id }) => measurementNodeIds.has(id)))
+    throw new Error('The analysis graphs contain conflicting node IDs.')
+  return {
+    schemaVersion: 1,
+    inputs: [
+      ...base.inputs,
+      ...measurement.inputs.filter(
+        ({ name }) =>
+          name !== SOURCE_INPUT.name && !base.inputs.some((input) => input.name === name),
+      ),
+    ],
+    nodes: [
+      ...base.nodes,
+      ...measurement.nodes.map((node) => ({
+        ...node,
+        inputs: node.inputs.map((input) =>
+          input.source.kind === 'input' && input.source.input === sourceInput.name
+            ? { ...input, source: baseOutput.source }
+            : input,
+        ),
+      })),
+    ],
+    outputs: [baseOutput, ...measurement.outputs],
+  }
+}
+
+export function toolboxOperationGraph(options: {
+  readonly operation: Readonly<{
+    id: string
+    version: number
+    title: string
+    inputs: readonly RpcJsonObject[]
+    outputs: readonly RpcJsonObject[]
+    parameters: RpcJsonObject
+  }>
+  readonly parameters: RpcJsonObject
+  readonly selection: PlaneSelection
+  readonly baseGraph?: AnalysisGraph
+}): AnalysisGraph {
+  if (options.operation.inputs.length !== 1)
+    throw new Error('The operation requires a second dataset binding.')
+  const inputName = options.operation.inputs[0]?.['name']
+  const outputName = options.operation.outputs[0]?.['name']
+  if (typeof inputName !== 'string' || typeof outputName !== 'string')
+    throw new Error('The operation descriptor has no usable dataset port.')
+  const properties = options.operation.parameters['properties']
+  const injectSelection =
+    typeof properties === 'object' && properties !== null && !Array.isArray(properties)
+  const base = options.baseGraph
+  const appendBase =
+    base !== undefined && base.nodes.length > 0 && base.outputs.length === 1 ? base : undefined
+  const nodeId = `toolbox-${options.operation.id.replace(/[^a-z0-9-]/giu, '-')}-${appendBase?.nodes.length ?? 0}`
+  return {
+    schemaVersion: 1,
+    inputs: appendBase?.inputs ?? [SOURCE_INPUT],
+    nodes: [
+      ...(appendBase?.nodes ?? []),
+      {
+        id: nodeId,
+        label: options.operation.title,
+        operation: { id: options.operation.id, version: options.operation.version },
+        inputs: [
+          {
+            port: inputName,
+            source: appendBase?.outputs[0]?.source ?? sourcePort().source,
+          },
+        ],
+        parameters: {
+          ...options.parameters,
+          ...(injectSelection && 'displayAxes' in properties
+            ? { displayAxes: [...options.selection.displayAxes] }
+            : {}),
+          ...(injectSelection && 'fixedIndices' in properties
+            ? {
+                fixedIndices: options.selection.fixedIndices.map(({ axisId, index }) => ({
+                  axisId,
+                  index,
+                })),
+              }
+            : {}),
+        },
+      },
+    ],
+    outputs: [
+      {
+        name: outputName,
+        source: { kind: 'node', nodeId, output: outputName },
+      },
+    ],
+  }
+}

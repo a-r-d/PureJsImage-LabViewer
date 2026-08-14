@@ -46,6 +46,9 @@ importers:
       '@pji-workbench/imaging':
         specifier: workspace:*
         version: link:../../packages/imaging
+      '@pji-workbench/materials-analysis':
+        specifier: workspace:*
+        version: link:../../packages/materials-analysis
       '@pji-workbench/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -135,6 +138,22 @@ importers:
       '@pji-workbench/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@pji-workbench/materials-analysis':
+        specifier: workspace:*
+        version: link:../materials-analysis
+      purejsimage:
+        specifier: 0.10.0
+        version: 0.10.0
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+
+  packages/materials-analysis:
+    dependencies:
       purejsimage:
         specifier: 0.10.0
         version: 0.10.0

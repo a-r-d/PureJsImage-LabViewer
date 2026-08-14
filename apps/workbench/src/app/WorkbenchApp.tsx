@@ -37,6 +37,7 @@ import {
   TreeRow,
 } from '@pji-workbench/ui'
 import {
+  type CalibrationOverride,
   datasetReferenceId,
   importWorkspaceProject,
   type ProjectId,
@@ -62,11 +63,13 @@ import {
 } from 'react'
 import {
   ANALYSIS_OPERATIONS,
+  appendDatasetAnalysisGraph,
   connectedComponentsGraph,
   histogramGraph,
   lineProfileGraph,
   statisticsGraph,
   thresholdGraph,
+  toolboxOperationGraph,
 } from '../analysis-workflows.js'
 import {
   type CommandContext,
@@ -108,6 +111,7 @@ import {
 } from '../MaterialsPanels.js'
 import { PREFERENCE_BOUNDS } from '../preferences.js'
 import {
+  type AnalysisDatasetSelection,
   type AnalysisOverlaySelection,
   type RoiTool,
   ScientificViewport,
@@ -118,6 +122,95 @@ import { WorkbenchProviders, type WorkbenchServices } from './WorkbenchProviders
 import { WorkbenchShell } from './WorkbenchShell.js'
 
 type OpenStatus = 'ready' | 'opening' | 'crashed'
+const MAX_EXPORT_ROWS = 100_000
+const MAX_EXPORT_BYTES = 16 * 1_024 * 1_024
+
+interface ToolboxOperation {
+  readonly id: string
+  readonly version: number
+  readonly title: string
+  readonly inputs: readonly RpcJsonObject[]
+  readonly outputs: readonly RpcJsonObject[]
+  readonly parameters: RpcJsonObject
+}
+
+function rpcObject(value: unknown): RpcJsonObject | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as RpcJsonObject)
+    : undefined
+}
+
+function catalogOperation(
+  catalog: AnalysisCatalog | undefined,
+  operationId: string,
+  operationVersion: number,
+): ToolboxOperation | undefined {
+  const descriptors = catalog?.capabilities['operationDescriptors']
+  if (!Array.isArray(descriptors)) return undefined
+  for (const candidate of descriptors) {
+    const descriptor = rpcObject(candidate)
+    if (
+      descriptor?.['id'] !== operationId ||
+      descriptor['version'] !== operationVersion ||
+      typeof descriptor['title'] !== 'string' ||
+      !Array.isArray(descriptor['inputs']) ||
+      !Array.isArray(descriptor['outputs'])
+    )
+      continue
+    const inputs: RpcJsonObject[] = []
+    const outputs: RpcJsonObject[] = []
+    for (const input of descriptor['inputs']) {
+      const normalized = rpcObject(input)
+      if (normalized === undefined) return undefined
+      inputs.push(normalized)
+    }
+    for (const output of descriptor['outputs']) {
+      const normalized = rpcObject(output)
+      if (normalized === undefined) return undefined
+      outputs.push(normalized)
+    }
+    const parameters = rpcObject(descriptor['parameters'])
+    if (parameters === undefined) return undefined
+    return {
+      id: operationId,
+      version: operationVersion,
+      title: descriptor['title'],
+      inputs,
+      outputs,
+      parameters,
+    }
+  }
+  return undefined
+}
+
+function withCalibrationOverride(
+  opened: OpenedDatasetDescriptor | undefined,
+  calibration: CalibrationOverride | undefined,
+): OpenedDatasetDescriptor | undefined {
+  if (opened === undefined || calibration === undefined) return opened
+  return {
+    ...opened,
+    dataset: {
+      ...opened.dataset,
+      axes: opened.dataset.axes.map((axis) => {
+        const index = calibration.axisIds.indexOf(axis.id)
+        if (index < 0) return axis
+        const magnitude = calibration.unitsPerPixel[index]
+        if (magnitude === undefined) return axis
+        const direction = axis.coordinates.type === 'linear' && axis.coordinates.step < 0 ? -1 : 1
+        return {
+          ...axis,
+          unit: calibration.unit,
+          coordinates: {
+            type: 'linear' as const,
+            origin: axis.coordinates.type === 'linear' ? axis.coordinates.origin : 0,
+            step: magnitude * direction,
+          },
+        }
+      }),
+    },
+  }
+}
 
 const ScriptProofSurface = lazy(() =>
   import('../features/scripts/ScriptProofSurface.js').then(({ ScriptProofSurface: Surface }) => ({
@@ -210,6 +303,7 @@ function WorkbenchRuntime({
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('info')
   const [bottomTab, setBottomTab] = useState<BottomTab>('histogram')
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [paletteOperationId, setPaletteOperationId] = useState<string>()
   const [exampleGalleryOpen, setExampleGalleryOpen] = useState(false)
   const [scriptProofOpen, setScriptProofOpen] = useState(false)
   const [recentSources, setRecentSources] = useState(() => readRecentSources(window.localStorage))
@@ -227,9 +321,11 @@ function WorkbenchRuntime({
     tableOffset: 0,
   })
   const [analysisOverlay, setAnalysisOverlay] = useState<AnalysisOverlaySelection>()
+  const [analysisDataset, setAnalysisDataset] = useState<AnalysisDatasetSelection>()
   const [previewEnabled, setPreviewEnabled] = useState(false)
   const [tableFilter, setTableFilter] = useState<AnalysisTableFilter>()
   const [tableSort, setTableSort] = useState<AnalysisTableSort>()
+  const openedRef = useRef<OpenedDatasetDescriptor | undefined>(undefined)
   const analysisAbort = useRef<AbortController | undefined>(undefined)
   const previewResult = useRef<AnalysisResultHandleId | undefined>(undefined)
   const activeResult = useRef<AnalysisResultHandleId | undefined>(undefined)
@@ -242,7 +338,23 @@ function WorkbenchRuntime({
   const generation = useRef(0)
   const openedAt = useRef(0)
   const autoRangeLocked = useRef(false)
+  openedRef.current = opened
   const hasDataset = opened !== undefined && selection !== undefined
+  const activeCalibration = workspace.calibrations.find(
+    ({ datasetReferenceId: id }) => id === workspace.active?.datasetReferenceId,
+  )
+  const calibratedOpened = useMemo(
+    () => withCalibrationOverride(opened, activeCalibration),
+    [activeCalibration, opened],
+  )
+  const analysisCalibration =
+    activeCalibration === undefined
+      ? undefined
+      : {
+          axisIds: activeCalibration.axisIds,
+          unitsPerPixel: activeCalibration.unitsPerPixel,
+          unit: activeCalibration.unit,
+        }
 
   const setRenderSettled = useCallback((settled: boolean): void => {
     workbenchRoot.current?.setAttribute('data-render-settled', settled ? 'true' : 'false')
@@ -285,6 +397,7 @@ function WorkbenchRuntime({
     const handle = previewResult.current
     previewResult.current = undefined
     setAnalysisOverlay((current) => (current?.resultHandleId === handle ? undefined : current))
+    setAnalysisDataset((current) => (current?.resultHandleId === handle ? undefined : current))
     void releaseAnalysisHandle(handle)
     setAnalysisState((current) => ({
       ...current,
@@ -330,6 +443,7 @@ function WorkbenchRuntime({
           datasetHandleId: opened.handleId,
           generation: opened.generation,
           graph: graph as unknown as RpcJsonObject,
+          ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
         },
         controller.signal,
       )
@@ -347,6 +461,7 @@ function WorkbenchRuntime({
           datasetHandleId: opened.handleId,
           generation: opened.generation,
           graph: graph as unknown as RpcJsonObject,
+          ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
         },
         controller.signal,
       )
@@ -366,7 +481,15 @@ function WorkbenchRuntime({
         }))
       }
     }
-  }, [client, component, opened, releaseAnalysisHandle, threshold, thresholdMode])
+  }, [
+    analysisCalibration,
+    client,
+    component,
+    opened,
+    releaseAnalysisHandle,
+    threshold,
+    thresholdMode,
+  ])
 
   useEffect(() => {
     if (!previewEnabled || opened === undefined) return
@@ -450,6 +573,7 @@ function WorkbenchRuntime({
         readonly roi?: ViewportRoi
         readonly overlay?: string
         readonly commit?: boolean
+        readonly preview?: boolean
       } = {},
     ): Promise<void> => {
       if (opened === undefined) return
@@ -462,6 +586,7 @@ function WorkbenchRuntime({
           datasetHandleId: opened.handleId,
           generation: opened.generation,
           graph: graph as unknown as RpcJsonObject,
+          ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
           ...(options.roi === undefined ? {} : { roi: options.roi as unknown as RpcJsonObject }),
         }
         const dryRun = await client.dryRunAnalysis(request, controller.signal)
@@ -475,18 +600,36 @@ function WorkbenchRuntime({
           return
         }
         const execution = await client.executeAnalysis(request, controller.signal)
-        const previous = activeResult.current
-        activeResult.current = execution.resultHandleId
+        const previous = options.preview === true ? previewResult.current : activeResult.current
+        if (options.preview === true) previewResult.current = execution.resultHandleId
+        else activeResult.current = execution.resultHandleId
         if (previous !== undefined) await releaseAnalysisHandle(previous)
         if (options.commit === true) applyProjectMutation({ kind: 'analysis.set-graph', graph })
         const table = await loadTablePage(execution, 0, undefined, undefined)
+        const derivedDataset =
+          options.overlay === undefined
+            ? execution.outputs.find(({ kind }) => kind === 'dataset')
+            : undefined
+        setAnalysisDataset(
+          derivedDataset?.kind === 'dataset'
+            ? {
+                resultHandleId: execution.resultHandleId,
+                output: derivedDataset.name,
+                descriptor:
+                  derivedDataset.descriptor as unknown as OpenedDatasetDescriptor['dataset'],
+              }
+            : undefined,
+        )
         setAnalysisState({
           busy: false,
           execution,
           dryRun,
           tableOffset: 0,
           ...(table === undefined ? {} : { table }),
-          message: `Analysis completed in ${execution.elapsedMilliseconds.toFixed(1)} ms.`,
+          message:
+            options.preview === true
+              ? `Preview ready in ${execution.elapsedMilliseconds.toFixed(1)} ms. No project revision was created.`
+              : `Analysis completed in ${execution.elapsedMilliseconds.toFixed(1)} ms.`,
         })
         setAnalysisOverlay(
           options.overlay === undefined
@@ -521,7 +664,37 @@ function WorkbenchRuntime({
       loadTablePage,
       opened,
       releaseAnalysisHandle,
+      analysisCalibration,
     ],
+  )
+
+  const runToolboxOperation = useCallback(
+    async (
+      operation: ToolboxOperation,
+      parameters: RpcJsonObject,
+      mode: 'preview' | 'apply',
+    ): Promise<void> => {
+      if (selection === undefined) throw new Error('No dataset plane is selected.')
+      try {
+        const graph = toolboxOperationGraph({
+          operation,
+          parameters,
+          selection,
+          baseGraph: workspace.analysis.graph,
+        })
+        await executeAnalysisGraph(graph, {
+          preview: mode === 'preview',
+          commit: mode === 'apply',
+        })
+      } catch (operationError) {
+        setAnalysisState((current) => ({
+          ...current,
+          message: operationError instanceof Error ? operationError.message : 'Operation failed.',
+        }))
+        throw operationError
+      }
+    },
+    [executeAnalysisGraph, selection, workspace.analysis.graph],
   )
 
   const createRoi = useCallback(
@@ -601,6 +774,7 @@ function WorkbenchRuntime({
       datasetHandleId: opened.handleId,
       generation: opened.generation,
       graph: graph as unknown as RpcJsonObject,
+      ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
     })
     setAnalysisState((current) => ({ ...current, dryRun }))
     if (!dryRun.valid) {
@@ -617,7 +791,16 @@ function WorkbenchRuntime({
       message: 'Threshold committed as one semantic project revision.',
     }))
     setBottomTab('pipeline')
-  }, [applyProjectMutation, cancelPreview, client, component, opened, threshold, thresholdMode])
+  }, [
+    analysisCalibration,
+    applyProjectMutation,
+    cancelPreview,
+    client,
+    component,
+    opened,
+    threshold,
+    thresholdMode,
+  ])
 
   const runConnectedComponents = useCallback((): void => {
     if (selection === undefined) return
@@ -650,6 +833,7 @@ function WorkbenchRuntime({
         datasetHandleId: opened.handleId,
         generation: opened.generation,
         graph: graph as unknown as RpcJsonObject,
+        ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
       })
       setAnalysisState((current) => ({
         ...current,
@@ -668,7 +852,16 @@ function WorkbenchRuntime({
         message: planError instanceof Error ? planError.message : 'Planning failed.',
       }))
     }
-  }, [client, component, connectivity, opened, selection, threshold, thresholdMode])
+  }, [
+    analysisCalibration,
+    client,
+    component,
+    connectivity,
+    opened,
+    selection,
+    threshold,
+    thresholdMode,
+  ])
 
   const measureSelectedRoi = useCallback(
     (kind: 'statistics' | 'histogram' | 'profile'): void => {
@@ -683,12 +876,18 @@ function WorkbenchRuntime({
           : kind === 'histogram'
             ? histogramGraph(selection, component)
             : lineProfileGraph(selection, component)
-      void executeAnalysisGraph(graph, { roi, commit: false })
+      const activeGraph =
+        analysisDataset === undefined
+          ? graph
+          : appendDatasetAnalysisGraph(workspace.analysis.graph, graph)
+      void executeAnalysisGraph(activeGraph, { roi, commit: false })
     },
     [
+      analysisDataset,
       component,
       executeAnalysisGraph,
       selection,
+      workspace.analysis.graph,
       workspace.analysis.roiSet.rois,
       workspace.workflow.selectedRoiId,
     ],
@@ -748,22 +947,68 @@ function WorkbenchRuntime({
     async (scope: 'selected' | 'all', format: 'csv' | 'json'): Promise<void> => {
       const execution = analysisState.execution
       if (execution === undefined) return
+      if (scope === 'all' && (analysisState.table?.totalRows ?? 0) > MAX_EXPORT_ROWS) {
+        setError(
+          `Export is limited to ${MAX_EXPORT_ROWS.toLocaleString()} rows. Apply a result filter or export the current page.`,
+        )
+        return
+      }
       const parts: string[] = []
+      let exportBytes = 0
+      let jsonRowCount = 0
+      const appendPart = (part: string): boolean => {
+        exportBytes += new TextEncoder().encode(part).byteLength
+        if (exportBytes > MAX_EXPORT_BYTES) return false
+        parts.push(part)
+        return true
+      }
       if (analysisState.table === undefined || opened === undefined) {
-        parts.push(JSON.stringify(execution.outputs, null, 2))
+        const resultOutput = execution.outputs.find(({ kind }) => kind === 'result')
+        if (opened !== undefined && resultOutput?.kind === 'result') {
+          const series = await client.requestAnalysisSeriesExport({
+            datasetHandleId: opened.handleId,
+            generation: opened.generation,
+            resultHandleId: execution.resultHandleId,
+            output: resultOutput.name,
+            maxRows: MAX_EXPORT_ROWS,
+          })
+          const headers = series.columns.map(({ name, unit }) =>
+            unit === undefined ? name : `${name} (${unit})`,
+          )
+          const rows = Array.from({ length: series.rowCount }, (_value, row) =>
+            Object.fromEntries(
+              series.columns.map((column, columnIndex) => [
+                headers[columnIndex] ?? column.name,
+                column.values[row] ?? null,
+              ]),
+            ),
+          )
+          if (format === 'csv') {
+            appendPart(`${headers.map((header) => JSON.stringify(header)).join(',')}\n`)
+            appendPart(
+              `${rows
+                .map((row) => headers.map((header) => JSON.stringify(row[header] ?? '')).join(','))
+                .join('\n')}\n`,
+            )
+          } else appendPart(JSON.stringify(rows))
+        } else appendPart(JSON.stringify(execution.outputs, null, 2))
       } else {
         const headers = analysisState.table.columns.map(({ name }) => name)
         const collect = (page: AnalysisTablePage): void => {
           const pageRows = analysisPageRows(page)
           if (format === 'csv') {
-            if (parts.length === 0) parts.push(`${headers.join(',')}\n`)
-            parts.push(
+            if (parts.length === 0) appendPart(`${headers.join(',')}\n`)
+            appendPart(
               `${pageRows
                 .map((row) => headers.map((header) => JSON.stringify(row[header] ?? '')).join(','))
                 .join('\n')}\n`,
             )
           } else {
-            parts.push(...pageRows.map((row) => JSON.stringify(row)))
+            if (parts.length === 0) appendPart('[')
+            for (const row of pageRows) {
+              if (!appendPart(`${jsonRowCount === 0 ? '' : ','}${JSON.stringify(row)}`)) break
+              jsonRowCount += 1
+            }
           }
         }
         if (scope === 'selected') collect(analysisState.table)
@@ -781,11 +1026,18 @@ function WorkbenchRuntime({
               ...(tableSort === undefined ? {} : { sort: tableSort }),
             })
             collect(page)
+            if (exportBytes > MAX_EXPORT_BYTES) break
             offset += page.rowCount
             if (page.rowCount === 0) break
           }
         }
-        if (format === 'json') parts.splice(0, parts.length, `[${parts.join(',')}]`)
+        if (format === 'json' && exportBytes <= MAX_EXPORT_BYTES) appendPart(']')
+      }
+      if (exportBytes > MAX_EXPORT_BYTES) {
+        setError(
+          'Export exceeded the 16 MiB byte limit. Apply a result filter or export the current page.',
+        )
+        return
       }
       const blob = new Blob(parts, {
         type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json',
@@ -1018,6 +1270,33 @@ function WorkbenchRuntime({
     async (snapshot: WorkspaceSnapshot, previous: WorkspaceSnapshot | undefined): Promise<void> => {
       setStatus('opening')
       setError(undefined)
+      analysisAbort.current?.abort(new DOMException('Workspace replayed', 'AbortError'))
+      analysisAbort.current = undefined
+      const handles = [...new Set([previewResult.current, activeResult.current])].filter(
+        (handle): handle is AnalysisResultHandleId => handle !== undefined,
+      )
+      previewResult.current = undefined
+      activeResult.current = undefined
+      const openedAtReplay = openedRef.current
+      if (openedAtReplay !== undefined) {
+        await Promise.all(
+          handles.map((resultHandleId) =>
+            client
+              .releaseAnalysis({
+                datasetHandleId: openedAtReplay.handleId,
+                generation: openedAtReplay.generation,
+                resultHandleId,
+              })
+              .catch(() => undefined),
+          ),
+        )
+      }
+      setAnalysisOverlay(undefined)
+      setAnalysisDataset(undefined)
+      setAnalysisState({ busy: false, tableOffset: 0 })
+      setTableFilter(undefined)
+      setTableSort(undefined)
+      setConnectedPlanReady(false)
       try {
         const result = await reconciler.reconcile(previous, snapshot)
         if (result.status === 'needs-rebind') {
@@ -1051,6 +1330,48 @@ function WorkbenchRuntime({
           appendLog(
             `Replayed ${materialized.source.source.name} from project revision ${snapshot.revision}`,
           )
+          if (snapshot.analysis.graph.nodes.length > 0) {
+            const calibration = snapshot.calibrations.find(
+              ({ datasetReferenceId: id }) => id === snapshot.active?.datasetReferenceId,
+            )
+            const request = {
+              datasetHandleId: materialized.dataset.handleId,
+              generation: materialized.dataset.generation,
+              graph: snapshot.analysis.graph as unknown as RpcJsonObject,
+              ...(calibration === undefined
+                ? {}
+                : {
+                    calibration: {
+                      axisIds: calibration.axisIds,
+                      unitsPerPixel: calibration.unitsPerPixel,
+                      unit: calibration.unit,
+                    },
+                  }),
+            }
+            const dryRun = await client.dryRunAnalysis(request)
+            if (!dryRun.valid)
+              throw new Error('The saved analysis graph no longer produces a valid replay plan.')
+            const execution = await client.executeAnalysis(request)
+            activeResult.current = execution.resultHandleId
+            const derived = execution.outputs.find(({ kind }) => kind === 'dataset')
+            setAnalysisDataset(
+              derived?.kind === 'dataset'
+                ? {
+                    resultHandleId: execution.resultHandleId,
+                    output: derived.name,
+                    descriptor: derived.descriptor as unknown as OpenedDatasetDescriptor['dataset'],
+                  }
+                : undefined,
+            )
+            setAnalysisState({
+              busy: false,
+              dryRun,
+              execution,
+              tableOffset: 0,
+              message: `Replayed saved numerical analysis in ${execution.elapsedMilliseconds.toFixed(1)} ms.`,
+            })
+            appendLog(`Replayed ${snapshot.analysis.graph.nodes.length} saved analysis steps.`)
+          }
         } else {
           setSource(undefined)
           setOpened(undefined)
@@ -1064,7 +1385,7 @@ function WorkbenchRuntime({
         setStatus('ready')
       }
     },
-    [appendLog, reconciler, runtime],
+    [appendLog, client, reconciler, runtime],
   )
 
   const loadProject = useCallback(
@@ -1410,6 +1731,21 @@ function WorkbenchRuntime({
     viewportApi.current = api
   }, [])
 
+  const exportViewportPng = useCallback(async (): Promise<void> => {
+    const api = viewportApi.current
+    if (api === null) return
+    const blob = await api.exportPng()
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'purejsimage-rendered-view.png'
+    anchor.click()
+    URL.revokeObjectURL(url)
+    appendLog(
+      `Exported rendered PNG with ${mapping.mode} display mapping; source pixels were unchanged.`,
+    )
+  }, [appendLog, mapping.mode])
+
   const commandContext = useMemo<CommandContext>(
     () => ({
       hasDataset,
@@ -1510,11 +1846,35 @@ function WorkbenchRuntime({
           ],
           [
             'analysis.request-execute@1',
-            fixtureAction((input) => ({
-              proposalId: 'proposal:analysis-1',
-              normalized: input,
-              status: 'requires-approval',
-            })),
+            {
+              execute: async (input, _context, signal) => {
+                signal.throwIfAborted()
+                const request = rpcObject(input)
+                const operationId = request?.['operationId']
+                const operationVersion = request?.['operationVersion']
+                const parameters = rpcObject(request?.['parameters'])
+                const mode = request?.['mode']
+                if (
+                  typeof operationId !== 'string' ||
+                  typeof operationVersion !== 'number' ||
+                  parameters === undefined ||
+                  (mode !== 'preview' && mode !== 'apply')
+                ) {
+                  throw new Error('Analysis action input is invalid.')
+                }
+                const operation = catalogOperation(analysisCatalog, operationId, operationVersion)
+                if (operation === undefined) {
+                  throw new Error('Analysis operation is unavailable.')
+                }
+                await runToolboxOperation(operation, parameters, mode)
+                return {
+                  operationId,
+                  operationVersion,
+                  mode,
+                  status: mode === 'preview' ? 'previewed' : 'applied',
+                }
+              },
+            },
           ],
           [
             'result.summary.read@1',
@@ -1574,9 +1934,11 @@ function WorkbenchRuntime({
       newProject,
       openSample,
       applyThreshold,
+      analysisCatalog,
       planConnectedComponents,
       performHistory,
       preferences.theme,
+      runToolboxOperation,
       runConnectedComponents,
       saveProject,
       updatePreferences,
@@ -1608,6 +1970,31 @@ function WorkbenchRuntime({
 
   const executeCommand = useCallback((id: CommandId): void => executeAction(id), [executeAction])
 
+  const requestToolboxOperation = useCallback(
+    (operation: ToolboxOperation, parameters: RpcJsonObject, mode: 'preview' | 'apply'): void => {
+      void actionHost
+        .execute(
+          'analysis.request-execute',
+          1,
+          {
+            operationId: operation.id,
+            operationVersion: operation.version,
+            parameters,
+            mode,
+          },
+          commandContext,
+          ACTIVE_ACTION_SIGNAL,
+        )
+        .catch((actionError: unknown) =>
+          setAnalysisState((current) => ({
+            ...current,
+            message: actionError instanceof Error ? actionError.message : 'Operation failed.',
+          })),
+        )
+    },
+    [actionHost, commandContext],
+  )
+
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent): void => {
       const command = resolveShortcut(event, {
@@ -1629,13 +2016,25 @@ function WorkbenchRuntime({
       canUndo: historyState.undo.length > 0,
       canRedo: historyState.redo.length > 0,
     })
-    return workbenchCommands.map((command) => ({
+    const commands = workbenchCommands.map((command) => ({
       id: command.id,
       label: command.label,
       ...(command.shortcut === undefined ? {} : { shortcut: command.shortcut }),
       disabled: !availability[command.id],
     }))
-  }, [hasDataset, historyState.redo.length, historyState.undo.length])
+    const descriptors = analysisCatalog?.capabilities['operationDescriptors']
+    const operations: PaletteCommand[] = Array.isArray(descriptors)
+      ? descriptors.flatMap((candidate) => {
+          if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate))
+            return []
+          const id = candidate['id']
+          const title = candidate['title']
+          if (typeof id !== 'string' || typeof title !== 'string') return []
+          return [{ id: `operation:${id}`, label: `Operation: ${title}`, disabled: !hasDataset }]
+        })
+      : []
+    return [...commands, ...operations]
+  }, [analysisCatalog, hasDataset, historyState.redo.length, historyState.undo.length])
 
   const startResize = useCallback(
     (config: ResizeConfig, event: Parameters<typeof startPanelResize>[1]): void =>
@@ -1655,26 +2054,6 @@ function WorkbenchRuntime({
   const themeIcon = preferences.theme === 'dark' ? 'sun' : 'moon'
   const oppositeTheme: ThemeName = preferences.theme === 'dark' ? 'light' : 'dark'
   const datasetName = opened?.dataset.name ?? opened?.dataset.id
-  const operationDescriptors = analysisCatalog?.capabilities['operationDescriptors']
-  const operationCount = Array.isArray(operationDescriptors) ? operationDescriptors.length : 0
-  const operationNames = useMemo(() => {
-    const packageOperations = Array.isArray(operationDescriptors)
-      ? operationDescriptors
-          .map((candidate) => {
-            if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate))
-              return undefined
-            const title = candidate['title']
-            const id = candidate['id']
-            return typeof title === 'string' ? title : typeof id === 'string' ? id : undefined
-          })
-          .filter((candidate): candidate is string => candidate !== undefined)
-      : []
-    const semanticOperations = workbenchActionRegistry
-      .list()
-      .filter(({ category }) => category === 'analysis')
-      .map(({ title }) => title)
-    return [...new Set([...semanticOperations, ...packageOperations])].sort()
-  }, [operationDescriptors])
   const visibleRois = useMemo(
     () =>
       workspace.analysis.roiSet.rois.filter(
@@ -1687,6 +2066,16 @@ function WorkbenchRuntime({
   const roiContent =
     opened === undefined ? null : (
       <RoiInspector
+        {...(activeCalibration === undefined ? {} : { calibration: activeCalibration })}
+        onCalibration={(calibration) => {
+          const datasetReferenceId = workspace.active?.datasetReferenceId
+          if (datasetReferenceId === undefined) return
+          applyProjectMutation(
+            calibration === undefined
+              ? { kind: 'calibration.remove', datasetReferenceId }
+              : { kind: 'calibration.set', calibration: { ...calibration, datasetReferenceId } },
+          )
+        }}
         onDelete={deleteRoi}
         onMeasure={measureSelectedRoi}
         onRename={(roi, name) => {
@@ -1703,7 +2092,7 @@ function WorkbenchRuntime({
             },
           })
         }}
-        opened={opened}
+        opened={calibratedOpened ?? opened}
         rois={workspace.analysis.roiSet.rois}
         {...(workspace.workflow.selectedRoiId === undefined
           ? {}
@@ -1713,6 +2102,8 @@ function WorkbenchRuntime({
     )
   const analysisContent = (
     <AnalysisInspector
+      catalog={analysisCatalog}
+      {...(paletteOperationId === undefined ? {} : { focusOperationId: paletteOperationId })}
       component={component}
       planeLabel={selection?.displayAxes.join(' × ') ?? 'unavailable'}
       connectedPlanReady={connectedPlanReady}
@@ -1731,12 +2122,12 @@ function WorkbenchRuntime({
       onPreview={() => executeAction('analysis.threshold.preview')}
       onPlanObjects={() => executeAction('analysis.connected-components.plan')}
       onRunObjects={() => executeAction('analysis.connected-components.execute')}
+      onRunOperation={requestToolboxOperation}
+      sampleType={opened?.dataset.sampleType}
       onThreshold={(value) => {
         setThreshold(value)
         setConnectedPlanReady(false)
       }}
-      operationCount={operationCount}
-      operationNames={operationNames}
       state={analysisState}
       threshold={threshold}
     />
@@ -2035,6 +2426,9 @@ function WorkbenchRuntime({
                 </div>
                 <Toolbar label="Viewport tools">
                   <span className="tool-hint">Wheel zoom · Space drag pan · Drop files here</span>
+                  <Button disabled={!hasDataset} onClick={() => void exportViewportPng()}>
+                    Export rendered PNG
+                  </Button>
                 </Toolbar>
               </div>
               <div className={`viewport-stage${hasDataset ? ' viewport-stage--has-data' : ''}`}>
@@ -2047,6 +2441,7 @@ function WorkbenchRuntime({
                   </div>
                 ) : hasDataset && opened !== undefined && selection !== undefined ? (
                   <ScientificViewport
+                    analysisDataset={analysisDataset}
                     analysisOverlay={analysisOverlay}
                     client={client}
                     component={component}
@@ -2058,7 +2453,7 @@ function WorkbenchRuntime({
                     onSelectRoi={selectRoi}
                     onSelectLabel={selectAnalysisLabel}
                     onTile={onTile}
-                    opened={opened}
+                    opened={calibratedOpened ?? opened}
                     roiTool={roiTool}
                     rois={visibleRois}
                     selectedLabel={analysisState.selectedLabel}
@@ -2162,7 +2557,7 @@ function WorkbenchRuntime({
                 histogram={histogram}
                 history={historyState.undo}
                 log={log}
-                opened={opened}
+                opened={calibratedOpened ?? opened}
                 onDeleteNode={deletePipelineNode}
                 onEditNode={() => setInspectorTab('analysis')}
                 tab={bottomTab}
@@ -2183,7 +2578,11 @@ function WorkbenchRuntime({
               : `${source.source.name} · ${source.source.kind}`}
           </StatusItem>
           <span className="status-spacer" />
-          <StatusItem label="Calibration">{calibrationLabel(opened)}</StatusItem>
+          <StatusItem label="Calibration">
+            {activeCalibration === undefined
+              ? `${calibrationLabel(opened)} · file metadata`
+              : `${activeCalibration.unitsPerPixel[0]} × ${activeCalibration.unitsPerPixel[1]} ${activeCalibration.unit}/px · project ${activeCalibration.source} override`}
+          </StatusItem>
           <StatusItem label="Privacy">Files stay on this device</StatusItem>
         </div>
       </WorkbenchShell>
@@ -2324,7 +2723,14 @@ function WorkbenchRuntime({
       <CommandPalette
         commands={paletteCommands}
         onClose={() => setPaletteOpen(false)}
-        onRun={(id) => executeCommand(id as CommandId)}
+        onRun={(id) => {
+          if (id.startsWith('operation:')) {
+            setPaletteOperationId(id.slice('operation:'.length))
+            setInspectorTab('analysis')
+            return
+          }
+          executeCommand(id as CommandId)
+        }}
         open={paletteOpen}
       />
     </ThemeRoot>
