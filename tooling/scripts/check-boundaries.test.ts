@@ -12,9 +12,19 @@ describe('architecture boundary checker', () => {
     ).toEqual([])
   })
 
+  it('allows deliberate type-only PureJsImage persistence contracts', () => {
+    expect(
+      inspectSource(
+        'packages/workspace/src/model.ts',
+        "import type { AnalysisGraph } from 'purejsimage/analysis'",
+      ),
+    ).toEqual([])
+  })
+
   it.each([
     ['packages/workspace/src/index.ts', "import React from 'react'"],
     ['packages/viewport/src/index.ts', "import { decode } from 'purejsimage'"],
+    ['packages/workspace/src/index.ts', "import { validateGraph } from 'purejsimage/analysis'"],
     ['packages/imaging/src/index.ts', "import value from 'purejsimage/src/internal'"],
     ['packages/imaging/src/worker.ts', "const privateModule = import('purejsimage/src/reader')"],
     ['packages/contracts/src/index.ts', "import app from '../../../apps/workbench/src/app'"],

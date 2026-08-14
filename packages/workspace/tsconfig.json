@@ -1,6 +1,7 @@
 {
   "extends": "../../tooling/typescript/base.json",
   "compilerOptions": {
+    "lib": ["ES2024", "DOM"],
     "outDir": "./dist",
     "rootDir": "./src",
     "tsBuildInfoFile": "./dist/workspace.tsbuildinfo"

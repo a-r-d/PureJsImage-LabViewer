@@ -107,6 +107,10 @@ importers:
         version: 4.1.10(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/contracts:
+    dependencies:
+      purejsimage:
+        specifier: 0.10.0
+        version: 0.10.0
     devDependencies:
       typescript:
         specifier: 7.0.2
@@ -191,6 +195,9 @@ importers:
       '@pji-workbench/contracts':
         specifier: workspace:*
         version: link:../contracts
+      purejsimage:
+        specifier: 0.10.0
+        version: 0.10.0
     devDependencies:
       typescript:
         specifier: 7.0.2

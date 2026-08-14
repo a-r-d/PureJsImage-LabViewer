@@ -345,6 +345,7 @@ export class ImagingWorkerHost {
       })
       const file = new File([bytes.slice().buffer as ArrayBuffer], 'sample-sem.gsf', {
         type: 'application/octet-stream',
+        lastModified: 0,
       })
       const record = await this.#openFileDocument(
         file,

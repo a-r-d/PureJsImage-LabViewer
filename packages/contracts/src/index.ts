@@ -60,6 +60,7 @@ export interface ResolutionLevelDescriptor {
 
 export interface DatasetDescriptor {
   readonly id: string
+  readonly identity: Readonly<Record<string, unknown>>
   readonly name?: string
   readonly sampleType: string
   readonly axes: readonly AxisDescriptor[]
@@ -82,6 +83,7 @@ export interface OpenedSourceDescriptor {
   readonly sourceId: SourceId
   readonly documentId: DocumentId
   readonly generation: number
+  readonly identity: Readonly<Record<string, unknown>>
   readonly source: Readonly<{
     kind: SourceKind
     name: string

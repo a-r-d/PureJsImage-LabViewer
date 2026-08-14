@@ -167,6 +167,20 @@ test('persists theme, panel preferences, and source names without file contents'
   await expect(page.getByText('rebind required')).toBeVisible()
 })
 
+test('saves and replays a semantic project after a browser reload', async ({ page }) => {
+  await openSample(page)
+  await page.getByLabel('Project title').fill('Reloaded SEM project')
+  await page.getByLabel('Project title').blur()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('Saved locally', { exact: true })).toBeVisible()
+
+  await page.reload()
+
+  await expect(page.getByLabel('Project title')).toHaveValue('Reloaded SEM project')
+  await expect(page.getByRole('img', { name: /Scientific image viewport/ })).toBeVisible()
+  await expect(page.getByText('Saved locally', { exact: true })).toBeVisible()
+})
+
 test('collapses the navigator on a narrow desktop while preserving the viewport', async ({
   page,
 }) => {

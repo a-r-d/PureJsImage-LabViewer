@@ -32,7 +32,10 @@ export function inspectSource(relativeFile, source) {
     }
 
     if (specifier === 'purejsimage' || specifier.startsWith('purejsimage/')) {
-      if (!file.startsWith('packages/imaging/')) {
+      const deliberateTypeContract =
+        (file.startsWith('packages/contracts/') || file.startsWith('packages/workspace/')) &&
+        /^import\s+type\b/.test(match[0])
+      if (!file.startsWith('packages/imaging/') && !deliberateTypeContract) {
         violations.push(`${file}: PureJsImage import outside packages/imaging '${specifier}'`)
       }
     }

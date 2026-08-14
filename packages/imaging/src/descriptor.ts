@@ -55,6 +55,7 @@ export function datasetDescriptor(summary: ScientificDatasetSummary): DatasetDes
   const descriptor = summary.descriptor
   return {
     id: summary.id,
+    identity: summary.identity as unknown as Readonly<Record<string, unknown>>,
     ...(summary.name === undefined ? {} : { name: summary.name }),
     sampleType: descriptor.sampleType,
     axes: descriptor.axes.map(axisDescriptor),
@@ -109,10 +110,13 @@ export function openedSourceDescriptor(options: {
   readonly size: number
   readonly url?: string
 }): OpenedSourceDescriptor {
+  const identity = options.document.datasets[0]?.identity
+  if (identity === undefined) throw new Error('The document does not expose a semantic identity')
   return {
     sourceId: options.sourceId,
     documentId: options.documentId,
     generation: options.generation,
+    identity: identity as unknown as Readonly<Record<string, unknown>>,
     source: {
       kind: options.kind,
       name: options.name.slice(0, RPC_LIMITS.maxStringLength),

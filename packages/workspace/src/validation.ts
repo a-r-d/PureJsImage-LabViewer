@@ -1,0 +1,731 @@
+import type { DatasetDescriptor, DisplayMapping, PlaneSelection } from '@pji-workbench/contracts'
+import type { AnalysisGraph, AnalysisSemanticIdentity } from 'purejsimage/analysis'
+import type { PersistedInputBinding, PersistedSourceReference } from 'purejsimage/analysis/project'
+import type { RoiSet } from 'purejsimage/analysis/roi'
+
+import {
+  type ArtifactReferenceId,
+  type DatasetReferenceId,
+  type DisplayLayerState,
+  type JsonValue,
+  type LayerId,
+  type PinnedResultReference,
+  type ProjectId,
+  type ProjectWorkflowSelection,
+  type ResultReferenceId,
+  type SemanticSourceId,
+  type SourceLocator,
+  WORKSPACE_LIMITS,
+  WORKSPACE_SCHEMA_VERSION,
+  type WorkspaceAnalysisState,
+  type WorkspaceDatasetReference,
+  type WorkspaceProjectMetadata,
+  type WorkspaceSelection,
+  type WorkspaceSnapshot,
+  type WorkspaceSourceReference,
+} from './model.js'
+import { deterministicJson, jsonBytes } from './serialization.js'
+
+export class WorkspaceValidationError extends Error {
+  constructor(
+    readonly code: 'INVALID_PROJECT' | 'LIMIT_EXCEEDED' | 'FORBIDDEN_DATA',
+    message: string,
+  ) {
+    super(message)
+    this.name = 'WorkspaceValidationError'
+  }
+}
+
+interface Candidate extends Record<string, unknown> {
+  readonly active?: unknown
+  readonly analysis?: unknown
+  readonly appVersion?: unknown
+  readonly artifactId?: unknown
+  readonly axes?: unknown
+  readonly axisId?: unknown
+  readonly bindings?: unknown
+  readonly bottom?: unknown
+  readonly bound?: unknown
+  readonly capabilities?: unknown
+  readonly companionNames?: unknown
+  readonly component?: unknown
+  readonly components?: unknown
+  readonly createdAt?: unknown
+  readonly createdWith?: unknown
+  readonly datasetId?: unknown
+  readonly datasetReferenceId?: unknown
+  readonly datasets?: unknown
+  readonly descriptor?: unknown
+  readonly displayAxes?: unknown
+  readonly fixedIndices?: unknown
+  readonly format?: unknown
+  readonly geometry?: unknown
+  readonly graph?: unknown
+  readonly graphOutput?: unknown
+  readonly id?: unknown
+  readonly identity?: unknown
+  readonly index?: unknown
+  readonly inspector?: unknown
+  readonly inputs?: unknown
+  readonly kind?: unknown
+  readonly label?: unknown
+  readonly lastModified?: unknown
+  readonly layers?: unknown
+  readonly levels?: unknown
+  readonly locator?: unknown
+  readonly mapping?: unknown
+  readonly maximum?: unknown
+  readonly minimum?: unknown
+  readonly mode?: unknown
+  readonly name?: unknown
+  readonly nodes?: unknown
+  readonly notes?: unknown
+  readonly opacity?: unknown
+  readonly operation?: unknown
+  readonly outputs?: unknown
+  readonly palette?: unknown
+  readonly parameters?: unknown
+  readonly pinnedResults?: unknown
+  readonly plane?: unknown
+  readonly points?: unknown
+  readonly project?: unknown
+  readonly pureJsImageVersion?: unknown
+  readonly range?: unknown
+  readonly reader?: unknown
+  readonly resolutionLevel?: unknown
+  readonly revision?: unknown
+  readonly roiSet?: unknown
+  readonly rois?: unknown
+  readonly sampleId?: unknown
+  readonly sampleType?: unknown
+  readonly schemaVersion?: unknown
+  readonly selectedLayerId?: unknown
+  readonly selectedResultId?: unknown
+  readonly selectedRoiId?: unknown
+  readonly size?: unknown
+  readonly sourceId?: unknown
+  readonly sourceReferences?: unknown
+  readonly sources?: unknown
+  readonly summary?: unknown
+  readonly title?: unknown
+  readonly updatedAt?: unknown
+  readonly url?: unknown
+  readonly version?: unknown
+  readonly visible?: unknown
+  readonly workflow?: unknown
+}
+
+function record(value: unknown, path: string): Candidate {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path} must be an object`)
+  }
+  return value as Candidate
+}
+
+function stringValue(
+  value: unknown,
+  path: string,
+  maximum: number = WORKSPACE_LIMITS.maxStringLength,
+): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path} must be a non-empty string`)
+  }
+  if (value.length > maximum) {
+    throw new WorkspaceValidationError('LIMIT_EXCEEDED', `${path} exceeds the string limit`)
+  }
+  return value
+}
+
+function optionalString(value: unknown, path: string): string | undefined {
+  return value === undefined ? undefined : stringValue(value, path)
+}
+
+function integer(value: unknown, path: string, minimum = 0): number {
+  if (!Number.isSafeInteger(value) || (value as number) < minimum) {
+    throw new WorkspaceValidationError(
+      'INVALID_PROJECT',
+      `${path} must be an integer >= ${minimum}`,
+    )
+  }
+  return value as number
+}
+
+function finite(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path} must be finite`)
+  }
+  return value
+}
+
+function booleanValue(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path} must be boolean`)
+  }
+  return value
+}
+
+function boundedArray(value: unknown, path: string, maximum: number): readonly unknown[] {
+  if (!Array.isArray(value)) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path} must be an array`)
+  }
+  if (value.length > maximum) {
+    throw new WorkspaceValidationError('LIMIT_EXCEEDED', `${path} exceeds the item limit`)
+  }
+  return value
+}
+
+function jsonValue(value: unknown, path: string, depth = 0): JsonValue {
+  if (depth > 24) {
+    throw new WorkspaceValidationError('LIMIT_EXCEEDED', `${path} exceeds the nesting limit`)
+  }
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') {
+    if (typeof value === 'string' && value.length > WORKSPACE_LIMITS.maxStringLength) {
+      throw new WorkspaceValidationError('LIMIT_EXCEEDED', `${path} contains an oversized string`)
+    }
+    return value
+  }
+  if (typeof value === 'number') return finite(value, path)
+  if (Array.isArray(value)) {
+    if (value.length > 4_096) {
+      throw new WorkspaceValidationError('LIMIT_EXCEEDED', `${path} contains too many values`)
+    }
+    return value.map((item, index) => jsonValue(item, `${path}[${index}]`, depth + 1))
+  }
+  const candidate = record(value, path)
+  const entries = Object.entries(candidate)
+  if (entries.length > 4_096) {
+    throw new WorkspaceValidationError('LIMIT_EXCEEDED', `${path} contains too many fields`)
+  }
+  return Object.fromEntries(
+    entries.map(([key, item]) => [
+      stringValue(key, `${path} key`),
+      jsonValue(item, `${path}.${key}`, depth + 1),
+    ]),
+  )
+}
+
+const FORBIDDEN_KEYS = new Set([
+  'apiKey',
+  'openRouterKey',
+  'credential',
+  'credentials',
+  'secret',
+  'token',
+  'documentId',
+  'handleId',
+  'datasetHandleId',
+  'tileId',
+  'preparedPlanId',
+  'resultHandleId',
+  'gpuHandle',
+  'workerId',
+])
+
+export function assertNoForbiddenProjectData(value: unknown, path = 'project'): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      assertNoForbiddenProjectData(item, `${path}[${index}]`)
+    })
+    return
+  }
+  if (typeof value !== 'object' || value === null) return
+  for (const [key, item] of Object.entries(value)) {
+    if (FORBIDDEN_KEYS.has(key)) {
+      throw new WorkspaceValidationError('FORBIDDEN_DATA', `${path}.${key} is not project data`)
+    }
+    assertNoForbiddenProjectData(item, `${path}.${key}`)
+  }
+}
+
+function identity(value: unknown, path: string): AnalysisSemanticIdentity {
+  const candidate = record(jsonValue(value, path), path)
+  stringValue(candidate.kind, `${path}.kind`)
+  return candidate as unknown as AnalysisSemanticIdentity
+}
+
+export function validateSemanticIdentity(value: unknown): AnalysisSemanticIdentity {
+  return identity(value, 'identity')
+}
+
+function locator(value: unknown, path: string): SourceLocator {
+  const candidate = record(value, path)
+  if (candidate.kind === 'sample') {
+    return { kind: 'sample', sampleId: stringValue(candidate.sampleId, `${path}.sampleId`) }
+  }
+  if (candidate.kind === 'remote') {
+    const url = stringValue(candidate.url, `${path}.url`)
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.url is invalid`)
+    }
+    if (
+      parsed.protocol !== 'https:' &&
+      parsed.hostname !== 'localhost' &&
+      parsed.hostname !== '127.0.0.1'
+    ) {
+      throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.url must use HTTPS`)
+    }
+    return { kind: 'remote', url: parsed.href }
+  }
+  if (candidate.kind === 'local') {
+    return {
+      kind: 'local',
+      name: stringValue(candidate.name, `${path}.name`),
+      size: integer(candidate.size, `${path}.size`),
+      lastModified: integer(candidate.lastModified, `${path}.lastModified`),
+      companionNames: boundedArray(candidate.companionNames, `${path}.companionNames`, 64).map(
+        (item, index) => stringValue(item, `${path}.companionNames[${index}]`),
+      ),
+    }
+  }
+  throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.kind is unsupported`)
+}
+
+function source(value: unknown, path: string): WorkspaceSourceReference {
+  const candidate = record(value, path)
+  const reader = record(candidate.reader, `${path}.reader`)
+  return {
+    id: stringValue(candidate.id, `${path}.id`) as SemanticSourceId,
+    label: stringValue(candidate.label, `${path}.label`),
+    locator: locator(candidate.locator, `${path}.locator`),
+    identity: identity(candidate.identity, `${path}.identity`),
+    reader: {
+      id: stringValue(reader.id, `${path}.reader.id`),
+      version: stringValue(reader.version, `${path}.reader.version`),
+      format: stringValue(reader.format, `${path}.reader.format`),
+    },
+    bound: booleanValue(candidate.bound, `${path}.bound`),
+  }
+}
+
+function planeSelection(value: unknown, path: string): PlaneSelection {
+  const candidate = record(value, path)
+  const axes = boundedArray(candidate.displayAxes, `${path}.displayAxes`, 2)
+  if (axes.length !== 2) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.displayAxes needs two axes`)
+  }
+  return {
+    displayAxes: [
+      stringValue(axes[0], `${path}.displayAxes[0]`),
+      stringValue(axes[1], `${path}.displayAxes[1]`),
+    ],
+    fixedIndices: boundedArray(candidate.fixedIndices, `${path}.fixedIndices`, 64).map(
+      (item, index) => {
+        const fixed = record(item, `${path}.fixedIndices[${index}]`)
+        return {
+          axisId: stringValue(fixed.axisId, `${path}.fixedIndices[${index}].axisId`),
+          index: integer(fixed.index, `${path}.fixedIndices[${index}].index`),
+        }
+      },
+    ),
+    resolutionLevel: integer(candidate.resolutionLevel, `${path}.resolutionLevel`),
+  }
+}
+
+function datasetDescriptor(value: unknown, path: string): DatasetDescriptor {
+  const candidate = record(value, path)
+  jsonValue(candidate, path)
+  const axes = boundedArray(candidate.axes, `${path}.axes`, 64)
+  const components = boundedArray(candidate.components, `${path}.components`, 64)
+  const levels = boundedArray(candidate.levels, `${path}.levels`, 64)
+  const capabilities = record(candidate.capabilities, `${path}.capabilities`)
+  return {
+    ...(candidate as unknown as DatasetDescriptor),
+    id: stringValue(candidate.id, `${path}.id`),
+    identity: identity(candidate.identity, `${path}.identity`) as unknown as Readonly<
+      Record<string, unknown>
+    >,
+    sampleType: stringValue(candidate.sampleType, `${path}.sampleType`),
+    axes: axes as DatasetDescriptor['axes'],
+    components: components as DatasetDescriptor['components'],
+    levels: levels as DatasetDescriptor['levels'],
+    capabilities: capabilities as unknown as DatasetDescriptor['capabilities'],
+  }
+}
+
+function dataset(value: unknown, path: string): WorkspaceDatasetReference {
+  const candidate = record(value, path)
+  return {
+    id: stringValue(candidate.id, `${path}.id`) as DatasetReferenceId,
+    sourceId: stringValue(candidate.sourceId, `${path}.sourceId`) as SemanticSourceId,
+    datasetId: stringValue(candidate.datasetId, `${path}.datasetId`),
+    identity: identity(candidate.identity, `${path}.identity`),
+    descriptor: datasetDescriptor(candidate.descriptor, `${path}.descriptor`),
+  }
+}
+
+function displayMapping(value: unknown, path: string): DisplayMapping {
+  const candidate = record(value, path)
+  if (candidate.mode !== 'linear' || (candidate.range !== 'auto' && candidate.range !== 'manual')) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path} has an unsupported mapping`)
+  }
+  if (candidate.range === 'manual') {
+    const minimum = finite(candidate.minimum, `${path}.minimum`)
+    const maximum = finite(candidate.maximum, `${path}.maximum`)
+    if (maximum <= minimum) {
+      throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.maximum must exceed minimum`)
+    }
+    return { mode: 'linear', range: 'manual', minimum, maximum }
+  }
+  return {
+    mode: 'linear',
+    range: 'auto',
+    ...(candidate.minimum === undefined
+      ? {}
+      : { minimum: finite(candidate.minimum, `${path}.minimum`) }),
+    ...(candidate.maximum === undefined
+      ? {}
+      : { maximum: finite(candidate.maximum, `${path}.maximum`) }),
+  }
+}
+
+function layer(value: unknown, path: string): DisplayLayerState {
+  const candidate = record(value, path)
+  const opacity = finite(candidate.opacity, `${path}.opacity`)
+  if (opacity < 0 || opacity > 1) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.opacity must be between 0 and 1`)
+  }
+  return {
+    id: stringValue(candidate.id, `${path}.id`) as LayerId,
+    datasetReferenceId: stringValue(
+      candidate.datasetReferenceId,
+      `${path}.datasetReferenceId`,
+    ) as DatasetReferenceId,
+    label: stringValue(candidate.label, `${path}.label`),
+    visible: booleanValue(candidate.visible, `${path}.visible`),
+    opacity,
+    mapping: displayMapping(candidate.mapping, `${path}.mapping`),
+    palette: stringValue(candidate.palette, `${path}.palette`),
+  }
+}
+
+function analysis(value: unknown, path: string): WorkspaceAnalysisState {
+  const candidate = record(value, path)
+  const graphCandidate = record(candidate.graph, `${path}.graph`)
+  if (graphCandidate.schemaVersion !== 1) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.graph schema is unsupported`)
+  }
+  const nodes = boundedArray(
+    graphCandidate.nodes,
+    `${path}.graph.nodes`,
+    WORKSPACE_LIMITS.maxGraphNodes,
+  )
+  const inputs = boundedArray(
+    graphCandidate.inputs,
+    `${path}.graph.inputs`,
+    WORKSPACE_LIMITS.maxBindings,
+  )
+  const outputs = boundedArray(
+    graphCandidate.outputs,
+    `${path}.graph.outputs`,
+    WORKSPACE_LIMITS.maxOutputs,
+  )
+  let edgeCount = 0
+  for (const [index, nodeValue] of nodes.entries()) {
+    const node = record(nodeValue, `${path}.graph.nodes[${index}]`)
+    stringValue(node.id, `${path}.graph.nodes[${index}].id`)
+    const operation = record(node.operation, `${path}.graph.nodes[${index}].operation`)
+    stringValue(operation.id, `${path}.graph.nodes[${index}].operation.id`)
+    integer(operation.version, `${path}.graph.nodes[${index}].operation.version`, 1)
+    edgeCount += boundedArray(
+      node.inputs,
+      `${path}.graph.nodes[${index}].inputs`,
+      WORKSPACE_LIMITS.maxGraphEdges,
+    ).length
+    jsonValue(node.parameters, `${path}.graph.nodes[${index}].parameters`)
+  }
+  if (edgeCount > WORKSPACE_LIMITS.maxGraphEdges) {
+    throw new WorkspaceValidationError('LIMIT_EXCEEDED', `${path}.graph has too many edges`)
+  }
+  const graph = {
+    ...(graphCandidate as unknown as AnalysisGraph),
+    schemaVersion: 1,
+    inputs,
+    nodes,
+    outputs,
+  } as AnalysisGraph
+  jsonValue(graph, `${path}.graph`)
+
+  const roiCandidate = record(candidate.roiSet, `${path}.roiSet`)
+  if (roiCandidate.schemaVersion !== 1) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.roiSet schema is unsupported`)
+  }
+  const rois = boundedArray(roiCandidate.rois, `${path}.roiSet.rois`, WORKSPACE_LIMITS.maxRois)
+  for (const [index, roiValue] of rois.entries()) {
+    const roi = record(roiValue, `${path}.roiSet.rois[${index}]`)
+    stringValue(roi.id, `${path}.roiSet.rois[${index}].id`)
+    const geometry = record(roi.geometry, `${path}.roiSet.rois[${index}].geometry`)
+    if (Array.isArray(geometry.points) && geometry.points.length > WORKSPACE_LIMITS.maxRoiPoints) {
+      throw new WorkspaceValidationError(
+        'LIMIT_EXCEEDED',
+        `${path}.roiSet geometry has too many points`,
+      )
+    }
+  }
+  const roiSet = { ...(roiCandidate as unknown as RoiSet), schemaVersion: 1, rois } as RoiSet
+  jsonValue(roiSet, `${path}.roiSet`)
+
+  const bindings = boundedArray(
+    candidate.bindings,
+    `${path}.bindings`,
+    WORKSPACE_LIMITS.maxBindings,
+  )
+  const sourceReferences = boundedArray(
+    candidate.sourceReferences,
+    `${path}.sourceReferences`,
+    WORKSPACE_LIMITS.maxSources,
+  )
+  bindings.forEach((item, index) => {
+    jsonValue(item, `${path}.bindings[${index}]`)
+  })
+  sourceReferences.forEach((item, index) => {
+    jsonValue(item, `${path}.sourceReferences[${index}]`)
+  })
+  return {
+    graph,
+    roiSet,
+    bindings: bindings as readonly PersistedInputBinding[],
+    sourceReferences: sourceReferences as readonly PersistedSourceReference[],
+  }
+}
+
+function projectMetadata(value: unknown, path: string): WorkspaceProjectMetadata {
+  const candidate = record(value, path)
+  const createdWith = record(candidate.createdWith, `${path}.createdWith`)
+  return {
+    id: stringValue(candidate.id, `${path}.id`) as ProjectId,
+    title: stringValue(candidate.title, `${path}.title`),
+    createdAt: stringValue(candidate.createdAt, `${path}.createdAt`),
+    updatedAt: stringValue(candidate.updatedAt, `${path}.updatedAt`),
+    createdWith: {
+      appVersion: stringValue(createdWith.appVersion, `${path}.createdWith.appVersion`),
+      pureJsImageVersion: stringValue(
+        createdWith.pureJsImageVersion,
+        `${path}.createdWith.pureJsImageVersion`,
+      ),
+    },
+  }
+}
+
+function workflow(value: unknown, path: string): ProjectWorkflowSelection {
+  const candidate = record(value, path)
+  const inspectors: readonly ProjectWorkflowSelection['inspector'][] = [
+    'info',
+    'display',
+    'roi',
+    'analysis',
+    'history',
+    'agent',
+  ]
+  const bottoms: readonly ProjectWorkflowSelection['bottom'][] = [
+    'pipeline',
+    'history',
+    'histogram',
+    'profile',
+    'results',
+    'log',
+  ]
+  if (!inspectors.includes(candidate.inspector as ProjectWorkflowSelection['inspector'])) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.inspector is invalid`)
+  }
+  if (!bottoms.includes(candidate.bottom as ProjectWorkflowSelection['bottom'])) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.bottom is invalid`)
+  }
+  return {
+    inspector: candidate.inspector as ProjectWorkflowSelection['inspector'],
+    bottom: candidate.bottom as ProjectWorkflowSelection['bottom'],
+    ...(optionalString(candidate.selectedRoiId, `${path}.selectedRoiId`) === undefined
+      ? {}
+      : { selectedRoiId: candidate.selectedRoiId as string }),
+    ...(optionalString(candidate.selectedLayerId, `${path}.selectedLayerId`) === undefined
+      ? {}
+      : { selectedLayerId: candidate.selectedLayerId as LayerId }),
+    ...(optionalString(candidate.selectedResultId, `${path}.selectedResultId`) === undefined
+      ? {}
+      : { selectedResultId: candidate.selectedResultId as ResultReferenceId }),
+  }
+}
+
+function pinnedResult(value: unknown, path: string): PinnedResultReference {
+  const candidate = record(value, path)
+  const summary = record(
+    jsonValue(candidate.summary, `${path}.summary`),
+    `${path}.summary`,
+  ) as Readonly<Record<string, JsonValue>>
+  if (jsonBytes(summary) > WORKSPACE_LIMITS.maxPinnedSummaryBytes) {
+    throw new WorkspaceValidationError('LIMIT_EXCEEDED', `${path}.summary exceeds the byte limit`)
+  }
+  const artifactId = optionalString(candidate.artifactId, `${path}.artifactId`)
+  return {
+    id: stringValue(candidate.id, `${path}.id`) as ResultReferenceId,
+    graphOutput: stringValue(candidate.graphOutput, `${path}.graphOutput`),
+    label: stringValue(candidate.label, `${path}.label`),
+    kind: stringValue(candidate.kind, `${path}.kind`),
+    ...(artifactId === undefined ? {} : { artifactId: artifactId as ArtifactReferenceId }),
+    summary,
+    createdAt: stringValue(candidate.createdAt, `${path}.createdAt`),
+  }
+}
+
+function unique(values: readonly string[], path: string): void {
+  if (new Set(values).size !== values.length) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', `${path} contains duplicate IDs`)
+  }
+}
+
+export function validateWorkspaceProjectV1(value: unknown): WorkspaceSnapshot {
+  assertNoForbiddenProjectData(value)
+  const candidate = record(value, 'project')
+  if (candidate.schemaVersion !== WORKSPACE_SCHEMA_VERSION) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', 'unsupported project schema version')
+  }
+  const revision = integer(candidate.revision, 'project.revision')
+  const sources = boundedArray(
+    candidate.sources,
+    'project.sources',
+    WORKSPACE_LIMITS.maxSources,
+  ).map((item, index) => source(item, `project.sources[${index}]`))
+  const datasets = boundedArray(
+    candidate.datasets,
+    'project.datasets',
+    WORKSPACE_LIMITS.maxDatasets,
+  ).map((item, index) => dataset(item, `project.datasets[${index}]`))
+  const layers = boundedArray(candidate.layers, 'project.layers', WORKSPACE_LIMITS.maxLayers).map(
+    (item, index) => layer(item, `project.layers[${index}]`),
+  )
+  const pinnedResults = boundedArray(
+    candidate.pinnedResults,
+    'project.pinnedResults',
+    WORKSPACE_LIMITS.maxPinnedResults,
+  ).map((item, index) => pinnedResult(item, `project.pinnedResults[${index}]`))
+  unique(
+    sources.map(({ id }) => id),
+    'project.sources',
+  )
+  unique(
+    datasets.map(({ id }) => id),
+    'project.datasets',
+  )
+  unique(
+    layers.map(({ id }) => id),
+    'project.layers',
+  )
+  unique(
+    pinnedResults.map(({ id }) => id),
+    'project.pinnedResults',
+  )
+  const sourceIds = new Set(sources.map(({ id }) => id))
+  const datasetIds = new Set(datasets.map(({ id }) => id))
+  for (const item of datasets) {
+    if (!sourceIds.has(item.sourceId)) {
+      throw new WorkspaceValidationError('INVALID_PROJECT', `dataset ${item.id} has no source`)
+    }
+  }
+  for (const item of layers) {
+    if (!datasetIds.has(item.datasetReferenceId)) {
+      throw new WorkspaceValidationError('INVALID_PROJECT', `layer ${item.id} has no dataset`)
+    }
+  }
+  let active: WorkspaceSelection | undefined
+  if (candidate.active !== undefined) {
+    const selection = record(candidate.active, 'project.active')
+    active = {
+      sourceId: stringValue(selection.sourceId, 'project.active.sourceId') as SemanticSourceId,
+      datasetReferenceId: stringValue(
+        selection.datasetReferenceId,
+        'project.active.datasetReferenceId',
+      ) as DatasetReferenceId,
+      plane: planeSelection(selection.plane, 'project.active.plane'),
+      component: integer(selection.component, 'project.active.component'),
+    }
+    if (!sourceIds.has(active.sourceId) || !datasetIds.has(active.datasetReferenceId)) {
+      throw new WorkspaceValidationError('INVALID_PROJECT', 'active selection is unresolved')
+    }
+  }
+  const notes =
+    candidate.notes === ''
+      ? ''
+      : stringValue(candidate.notes, 'project.notes', WORKSPACE_LIMITS.maxNotesLength)
+  const snapshot: WorkspaceSnapshot = {
+    schemaVersion: WORKSPACE_SCHEMA_VERSION,
+    revision,
+    project: projectMetadata(candidate.project, 'project.project'),
+    sources,
+    datasets,
+    ...(active === undefined ? {} : { active }),
+    layers,
+    analysis: analysis(candidate.analysis, 'project.analysis'),
+    pinnedResults,
+    notes,
+    workflow: workflow(candidate.workflow, 'project.workflow'),
+  }
+  if (jsonBytes(snapshot) > WORKSPACE_LIMITS.maxProjectBytes) {
+    throw new WorkspaceValidationError('LIMIT_EXCEEDED', 'project exceeds the byte limit')
+  }
+  return snapshot
+}
+
+interface LegacyWorkspaceV0 {
+  readonly schemaVersion: 0
+  readonly revision?: unknown
+  readonly title?: unknown
+  readonly notes?: unknown
+}
+
+export function migrateWorkspaceProject(value: unknown): unknown {
+  const candidate = record(value, 'project')
+  if (candidate.schemaVersion === WORKSPACE_SCHEMA_VERSION) return value
+  if (candidate.schemaVersion !== 0) {
+    throw new WorkspaceValidationError('INVALID_PROJECT', 'no migration path for project schema')
+  }
+  const legacy = candidate as unknown as LegacyWorkspaceV0
+  const timestamp = '1970-01-01T00:00:00.000Z'
+  return {
+    schemaVersion: WORKSPACE_SCHEMA_VERSION,
+    revision: integer(legacy.revision ?? 0, 'project.revision'),
+    project: {
+      id: 'migrated-project',
+      title: stringValue(legacy.title ?? 'Untitled project', 'project.title'),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      createdWith: { appVersion: '0.0.0', pureJsImageVersion: '0.10.0' },
+    },
+    sources: [],
+    datasets: [],
+    layers: [],
+    analysis: {
+      graph: { schemaVersion: 1, inputs: [], nodes: [], outputs: [] },
+      roiSet: { schemaVersion: 1, rois: [] },
+      bindings: [],
+      sourceReferences: [],
+    },
+    pinnedResults: [],
+    notes:
+      legacy.notes === undefined
+        ? ''
+        : stringValue(legacy.notes, 'project.notes', WORKSPACE_LIMITS.maxNotesLength),
+    workflow: { inspector: 'info', bottom: 'histogram' },
+  }
+}
+
+export function importWorkspaceProject(text: string): WorkspaceSnapshot {
+  if (new TextEncoder().encode(text).byteLength > WORKSPACE_LIMITS.maxProjectBytes) {
+    throw new WorkspaceValidationError('LIMIT_EXCEEDED', 'project import exceeds the byte limit')
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text) as unknown
+  } catch {
+    throw new WorkspaceValidationError('INVALID_PROJECT', 'project import is not valid JSON')
+  }
+  return validateWorkspaceProjectV1(migrateWorkspaceProject(parsed))
+}
+
+export function semanticIdentityEqual(
+  left: AnalysisSemanticIdentity,
+  right: AnalysisSemanticIdentity,
+): boolean {
+  return deterministicJson(left) === deterministicJson(right)
+}

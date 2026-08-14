@@ -23,7 +23,29 @@ import {
   Toolbar,
   TreeRow,
 } from '@pji-workbench/ui'
-import { createEmptyWorkspace } from '@pji-workbench/workspace'
+import {
+  createEmptyWorkspace,
+  type DisplayLayerState,
+  datasetReferenceId,
+  IndexedDbProjectStore,
+  importWorkspaceProject,
+  type LayerId,
+  type ProjectId,
+  type ProjectSummary,
+  type SemanticSourceId,
+  semanticIdentityEqual,
+  serializeWorkspaceProject,
+  validateSemanticIdentity,
+  type WorkspaceDatasetReference,
+  WorkspaceHistory,
+  type WorkspaceHistoryEntry,
+  type WorkspaceHistoryState,
+  type WorkspaceMutation,
+  WorkspaceRuntimeReconciler,
+  type WorkspaceSnapshot,
+  type WorkspaceSourceReference,
+  workspaceCommand,
+} from '@pji-workbench/workspace'
 import {
   type CSSProperties,
   type FormEvent,
@@ -47,10 +69,11 @@ import {
   PREFERENCE_BOUNDS,
   type WorkbenchPreferences,
 } from './preferences.js'
+import { WorkbenchWorkspaceRuntime } from './project-runtime.js'
 import { ScientificViewport, type ScientificViewportApi } from './ScientificViewport.js'
 
 type InspectorTab = 'info' | 'display' | 'roi' | 'analysis' | 'history' | 'agent'
-type BottomTab = 'histogram' | 'profile' | 'results' | 'log'
+type BottomTab = 'pipeline' | 'history' | 'histogram' | 'profile' | 'results' | 'log'
 type OpenStatus = 'ready' | 'opening' | 'crashed'
 
 const inspectorTabs: readonly TabItem<InspectorTab>[] = [
@@ -63,6 +86,8 @@ const inspectorTabs: readonly TabItem<InspectorTab>[] = [
 ]
 
 const bottomTabs: readonly TabItem<BottomTab>[] = [
+  { id: 'pipeline', label: 'Pipeline' },
+  { id: 'history', label: 'History' },
   { id: 'histogram', label: 'Histogram' },
   { id: 'profile', label: 'Line Profile' },
   { id: 'results', label: 'Results' },
@@ -70,6 +95,7 @@ const bottomTabs: readonly TabItem<BottomTab>[] = [
 ]
 
 const RECENT_SOURCE_KEY = 'pji-workbench.recent-source-names.v1'
+const LAST_PROJECT_KEY = 'pji-workbench.last-project-id.v1'
 const HISTOGRAM_BIN_IDS = Array.from({ length: 32 }, (_value, index) => `histogram-${index}`)
 
 function preferenceStyle(preferences: WorkbenchPreferences): CSSProperties {
@@ -95,6 +121,69 @@ function readRecentSources(storage: Storage): readonly string[] {
   } catch {
     return []
   }
+}
+
+function createProject(title = 'Untitled microscopy project'): WorkspaceSnapshot {
+  const now = new Date().toISOString()
+  return createEmptyWorkspace(title, {
+    projectId: crypto.randomUUID() as ProjectId,
+    now,
+    appVersion: '0.0.0',
+    pureJsImageVersion: '0.10.0',
+  })
+}
+
+function projectSourceMutation(
+  nextSource: OpenedSourceDescriptor,
+  locator: WorkspaceSourceReference['locator'],
+): Extract<WorkspaceMutation, { readonly kind: 'source.add' }> {
+  const sourceId = `source-${crypto.randomUUID()}` as SemanticSourceId
+  const source: WorkspaceSourceReference = {
+    id: sourceId,
+    label: nextSource.source.name,
+    locator,
+    identity: validateSemanticIdentity(nextSource.identity),
+    reader: nextSource.reader,
+    bound: true,
+  }
+  const datasets: readonly WorkspaceDatasetReference[] = nextSource.datasets.map((descriptor) => ({
+    id: datasetReferenceId(sourceId, descriptor.id),
+    sourceId,
+    datasetId: descriptor.id,
+    identity: validateSemanticIdentity(descriptor.identity),
+    descriptor,
+  }))
+  const first = datasets[0]
+  return {
+    kind: 'source.add',
+    source,
+    datasets,
+    ...(first === undefined
+      ? {}
+      : {
+          layers: [
+            {
+              id: `layer-${crypto.randomUUID()}` as LayerId,
+              datasetReferenceId: first.id,
+              label: first.descriptor.name ?? first.datasetId,
+              visible: true,
+              opacity: 1,
+              mapping: { mode: 'linear', range: 'auto' },
+              palette: 'gray',
+            } satisfies DisplayLayerState,
+          ],
+        }),
+  }
+}
+
+function downloadProject(snapshot: WorkspaceSnapshot): void {
+  const blob = new Blob([serializeWorkspaceProject(snapshot)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${snapshot.project.title.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase() || 'project'}.pji-lab.json`
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 function axisPairOptions(opened: OpenedDatasetDescriptor): readonly (readonly [string, string])[] {
@@ -132,6 +221,7 @@ interface InspectorContentProps {
   readonly onComponent: (component: number) => void
   readonly onMapping: (mapping: DisplayMapping) => void
   readonly onSelection: (selection: PlaneSelection) => void
+  readonly history: readonly WorkspaceHistoryEntry[]
 }
 
 function InspectorContent({
@@ -144,6 +234,7 @@ function InspectorContent({
   onComponent,
   onMapping,
   onSelection,
+  history,
 }: InspectorContentProps) {
   if (tab === 'agent') {
     return (
@@ -302,8 +393,10 @@ function InspectorContent({
   if (tab === 'history') {
     return (
       <ol className="history-list">
-        <li>Opened {source.source.name}</li>
-        <li>Selected {opened.dataset.name ?? opened.dataset.id}</li>
+        {history.length === 0 ? <li>No project changes yet.</li> : null}
+        {history.toReversed().map((entry) => (
+          <li key={entry.id}>{entry.description}</li>
+        ))}
       </ol>
     )
   }
@@ -342,12 +435,39 @@ function BottomContent({
   opened,
   histogram,
   log,
+  history,
+  workspace,
 }: {
   readonly tab: BottomTab
   readonly opened: OpenedDatasetDescriptor | undefined
   readonly histogram: readonly number[]
   readonly log: readonly string[]
+  readonly history: readonly WorkspaceHistoryEntry[]
+  readonly workspace: WorkspaceSnapshot
 }) {
+  if (tab === 'pipeline') {
+    return workspace.analysis.graph.nodes.length === 0 ? (
+      <p className="bottom-placeholder">
+        No analysis steps. The pipeline is saved with this project.
+      </p>
+    ) : (
+      <ol className="history-list">
+        {workspace.analysis.graph.nodes.map((node) => (
+          <li key={node.id}>{node.label ?? node.operation.id}</li>
+        ))}
+      </ol>
+    )
+  }
+  if (tab === 'history') {
+    return (
+      <ol className="history-list" aria-label="Project history">
+        {history.length === 0 ? <li>No project changes yet.</li> : null}
+        {history.toReversed().map((entry) => (
+          <li key={entry.id}>{entry.description}</li>
+        ))}
+      </ol>
+    )
+  }
   if (opened === undefined)
     return <p className="bottom-placeholder">Results and profiles appear here.</p>
   if (tab === 'log') {
@@ -399,7 +519,28 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   window.__PJI_WORKBENCH_METRICS__.reactRenders += 1
   const preferenceStore = useMemo(() => new LocalWorkbenchPreferenceStore(window.localStorage), [])
   const client = useMemo(() => createImagingWorkerClient(), [])
-  const workspace = useMemo(() => createEmptyWorkspace('Untitled microscopy project'), [])
+  const projectStore = useMemo(() => new IndexedDbProjectStore(window.indexedDB), [])
+  const initialWorkspace = useMemo(() => createProject(), [])
+  const historyController = useRef(new WorkspaceHistory(initialWorkspace))
+  const [historyState, setHistoryState] = useState<WorkspaceHistoryState>(
+    historyController.current.state,
+  )
+  const workspace = historyState.snapshot
+  const projectJson = useMemo(() => serializeWorkspaceProject(workspace), [workspace])
+  const runtime = useMemo(() => new WorkbenchWorkspaceRuntime(client), [client])
+  const reconciler = useMemo(() => new WorkspaceRuntimeReconciler(runtime), [runtime])
+  const [savedProjectJson, setSavedProjectJson] = useState<string>()
+  const [recentProjects, setRecentProjects] = useState<readonly ProjectSummary[]>([])
+  const [projectDialog, setProjectDialog] = useState(false)
+  const [rebindSourceId, setRebindSourceId] = useState<SemanticSourceId>()
+  const [identityMismatch, setIdentityMismatch] = useState<{
+    readonly sourceId: SemanticSourceId
+    readonly expected: WorkspaceSourceReference['identity']
+    readonly actual: WorkspaceSourceReference['identity']
+    readonly files: readonly File[]
+    readonly openedSource: OpenedSourceDescriptor
+    readonly openedDataset: OpenedDatasetDescriptor
+  }>()
   const [preferences, setPreferences] = useState(() => preferenceStore.load())
   const [source, setSource] = useState<OpenedSourceDescriptor>()
   const [opened, setOpened] = useState<OpenedDatasetDescriptor>()
@@ -418,11 +559,26 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [log, setLog] = useState<readonly string[]>([])
   const viewportApi = useRef<ScientificViewportApi | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const projectImportInput = useRef<HTMLInputElement>(null)
+  const rebindInput = useRef<HTMLInputElement>(null)
   const openAbort = useRef<AbortController | undefined>(undefined)
   const generation = useRef(0)
   const openedAt = useRef(0)
   const autoRangeLocked = useRef(false)
   const hasDataset = opened !== undefined && selection !== undefined
+
+  const applyProjectMutation = useCallback((mutation: WorkspaceMutation): WorkspaceHistoryState => {
+    const current = historyController.current.state.snapshot
+    const next = historyController.current.dispatch(
+      workspaceCommand(current, crypto.randomUUID(), new Date().toISOString(), mutation),
+    )
+    setHistoryState(next)
+    return next
+  }, [])
+
+  const refreshRecentProjects = useCallback(async (): Promise<void> => {
+    setRecentProjects(await projectStore.list())
+  }, [projectStore])
 
   const appendLog = useCallback((message: string): void => {
     setLog((current) => [...current.slice(-20), `${new Date().toLocaleTimeString()} · ${message}`])
@@ -460,7 +616,11 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   }, [])
 
   const finishOpen = useCallback(
-    async (nextSource: OpenedSourceDescriptor, signal: AbortSignal): Promise<void> => {
+    async (
+      nextSource: OpenedSourceDescriptor,
+      locator: WorkspaceSourceReference['locator'],
+      signal: AbortSignal,
+    ): Promise<void> => {
       const summary = nextSource.datasets[0]
       if (summary === undefined) throw new Error('The document contains no scientific datasets.')
       const nextDataset = await client.openDataset(
@@ -469,6 +629,20 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         nextSource.generation,
         signal,
       )
+      const sourceMutation = projectSourceMutation(nextSource, locator)
+      const dataset = sourceMutation.datasets[0]
+      if (dataset === undefined) throw new Error('The document contains no scientific datasets.')
+      const mutation: WorkspaceMutation = {
+        ...sourceMutation,
+        activate: {
+          sourceId: sourceMutation.source.id,
+          datasetReferenceId: dataset.id,
+          plane: nextDataset.selection,
+          component: 0,
+        },
+      }
+      applyProjectMutation(mutation)
+      runtime.adopt(sourceMutation.source.id, nextSource, nextDataset)
       setSource(nextSource)
       setOpened(nextDataset)
       setSelection(nextDataset.selection)
@@ -490,12 +664,13 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       rememberSource(nextSource.source.name)
       appendLog(`Opened ${nextSource.source.name} with ${nextSource.reader.id}`)
     },
-    [appendLog, client, rememberSource],
+    [appendLog, applyProjectMutation, client, rememberSource, runtime],
   )
 
   const runOpen = useCallback(
     async (
       opener: (nextGeneration: number, signal: AbortSignal) => Promise<OpenedSourceDescriptor>,
+      locator: WorkspaceSourceReference['locator'],
     ): Promise<void> => {
       openAbort.current?.abort()
       const controller = new AbortController()
@@ -505,7 +680,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       setError(undefined)
       try {
         const nextSource = await opener(nextGeneration, controller.signal)
-        await finishOpen(nextSource, controller.signal)
+        await finishOpen(nextSource, locator, controller.signal)
         generation.current = nextGeneration
         setStatus('ready')
       } catch (openError) {
@@ -527,25 +702,338 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   )
 
   const openSample = useCallback((): void => {
-    void runOpen((nextGeneration, signal) => client.openSample(nextGeneration, signal))
+    void runOpen((nextGeneration, signal) => client.openSample(nextGeneration, signal), {
+      kind: 'sample',
+      sampleId: 'generated-calibrated-sem',
+    })
   }, [client, runOpen])
 
   const openFiles = useCallback(
     (files: readonly File[]): void => {
       const primary = files[0]
       if (primary === undefined) return
-      void runOpen((nextGeneration, signal) =>
-        client.openLocal(files, primary, nextGeneration, signal),
+      void runOpen(
+        (nextGeneration, signal) => client.openLocal(files, primary, nextGeneration, signal),
+        {
+          kind: 'local',
+          name: primary.name,
+          size: primary.size,
+          lastModified: primary.lastModified,
+          companionNames: files.slice(1).map(({ name }) => name),
+        },
       )
     },
     [client, runOpen],
   )
+
+  const replayWorkspace = useCallback(
+    async (snapshot: WorkspaceSnapshot, previous: WorkspaceSnapshot | undefined): Promise<void> => {
+      setStatus('opening')
+      setError(undefined)
+      try {
+        const result = await reconciler.reconcile(previous, snapshot)
+        if (result.status === 'needs-rebind') {
+          setSource(undefined)
+          setOpened(undefined)
+          setSelection(undefined)
+          setRebindSourceId(result.source?.id)
+          setError(
+            `${result.source?.label ?? 'The local source'} must be rebound. Select the original file; its identity will be checked before replay.`,
+          )
+        } else if (result.status === 'identity-mismatch') {
+          setSource(undefined)
+          setOpened(undefined)
+          setSelection(undefined)
+          setError(
+            `${result.identity?.kind === 'mismatch' ? result.identity.message : 'Source identity mismatch'} Nothing was replayed.`,
+          )
+        } else if (result.status === 'ready') {
+          const materialized = runtime.current
+          if (materialized === undefined)
+            throw new Error('The imaging runtime was not materialized.')
+          setSource(materialized.source)
+          setOpened(materialized.dataset)
+          setSelection(snapshot.active?.plane)
+          setComponent(snapshot.active?.component ?? 0)
+          const layer = snapshot.layers.find(
+            ({ datasetReferenceId }) => datasetReferenceId === snapshot.active?.datasetReferenceId,
+          )
+          setMapping(layer?.mapping ?? { mode: 'linear', range: 'auto' })
+          generation.current = materialized.source.generation
+          appendLog(
+            `Replayed ${materialized.source.source.name} from project revision ${snapshot.revision}`,
+          )
+        } else {
+          setSource(undefined)
+          setOpened(undefined)
+          setSelection(undefined)
+        }
+      } catch (replayError) {
+        setError(
+          `${replayError instanceof Error ? replayError.message : 'Project replay failed'} Project history remains unchanged.`,
+        )
+      } finally {
+        setStatus('ready')
+      }
+    },
+    [appendLog, reconciler, runtime],
+  )
+
+  const loadProject = useCallback(
+    async (snapshot: WorkspaceSnapshot): Promise<void> => {
+      const previous = historyController.current.state.snapshot
+      const next = historyController.current.replace(snapshot)
+      setHistoryState(next)
+      setSavedProjectJson(serializeWorkspaceProject(snapshot))
+      window.localStorage.setItem(LAST_PROJECT_KEY, snapshot.project.id)
+      setInspectorTab(snapshot.workflow.inspector)
+      setBottomTab(snapshot.workflow.bottom)
+      setProjectDialog(false)
+      await replayWorkspace(snapshot, previous)
+    },
+    [replayWorkspace],
+  )
+
+  const saveProject = useCallback(async (): Promise<void> => {
+    try {
+      const saved = historyController.current.state.snapshot
+      await projectStore.save(saved)
+      setSavedProjectJson(serializeWorkspaceProject(saved))
+      window.localStorage.setItem(LAST_PROJECT_KEY, saved.project.id)
+      await refreshRecentProjects()
+      appendLog(`Saved ${saved.project.title}`)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to save the project.')
+    }
+  }, [appendLog, projectStore, refreshRecentProjects])
+
+  const saveProjectAs = useCallback(async (): Promise<void> => {
+    try {
+      const current = historyController.current.state.snapshot
+      const now = new Date().toISOString()
+      const copy = importWorkspaceProject(
+        JSON.stringify({
+          ...current,
+          revision: 0,
+          project: {
+            ...current.project,
+            id: crypto.randomUUID() as ProjectId,
+            title: `${current.project.title} copy`,
+            createdAt: now,
+            updatedAt: now,
+          },
+        }),
+      )
+      setHistoryState(historyController.current.replace(copy))
+      setSavedProjectJson(undefined)
+      await projectStore.save(copy)
+      setSavedProjectJson(serializeWorkspaceProject(copy))
+      window.localStorage.setItem(LAST_PROJECT_KEY, copy.project.id)
+      await refreshRecentProjects()
+      appendLog(`Saved a new copy as ${copy.project.title}`)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to save a project copy.')
+    }
+  }, [appendLog, projectStore, refreshRecentProjects])
+
+  const newProject = useCallback((): void => {
+    const previous = historyController.current.state.snapshot
+    const snapshot = createProject()
+    setHistoryState(historyController.current.replace(snapshot))
+    setSavedProjectJson(undefined)
+    window.localStorage.removeItem(LAST_PROJECT_KEY)
+    setSource(undefined)
+    setOpened(undefined)
+    setSelection(undefined)
+    setMapping({ mode: 'linear', range: 'auto' })
+    setComponent(0)
+    setError(undefined)
+    void reconciler.reconcile(previous, snapshot).catch((releaseError: unknown) => {
+      setError(
+        `${releaseError instanceof Error ? releaseError.message : 'Runtime cleanup failed.'} The new project remains active.`,
+      )
+    })
+  }, [reconciler])
+
+  const performHistory = useCallback(
+    (direction: 'undo' | 'redo'): void => {
+      const previous = historyController.current.state.snapshot
+      const next =
+        direction === 'undo' ? historyController.current.undo() : historyController.current.redo()
+      if (next.snapshot === previous) return
+      setHistoryState(next)
+      void replayWorkspace(next.snapshot, previous)
+    },
+    [replayWorkspace],
+  )
+
+  const importProjectFile = useCallback(
+    async (file: File | undefined): Promise<void> => {
+      if (file === undefined) return
+      try {
+        const snapshot = importWorkspaceProject(await file.text())
+        await projectStore.save(snapshot)
+        await refreshRecentProjects()
+        await loadProject(snapshot)
+      } catch (importError) {
+        setError(
+          `${importError instanceof Error ? importError.message : 'Project import failed'} No project was changed or stored.`,
+        )
+      }
+    },
+    [loadProject, projectStore, refreshRecentProjects],
+  )
+
+  const applyRebind = useCallback(
+    (
+      sourceId: SemanticSourceId,
+      files: readonly File[],
+      nextSource: OpenedSourceDescriptor,
+      nextDataset: OpenedDatasetDescriptor,
+    ): void => {
+      const primary = files[0]
+      if (primary === undefined) return
+      const datasets: readonly WorkspaceDatasetReference[] = nextSource.datasets.map(
+        (descriptor) => ({
+          id: datasetReferenceId(sourceId, descriptor.id),
+          sourceId,
+          datasetId: descriptor.id,
+          identity: validateSemanticIdentity(descriptor.identity),
+          descriptor,
+        }),
+      )
+      applyProjectMutation({
+        kind: 'source.rebind',
+        sourceId,
+        locator: {
+          kind: 'local',
+          name: primary.name,
+          size: primary.size,
+          lastModified: primary.lastModified,
+          companionNames: files.slice(1).map(({ name }) => name),
+        },
+        identity: validateSemanticIdentity(nextSource.identity),
+        bound: true,
+        datasets,
+      })
+      runtime.bindLocalFiles(sourceId, files)
+      runtime.adopt(sourceId, nextSource, nextDataset)
+      setSource(nextSource)
+      setOpened(nextDataset)
+      setSelection(nextDataset.selection)
+      setRebindSourceId(undefined)
+      setIdentityMismatch(undefined)
+      setError(undefined)
+      setStatus('ready')
+      appendLog(`Rebound ${primary.name} after identity approval`)
+    },
+    [appendLog, applyProjectMutation, runtime],
+  )
+
+  const rebindFiles = useCallback(
+    async (files: readonly File[]): Promise<void> => {
+      const sourceReference = workspace.sources.find(({ id }) => id === rebindSourceId)
+      const primary = files[0]
+      const activeDataset = workspace.datasets.find(
+        ({ id }) => id === workspace.active?.datasetReferenceId,
+      )
+      if (sourceReference === undefined || primary === undefined || activeDataset === undefined)
+        return
+      setStatus('opening')
+      setError(undefined)
+      try {
+        const nextGeneration = generation.current + 1
+        const nextSource = await client.openLocal(files, primary, nextGeneration)
+        const descriptor = nextSource.datasets.find(({ id }) => id === activeDataset.datasetId)
+        if (descriptor === undefined) {
+          throw new Error('The selected files do not contain the saved dataset.')
+        }
+        const nextDataset = await client.openDataset(
+          nextSource.documentId,
+          descriptor.id,
+          nextGeneration,
+        )
+        const actual = validateSemanticIdentity(nextSource.identity)
+        if (!semanticIdentityEqual(sourceReference.identity, actual)) {
+          setIdentityMismatch({
+            sourceId: sourceReference.id,
+            expected: sourceReference.identity,
+            actual,
+            files,
+            openedSource: nextSource,
+            openedDataset: nextDataset,
+          })
+          setError(
+            'The selected source identity differs from the saved project. Nothing was replayed.',
+          )
+          setStatus('ready')
+          return
+        }
+        generation.current = nextGeneration
+        applyRebind(sourceReference.id, files, nextSource, nextDataset)
+      } catch (rebindError) {
+        setStatus('ready')
+        setError(rebindError instanceof Error ? rebindError.message : 'Source rebind failed.')
+      }
+    },
+    [
+      applyRebind,
+      client,
+      rebindSourceId,
+      workspace.active?.datasetReferenceId,
+      workspace.datasets,
+      workspace.sources,
+    ],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    void refreshRecentProjects()
+    const lastProjectId = window.localStorage.getItem(LAST_PROJECT_KEY)
+    if (lastProjectId !== null) {
+      void projectStore
+        .load(lastProjectId as ProjectId)
+        .then((snapshot) => {
+          if (!cancelled && snapshot !== undefined) return loadProject(snapshot)
+          return undefined
+        })
+        .catch((loadError: unknown) => {
+          if (!cancelled) {
+            setError(
+              `${loadError instanceof Error ? loadError.message : 'Unable to restore the last project.'} The workbench opened a new project instead.`,
+            )
+          }
+        })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [loadProject, projectStore, refreshRecentProjects])
 
   const selectDataset = useCallback(
     async (datasetId: string): Promise<void> => {
       if (source === undefined || opened?.dataset.id === datasetId) return
       try {
         const next = await client.openDataset(source.documentId, datasetId, source.generation)
+        const sourceReference = workspace.sources.find(
+          ({ id }) => id === runtime.current?.semanticSourceId,
+        )
+        const datasetReference = workspace.datasets.find(
+          (candidate) =>
+            candidate.sourceId === sourceReference?.id && candidate.datasetId === datasetId,
+        )
+        if (sourceReference === undefined || datasetReference === undefined) {
+          throw new Error('The selected dataset is not present in the semantic project.')
+        }
+        applyProjectMutation({
+          kind: 'dataset.select',
+          selection: {
+            sourceId: sourceReference.id,
+            datasetReferenceId: datasetReference.id,
+            plane: next.selection,
+            component: 0,
+          },
+        })
         const previous = opened
         setOpened(next)
         setSelection(next.selection)
@@ -555,7 +1043,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         setError(datasetError instanceof Error ? datasetError.message : 'Unable to open dataset')
       }
     },
-    [client, opened, source],
+    [applyProjectMutation, client, opened, runtime, source, workspace.datasets, workspace.sources],
   )
 
   const changeSelection = useCallback(
@@ -564,6 +1052,12 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       void client
         .setPlane(opened.handleId, opened.generation, next)
         .then(() => {
+          if (workspace.active !== undefined) {
+            applyProjectMutation({
+              kind: 'dataset.select',
+              selection: { ...workspace.active, plane: next },
+            })
+          }
           autoRangeLocked.current = false
           setMapping({ mode: 'linear', range: 'auto' })
           setSelection(next)
@@ -574,7 +1068,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           ),
         )
     },
-    [client, opened],
+    [applyProjectMutation, client, opened, workspace.active],
   )
 
   const onTile = useCallback((tile: RenderTile, first: boolean): void => {
@@ -596,16 +1090,34 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     }
   }, [])
 
-  const changeComponent = useCallback((next: number): void => {
-    autoRangeLocked.current = false
-    setMapping({ mode: 'linear', range: 'auto' })
-    setComponent(next)
-  }, [])
+  const changeComponent = useCallback(
+    (next: number): void => {
+      if (workspace.active !== undefined) {
+        applyProjectMutation({
+          kind: 'dataset.select',
+          selection: { ...workspace.active, component: next },
+        })
+      }
+      autoRangeLocked.current = false
+      setMapping({ mode: 'linear', range: 'auto' })
+      setComponent(next)
+    },
+    [applyProjectMutation, workspace.active],
+  )
 
-  const changeMapping = useCallback((next: DisplayMapping): void => {
-    autoRangeLocked.current = next.range === 'manual'
-    setMapping(next)
-  }, [])
+  const changeMapping = useCallback(
+    (next: DisplayMapping): void => {
+      const layer = workspace.layers.find(
+        ({ datasetReferenceId }) => datasetReferenceId === workspace.active?.datasetReferenceId,
+      )
+      if (layer !== undefined) {
+        applyProjectMutation({ kind: 'display.set-layer', layer: { ...layer, mapping: next } })
+      }
+      autoRangeLocked.current = next.range === 'manual'
+      setMapping(next)
+    },
+    [applyProjectMutation, workspace.active?.datasetReferenceId, workspace.layers],
+  )
 
   const setViewportApi = useCallback((api: ScientificViewportApi | null): void => {
     viewportApi.current = api
@@ -625,6 +1137,12 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const executeCommand = useCallback(
     (id: CommandId): void => {
       if (id === 'workspace.openSample') openSample()
+      else if (id === 'workspace.new') newProject()
+      else if (id === 'workspace.openProject') setProjectDialog(true)
+      else if (id === 'workspace.save') void saveProject()
+      else if (id === 'workspace.export') downloadProject(workspace)
+      else if (id === 'workspace.undo') performHistory('undo')
+      else if (id === 'workspace.redo') performHistory('redo')
       else if (id === 'viewport.fit') viewportApi.current?.fit()
       else if (id === 'viewport.oneToOne') viewportApi.current?.oneToOne()
       else if (id === 'panel.agent') setInspectorTab('agent')
@@ -632,29 +1150,45 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         updatePreferences({ theme: preferences.theme === 'dark' ? 'light' : 'dark' })
       else setPaletteOpen(true)
     },
-    [openSample, preferences.theme, updatePreferences],
+    [
+      newProject,
+      openSample,
+      performHistory,
+      preferences.theme,
+      saveProject,
+      updatePreferences,
+      workspace,
+    ],
   )
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent): void => {
-      const command = resolveShortcut(event, { hasDataset })
+      const command = resolveShortcut(event, {
+        hasDataset,
+        canUndo: historyState.undo.length > 0,
+        canRedo: historyState.redo.length > 0,
+      })
       if (command === undefined) return
       event.preventDefault()
       executeCommand(command)
     }
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [executeCommand, hasDataset])
+  }, [executeCommand, hasDataset, historyState.redo.length, historyState.undo.length])
 
   const paletteCommands = useMemo<readonly PaletteCommand[]>(() => {
-    const availability = getCommandAvailability({ hasDataset })
+    const availability = getCommandAvailability({
+      hasDataset,
+      canUndo: historyState.undo.length > 0,
+      canRedo: historyState.redo.length > 0,
+    })
     return workbenchCommands.map((command) => ({
       id: command.id,
       label: command.label,
       ...(command.shortcut === undefined ? {} : { shortcut: command.shortcut }),
       disabled: !availability[command.id],
     }))
-  }, [hasDataset])
+  }, [hasDataset, historyState.redo.length, historyState.undo.length])
 
   const startResize = useCallback(
     (config: ResizeConfig, event: ReactPointerEvent<HTMLHRElement>): void => {
@@ -685,7 +1219,10 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const submitRemote = (event: FormEvent): void => {
     event.preventDefault()
     setUrlDialog(false)
-    void runOpen((nextGeneration, signal) => client.openRemote(remoteUrl, nextGeneration, signal))
+    void runOpen((nextGeneration, signal) => client.openRemote(remoteUrl, nextGeneration, signal), {
+      kind: 'remote',
+      url: remoteUrl,
+    })
   }
 
   const themeIcon = preferences.theme === 'dark' ? 'sun' : 'moon'
@@ -706,10 +1243,51 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             </span>
             <div>
               <h1>PureJsImage Lab</h1>
-              <span>{workspace.title}</span>
+              <input
+                aria-label="Project title"
+                className="project-title"
+                defaultValue={workspace.project.title}
+                key={`${workspace.project.id}:${workspace.project.title}`}
+                maxLength={4_096}
+                onBlur={(event) => {
+                  const title = event.target.value.trim()
+                  if (title !== '' && title !== workspace.project.title) {
+                    applyProjectMutation({ kind: 'project.set-title', title })
+                  }
+                }}
+              />
+              <span>{savedProjectJson === projectJson ? 'Saved locally' : 'Unsaved changes'}</span>
             </div>
           </div>
           <Toolbar label="Workspace actions">
+            <Button onClick={newProject}>New</Button>
+            <Button onClick={() => setProjectDialog(true)}>Projects</Button>
+            <Button onClick={() => void saveProject()}>Save</Button>
+            <Button onClick={() => void saveProjectAs()}>Save as</Button>
+            <Button onClick={() => downloadProject(workspace)}>Export</Button>
+            <Button onClick={() => projectImportInput.current?.click()}>Import</Button>
+            <input
+              accept=".json,.pji-lab.json"
+              aria-label="Import PureJsImage Lab project"
+              className="visually-hidden"
+              onChange={(event) => void importProjectFile(event.target.files?.[0])}
+              ref={projectImportInput}
+              type="file"
+            />
+            <IconButton
+              disabled={historyState.undo.length === 0}
+              label="Undo project change"
+              onClick={() => performHistory('undo')}
+            >
+              <span aria-hidden="true">↶</span>
+            </IconButton>
+            <IconButton
+              disabled={historyState.redo.length === 0}
+              label="Redo project change"
+              onClick={() => performHistory('redo')}
+            >
+              <span aria-hidden="true">↷</span>
+            </IconButton>
             <Button onClick={() => fileInput.current?.click()} variant="primary">
               <Icon name="open" size={15} /> Open files
             </Button>
@@ -760,19 +1338,30 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             {status === 'crashed' ? (
               <Button
                 onClick={() =>
-                  void client.restart().then(() => {
-                    setStatus('ready')
-                    setError(undefined)
+                  void client.restart().then(async () => {
+                    runtime.clearRuntime()
+                    await replayWorkspace(workspace, undefined)
                   })
                 }
               >
                 Restart imaging Worker
               </Button>
-            ) : (
+            ) : rebindSourceId === undefined ? (
               <Button onClick={() => setError(undefined)}>Dismiss</Button>
+            ) : (
+              <Button onClick={() => rebindInput.current?.click()}>Choose source files</Button>
             )}
           </div>
         )}
+
+        <input
+          aria-label="Rebind local source files"
+          className="visually-hidden"
+          multiple
+          onChange={(event) => void rebindFiles([...(event.target.files ?? [])])}
+          ref={rebindInput}
+          type="file"
+        />
 
         <main className="workbench-main">
           <div className="workbench-primary">
@@ -786,31 +1375,41 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               </div>
               <nav aria-label="Project contents" className="navigator-tree">
                 <p className="tree-group">Sources</p>
-                {source === undefined ? (
+                {workspace.sources.length === 0 ? (
                   <TreeRow label="No source open" />
                 ) : (
-                  <TreeRow
-                    label={source.source.name}
-                    detail={fileSize(source.source.size)}
-                    selected
-                    onSelect={() => setInspectorTab('info')}
-                  />
+                  workspace.sources.map((reference) => (
+                    <TreeRow
+                      key={reference.id}
+                      label={reference.label}
+                      detail={reference.bound ? reference.locator.kind : 'rebind required'}
+                      selected={workspace.active?.sourceId === reference.id}
+                      onSelect={() => {
+                        if (!reference.bound) {
+                          setRebindSourceId(reference.id)
+                          rebindInput.current?.click()
+                        } else {
+                          setInspectorTab('info')
+                        }
+                      }}
+                    />
+                  ))
                 )}
                 <p className="tree-group">Datasets</p>
-                {source?.datasets.map((dataset) => (
+                {workspace.datasets.map((dataset) => (
                   <TreeRow
                     depth={1}
                     key={dataset.id}
-                    label={dataset.name ?? dataset.id}
-                    detail={`${dataset.axes.length}D`}
-                    selected={opened?.dataset.id === dataset.id}
-                    onSelect={() => void selectDataset(dataset.id)}
+                    label={dataset.descriptor.name ?? dataset.datasetId}
+                    detail={`${dataset.descriptor.axes.length}D`}
+                    selected={workspace.active?.datasetReferenceId === dataset.id}
+                    onSelect={() => void selectDataset(dataset.datasetId)}
                   />
                 ))}
-                {source === undefined && recentSources.length > 0 ? (
+                {workspace.sources.length === 0 && recentSources.length > 0 ? (
                   <p className="tree-group">Recent names</p>
                 ) : null}
-                {source === undefined
+                {workspace.sources.length === 0
                   ? recentSources.map((name) => (
                       <TreeRow depth={1} detail="rebind required" key={name} label={name} />
                     ))
@@ -913,12 +1512,19 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                 compact
                 items={inspectorTabs}
                 label="Inspector sections"
-                onSelect={setInspectorTab}
+                onSelect={(tab) => {
+                  setInspectorTab(tab)
+                  applyProjectMutation({
+                    kind: 'project.set-workflow',
+                    workflow: { ...workspace.workflow, inspector: tab },
+                  })
+                }}
                 selectedId={inspectorTab}
               />
               <div className="inspector-scroll">
                 <InspectorContent
                   component={component}
+                  history={historyState.undo}
                   mapping={mapping}
                   onComponent={changeComponent}
                   onMapping={changeMapping}
@@ -947,11 +1553,24 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             <Tabs
               items={bottomTabs}
               label="Analysis output sections"
-              onSelect={setBottomTab}
+              onSelect={(tab) => {
+                setBottomTab(tab)
+                applyProjectMutation({
+                  kind: 'project.set-workflow',
+                  workflow: { ...workspace.workflow, bottom: tab },
+                })
+              }}
               selectedId={bottomTab}
             />
             <div className="bottom-content">
-              <BottomContent histogram={histogram} log={log} opened={opened} tab={bottomTab} />
+              <BottomContent
+                histogram={histogram}
+                history={historyState.undo}
+                log={log}
+                opened={opened}
+                tab={bottomTab}
+                workspace={workspace}
+              />
             </div>
           </Panel>
         </main>
@@ -1005,6 +1624,90 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           </form>
         </div>
       ) : null}
+      {projectDialog ? (
+        <div className="url-dialog-backdrop">
+          <section aria-label="Recent projects" className="url-dialog" role="dialog">
+            <h2>Recent projects</h2>
+            <p>Projects and bounded result artifacts are stored only in this browser profile.</p>
+            <div className="recent-projects">
+              {recentProjects.length === 0 ? <p>No saved projects yet.</p> : null}
+              {recentProjects.map((project) => (
+                <button
+                  className="recent-project"
+                  key={project.id}
+                  onClick={() => {
+                    void projectStore
+                      .load(project.id)
+                      .then((snapshot) => {
+                        if (snapshot !== undefined) return loadProject(snapshot)
+                        throw new Error('The selected project no longer exists.')
+                      })
+                      .catch((openError: unknown) => {
+                        setProjectDialog(false)
+                        setError(
+                          openError instanceof Error
+                            ? openError.message
+                            : 'Unable to open the selected project.',
+                        )
+                      })
+                  }}
+                  type="button"
+                >
+                  <strong>{project.title}</strong>
+                  <span>
+                    {new Date(project.updatedAt).toLocaleString()} · {fileSize(project.bytes)}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="url-dialog__actions">
+              <Button onClick={() => setProjectDialog(false)}>Close</Button>
+              <Button onClick={() => projectImportInput.current?.click()} variant="primary">
+                Import project
+              </Button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {identityMismatch === undefined ? null : (
+        <div className="url-dialog-backdrop">
+          <section aria-label="Source identity mismatch" className="url-dialog" role="alertdialog">
+            <h2>Source identity mismatch</h2>
+            <p>
+              The selected files do not match the identity saved with this project. Analysis has not
+              run and the saved project is unchanged.
+            </p>
+            <div className="identity-warning">
+              <strong>{identityMismatch.openedSource.source.name}</strong>
+              <span>Use it only if this is an intentional source replacement.</span>
+            </div>
+            <div className="url-dialog__actions">
+              <Button
+                onClick={() => {
+                  setIdentityMismatch(undefined)
+                  rebindInput.current?.click()
+                }}
+              >
+                Choose another file
+              </Button>
+              <Button
+                onClick={() => {
+                  generation.current = identityMismatch.openedSource.generation
+                  applyRebind(
+                    identityMismatch.sourceId,
+                    identityMismatch.files,
+                    identityMismatch.openedSource,
+                    identityMismatch.openedDataset,
+                  )
+                }}
+                variant="primary"
+              >
+                Use selected source
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
       <CommandPalette
         commands={paletteCommands}
         onClose={() => setPaletteOpen(false)}

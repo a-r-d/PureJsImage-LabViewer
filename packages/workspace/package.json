@@ -20,7 +20,8 @@
     "clean": "node ../../tooling/scripts/clean-package.mjs"
   },
   "dependencies": {
-    "@pji-workbench/contracts": "workspace:*"
+    "@pji-workbench/contracts": "workspace:*",
+    "purejsimage": "0.10.0"
   },
   "devDependencies": {
     "typescript": "7.0.2",

@@ -4,10 +4,18 @@ export type CommandId =
   | 'theme.toggle'
   | 'viewport.fit'
   | 'viewport.oneToOne'
+  | 'workspace.export'
+  | 'workspace.new'
+  | 'workspace.openProject'
   | 'workspace.openSample'
+  | 'workspace.redo'
+  | 'workspace.save'
+  | 'workspace.undo'
 
 export interface CommandContext {
   readonly hasDataset: boolean
+  readonly canUndo?: boolean
+  readonly canRedo?: boolean
 }
 
 export interface WorkbenchCommand {
@@ -18,6 +26,41 @@ export interface WorkbenchCommand {
 }
 
 export const workbenchCommands: readonly WorkbenchCommand[] = [
+  {
+    id: 'workspace.new',
+    label: 'New project',
+    shortcut: 'Ctrl+Shift+N',
+    available: () => true,
+  },
+  {
+    id: 'workspace.openProject',
+    label: 'Open recent project',
+    shortcut: 'Ctrl+Shift+O',
+    available: () => true,
+  },
+  {
+    id: 'workspace.save',
+    label: 'Save project locally',
+    shortcut: 'Ctrl+S',
+    available: () => true,
+  },
+  {
+    id: 'workspace.export',
+    label: 'Export project JSON',
+    available: () => true,
+  },
+  {
+    id: 'workspace.undo',
+    label: 'Undo project change',
+    shortcut: 'Ctrl+Z',
+    available: ({ canUndo }) => canUndo === true,
+  },
+  {
+    id: 'workspace.redo',
+    label: 'Redo project change',
+    shortcut: 'Ctrl+Shift+Z',
+    available: ({ canRedo }) => canRedo === true,
+  },
   {
     id: 'workspace.openSample',
     label: 'Open sample SEM image',
@@ -77,6 +120,11 @@ function commandForShortcut(event: ShortcutEvent): CommandId | undefined {
   const control = event.ctrlKey || event.metaKey
   if (control && !event.shiftKey && key === 'k') return 'palette.open'
   if (control && !event.shiftKey && key === 'o') return 'workspace.openSample'
+  if (control && event.shiftKey && key === 'n') return 'workspace.new'
+  if (control && event.shiftKey && key === 'o') return 'workspace.openProject'
+  if (control && !event.shiftKey && key === 's') return 'workspace.save'
+  if (control && !event.shiftKey && key === 'z') return 'workspace.undo'
+  if (control && event.shiftKey && key === 'z') return 'workspace.redo'
   if (control && event.shiftKey && key === 'a') return 'panel.agent'
   if (control && event.shiftKey && key === 't') return 'theme.toggle'
   if (!control && !event.shiftKey && !event.altKey && key === 'f') return 'viewport.fit'

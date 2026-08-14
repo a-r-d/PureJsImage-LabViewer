@@ -8,6 +8,13 @@ import type {
   WorkerResponse,
 } from '@pji-workbench/contracts'
 import { rpcRequest } from '@pji-workbench/contracts'
+import {
+  computeAnalysisProjectHashes,
+  createBuiltInAnalysisOperationRegistry,
+  createBuiltInAnalysisValueTypeRegistry,
+  validateAnalysisProjectV1,
+} from 'purejsimage/analysis'
+import type { NormalizedScientificDatasetDescriptor } from 'purejsimage/scientific'
 import { encodeGsf } from 'purejsimage/scientific/readers/gsf'
 import { describe, expect, it } from 'vitest'
 
@@ -121,6 +128,36 @@ function rangeFetch(bytes: Uint8Array): typeof fetch {
 }
 
 describe('PureJsImage Worker host', () => {
+  it('accepts the persisted analysis slice through the public PureJsImage project validator', async () => {
+    const host = new ImagingWorkerHost()
+    const { source, dataset } = await openGenerated(host)
+    const graph = { schemaVersion: 1 as const, inputs: [], nodes: [], outputs: [] }
+    const bindings = []
+    const hashes = await computeAnalysisProjectHashes({ graph, bindings })
+    // The RPC descriptor is a bounded JSON projection of this public PureJsImage descriptor.
+    const descriptor = dataset.dataset as unknown as NormalizedScientificDatasetDescriptor
+    const validation = await validateAnalysisProjectV1(
+      {
+        schemaVersion: 1,
+        graph,
+        roiSet: { schemaVersion: 1, rois: [] },
+        bindings,
+        sourceReferences: [
+          { id: 'source-1', identity: source.identity, locatorHint: { kind: 'sample' } },
+        ],
+        createdWith: { packageVersion: '0.10.0', buildFingerprint: 'workbench-test' },
+        hashes,
+      },
+      {
+        operations: createBuiltInAnalysisOperationRegistry(),
+        valueTypes: createBuiltInAnalysisValueTypeRegistry(descriptor),
+        roi: { descriptor },
+      },
+    )
+    expect(validation.valid).toBe(true)
+    expect(validation.issues).toEqual([])
+  })
+
   it('pins the package and exposes the seven explicit reader descriptors', async () => {
     expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.10.0')
     expect(SUPPORTED_READERS.map(({ id }) => id)).toEqual([

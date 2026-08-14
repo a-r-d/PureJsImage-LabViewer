@@ -22,6 +22,27 @@ describe('workbench commands', () => {
     expect(resolveShortcut(event, { hasDataset: true })).toBe('viewport.fit')
   })
 
+  it('resolves save and revision history shortcuts from semantic availability', () => {
+    expect(
+      resolveShortcut(
+        { ...event, key: 's', ctrlKey: true },
+        { hasDataset: false, canUndo: false, canRedo: false },
+      ),
+    ).toBe('workspace.save')
+    expect(
+      resolveShortcut(
+        { ...event, key: 'z', ctrlKey: true },
+        { hasDataset: true, canUndo: true, canRedo: false },
+      ),
+    ).toBe('workspace.undo')
+    expect(
+      resolveShortcut(
+        { ...event, key: 'z', ctrlKey: true, shiftKey: true },
+        { hasDataset: true, canUndo: false, canRedo: true },
+      ),
+    ).toBe('workspace.redo')
+  })
+
   it('suppresses application shortcuts in editable controls', () => {
     expect(
       resolveShortcut(
