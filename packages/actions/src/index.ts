@@ -223,6 +223,13 @@ export class WorkbenchActionRegistry<Context> {
       : validateActionInput(descriptor.inputSchema, input)
   }
 
+  validateOutput(id: string, version: number, output: unknown): readonly ActionValidationIssue[] {
+    const descriptor = this.get(id, version)
+    return descriptor === undefined
+      ? [{ path: '', message: 'Unknown action version.' }]
+      : validateActionInput(descriptor.outputSchema, output)
+  }
+
   manifest(): ActionCapabilityManifestV1 {
     return { schemaVersion: 1, actions: this.list() }
   }
@@ -267,9 +274,11 @@ export class WorkbenchActionHost<Context> {
   ): Promise<JsonValue> {
     const plan = this.plan(id, version, input, context)
     const handler = this.#handlers.get(descriptorKey(id, version))
-    return handler?.dryRun === undefined
-      ? (plan as unknown as JsonValue)
-      : handler.dryRun(plan.input, context, signal)
+    const output =
+      handler?.dryRun === undefined
+        ? (plan as unknown as JsonValue)
+        : handler.dryRun(plan.input, context, signal)
+    return this.#validatedOutput(id, version, await output)
   }
 
   async execute(
@@ -282,6 +291,17 @@ export class WorkbenchActionHost<Context> {
     const plan = this.plan(id, version, input, context)
     const handler = this.#handlers.get(descriptorKey(id, version))
     if (handler === undefined) throw new Error(`No action handler registered: ${id}@${version}`)
-    return handler.execute(plan.input, context, signal)
+    return this.#validatedOutput(id, version, await handler.execute(plan.input, context, signal))
+  }
+
+  #validatedOutput(id: string, version: number, output: JsonValue): JsonValue {
+    const issues = this.#registry.validateOutput(id, version, output)
+    if (issues.length > 0)
+      throw new Error(
+        `Action output failed validation:\n${issues
+          .map(({ path, message }) => `${path || '/'}: ${message}`)
+          .join('\n')}`,
+      )
+    return output
   }
 }

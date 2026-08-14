@@ -18,6 +18,7 @@ import {
   ScanLine,
   Search,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
   SquareDashed,
   Sun,
@@ -219,6 +220,7 @@ export type IconName =
   | 'roi'
   | 'search'
   | 'settings'
+  | 'shield'
   | 'sliders'
   | 'sun'
   | 'undo'
@@ -246,6 +248,7 @@ const iconComponents: Readonly<Record<IconName, LucideIcon>> = {
   roi: SquareDashed,
   search: Search,
   settings: Settings,
+  shield: ShieldCheck,
   sliders: SlidersHorizontal,
   sun: Sun,
   undo: Undo2,

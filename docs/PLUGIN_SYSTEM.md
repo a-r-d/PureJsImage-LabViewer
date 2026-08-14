@@ -46,15 +46,10 @@ They execute with application trust and are never described as sandboxed.
 
 ### Tier 3: sandboxed code plugins
 
-Future user-pasted or AI-authored plugins execute outside the page realm through a capability-limited protocol.
-
-Potential implementations:
-
-- dedicated module Worker with a hardened RPC host;
-- sandboxed iframe for UI plugins;
-- QuickJS or another JavaScript runtime compiled to WASM for stricter execution isolation.
-
-Do not choose the final sandbox runtime in the skeleton. Define the protocol and security tests first.
+User- and AI-authored analysis scripts execute in a dedicated browser Worker containing a separate
+QuickJS-WASM runtime. They receive only the generated, versioned `@lab/api` capability surface.
+They never execute in the page, React realm, imaging Worker, or an unrestricted module Worker and
+receive no DOM, storage, credentials, source bytes, or ambient network APIs.
 
 ## Manifest
 
@@ -68,9 +63,11 @@ interface PluginManifestV1 {
   readonly author?: string
   readonly license?: string
   readonly entryKind: 'recipe' | 'trusted-module' | 'sandboxed-module'
-  readonly capabilities: readonly PluginCapability[]
-  readonly pureJsImageCompatibility: string
-  readonly appCompatibility: string
+  readonly requestedCapabilities: readonly ScriptCapability[]
+  readonly compatibility: {
+    readonly pureJsImage: string
+    readonly workbench: string
+  }
   readonly integrity?: {
     readonly algorithm: 'sha256'
     readonly digest: string
@@ -105,10 +102,10 @@ Default deny.
 - installation records;
 - content hashing;
 - compatibility checks;
-- RPC messages for a future sandbox;
+- bounded RPC messages for the script sandbox;
 - deterministic fixtures and conformance tests.
 
-It does not execute arbitrary code in V1.
+It does not execute code; `packages/scripts` owns the isolated runtime and Worker lifecycle.
 
 ## In-browser editor
 

@@ -97,4 +97,21 @@ describe('WorkbenchActionRegistry', () => {
       ),
     ).rejects.toThrow('at least 1 characters')
   })
+
+  it('rejects handler output that violates the public action schema', async () => {
+    const registry = new WorkbenchActionRegistry(definitions)
+    const host = new WorkbenchActionHost(
+      registry,
+      new Map([['project.set-title@1', { execute: () => ({ unexpected: true }) }]]),
+    )
+    await expect(
+      host.execute(
+        'project.set-title',
+        1,
+        { title: 'Valid input' },
+        { hasDataset: false },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow('Action output failed validation')
+  })
 })

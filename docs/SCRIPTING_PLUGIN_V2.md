@@ -133,6 +133,21 @@ Use defense in depth:
 
 Do not claim this has been independently security audited. Describe it as a restricted execution environment with explicit limitations.
 
+### Prompt 06 foundation status
+
+The implemented foundation uses a dedicated module Worker and lazily loaded QuickJS-WASM release
+runtime. `packages/plugin-sdk` validates bounded JSON-safe recipe, script, manifest, installation,
+permission, RPC, test, compatibility, integrity, and provenance contracts. `packages/scripts`
+generates Script API v1 from the semantic action manifest, resolves guest promises through bounded
+capability RPC, applies memory/stack/deadline/source/output/message/API/console quotas, and
+terminates the Worker on cancellation or protocol failure.
+
+The Scripts rail opens a developer proof with one built-in JavaScript fixture, source/manifest and
+permission inspection, validation, execution, bounded output, proposals, and action provenance.
+It is deliberately not the Script Studio: TypeScript compilation, editing, IndexedDB storage,
+install/import/export, user modules, and AI patching remain deferred. QuickJS, its Worker, and the
+proof UI are separate lazy chunks and are not requested during normal startup.
+
 ## Determinism and provenance
 
 In deterministic mode:

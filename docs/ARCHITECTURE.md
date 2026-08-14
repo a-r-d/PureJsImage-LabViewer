@@ -45,7 +45,12 @@ packages/agent
 
 packages/plugin-sdk
   Manifest schemas, recipe plugins, capability declarations, installation records,
-  and the future sandbox RPC protocol.
+  bounded script/recipe contracts, integrity, provenance, and sandbox RPC protocol.
+
+packages/scripts
+  Dedicated script Worker client, QuickJS-WASM runtime, generated script API, capability RPC,
+  quotas, cancellation/termination, and sandbox conformance tests. Application policy stays in
+  the composition root.
 
 packages/ui
   Design tokens and accessible reusable React components. No domain data access.
@@ -62,11 +67,11 @@ contracts
   ↑        ↑          ↑          ↑
 actions workspace  imaging   plugin-sdk
   ↑        ↑          ↑          ↑
-  └────────── workbench ─────────┘
-       ↑        ↑
-    viewport    agent
-       ↑        ↑
-       └── workbench
+  └─────── scripts ────┬─────────┘
+          ↑            ↑
+          └──── workbench ───────┘
+              ↑      ↑
+          viewport  agent
 
 ui → React only and generic contracts
 ```
@@ -158,7 +163,8 @@ The agent cannot:
 - access dataset bytes directly;
 - inspect the OpenRouter key through tools;
 - mutate React stores;
-- execute arbitrary JavaScript;
+- execute user- or AI-authored code anywhere except the dedicated script Worker and its separate
+  QuickJS-WASM runtime through the default-deny capability host;
 - bypass graph validation, dry-run, limits, or user approvals.
 
 ## Worker RPC
@@ -300,6 +306,11 @@ A Dockerized open-source service and a hosted implementation can both satisfy th
 - Keep Content Security Policy strict; avoid `unsafe-eval`.
 - OpenRouter requests go directly to OpenRouter only after explicit user action.
 - Plugins do not execute in the page realm.
+- User/AI-authored executable code runs only in the dedicated script Worker and QuickJS-WASM
+  runtime. It never runs in the page, React realm, imaging Worker, or an unrestricted module
+  Worker. The generated `@lab/api` module is the only initial import surface.
+- The CSP permits `wasm-unsafe-eval` solely so the self-hosted QuickJS module can compile;
+  JavaScript `unsafe-eval`, inline script, and cross-origin script remain forbidden.
 - Remote URLs require HTTPS except localhost development.
 - Do not proxy arbitrary URLs through a future backend without SSRF protections.
 

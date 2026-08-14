@@ -1,13 +1,8 @@
-export const PLUGIN_MANIFEST_SCHEMA_VERSION = 1 as const
+export * from './hash.js'
+export * from './types.js'
+export * from './validation.js'
 
-export type PluginEntryKind = 'recipe' | 'trusted-module' | 'sandboxed-module'
-
-export interface PluginManifestIdentity {
-  readonly schemaVersion: typeof PLUGIN_MANIFEST_SCHEMA_VERSION
-  readonly id: string
-  readonly version: string
-  readonly entryKind: PluginEntryKind
-}
+import type { PluginManifestIdentity } from './types.js'
 
 export function isDeclarativeRecipe(manifest: PluginManifestIdentity): boolean {
   return manifest.entryKind === 'recipe'

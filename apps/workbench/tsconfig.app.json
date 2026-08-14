@@ -14,6 +14,7 @@
     { "path": "../../packages/viewport" },
     { "path": "../../packages/agent" },
     { "path": "../../packages/plugin-sdk" },
+    { "path": "../../packages/scripts" },
     { "path": "../../packages/ui" },
     { "path": "../../packages/test-corpus" }
   ]

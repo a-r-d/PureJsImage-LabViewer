@@ -70,16 +70,19 @@ The key must never enter:
 
 Wrap storage behind a credential-store interface so a backend token broker can replace it later.
 
-## No arbitrary plugin execution in the first skeleton
+## Dedicated Worker plus QuickJS-WASM for untrusted scripts
 
-The first plugin system supports:
+User- and AI-authored JavaScript executes only inside a dedicated browser Worker containing a
+separate QuickJS-WASM runtime. `packages/scripts` owns lifecycle, serialization, quotas, and the
+generated `@lab/api`; the application owns semantic action handlers, policy, revision checks, and
+approvals. The production runtime uses exact `0.31.0` versions of `quickjs-emscripten-core` and the
+release-sync WASM variant. Debug tests use the matching debug-sync variant and leak detector.
 
-- declarative analysis recipes;
-- trusted locally installed modules during development;
-- manifests and capability declarations;
-- an editor and compile/validate flow behind a feature flag.
-
-Pasted or AI-authored code must not execute in the window realm. A future sandbox uses a dedicated Worker/iframe or a purpose-built WASM JavaScript runtime with explicit capabilities and quotas.
+The runtime is lazy: neither the Scripts UI, Worker, nor QuickJS WASM is fetched on normal startup.
+The synchronous variant is sufficient because guest promises are resolved through explicit
+capability messages and QuickJS pending-job scheduling; no ambient async host function is exposed.
+The CSP grants only `wasm-unsafe-eval`, not JavaScript `unsafe-eval`. This is a restricted execution
+environment with defense in depth, not a claim of independent security audit.
 
 ## Public PureJsImage package boundary is sacred
 

@@ -1,6 +1,7 @@
 import {
   type ActionAbortSignal,
   type ActionHandler,
+  type JsonValue,
   WorkbenchActionHost,
 } from '@pji-workbench/actions'
 import type {
@@ -18,6 +19,7 @@ import type {
   RpcJsonObject,
 } from '@pji-workbench/contracts'
 import { ImagingRpcError } from '@pji-workbench/imaging'
+import type { ScriptActionInvoker } from '@pji-workbench/scripts'
 import {
   Button,
   CommandPalette,
@@ -48,7 +50,16 @@ import {
   type WorkspaceSnapshot,
   type WorkspaceSourceReference,
 } from '@pji-workbench/workspace'
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type FormEvent,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   ANALYSIS_OPERATIONS,
   connectedComponentsGraph,
@@ -108,6 +119,12 @@ import { WorkbenchShell } from './WorkbenchShell.js'
 
 type OpenStatus = 'ready' | 'opening' | 'crashed'
 
+const ScriptProofSurface = lazy(() =>
+  import('../features/scripts/ScriptProofSurface.js').then(({ ScriptProofSurface: Surface }) => ({
+    default: Surface,
+  })),
+)
+
 const ACTIVE_ACTION_SIGNAL: ActionAbortSignal = {
   aborted: false,
   throwIfAborted: () => undefined,
@@ -119,6 +136,15 @@ function commandAction(execute: () => Promise<void> | void): ActionHandler<Comma
       await execute()
       return null
     },
+  }
+}
+
+function fixtureAction(
+  execute: (input: JsonValue) => JsonValue | Promise<JsonValue>,
+): ActionHandler<CommandContext> {
+  return {
+    dryRun: (input) => execute(input),
+    execute: (input) => execute(input),
   }
 }
 
@@ -185,6 +211,7 @@ function WorkbenchRuntime({
   const [bottomTab, setBottomTab] = useState<BottomTab>('histogram')
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [exampleGalleryOpen, setExampleGalleryOpen] = useState(false)
+  const [scriptProofOpen, setScriptProofOpen] = useState(false)
   const [recentSources, setRecentSources] = useState(() => readRecentSources(window.localStorage))
   const [log, setLog] = useState<readonly string[]>([])
   const [roiTool, setRoiTool] = useState<RoiTool>('select')
@@ -1397,6 +1424,130 @@ function WorkbenchRuntime({
         workbenchActionRegistry,
         new Map<string, ActionHandler<CommandContext>>([
           ['workspace.openSample@1', commandAction(openSample)],
+          [
+            'workspace.summary.read@1',
+            fixtureAction(() => ({
+              id: 'workspace:generated-particles',
+              title: 'Generated calibrated particles',
+              revision: 1,
+              sourceCount: 1,
+              datasetCount: 1,
+              roiCount: 1,
+            })),
+          ],
+          [
+            'source.list@1',
+            fixtureAction(() => [
+              { id: 'source:generated-particles', label: 'Generated particles', kind: 'generated' },
+            ]),
+          ],
+          [
+            'dataset.list@1',
+            fixtureAction(() => [
+              { id: 'dataset:particles', name: 'Calibrated particles', axes: ['y', 'x'] },
+            ]),
+          ],
+          [
+            'dataset.describe@1',
+            fixtureAction(() => ({
+              id: 'dataset:particles',
+              name: 'Calibrated particles',
+              shape: [512, 512],
+              components: 1,
+              calibration: { x: 2.5, y: 2.5, unit: 'nm', source: 'generated fixture' },
+            })),
+          ],
+          [
+            'roi.list@1',
+            fixtureAction(() => [
+              {
+                id: 'roi:known-region',
+                kind: 'rectangle',
+                label: 'Known particles',
+                bounds: { x: 32, y: 40, width: 224, height: 192 },
+              },
+            ]),
+          ],
+          [
+            'roi.create@1',
+            fixtureAction((input) => ({
+              proposalId: 'proposal:roi-1',
+              status: 'requires-approval',
+              normalized: input,
+            })),
+          ],
+          [
+            'analysis.catalog.read@1',
+            fixtureAction(() => ({
+              operations: [
+                { id: 'threshold.manual', version: 1, title: 'Manual threshold' },
+                { id: 'measure.statistics', version: 1, title: 'ROI statistics' },
+              ],
+            })),
+          ],
+          [
+            'analysis.describe@1',
+            fixtureAction(() => ({
+              id: 'threshold.manual',
+              version: 1,
+              acceptedDatasets: ['scalar-2d'],
+              deterministic: true,
+            })),
+          ],
+          [
+            'analysis.normalize@1',
+            fixtureAction((input) => ({ normalized: input, operationVersion: 1 })),
+          ],
+          [
+            'analysis.dry-run@1',
+            fixtureAction((input) => ({
+              planId: 'plan:threshold-1',
+              normalized: input,
+              estimatedPeakBytes: 1_048_576,
+              estimatedTiles: 4,
+              status: 'reviewed-fixture-plan',
+            })),
+          ],
+          [
+            'analysis.request-execute@1',
+            fixtureAction((input) => ({
+              proposalId: 'proposal:analysis-1',
+              normalized: input,
+              status: 'requires-approval',
+            })),
+          ],
+          [
+            'result.summary.read@1',
+            fixtureAction(() => ({ resultId: 'result:fixture', rowCount: 12, bounded: true })),
+          ],
+          [
+            'result.page.read@1',
+            fixtureAction(() => ({ resultId: 'result:fixture', offset: 0, rows: [] })),
+          ],
+          [
+            'viewport.state.read@1',
+            fixtureAction(() => ({ center: [256, 256], zoom: 1, datasetId: 'dataset:particles' })),
+          ],
+          [
+            'viewport.state.propose@1',
+            fixtureAction((input) => ({ proposalId: 'proposal:viewport-1', state: input })),
+          ],
+          [
+            'panel.select@1',
+            fixtureAction((input) => ({ proposalId: 'proposal:panel-1', panel: input })),
+          ],
+          [
+            'script.log@1',
+            fixtureAction((input) => {
+              const message =
+                typeof input === 'object' && input !== null && !Array.isArray(input)
+                  ? (input as { readonly [key: string]: JsonValue })['message']
+                  : undefined
+              if (typeof message === 'string')
+                setLog((current) => [...current, `Script · ${message}`])
+              return null
+            }),
+          ],
           ['workspace.new@1', commandAction(newProject)],
           ['workspace.openProject@1', commandAction(() => setProjectDialog(true))],
           ['workspace.save@1', commandAction(saveProject)],
@@ -1432,6 +1583,17 @@ function WorkbenchRuntime({
       workspace,
     ],
   )
+
+  const scriptInvoker = useMemo<ScriptActionInvoker>(
+    () => ({
+      invoke: (id, version, input, mode) =>
+        mode === 'dry-run'
+          ? actionHost.dryRun(id, version, input, { hasDataset: true }, ACTIVE_ACTION_SIGNAL)
+          : actionHost.execute(id, version, input, { hasDataset: true }, ACTIVE_ACTION_SIGNAL),
+    }),
+    [actionHost],
+  )
+  const scriptActionManifest = useMemo(() => workbenchActionRegistry.manifest(), [])
 
   const executeAction = useCallback(
     (id: WorkbenchActionId): void => {
@@ -1761,7 +1923,12 @@ function WorkbenchRuntime({
               >
                 <Icon name="results" />
               </IconButton>
-              <IconButton className="mode-rail__button" disabled label="Scripts mode unavailable">
+              <IconButton
+                aria-pressed={scriptProofOpen}
+                className="mode-rail__button"
+                label="Scripts sandbox proof"
+                onClick={() => setScriptProofOpen(true)}
+              >
                 <Icon name="code" />
               </IconButton>
               <IconButton
@@ -2139,6 +2306,21 @@ function WorkbenchRuntime({
         </div>
       )}
       {exampleGalleryOpen ? <ExampleGallery onClose={() => setExampleGalleryOpen(false)} /> : null}
+      {scriptProofOpen ? (
+        <Suspense
+          fallback={
+            <div className="script-proof-backdrop" role="status">
+              Loading sandbox tools…
+            </div>
+          }
+        >
+          <ScriptProofSurface
+            actionManifest={scriptActionManifest}
+            invoker={scriptInvoker}
+            onClose={() => setScriptProofOpen(false)}
+          />
+        </Suspense>
+      ) : null}
       <CommandPalette
         commands={paletteCommands}
         onClose={() => setPaletteOpen(false)}

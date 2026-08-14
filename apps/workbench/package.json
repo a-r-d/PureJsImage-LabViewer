@@ -21,6 +21,7 @@
     "@pji-workbench/contracts": "workspace:*",
     "@pji-workbench/imaging": "workspace:*",
     "@pji-workbench/plugin-sdk": "workspace:*",
+    "@pji-workbench/scripts": "workspace:*",
     "@pji-workbench/test-corpus": "workspace:*",
     "@pji-workbench/ui": "workspace:*",
     "@pji-workbench/viewport": "workspace:*",

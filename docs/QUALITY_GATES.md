@@ -16,6 +16,8 @@ pnpm test:a11y
 pnpm test:visual
 pnpm test:corpus
 pnpm test:performance
+pnpm test:sandbox:release
+pnpm test:sandbox:debug
 pnpm deploy:dry-run
 ```
 
@@ -170,6 +172,11 @@ Fail on meaningful regressions against checked budgets. Record the test machine/
 - plugin capability tests;
 - prompt-injection permission tests;
 - worker message size/depth limits.
+- sandbox source/output/message/API/console/memory/stack/deadline limits;
+- QuickJS release behavior plus debug-variant handle/runtime leak detection;
+- no ambient DOM, storage, network, credentials, clock, random, or unrestricted module loader;
+- CSP allows only `wasm-unsafe-eval` for the self-hosted QuickJS module and still forbids
+  JavaScript `unsafe-eval`.
 
 ## Corpus checks
 

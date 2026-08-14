@@ -49,6 +49,9 @@ importers:
       '@pji-workbench/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      '@pji-workbench/scripts':
+        specifier: workspace:*
+        version: link:../../packages/scripts
       '@pji-workbench/test-corpus':
         specifier: workspace:*
         version: link:../../packages/test-corpus
@@ -149,6 +152,31 @@ importers:
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+
+  packages/scripts:
+    dependencies:
+      '@jitl/quickjs-wasmfile-release-sync':
+        specifier: 0.31.0
+        version: 0.31.0
+      '@pji-workbench/actions':
+        specifier: workspace:*
+        version: link:../actions
+      '@pji-workbench/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
+      quickjs-emscripten-core:
+        specifier: 0.31.0
+        version: 0.31.0
+    devDependencies:
+      '@jitl/quickjs-wasmfile-debug-sync':
+        specifier: 0.31.0
+        version: 0.31.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -655,6 +683,15 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [x64]
     os: [win32]
+
+  '@jitl/quickjs-ffi-types@0.31.0':
+    resolution: {integrity: sha512-1yrgvXlmXH2oNj3eFTrkwacGJbmM0crwipA3ohCrjv52gBeDaD7PsTvFYinlAnqU8iPME3LGP437yk05a2oejw==}
+
+  '@jitl/quickjs-wasmfile-debug-sync@0.31.0':
+    resolution: {integrity: sha512-8XvloaaWBONqcHXYs5tWOjdhQVxzULilIfB2hvZfS6S+fI4m2+lFiwQy7xeP8ExHmiZ7D8gZGChNkdLgjGfknw==}
+
+  '@jitl/quickjs-wasmfile-release-sync@0.31.0':
+    resolution: {integrity: sha512-hYduecOByj9AsAfsJhZh5nA6exokmuFC8cls39+lYmTCGY51bgjJJJwReEu7Ff7vBWaQCL6TeDdVlnp2WYz0jw==}
 
   '@jridgewell/resolve-uri@3.1.2':
     resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
@@ -1194,6 +1231,9 @@ packages:
     resolution: {integrity: sha512-61kekgp4drzmsufXoTa53sMtk4WGNkeKeNiqwjvACDmyLWtBQdWdFfZfFAxSLziPAYXLlhMJRsquDg5SSOv+Rg==}
     engines: {node: '>=22'}
 
+  quickjs-emscripten-core@0.31.0:
+    resolution: {integrity: sha512-oQz8p0SiKDBc1TC7ZBK2fr0GoSHZKA0jZIeXxsnCyCs4y32FStzCW4d1h6E1sE0uHDMbGITbk2zhNaytaoJwXQ==}
+
   react-dom@19.2.8:
     resolution: {integrity: sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==}
     peerDependencies:
@@ -1666,6 +1706,16 @@ snapshots:
   '@img/sharp-win32-x64@0.35.2':
     optional: true
 
+  '@jitl/quickjs-ffi-types@0.31.0': {}
+
+  '@jitl/quickjs-wasmfile-debug-sync@0.31.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.31.0
+
+  '@jitl/quickjs-wasmfile-release-sync@0.31.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.31.0
+
   '@jridgewell/resolve-uri@3.1.2': {}
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
@@ -2051,6 +2101,10 @@ snapshots:
       source-map-js: 1.2.1
 
   purejsimage@0.10.0: {}
+
+  quickjs-emscripten-core@0.31.0:
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.31.0
 
   react-dom@19.2.8(react@19.2.8):
     dependencies:

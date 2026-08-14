@@ -22,17 +22,30 @@ export type WorkbenchActionId =
   | CommandId
   | 'analysis.connected-components.execute'
   | 'analysis.connected-components.plan'
+  | 'analysis.catalog.read'
+  | 'analysis.describe'
+  | 'analysis.dry-run'
+  | 'analysis.normalize'
+  | 'analysis.request-execute'
   | 'analysis.threshold.commit'
   | 'analysis.threshold.preview'
+  | 'dataset.describe'
+  | 'dataset.list'
   | 'panel.select'
   | 'pipeline.node.remove'
   | 'result.page.read'
+  | 'result.summary.read'
   | 'roi.create'
+  | 'roi.list'
   | 'roi.remove'
   | 'roi.select'
   | 'source.open-local'
   | 'source.open-remote'
+  | 'source.list'
+  | 'script.log'
   | 'viewport.state.read'
+  | 'viewport.state.propose'
+  | 'workspace.summary.read'
 
 export interface CommandContext {
   readonly hasDataset: boolean
@@ -168,6 +181,64 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
   },
   {
     descriptor: descriptor(
+      'workspace.summary.read',
+      'Read workspace summary',
+      'Return a bounded semantic workspace and revision summary.',
+      'workspace',
+      {
+        mutability: 'read',
+        permissions: ['workspace.read'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'source.list',
+      'List sources',
+      'List bounded source descriptors.',
+      'source',
+      {
+        mutability: 'read',
+        permissions: ['source.read-metadata'],
+        outputSchema: { type: 'array', maxItems: 64 },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'dataset.list',
+      'List datasets',
+      'List bounded dataset descriptors.',
+      'dataset',
+      {
+        mutability: 'read',
+        permissions: ['dataset.read-descriptor'],
+        outputSchema: { type: 'array', maxItems: 256 },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'dataset.describe',
+      'Describe dataset',
+      'Read one bounded dataset descriptor.',
+      'dataset',
+      {
+        mutability: 'read',
+        permissions: ['dataset.read-descriptor'],
+        inputSchema: {
+          type: 'object',
+          properties: { datasetId: { type: 'string', minLength: 1, maxLength: 256 } },
+          required: ['datasetId'],
+          additionalProperties: false,
+        },
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
       'viewport.fit',
       'Fit image to viewport',
       'Fit the active dataset in the specimen viewport.',
@@ -192,9 +263,27 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
       'Read viewport state',
       'Read a bounded camera and selection summary.',
       'viewport',
-      { mutability: 'read', permissions: ['viewport.read'] },
+      {
+        mutability: 'read',
+        permissions: ['viewport.read'],
+        outputSchema: { type: 'object' },
+      },
     ),
     availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'viewport.state.propose',
+      'Propose viewport state',
+      'Validate a bounded viewport state proposal without mutating the camera.',
+      'viewport',
+      {
+        mutability: 'proposal',
+        permissions: ['viewport.propose'],
+        inputSchema: { type: 'object', additionalProperties: true },
+        outputSchema: { type: 'object' },
+      },
+    ),
   },
   {
     descriptor: descriptor(
@@ -202,9 +291,40 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
       'Create ROI',
       'Create a validated ROI on the active dataset.',
       'roi',
-      { cost: 'interactive', cancellable: true, permissions: ['roi.propose'] },
+      {
+        cost: 'interactive',
+        cancellable: true,
+        permissions: ['roi.propose'],
+        inputSchema: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['rectangle', 'ellipse', 'line', 'polygon'] },
+            label: { type: 'string', minLength: 1, maxLength: 256 },
+            x: { type: 'number' },
+            y: { type: 'number' },
+            width: { type: 'number', minimum: 0 },
+            height: { type: 'number', minimum: 0 },
+          },
+          required: ['kind', 'label'],
+          additionalProperties: false,
+        },
+        outputSchema: { type: 'object' },
+      },
     ),
     availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'roi.list',
+      'List ROIs',
+      'List bounded semantic ROI descriptors.',
+      'roi',
+      {
+        mutability: 'read',
+        permissions: ['roi.read'],
+        outputSchema: { type: 'array', maxItems: 256 },
+      },
+    ),
   },
   {
     descriptor: descriptor('roi.select', 'Select ROI', 'Select a workspace ROI.', 'roi', {
@@ -224,11 +344,99 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
   },
   {
     descriptor: descriptor(
+      'analysis.catalog.read',
+      'Read analysis catalog',
+      'Return bounded operation identities and titles.',
+      'analysis',
+      { mutability: 'read', permissions: ['analysis.catalog'], outputSchema: { type: 'object' } },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'analysis.describe',
+      'Describe analysis operation',
+      'Describe one versioned operation.',
+      'analysis',
+      {
+        mutability: 'read',
+        permissions: ['analysis.catalog'],
+        inputSchema: {
+          type: 'object',
+          properties: { operationId: { type: 'string', minLength: 1, maxLength: 256 } },
+          required: ['operationId'],
+          additionalProperties: false,
+        },
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'analysis.normalize',
+      'Normalize analysis input',
+      'Normalize bounded operation parameters.',
+      'analysis',
+      {
+        mutability: 'read',
+        permissions: ['analysis.dry-run'],
+        inputSchema: { type: 'object', additionalProperties: true },
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'analysis.dry-run',
+      'Dry-run analysis operation',
+      'Return a bounded resource plan without execution.',
+      'analysis',
+      {
+        mutability: 'read',
+        cost: 'interactive',
+        cancellable: true,
+        permissions: ['analysis.dry-run'],
+        inputSchema: { type: 'object', additionalProperties: true },
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'analysis.request-execute',
+      'Request analysis execution',
+      'Create a reviewed execution proposal without bypassing approval.',
+      'analysis',
+      {
+        mutability: 'proposal',
+        cost: 'expensive',
+        cancellable: true,
+        permissions: ['analysis.execute'],
+        inputSchema: { type: 'object', additionalProperties: true },
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
       'analysis.threshold.preview',
       'Preview threshold',
       'Run a bounded threshold preview without project history.',
       'analysis',
       { cost: 'interactive', cancellable: true, permissions: ['analysis.execute'] },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'result.summary.read',
+      'Read result summary',
+      'Read one bounded result summary without table payloads.',
+      'results',
+      {
+        mutability: 'read',
+        permissions: ['result.read-summary'],
+        outputSchema: { type: 'object' },
+      },
     ),
     availability: requiresDataset,
   },
@@ -278,6 +486,7 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
         cost: 'interactive',
         cancellable: true,
         permissions: ['result.read-page'],
+        outputSchema: { type: 'object' },
       },
     ),
     availability: requiresDataset,
@@ -297,7 +506,35 @@ const actionDefinitions: readonly ActionDefinition<CommandContext>[] = [
       'Select workbench panel',
       'Open a named workbench surface.',
       'ui',
-      { permissions: ['ui.propose'] },
+      {
+        mutability: 'proposal',
+        permissions: ['ui.propose'],
+        inputSchema: {
+          type: 'object',
+          properties: { panel: { type: 'string', minLength: 1, maxLength: 64 } },
+          required: ['panel'],
+          additionalProperties: false,
+        },
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
+      'script.log',
+      'Write bounded script log',
+      'Record one bounded sandbox log line.',
+      'scripts',
+      {
+        mutability: 'read',
+        permissions: ['workspace.read'],
+        inputSchema: {
+          type: 'object',
+          properties: { message: { type: 'string', minLength: 1, maxLength: 4_096 } },
+          required: ['message'],
+          additionalProperties: false,
+        },
+      },
     ),
   },
   {

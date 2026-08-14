@@ -61,6 +61,11 @@ if (!headers.includes('Content-Security-Policy:')) {
 if (headers.includes("'unsafe-eval'")) {
   violations.push("apps/workbench/public/_headers: CSP permits 'unsafe-eval'")
 }
+if (!headers.includes("script-src 'self' 'wasm-unsafe-eval'")) {
+  violations.push(
+    "apps/workbench/public/_headers: QuickJS requires narrowly scoped 'wasm-unsafe-eval'",
+  )
+}
 
 if (violations.length > 0) {
   console.error(`Static security violations:\n${violations.join('\n')}`)
