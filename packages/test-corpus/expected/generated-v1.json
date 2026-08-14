@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "reference": {
+    "implementation": "independent-analytic-generated-fixture-reference",
+    "version": "1.0.0"
+  },
+  "scenarios": [
+    {
+      "id": "generated.calibrated-particles",
+      "width": 2048,
+      "height": 1536,
+      "xStep": 0.42,
+      "yStep": 0.42,
+      "unit": "nm",
+      "originValue": 224,
+      "tolerance": 0.000001,
+      "samples": [
+        { "x": 0, "y": 0, "value": 224 },
+        { "x": 1, "y": 1, "value": 123.2845687866211 },
+        { "x": 257, "y": 193, "value": 98.45259857177734 },
+        { "x": 512, "y": 384, "value": 52.79365539550781 }
+      ]
+    },
+    {
+      "id": "generated.touching-particles",
+      "width": 2048,
+      "height": 1536,
+      "xStep": 0.5,
+      "yStep": 0.5,
+      "unit": "nm",
+      "originValue": 42,
+      "tolerance": 0.000001,
+      "samples": [
+        { "x": 0, "y": 0, "value": 42 },
+        { "x": 1, "y": 1, "value": 42.120479583740234 },
+        { "x": 257, "y": 193, "value": 39.85666275024414 },
+        { "x": 512, "y": 384, "value": 35.292572021484375 }
+      ]
+    },
+    {
+      "id": "generated.periodic-lattice",
+      "width": 1024,
+      "height": 1024,
+      "xStep": 0.08,
+      "yStep": 0.08,
+      "unit": "nm",
+      "originValue": 128,
+      "tolerance": 0.000001,
+      "samples": [
+        { "x": 0, "y": 0, "value": 128 },
+        { "x": 1, "y": 1, "value": 136.3500213623047 },
+        { "x": 257, "y": 193, "value": 123.69715118408203 },
+        { "x": 512, "y": 384, "value": 138.39230346679688 }
+      ]
+    },
+    {
+      "id": "generated.afm-tilted-surface",
+      "width": 1024,
+      "height": 768,
+      "xStep": 2,
+      "yStep": 2,
+      "unit": "nm",
+      "originValue": 4.55,
+      "tolerance": 0.000001,
+      "samples": [
+        { "x": 0, "y": 0, "value": 4.550000190734863 },
+        { "x": 1, "y": 1, "value": 4.604405403137207 },
+        { "x": 257, "y": 193, "value": 6.208221435546875 },
+        { "x": 512, "y": 384, "value": 8.324737548828125 }
+      ]
+    },
+    {
+      "id": "generated.batch-particles",
+      "width": 2048,
+      "height": 1536,
+      "xStep": 0.42,
+      "yStep": 0.42,
+      "unit": "nm",
+      "originValue": 119,
+      "tolerance": 0.000001,
+      "samples": [
+        { "x": 0, "y": 0, "value": 119 },
+        { "x": 1, "y": 1, "value": 123.2845687866211 },
+        { "x": 257, "y": 193, "value": 98.45259857177734 },
+        { "x": 512, "y": 384, "value": 52.79365539550781 }
+      ]
+    }
+  ]
+}

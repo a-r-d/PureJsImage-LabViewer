@@ -328,6 +328,8 @@ function WorkbenchRuntime({
       sourceBytes: 0,
       datasetPixels: 0,
       firstTileMilliseconds: null,
+      projectId: '',
+      invocationIds: [],
     }
   }
   window.__PJI_WORKBENCH_METRICS__.reactRenders += 1
@@ -413,6 +415,14 @@ function WorkbenchRuntime({
   const openedAt = useRef(0)
   const autoRangeLocked = useRef(false)
   openedRef.current = opened
+  window.__PJI_WORKBENCH_METRICS__.projectId = workspace.project.id
+  window.__PJI_WORKBENCH_METRICS__.invocationIds = [
+    ...new Set(
+      [previewResult.current, activeResult.current].flatMap((id) =>
+        id === undefined ? [] : [String(id)],
+      ),
+    ),
+  ]
   const hasDataset = opened !== undefined && selection !== undefined
   const activeCalibration = workspace.calibrations.find(
     ({ datasetReferenceId: id }) => id === workspace.active?.datasetReferenceId,

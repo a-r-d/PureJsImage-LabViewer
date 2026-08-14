@@ -5,6 +5,9 @@ import {
   type CorpusValidationIssue,
   type CorpusValidationResult,
   type ExampleScenarioV1,
+  type ExampleWorkflowStepAction,
+  type ScenarioCapability,
+  type ScenarioTestTier,
 } from './types.js'
 
 const STATUSES = new Set<CorpusStatus>([
@@ -17,6 +20,54 @@ const STATUSES = new Set<CorpusStatus>([
 const SHA256 = /^[a-f0-9]{64}$/
 const SPDX_OR_PROJECT_LICENSE = /^[A-Za-z0-9][A-Za-z0-9.+-]*$/
 const SEMANTIC_ID = /^[a-z0-9][a-z0-9.-]*$/
+const TEST_TIERS = new Set<ScenarioTestTier>([
+  'pr',
+  'main',
+  'nightly',
+  'scheduled',
+  'manual',
+  'local-expensive',
+])
+const STEP_ACTIONS = new Set<ExampleWorkflowStepAction>([
+  'gallery.open',
+  'source.inspect',
+  'viewport.inspect',
+  'roi.measure',
+  'analysis.core',
+  'analysis.particles',
+  'analysis.watershed',
+  'analysis.fft',
+  'analysis.surface',
+  'analysis.stack',
+  'analysis.batch',
+  'script.test',
+  'project.replay',
+  'lifecycle.hostile',
+  'accessibility.scan',
+  'visual.capture',
+])
+const CAPABILITIES = new Set<ScenarioCapability>([
+  'source.reader-dataset',
+  'source.axes-components-calibration-metadata',
+  'source.local-range-parity',
+  'source.range-byte-budget',
+  'source.first-useful-tile',
+  'viewport.navigation-value-readout',
+  'roi.all-types-and-units',
+  'analysis.filters-transforms-background',
+  'analysis.threshold-morphology-watershed',
+  'analysis.components-filtering-measurements',
+  'analysis.fft-profile-d-spacing',
+  'analysis.stack-projection-registration',
+  'analysis.afm-leveling-roughness',
+  'analysis.batch-partial-failure',
+  'scripts.sandbox-recipe-replay',
+  'project.save-reopen-rebind',
+  'lifecycle.cancel-crash-cleanup-release',
+  'accessibility.keyboard',
+  'results.linked-selection',
+  'export.bounded',
+])
 
 function rejectUnknownKeys(
   value: Readonly<Record<string, unknown>>,
@@ -120,7 +171,7 @@ function validateWorkflows(value: unknown, path: string, issues: CorpusValidatio
     }
     rejectUnknownKeys(
       workflow,
-      ['id', 'title', 'summary', 'artifactId', 'artifactKind', 'expected'],
+      ['id', 'title', 'summary', 'artifactId', 'artifactKind', 'steps', 'oracle', 'expected'],
       workflowPath,
       issues,
     )
@@ -131,6 +182,49 @@ function validateWorkflows(value: unknown, path: string, issues: CorpusValidatio
       text(workflow[key], `${workflowPath}/${key}`, issues)
     if (!['recipe', 'script'].includes(String(workflow['artifactKind'])))
       issues.push({ path: `${workflowPath}/artifactKind`, message: 'Invalid artifact kind.' })
+    if (!Array.isArray(workflow['steps']) || workflow['steps'].length === 0)
+      issues.push({ path: `${workflowPath}/steps`, message: 'Workflow steps are required.' })
+    else
+      workflow['steps'].forEach((step, stepIndex) => {
+        const stepPath = `${workflowPath}/steps/${stepIndex}`
+        if (!record(step)) {
+          issues.push({ path: stepPath, message: 'Expected a workflow step object.' })
+          return
+        }
+        rejectUnknownKeys(step, ['id', 'action', 'description'], stepPath, issues)
+        const stepId = text(step['id'], `${stepPath}/id`, issues)
+        if (!SEMANTIC_ID.test(stepId))
+          issues.push({ path: `${stepPath}/id`, message: 'Workflow step ID is malformed.' })
+        if (
+          typeof step['action'] !== 'string' ||
+          !STEP_ACTIONS.has(step['action'] as ExampleWorkflowStepAction)
+        )
+          issues.push({ path: `${stepPath}/action`, message: 'Unknown workflow step action.' })
+        text(step['description'], `${stepPath}/description`, issues)
+      })
+    const oracle = workflow['oracle']
+    if (!record(oracle))
+      issues.push({ path: `${workflowPath}/oracle`, message: 'Oracle reference is required.' })
+    else {
+      rejectUnknownKeys(
+        oracle,
+        ['id', 'implementation', 'version', 'tolerance'],
+        `${workflowPath}/oracle`,
+        issues,
+      )
+      for (const key of ['id', 'implementation', 'version'])
+        text(oracle[key], `${workflowPath}/oracle/${key}`, issues)
+      if (
+        oracle['tolerance'] !== undefined &&
+        (typeof oracle['tolerance'] !== 'number' ||
+          !Number.isFinite(oracle['tolerance']) ||
+          oracle['tolerance'] < 0)
+      )
+        issues.push({
+          path: `${workflowPath}/oracle/tolerance`,
+          message: 'Invalid oracle tolerance.',
+        })
+    }
     expectedResults(workflow['expected'], `${workflowPath}/expected`, issues)
   })
 }
@@ -147,11 +241,45 @@ function validateBudgets(value: unknown, path: string, issues: CorpusValidationI
     'maxArchiveFiles',
     'maxFirstUsefulTileMilliseconds',
     'maxCancellationMilliseconds',
+    'maxCompletionMilliseconds',
+    'maxPeakManagedBytes',
+    'maxRangeRequests',
   ]
   rejectUnknownKeys(value, keys, path, issues)
   for (const key of keys)
     if (!Number.isSafeInteger(value[key]) || Number(value[key]) < 0)
       issues.push({ path: `${path}/${key}`, message: 'Expected a non-negative safe integer.' })
+}
+
+function validateTestPlan(value: unknown, path: string, issues: CorpusValidationIssue[]): void {
+  if (!record(value)) {
+    issues.push({ path, message: 'Scenario test plan is required.' })
+    return
+  }
+  rejectUnknownKeys(
+    value,
+    [
+      'tier',
+      'capabilities',
+      'screenshotStates',
+      'accessibility',
+      'projectReplay',
+      'agentEvalCaseIds',
+    ],
+    path,
+    issues,
+  )
+  if (typeof value['tier'] !== 'string' || !TEST_TIERS.has(value['tier'] as ScenarioTestTier))
+    issues.push({ path: `${path}/tier`, message: 'Unknown scenario test tier.' })
+  const capabilities = stringArray(value['capabilities'], `${path}/capabilities`, issues)
+  for (const capability of capabilities)
+    if (!CAPABILITIES.has(capability as ScenarioCapability))
+      issues.push({ path: `${path}/capabilities`, message: `Unknown capability ${capability}.` })
+  stringArray(value['screenshotStates'], `${path}/screenshotStates`, issues)
+  stringArray(value['agentEvalCaseIds'], `${path}/agentEvalCaseIds`, issues)
+  for (const key of ['accessibility', 'projectReplay'])
+    if (typeof value[key] !== 'boolean')
+      issues.push({ path: `${path}/${key}`, message: 'Expected a boolean.' })
 }
 
 function validateScenario(value: unknown, index: number, issues: CorpusValidationIssue[]): void {
@@ -183,6 +311,7 @@ function validateScenario(value: unknown, index: number, issues: CorpusValidatio
       'workflows',
       'expected',
       'budgets',
+      'testPlan',
       'testTags',
       'verifiedAt',
     ],
@@ -362,6 +491,7 @@ function validateScenario(value: unknown, index: number, issues: CorpusValidatio
   validateWorkflows(value['workflows'], `${path}/workflows`, issues)
   expectedResults(value['expected'], `${path}/expected`, issues)
   validateBudgets(value['budgets'], `${path}/budgets`, issues)
+  validateTestPlan(value['testPlan'], `${path}/testPlan`, issues)
 }
 
 export function validateCorpusManifest(value: unknown): CorpusValidationResult<CorpusManifestV1> {
@@ -410,7 +540,12 @@ function freezeScenario(scenario: ExampleScenarioV1): ExampleScenarioV1 {
     testTags: Object.freeze([...scenario.testTags]),
     workflows: Object.freeze(
       scenario.workflows.map((workflow) =>
-        Object.freeze({ ...workflow, expected: Object.freeze([...workflow.expected]) }),
+        Object.freeze({
+          ...workflow,
+          steps: Object.freeze(workflow.steps.map((step) => Object.freeze({ ...step }))),
+          oracle: Object.freeze({ ...workflow.oracle }),
+          expected: Object.freeze([...workflow.expected]),
+        }),
       ),
     ),
     expected: Object.freeze([...scenario.expected]),
@@ -421,5 +556,11 @@ function freezeScenario(scenario: ExampleScenarioV1): ExampleScenarioV1 {
     license: Object.freeze({ ...scenario.license }),
     preview: Object.freeze({ ...scenario.preview }),
     budgets: Object.freeze({ ...scenario.budgets }),
+    testPlan: Object.freeze({
+      ...scenario.testPlan,
+      capabilities: Object.freeze([...scenario.testPlan.capabilities]),
+      screenshotStates: Object.freeze([...scenario.testPlan.screenshotStates]),
+      agentEvalCaseIds: Object.freeze([...scenario.testPlan.agentEvalCaseIds]),
+    }),
   })
 }

@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import type {
   DatasetHandleId,
   DocumentId,
@@ -10,6 +11,10 @@ import type {
 } from '@pji-workbench/contracts'
 import { rpcRequest } from '@pji-workbench/contracts'
 import { MATERIALS_OPERATION_IDS } from '@pji-workbench/materials-analysis'
+import {
+  independentSampleValue,
+  validateGeneratedReferenceOracleFile,
+} from '@pji-workbench/test-corpus'
 import {
   analysisConnectedComponentsOperationId,
   analysisLineProfileOperationId,
@@ -32,6 +37,7 @@ import {
   PUREJSIMAGE_PACKAGE_VERSION,
   SUPPORTED_READERS,
 } from '../src/index.js'
+import { generatedSampleDefinition, sampleValues } from '../src/worker-host/source-rpc.js'
 
 class FakeWorker extends EventTarget {
   terminated = false
@@ -1003,6 +1009,33 @@ describe('PureJsImage Worker host', () => {
         }),
       )
       await host.dispose()
+    }
+  })
+
+  it('matches reviewed generated descriptors and samples to an independent reference oracle', async () => {
+    const raw: unknown = JSON.parse(
+      await readFile(
+        new URL('../../test-corpus/expected/generated-v1.json', import.meta.url),
+        'utf8',
+      ),
+    )
+    const oracle = validateGeneratedReferenceOracleFile(raw)
+    for (const expected of oracle.scenarios) {
+      const definition = generatedSampleDefinition(expected.id)
+      expect(definition).toMatchObject({ width: expected.width, height: expected.height })
+      expect(definition.xReal / definition.width).toBeCloseTo(expected.xStep, 12)
+      expect(definition.yReal / definition.height).toBeCloseTo(expected.yStep, 12)
+      expect(definition.xyUnit).toBe(expected.unit)
+      const values = sampleValues(definition.width, definition.height, definition.id)
+      const digits = Math.max(0, Math.ceil(-Math.log10(expected.tolerance)))
+      expect(values[0]).toBeCloseTo(expected.originValue, digits)
+      for (const sample of expected.samples) {
+        expect(sample.value).toBeCloseTo(
+          independentSampleValue(expected.id, expected.width, expected.height, sample.x, sample.y),
+          digits,
+        )
+        expect(values[sample.y * expected.width + sample.x]).toBeCloseTo(sample.value, digits)
+      }
     }
   })
 

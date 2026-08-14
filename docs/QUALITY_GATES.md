@@ -77,6 +77,11 @@ Normal PR CI runs generated and small bundled corpus tiers only. Hosted/external
 explicit scheduled tags and controlled mirrors; no deterministic gate calls an uncontrolled public
 server. `docs/CORPUS_AUDIT.md` records why each non-enabled entry remains unavailable.
 
+The normalized scenario artifact declares its tier and capability coverage. CI validates that the
+complete product capability matrix has an owning scenario even when a scheduled scenario is not yet
+eligible to run. Generated fixture pixels are checked against reviewed independent JSON references;
+reference files are input-only and are never updated by the test command.
+
 ## Browser tests
 
 Playwright projects:
@@ -97,6 +102,15 @@ Every browser runs:
 - mocked agent proposal and approval;
 - worker crash/restart recovery;
 - cancellation.
+
+The former monolithic smoke suite is split by stable semantic surface. Cross-file helpers perform
+only deterministic setup and common navigation; assertions remain in the focused specifications.
+Each executed `@scenario` case attaches a bounded evidence record. The custom reporter writes
+`test-results/scenario-report.json` and `scenario-report.md`, grouped by capability and scenario,
+with status, browser, oracle/tolerance, resource budgets, source/tile timing measurements,
+project/invocation identities, and failure artifact paths. Measurements that the active source/runtime
+cannot expose are `null`, never guessed; scheduled range and large-data runs are responsible for
+populating those fields.
 
 ## Accessibility
 
@@ -209,7 +223,7 @@ Suggested jobs:
 5. `accessibility-visual`: deterministic UI gates.
 6. `corpus-compact`: enabled Tier 1 subset with cache.
 7. `security`: audit, secret scan, CSP/static bundle checks.
-8. scheduled `corpus-medium-performance`: Tier 2 datasets.
+8. scheduled `corpus-medium-performance`: main/nightly/scheduled datasets and Range budgets.
 
 Use concurrency cancellation for superseded pull-request runs.
 

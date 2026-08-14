@@ -7,6 +7,8 @@ import {
   type CorpusTier,
   type ExampleBudgetsV1,
   type ExampleScenarioV1,
+  type ExampleTestPlanV1,
+  type ExampleWorkflowStepAction,
   type ExampleWorkflowV1,
 } from './types.js'
 import { normalizeCorpusManifest } from './validation.js'
@@ -39,6 +41,9 @@ const GENERATED_BUDGETS: ExampleBudgetsV1 = {
   maxArchiveFiles: 1,
   maxFirstUsefulTileMilliseconds: 2_500,
   maxCancellationMilliseconds: 250,
+  maxCompletionMilliseconds: 60_000,
+  maxPeakManagedBytes: 256_000_000,
+  maxRangeRequests: 0,
 }
 
 const EXTERNAL_BUDGETS: ExampleBudgetsV1 = {
@@ -48,6 +53,121 @@ const EXTERNAL_BUDGETS: ExampleBudgetsV1 = {
   maxArchiveFiles: 4_096,
   maxFirstUsefulTileMilliseconds: 4_000,
   maxCancellationMilliseconds: 500,
+  maxCompletionMilliseconds: 120_000,
+  maxPeakManagedBytes: 512_000_000,
+  maxRangeRequests: 128,
+}
+
+const WORKFLOW_ACTIONS: Readonly<Record<string, readonly ExampleWorkflowStepAction[]>> = {
+  'generated.particles.count': [
+    'gallery.open',
+    'source.inspect',
+    'viewport.inspect',
+    'roi.measure',
+    'analysis.core',
+    'analysis.particles',
+    'project.replay',
+    'lifecycle.hostile',
+    'accessibility.scan',
+    'visual.capture',
+  ],
+  'generated.particles.watershed': [
+    'gallery.open',
+    'source.inspect',
+    'analysis.watershed',
+    'script.test',
+  ],
+  'generated.lattice.fft': [
+    'gallery.open',
+    'source.inspect',
+    'analysis.fft',
+    'script.test',
+    'project.replay',
+  ],
+  'generated.afm.roughness': [
+    'gallery.open',
+    'source.inspect',
+    'analysis.surface',
+    'script.test',
+    'project.replay',
+  ],
+  'generated.particles.batch': ['gallery.open', 'source.inspect', 'analysis.batch', 'script.test'],
+}
+
+const GENERATED_TEST_PLANS: Readonly<Record<string, ExampleTestPlanV1>> = {
+  'generated.calibrated-particles': {
+    tier: 'pr',
+    capabilities: [
+      'source.reader-dataset',
+      'source.axes-components-calibration-metadata',
+      'source.local-range-parity',
+      'source.range-byte-budget',
+      'source.first-useful-tile',
+      'viewport.navigation-value-readout',
+      'roi.all-types-and-units',
+      'analysis.filters-transforms-background',
+      'analysis.threshold-morphology-watershed',
+      'analysis.components-filtering-measurements',
+      'project.save-reopen-rebind',
+      'lifecycle.cancel-crash-cleanup-release',
+      'accessibility.keyboard',
+      'results.linked-selection',
+      'export.bounded',
+    ],
+    screenshotStates: ['empty', 'opened', 'analysis', 'results'],
+    accessibility: true,
+    projectReplay: true,
+    agentEvalCaseIds: ['open-example', 'sem-particle-count', 'measure-calibrated-roi'],
+  },
+  'generated.touching-particles': {
+    tier: 'pr',
+    capabilities: ['analysis.threshold-morphology-watershed', 'scripts.sandbox-recipe-replay'],
+    screenshotStates: [],
+    accessibility: false,
+    projectReplay: false,
+    agentEvalCaseIds: ['split-touching-particles'],
+  },
+  'generated.periodic-lattice': {
+    tier: 'pr',
+    capabilities: ['analysis.fft-profile-d-spacing', 'scripts.sandbox-recipe-replay'],
+    screenshotStates: ['analysis'],
+    accessibility: true,
+    projectReplay: true,
+    agentEvalCaseIds: ['fft-known-spacing'],
+  },
+  'generated.afm-tilted-surface': {
+    tier: 'pr',
+    capabilities: ['analysis.afm-leveling-roughness', 'scripts.sandbox-recipe-replay'],
+    screenshotStates: [],
+    accessibility: true,
+    projectReplay: true,
+    agentEvalCaseIds: ['level-afm-report-rq'],
+  },
+  'generated.batch-particles': {
+    tier: 'pr',
+    capabilities: ['analysis.batch-partial-failure', 'scripts.sandbox-recipe-replay'],
+    screenshotStates: [],
+    accessibility: false,
+    projectReplay: false,
+    agentEvalCaseIds: ['run-bounded-batch'],
+  },
+}
+
+function externalTestPlan(id: string, status: Exclude<CorpusStatus, 'enabled'>): ExampleTestPlanV1 {
+  return {
+    tier: status === 'scheduled' ? 'scheduled' : 'manual',
+    capabilities: [
+      'source.reader-dataset',
+      ...(id.startsWith('empiar.') ? (['analysis.stack-projection-registration'] as const) : []),
+      ...(id.startsWith('openslide.')
+        ? (['source.local-range-parity', 'source.range-byte-budget'] as const)
+        : []),
+    ],
+    screenshotStates: [],
+    accessibility: false,
+    projectReplay: false,
+    agentEvalCaseIds: [],
+  }
 }
 
 function workflow(
@@ -57,12 +177,24 @@ function workflow(
   artifactKind: ExampleWorkflowV1['artifactKind'],
   description: string,
 ): ExampleWorkflowV1 {
+  const actions = WORKFLOW_ACTIONS[id] ?? ['source.inspect']
   return {
     id,
     title,
     summary: description,
     artifactId,
     artifactKind,
+    steps: actions.map((action, index) => ({
+      id: `${id}.step-${index + 1}`,
+      action,
+      description: `${title}: ${action.replaceAll('.', ' ')}.`,
+    })),
+    oracle: {
+      id: `${id}.oracle`,
+      implementation: 'pji-independent-reference',
+      version: '1.0.0',
+      ...(id.includes('fft') || id.includes('roughness') ? { tolerance: 1e-6 } : {}),
+    },
     expected: [{ id: `${id}.bounded`, level: 'structural', description }],
   }
 }
@@ -80,6 +212,16 @@ function generated(
   workflows: readonly ExampleWorkflowV1[],
   pattern: string,
 ): ExampleScenarioV1 {
+  const filename =
+    generatorId === 'generated.periodic-lattice'
+      ? 'periodic-lattice.gsf'
+      : generatorId === 'generated.afm-tilted-surface'
+        ? 'afm-tilted-surface.gsf'
+        : generatorId === 'generated.touching-particles'
+          ? 'touching-particles.gsf'
+          : generatorId === 'generated.batch-particles'
+            ? 'batch-particles.gsf'
+            : 'sample-sem.gsf'
   return {
     schemaVersion: CORPUS_SCHEMA_VERSION,
     id,
@@ -98,7 +240,7 @@ function generated(
       generatorId,
       files: [
         {
-          path: `${generatorId}.gsf`,
+          path: filename,
           sizeBytes: 0,
           mediaType: 'application/octet-stream',
           delivery: 'generated',
@@ -116,6 +258,11 @@ function generated(
     workflows,
     expected: workflows.flatMap(({ expected }) => expected),
     budgets: GENERATED_BUDGETS,
+    testPlan:
+      GENERATED_TEST_PLANS[id] ??
+      (() => {
+        throw new Error(`Missing generated test plan for ${id}.`)
+      })(),
     testTags: ['pr', 'offline', 'generated'],
     verifiedAt: CORPUS_VERIFICATION_DATE,
   }
@@ -175,6 +322,7 @@ function external(
       },
     ],
     budgets: EXTERNAL_BUDGETS,
+    testPlan: externalTestPlan(id, status),
     testTags: status === 'scheduled' ? ['scheduled', 'network'] : ['audit-only'],
   }
 }

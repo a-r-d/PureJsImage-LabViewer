@@ -2,6 +2,8 @@ export * from './archive.js'
 export * from './audit.js'
 export * from './delivery.js'
 export * from './manifest.js'
+export * from './reference-oracle.js'
+export * from './scenario-artifacts.js'
 export * from './types.js'
 export * from './validation.js'
 
@@ -31,6 +33,7 @@ export const EXAMPLE_SCENARIO_SCHEMA_V1 = Object.freeze({
     workflows: { type: 'array', minItems: 1 },
     expected: { type: 'array', minItems: 1 },
     budgets: { type: 'object' },
+    testPlan: { type: 'object' },
     testTags: { type: 'array', items: { type: 'string', minLength: 1 } },
     verifiedAt: { type: 'string', minLength: 1 },
   },
@@ -52,6 +55,7 @@ export const EXAMPLE_SCENARIO_SCHEMA_V1 = Object.freeze({
     'workflows',
     'expected',
     'budgets',
+    'testPlan',
     'testTags',
   ],
   additionalProperties: false,

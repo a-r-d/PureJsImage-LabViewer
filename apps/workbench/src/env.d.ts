@@ -11,6 +11,8 @@ interface Window {
     sourceBytes: number
     datasetPixels: number
     firstTileMilliseconds: number | null
+    projectId: string
+    invocationIds: string[]
   }
   __PJI_TEST_CRASH_WORKER__?: () => Promise<void>
 }

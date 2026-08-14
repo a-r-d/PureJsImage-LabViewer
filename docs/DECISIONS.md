@@ -117,12 +117,21 @@ schemas, permissions, mutability, cost, cancellation metadata, and availability 
 React or PureJsImage runtime objects. Application composition supplies handlers and context, so the
 package is not a global singleton and exact action versions remain replayable.
 
-## Chromium Linux owns visual goldens
+## Chromium uses OS-qualified visual goldens
 
-Visual goldens use a pinned Chromium configuration and Linux-named paths on every host. Firefox
-and WebKit run the functional, keyboard, persistence, performance, and accessibility workflows but
-skip pixel comparison. Baselines change only after deterministic readiness, artifact inspection,
-and three consecutive no-update passes.
+Linux Chromium is the canonical CI renderer, while Darwin and Linux use separate OS-qualified
+baselines because text rasterization is not pixel-equivalent. Firefox and WebKit run the functional,
+keyboard, persistence, performance, and accessibility workflows but skip pixel comparison. Baselines
+change only after deterministic readiness, artifact inspection, and three consecutive no-update passes.
+
+## Normalized corpus scenarios own product correctness coverage
+
+`ExampleScenarioV1` is normalized once in `packages/test-corpus`; its generated scenario artifact
+drives fixture setup, gallery assertions, semantic steps, oracle/tolerance metadata, resource budgets,
+test tier, screenshots, accessibility, replay, capability coverage, and future agent eval cases.
+Playwright may interpret these validated artifacts but does not parse a second scenario language.
+Reviewed numerical reference JSON is immutable test input. Browser runs emit scenario/capability
+reports, while missing runtime measurements remain explicit rather than being inferred.
 
 ## Particle analysis is a visible, bounded extension graph
 

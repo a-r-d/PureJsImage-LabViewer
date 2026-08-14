@@ -25,6 +25,7 @@
     "purejsimage": "0.10.0"
   },
   "devDependencies": {
+    "@pji-workbench/test-corpus": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
   }

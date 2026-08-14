@@ -33,8 +33,9 @@ interface ExampleScenarioV1 {
   readonly learningGoals: readonly string[]
   readonly defaultView?: ExampleViewState
   readonly workflows: readonly ExampleWorkflowV1[]
-  readonly expected: ExampleExpectedResultsV1
-  readonly budgets?: ExampleBudgetsV1
+  readonly expected: readonly ExampleExpectedAssertionV1[]
+  readonly budgets: ExampleBudgetsV1
+  readonly testPlan: ExampleTestPlanV1
 }
 ```
 
@@ -154,3 +155,20 @@ member is materialized.
 
 Normal CI exercises only generated/bundled data. Controlled scheduled jobs may resolve external
 records after manifest verification; public servers are never an implicit PR gate.
+
+## Scenario correctness artifacts
+
+`scenarioTestArtifacts()` is the only Playwright-facing projection of enabled scenarios. It emits
+validated, immutable fixture locators, semantic workflow steps, oracle identities and tolerances,
+resource budgets, screenshot states, accessibility/replay flags, agent-eval case IDs, and declared
+capabilities. Browser tests do not parse an additional YAML dialect or restate gallery metadata.
+
+Generated sources have a reviewed reference file at `packages/test-corpus/expected/generated-v1.json`.
+It records the independent analytic implementation/version, calibration, dimensions, representative
+quantitative samples, and tolerance. CI reads this file and compares it with production fixture output;
+it never rewrites the reference. Algorithm-specific unit/reference tests remain the numerical oracle
+for segmentation, FFT, registration, AFM, and batch behavior. Screenshots cover presentation only.
+
+Scenario execution tiers are `pr`, `main`, `nightly`, `scheduled`, `manual`, and `local-expensive`.
+The PR tier is offline and bounded. Scheduled external scenarios may declare future capability
+coverage, but remain non-runnable until their exact-file, license, integrity, and delivery gates pass.

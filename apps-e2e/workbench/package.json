@@ -2,5 +2,16 @@
   "name": "@pji-workbench/workbench-e2e",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit --composite false --incremental false -p tsconfig.json"
+  },
+  "dependencies": {
+    "@pji-workbench/test-corpus": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
 }

@@ -1,4 +1,12 @@
+import { scenarioArtifact } from '@pji-workbench/test-corpus'
 import { expect, test } from '@playwright/test'
+import { attachScenarioEvidence } from './support/scenario-evidence.js'
+
+test.afterEach(async ({ page }, testInfo) => {
+  await attachScenarioEvidence(page, testInfo, scenarioArtifact('generated.touching-particles'), {
+    capabilities: ['scripts.sandbox-recipe-replay', 'lifecycle.cancel-crash-cleanup-release'],
+  })
+})
 
 test('authors, typechecks, tests, reviews, and runs a built-in script through lazy Workers', async ({
   page,
