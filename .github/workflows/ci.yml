@@ -59,6 +59,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e --project=chromium
+      - name: Upload Chromium failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-test-results
+          path: test-results/
+          retention-days: 7
 
   browser-cross:
     runs-on: ubuntu-latest
