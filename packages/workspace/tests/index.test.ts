@@ -363,6 +363,28 @@ describe('history, serialization, migration, and storage', () => {
     expect(history.state.redo).toHaveLength(0)
   })
 
+  it('commits a complete analysis graph as one revision and replays it after serialization', () => {
+    const history = new WorkspaceHistory(empty())
+    const graph = {
+      schemaVersion: 1 as const,
+      inputs: [],
+      nodes: [node],
+      outputs: [output],
+    }
+    history.dispatch(
+      workspaceCommand(history.state.snapshot, 'analysis-graph', NOW, {
+        kind: 'analysis.set-graph',
+        graph,
+      }),
+    )
+    expect(history.state.snapshot.revision).toBe(1)
+    expect(history.state.undo).toHaveLength(1)
+    const replayed = importWorkspaceProject(serializeWorkspaceProject(history.state.snapshot))
+    expect(replayed.analysis.graph).toEqual(graph)
+    expect(history.undo().snapshot.analysis.graph.nodes).toEqual([])
+    expect(history.redo().snapshot.analysis.graph).toEqual(graph)
+  })
+
   it('serializes deterministically and enforces hostile import bounds', () => {
     const snapshot = populated()
     expect(serializeWorkspaceProject(snapshot)).toBe(serializeWorkspaceProject(snapshot))

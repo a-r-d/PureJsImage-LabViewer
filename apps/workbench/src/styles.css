@@ -323,6 +323,90 @@ canvas:focus-visible,
   grid-template-columns: 1fr 1fr;
   gap: 7px;
 }
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--wb-border);
+}
+.tool-grid legend {
+  padding: 0 4px;
+  color: var(--wb-text-muted);
+  font-size: 10px;
+}
+.button-row,
+.result-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+.roi-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.roi-list li {
+  display: grid;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--wb-border);
+  background: var(--wb-surface-raised);
+}
+.roi-list li[data-selected="true"] {
+  border-color: var(--wb-accent);
+  box-shadow: inset 3px 0 var(--wb-accent);
+}
+.roi-list li > button:first-child {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--wb-text);
+  font-weight: 700;
+  text-align: left;
+}
+.form-stack .inline-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.inline-check input {
+  width: auto;
+  min-height: auto;
+}
+.estimate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin: 0;
+}
+.estimate-grid div {
+  padding: 6px;
+  border: 1px solid var(--wb-border);
+}
+.estimate-grid dt {
+  color: var(--wb-text-muted);
+  font-size: 9px;
+}
+.estimate-grid dd {
+  margin: 3px 0 0;
+  overflow: hidden;
+  font-family: var(--wb-font-mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+}
+.analysis-message {
+  margin: 0;
+  padding: 7px;
+  border-left: 3px solid var(--wb-accent);
+  background: var(--wb-accent-surface);
+  font-size: 10px;
+  line-height: 1.4;
+}
 
 .source-error {
   position: absolute;
@@ -513,6 +597,94 @@ canvas:focus-visible,
 .result-table-wrap {
   overflow: auto;
 }
+.analysis-results {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding: 8px;
+}
+.result-summary-row label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--wb-text-muted);
+  font-size: 10px;
+}
+.result-summary-row input {
+  width: 90px;
+  min-height: 26px;
+  border: 1px solid var(--wb-border);
+  background: var(--wb-surface-raised);
+  color: var(--wb-text);
+}
+.virtual-table {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--wb-border);
+}
+.virtual-table th button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.result-json {
+  max-height: 190px;
+  margin: 0;
+  overflow: auto;
+  color: var(--wb-text-muted);
+  font-size: 9px;
+}
+.result-plot {
+  display: flex;
+  min-height: 62px;
+  align-items: end;
+  gap: 2px;
+  padding: 5px 8px;
+  border: 1px solid var(--wb-border);
+}
+.result-plot span {
+  min-width: 2px;
+  flex: 1;
+  background: var(--wb-accent);
+  opacity: 0.8;
+}
+.distribution-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 6px;
+  overflow-x: auto;
+}
+.distribution-grid figure {
+  margin: 0;
+  padding: 5px;
+  border: 1px solid var(--wb-border);
+}
+.distribution-grid figcaption {
+  margin-bottom: 4px;
+  color: var(--wb-text-muted);
+  font-size: 9px;
+}
+.distribution-grid figure div {
+  display: flex;
+  height: 40px;
+  align-items: end;
+  gap: 1px;
+}
+.distribution-grid span {
+  min-width: 1px;
+  flex: 1;
+  background: var(--wb-accent);
+  opacity: 0.7;
+}
+.history-list code {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--wb-text-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+}
 table {
   width: 100%;
   border-collapse: collapse;
@@ -536,6 +708,25 @@ th {
 th:first-child,
 td:first-child {
   text-align: left;
+}
+.virtual-table tr[data-selected="true"] td {
+  background: var(--wb-accent-surface);
+  color: var(--wb-text);
+}
+.table-label-button {
+  min-width: 2rem;
+  border: 1px solid transparent;
+  border-radius: 0.2rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.table-label-button:hover,
+.table-label-button:focus-visible,
+.table-label-button[aria-pressed="true"] {
+  border-color: var(--wb-accent);
+  color: var(--wb-accent-strong);
 }
 .log-list {
   color: var(--wb-text-muted);

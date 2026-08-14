@@ -5,11 +5,33 @@ export const RPC_LIMITS = Object.freeze({
   maxItems: 256,
   maxMetadataDepth: 8,
   maxTilePixels: 512 * 512,
+  maxTablePageRows: 200,
+  maxTablePageColumns: 32,
 })
 
 export type SourceId = string & { readonly __sourceId: unique symbol }
 export type DocumentId = string & { readonly __documentId: unique symbol }
 export type DatasetHandleId = string & { readonly __datasetHandleId: unique symbol }
+
+import type {
+  AnalysisCatalog,
+  AnalysisDatasetRequest,
+  AnalysisDryRunResponse,
+  AnalysisExecutionResponse,
+  AnalysisGraphRequest,
+  AnalysisNormalizeRequest,
+  AnalysisNormalizeRoiRequest,
+  AnalysisOverlayTile,
+  AnalysisOverlayTileRequest,
+  AnalysisParameterNormalization,
+  AnalysisReleaseRequest,
+  AnalysisResultHandleId,
+  AnalysisRoiNormalization,
+  AnalysisTablePage,
+  AnalysisTablePageRequest,
+} from './analysis.js'
+
+export * from './analysis.js'
 
 export type SourceKind = 'local' | 'remote' | 'sample'
 export type TilePriority = 'visible' | 'near-visible' | 'background'
@@ -224,6 +246,14 @@ export type WorkerRequest =
       Readonly<{ handleId: DatasetHandleId; generation: number; selection: PlaneSelection }>
     >
   | RpcRequest<'tile.request', RenderTileRequest>
+  | RpcRequest<'analysis.catalog', AnalysisDatasetRequest>
+  | RpcRequest<'analysis.normalize-parameters', AnalysisNormalizeRequest>
+  | RpcRequest<'analysis.normalize-roi', AnalysisNormalizeRoiRequest>
+  | RpcRequest<'analysis.dry-run', AnalysisGraphRequest>
+  | RpcRequest<'analysis.execute', AnalysisGraphRequest>
+  | RpcRequest<'analysis.overlay-tile', AnalysisOverlayTileRequest>
+  | RpcRequest<'analysis.table-page', AnalysisTablePageRequest>
+  | RpcRequest<'analysis.release', AnalysisReleaseRequest>
   | RpcRequest<'request.cancel', Readonly<{ targetRequestId: string }>>
   | RpcRequest<'diagnostics.get', null>
   | RpcRequest<'worker.test-crash', null>
@@ -243,6 +273,14 @@ export type WorkerResponse =
   | RpcSuccess<'dataset.closed', Readonly<{ handleId: DatasetHandleId }>>
   | RpcSuccess<'plane.selected', Readonly<{ handleId: DatasetHandleId; selection: PlaneSelection }>>
   | RpcSuccess<'tile.ready', RenderTile>
+  | RpcSuccess<'analysis.catalog', AnalysisCatalog>
+  | RpcSuccess<'analysis.parameters-normalized', AnalysisParameterNormalization>
+  | RpcSuccess<'analysis.roi-normalized', AnalysisRoiNormalization>
+  | RpcSuccess<'analysis.dry-run', AnalysisDryRunResponse>
+  | RpcSuccess<'analysis.executed', AnalysisExecutionResponse>
+  | RpcSuccess<'analysis.overlay-tile', AnalysisOverlayTile>
+  | RpcSuccess<'analysis.table-page', AnalysisTablePage>
+  | RpcSuccess<'analysis.released', Readonly<{ resultHandleId: AnalysisResultHandleId }>>
   | RpcSuccess<'request.cancelled', Readonly<{ targetRequestId: string; found: boolean }>>
   | RpcSuccess<'diagnostics', WorkerDiagnostics>
   | RpcFailure
@@ -273,6 +311,14 @@ const REQUEST_KINDS = new Set<string>([
   'dataset.close',
   'plane.set',
   'tile.request',
+  'analysis.catalog',
+  'analysis.normalize-parameters',
+  'analysis.normalize-roi',
+  'analysis.dry-run',
+  'analysis.execute',
+  'analysis.overlay-tile',
+  'analysis.table-page',
+  'analysis.release',
   'request.cancel',
   'diagnostics.get',
   'worker.test-crash',
@@ -321,6 +367,20 @@ interface PayloadCandidate extends Record<string, unknown> {
   readonly y?: unknown
   readonly width?: unknown
   readonly height?: unknown
+  readonly graph?: unknown
+  readonly roi?: unknown
+  readonly operation?: unknown
+  readonly parameters?: unknown
+  readonly resultHandleId?: unknown
+  readonly output?: unknown
+  readonly offset?: unknown
+  readonly limit?: unknown
+  readonly columns?: unknown
+  readonly filter?: unknown
+  readonly sort?: unknown
+  readonly column?: unknown
+  readonly direction?: unknown
+  readonly version?: unknown
 }
 
 export class RpcValidationError extends Error {
@@ -445,6 +505,103 @@ function assertTile(payload: PayloadCandidate): void {
   }
 }
 
+function assertJsonValue(value: unknown, label: string, depth = 0): void {
+  if (depth > RPC_LIMITS.maxMetadataDepth) {
+    throw new RpcValidationError('LIMIT_EXCEEDED', `${label} exceeds the nesting limit`)
+  }
+  if (value === null || typeof value === 'boolean') return
+  if (typeof value === 'number') {
+    assertFinite(value, label)
+    return
+  }
+  if (typeof value === 'string') {
+    if (value.length > RPC_LIMITS.maxStringLength) {
+      throw new RpcValidationError('LIMIT_EXCEEDED', `${label} exceeds the string limit`)
+    }
+    return
+  }
+  if (Array.isArray(value)) {
+    if (value.length > RPC_LIMITS.maxItems) {
+      throw new RpcValidationError('LIMIT_EXCEEDED', `${label} exceeds the item limit`)
+    }
+    for (const item of value) assertJsonValue(item, label, depth + 1)
+    return
+  }
+  if (!isRecord(value)) {
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} must be JSON-safe`)
+  }
+  const entries = Object.entries(value)
+  if (entries.length > RPC_LIMITS.maxItems) {
+    throw new RpcValidationError('LIMIT_EXCEEDED', `${label} exceeds the item limit`)
+  }
+  for (const [key, item] of entries) {
+    if (key.length > RPC_LIMITS.maxStringLength) {
+      throw new RpcValidationError('LIMIT_EXCEEDED', `${label} contains an oversized key`)
+    }
+    assertJsonValue(item, label, depth + 1)
+  }
+}
+
+function assertAnalysisDataset(payload: PayloadCandidate): void {
+  assertGeneration(payload)
+  assertString(payload.datasetHandleId, 'datasetHandleId')
+}
+
+function assertAnalysisOperation(value: unknown): void {
+  if (!isRecord(value)) {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'operation must be an object')
+  }
+  const operation = value as PayloadCandidate
+  assertString(operation.id, 'operation id')
+  assertInteger(operation.version, 'operation version', 1)
+}
+
+function assertAnalysisResult(payload: PayloadCandidate): void {
+  assertAnalysisDataset(payload)
+  assertString(payload.resultHandleId, 'resultHandleId')
+}
+
+function assertAnalysisTablePage(payload: PayloadCandidate): void {
+  assertAnalysisResult(payload)
+  assertString(payload.output, 'output')
+  assertInteger(payload.offset, 'offset')
+  assertInteger(payload.limit, 'limit', 1)
+  if ((payload.limit as number) > RPC_LIMITS.maxTablePageRows) {
+    throw new RpcValidationError('LIMIT_EXCEEDED', 'table page exceeds the row limit')
+  }
+  if (payload.columns !== undefined) {
+    if (
+      !Array.isArray(payload.columns) ||
+      payload.columns.length > RPC_LIMITS.maxTablePageColumns
+    ) {
+      throw new RpcValidationError('LIMIT_EXCEEDED', 'table page exceeds the column limit')
+    }
+    for (const column of payload.columns) assertString(column, 'column')
+  }
+  if (payload.filter !== undefined) {
+    if (!isRecord(payload.filter)) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'filter must be an object')
+    }
+    const filter = payload.filter as PayloadCandidate
+    assertString(filter.column, 'filter column')
+    if (filter.minimum !== undefined) assertFinite(filter.minimum, 'filter minimum')
+    if (filter.maximum !== undefined) assertFinite(filter.maximum, 'filter maximum')
+    if (filter.minimum === undefined && filter.maximum === undefined) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'filter requires a minimum or maximum')
+    }
+  }
+  if (payload.sort !== undefined) {
+    if (!isRecord(payload.sort)) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'sort must be an object')
+    }
+    const sort = payload.sort as PayloadCandidate
+    assertString(sort.column, 'sort column')
+    if (sort.direction !== 'ascending' && sort.direction !== 'descending') {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'sort direction is invalid')
+    }
+  }
+}
+
 function utf8Bytes(value: string): number {
   let bytes = 0
   for (const character of value) {
@@ -547,6 +704,50 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
       assertPlaneSelection(payload.selection)
     }
     if (kind === 'tile.request') assertTile(payload)
+    if (kind === 'analysis.catalog') assertAnalysisDataset(payload)
+    if (kind === 'analysis.normalize-parameters') {
+      assertAnalysisDataset(payload)
+      assertAnalysisOperation(payload.operation)
+      assertJsonValue(payload.parameters, 'parameters')
+    }
+    if (kind === 'analysis.normalize-roi') {
+      assertAnalysisDataset(payload)
+      if (!isRecord(payload.roi)) {
+        throw new RpcValidationError('INVALID_PAYLOAD', 'roi must be an object')
+      }
+      assertJsonValue(payload.roi, 'roi')
+    }
+    if (kind === 'analysis.dry-run' || kind === 'analysis.execute') {
+      assertAnalysisDataset(payload)
+      if (!isRecord(payload.graph)) {
+        throw new RpcValidationError('INVALID_PAYLOAD', 'graph must be an object')
+      }
+      assertJsonValue(payload.graph, 'graph')
+      if (payload.roi !== undefined) {
+        if (!isRecord(payload.roi)) {
+          throw new RpcValidationError('INVALID_PAYLOAD', 'roi must be an object')
+        }
+        assertJsonValue(payload.roi, 'roi')
+      }
+    }
+    if (kind === 'analysis.overlay-tile') {
+      assertAnalysisResult(payload)
+      assertString(payload.output, 'output')
+      assertString(payload.tileId, 'tileId')
+      assertPlaneSelection(payload.selection)
+      const overlaySelection = payload.selection as PayloadCandidate
+      assertInteger(payload.component, 'component')
+      assertTile({
+        ...payload,
+        mapping: { mode: 'linear', range: 'auto' },
+        priority: 'visible',
+        displayAxes: overlaySelection.displayAxes,
+        fixedIndices: overlaySelection.fixedIndices,
+        resolutionLevel: overlaySelection.resolutionLevel,
+      })
+    }
+    if (kind === 'analysis.table-page') assertAnalysisTablePage(payload)
+    if (kind === 'analysis.release') assertAnalysisResult(payload)
     if (kind === 'request.cancel') assertString(payload.targetRequestId, 'targetRequestId')
   }
   return value as unknown as WorkerRequest

@@ -1,4 +1,6 @@
 import type {
+  AnalysisOverlayTile,
+  AnalysisResultHandleId,
   AxisDescriptor,
   DisplayMapping,
   OpenedDatasetDescriptor,
@@ -22,6 +24,7 @@ import {
   worldToScreen,
   zoomCameraAtScreenPoint,
 } from '@pji-workbench/viewport'
+import type { WorkspaceSnapshot } from '@pji-workbench/workspace'
 import { useEffect, useRef } from 'react'
 
 const TILE_SIZE = 256
@@ -32,6 +35,14 @@ export interface ScientificViewportApi {
   oneToOne(): void
 }
 
+export type RoiTool = 'select' | 'point' | 'line' | 'polyline' | 'rectangle' | 'ellipse' | 'polygon'
+export type ViewportRoi = WorkspaceSnapshot['analysis']['roiSet']['rois'][number]
+
+export interface AnalysisOverlaySelection {
+  readonly resultHandleId: AnalysisResultHandleId
+  readonly output: string
+}
+
 interface ScientificViewportProps {
   readonly client: ImagingWorkerClient
   readonly opened: OpenedDatasetDescriptor
@@ -40,10 +51,24 @@ interface ScientificViewportProps {
   readonly mapping: DisplayMapping
   readonly onReady: (api: ScientificViewportApi | null) => void
   readonly onTile: (tile: RenderTile, first: boolean) => void
+  readonly rois?: readonly ViewportRoi[]
+  readonly selectedRoiId?: string | undefined
+  readonly roiTool?: RoiTool
+  readonly onCreateRoi?: (geometry: ViewportRoi['geometry']) => void
+  readonly onSelectRoi?: (roiId?: string) => void
+  readonly onDeleteRoi?: (roiId: string) => void
+  readonly analysisOverlay?: AnalysisOverlaySelection | undefined
+  readonly selectedLabel?: number | undefined
+  readonly onSelectLabel?: (label?: number) => void
 }
 
 interface CachedTile {
   readonly tile: RenderTile
+  readonly canvas: HTMLCanvasElement
+}
+
+interface CachedOverlay {
+  readonly tile: AnalysisOverlayTile
   readonly canvas: HTMLCanvasElement
 }
 
@@ -79,6 +104,7 @@ class CanvasScientificRenderer implements ViewportRenderer {
   #context: CanvasRenderingContext2D
   #viewport: Size = { width: 1, height: 1 }
   #tiles = new Map<string, CachedTile>()
+  #overlays = new Map<string, CachedOverlay>()
   calibration: { readonly unitsPerPixel: number; readonly unit: string } | undefined
 
   constructor(canvas: HTMLCanvasElement) {
@@ -109,13 +135,44 @@ class CanvasScientificRenderer implements ViewportRenderer {
     this.#tiles.set(tile.tileId, { tile, canvas })
   }
 
+  uploadOverlay(tile: AnalysisOverlayTile, selectedLabel?: number): void {
+    const canvas = document.createElement('canvas')
+    canvas.width = tile.width
+    canvas.height = tile.height
+    const context = canvas.getContext('2d')
+    if (context === null) throw new Error('Unable to allocate a bounded overlay tile.')
+    const pixels = new Uint8ClampedArray(tile.rgba)
+    if (selectedLabel !== undefined) {
+      for (let index = 0; index < tile.labels.length; index += 1) {
+        if (tile.labels[index] !== selectedLabel) continue
+        const offset = index * 4
+        pixels[offset] = 255
+        pixels[offset + 1] = 255
+        pixels[offset + 2] = 255
+        pixels[offset + 3] = 220
+      }
+    }
+    context.putImageData(new ImageData(pixels, tile.width, tile.height), 0, 0)
+    this.#overlays.set(tile.tileId, { tile, canvas })
+  }
+
   has(tileId: string): boolean {
     return this.#tiles.has(tileId)
+  }
+
+  hasOverlay(tileId: string): boolean {
+    return this.#overlays.has(tileId)
   }
 
   retain(tileIds: ReadonlySet<string>): void {
     for (const key of this.#tiles.keys()) {
       if (!tileIds.has(key)) this.#tiles.delete(key)
+    }
+  }
+
+  retainOverlays(tileIds: ReadonlySet<string>): void {
+    for (const key of this.#overlays.keys()) {
+      if (!tileIds.has(key)) this.#overlays.delete(key)
     }
   }
 
@@ -133,6 +190,24 @@ class CanvasScientificRenderer implements ViewportRenderer {
       const x = Math.floor(point.x - region.x)
       const y = Math.floor(point.y - region.y)
       return tile.values[y * tile.width + x]
+    }
+    return undefined
+  }
+
+  labelAt(point: Point): number | undefined {
+    for (const { tile } of this.#overlays.values()) {
+      if (
+        point.x < tile.region.x ||
+        point.y < tile.region.y ||
+        point.x >= tile.region.x + tile.width ||
+        point.y >= tile.region.y + tile.height
+      ) {
+        continue
+      }
+      const x = Math.floor(point.x - tile.region.x)
+      const y = Math.floor(point.y - tile.region.y)
+      const label = tile.labels[y * tile.width + x]
+      return label === 0 ? undefined : label
     }
     return undefined
   }
@@ -169,10 +244,50 @@ class CanvasScientificRenderer implements ViewportRenderer {
       context.imageSmoothingEnabled = frame.camera.zoom < 1
       context.drawImage(cached.canvas, start.x, start.y, end.x - start.x, end.y - start.y)
     }
+    for (const { tile, canvas } of this.#overlays.values()) {
+      const start = worldToScreen(tile.region, frame.camera, frame.viewport)
+      const end = worldToScreen(
+        { x: tile.region.x + tile.width, y: tile.region.y + tile.height },
+        frame.camera,
+        frame.viewport,
+      )
+      context.imageSmoothingEnabled = false
+      context.drawImage(canvas, start.x, start.y, end.x - start.x, end.y - start.y)
+    }
     context.restore()
     context.strokeStyle = '#80909b'
     context.lineWidth = 1
     context.strokeRect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y)
+
+    for (const overlay of frame.overlays) {
+      const points = overlay.points.map((point) =>
+        worldToScreen(point, frame.camera, frame.viewport),
+      )
+      const first = points[0]
+      if (first === undefined) continue
+      context.save()
+      context.strokeStyle = overlay.selected ? '#fff4a8' : '#35d6c3'
+      context.fillStyle = overlay.selected ? '#fff4a8' : '#35d6c3'
+      context.lineWidth = overlay.selected ? 2 : 1.5
+      context.setLineDash(overlay.selected ? [] : [6, 4])
+      context.beginPath()
+      context.moveTo(first.x, first.y)
+      for (const point of points.slice(1)) context.lineTo(point.x, point.y)
+      if (overlay.kind !== 'line' && overlay.kind !== 'polygon') context.closePath()
+      if (overlay.kind === 'polygon') context.closePath()
+      context.stroke()
+      context.setLineDash([])
+      for (const point of points) {
+        context.beginPath()
+        context.arc(point.x, point.y, overlay.selected ? 4.5 : 3, 0, Math.PI * 2)
+        context.fill()
+      }
+      if (overlay.label !== undefined) {
+        context.font = '11px ui-sans-serif, sans-serif'
+        context.fillText(overlay.label, first.x + 7, first.y - 7)
+      }
+      context.restore()
+    }
 
     if (this.calibration !== undefined) {
       const scale = calculateScaleBar(frame.camera, this.calibration)
@@ -193,8 +308,42 @@ class CanvasScientificRenderer implements ViewportRenderer {
 
   dispose(): void {
     this.#tiles.clear()
+    this.#overlays.clear()
     this.#context.clearRect(0, 0, this.#viewport.width, this.#viewport.height)
   }
+}
+
+function roiPoints(roi: ViewportRoi): readonly Point[] {
+  const geometry = roi.geometry
+  if (geometry.kind === 'point') return [geometry.point]
+  if (geometry.kind === 'line-segment') return [geometry.start, geometry.end]
+  if (geometry.kind === 'polyline' || geometry.kind === 'polygon') return geometry.points
+  if (geometry.kind === 'rectangle') {
+    return [
+      { x: geometry.x, y: geometry.y },
+      { x: geometry.x + geometry.width, y: geometry.y },
+      { x: geometry.x + geometry.width, y: geometry.y + geometry.height },
+      { x: geometry.x, y: geometry.y + geometry.height },
+    ]
+  }
+  return [
+    { x: geometry.center.x - geometry.radiusX, y: geometry.center.y },
+    { x: geometry.center.x, y: geometry.center.y - geometry.radiusY },
+    { x: geometry.center.x + geometry.radiusX, y: geometry.center.y },
+    { x: geometry.center.x, y: geometry.center.y + geometry.radiusY },
+  ]
+}
+
+function roiOverlay(roi: ViewportRoi, selected: boolean) {
+  const kind =
+    roi.geometry.kind === 'line-segment' || roi.geometry.kind === 'polyline'
+      ? ('line' as const)
+      : roi.geometry.kind === 'ellipse'
+        ? ('ellipse' as const)
+        : roi.geometry.kind === 'polygon'
+          ? ('polygon' as const)
+          : ('rectangle' as const)
+  return { id: roi.id, kind, points: roiPoints(roi), selected, label: roi.name ?? roi.id }
 }
 
 function visibleWorldBounds(camera: Camera, viewport: Size): Bounds {
@@ -216,6 +365,15 @@ export function ScientificViewport({
   mapping,
   onReady,
   onTile,
+  rois = [],
+  selectedRoiId,
+  roiTool = 'select',
+  onCreateRoi,
+  onSelectRoi,
+  onDeleteRoi,
+  analysisOverlay,
+  selectedLabel,
+  onSelectLabel,
 }: ScientificViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const coordinateRef = useRef<HTMLSpanElement>(null)
@@ -251,6 +409,7 @@ export function ScientificViewport({
     let tileSequence = 1
     let firstTile = true
     let panning = false
+    let drawingStart: Point | undefined
     let spacePressed = false
     let previousPointer: Point = { x: 0, y: 0 }
     const pending = new Map<string, AbortController>()
@@ -264,7 +423,7 @@ export function ScientificViewport({
         bounds: { x: 0, y: 0, width: 1, height: 1 },
         opacity: 1,
       })),
-      overlays: [],
+      overlays: rois.map((roi) => roiOverlay(roi, roi.id === selectedRoiId)),
     })
     const draw = (): void => {
       cancelAnimationFrame(frameRequest)
@@ -285,6 +444,7 @@ export function ScientificViewport({
           ? candidates.slice(0, 1)
           : candidates
       const required = new Set<string>()
+      const requiredOverlays = new Set<string>()
       for (const candidate of scheduledCandidates) {
         const region = {
           x: candidate.x,
@@ -295,60 +455,97 @@ export function ScientificViewport({
         const mappingKey = `${mapping.range}:${mapping.minimum ?? 'pending'}:${mapping.maximum ?? 'pending'}`
         const tileId = `${opened.generation}:${requestGeneration}:${selection.displayAxes.join('-')}:${selection.resolutionLevel}:${component}:${mappingKey}:${candidate.column}:${candidate.row}`
         required.add(tileId)
-        if (renderer.has(tileId) || pending.has(tileId)) continue
-        const controller = new AbortController()
-        pending.set(tileId, controller)
-        const currentGeneration = requestGeneration
-        const requestId = tileSequence
-        tileSequence += 1
-        void client
-          .requestTile(
-            {
-              tileId,
-              datasetHandleId: opened.handleId,
-              generation: opened.generation,
-              displayAxes: selection.displayAxes,
-              fixedIndices: selection.fixedIndices,
-              resolutionLevel: selection.resolutionLevel,
-              component,
-              mapping,
-              region,
-              priority: candidate.priority,
-            },
-            controller.signal,
-          )
-          .then((tile) => {
-            if (currentGeneration !== requestGeneration || controller.signal.aborted) return
-            renderer.upload(tile)
-            rendererTileIds.add(tile.tileId)
-            window.__PJI_WORKBENCH_METRICS__.tilesTransferred += 1
-            window.__PJI_WORKBENCH_METRICS__.tileBytesTransferred +=
-              tile.rgba.byteLength + tile.values.byteLength
-            window.__PJI_WORKBENCH_METRICS__.tilePixelsTransferred += tile.width * tile.height
-            window.__PJI_WORKBENCH_METRICS__.largestTilePixels = Math.max(
-              window.__PJI_WORKBENCH_METRICS__.largestTilePixels,
-              tile.width * tile.height,
+        if (!renderer.has(tileId) && !pending.has(tileId)) {
+          const controller = new AbortController()
+          pending.set(tileId, controller)
+          const currentGeneration = requestGeneration
+          const requestId = tileSequence
+          tileSequence += 1
+          void client
+            .requestTile(
+              {
+                tileId,
+                datasetHandleId: opened.handleId,
+                generation: opened.generation,
+                displayAxes: selection.displayAxes,
+                fixedIndices: selection.fixedIndices,
+                resolutionLevel: selection.resolutionLevel,
+                component,
+                mapping,
+                region,
+                priority: candidate.priority,
+              },
+              controller.signal,
             )
-            if (tileStatusRef.current !== null) {
-              tileStatusRef.current.textContent = `${rendererTileIds.size} bounded tiles`
-            }
-            onTile(tile, firstTile)
-            firstTile = false
-            draw()
-          })
-          .catch((error: unknown) => {
-            if (!controller.signal.aborted && tileStatusRef.current !== null) {
-              tileStatusRef.current.textContent =
-                error instanceof Error ? error.message : `Tile ${requestId} failed`
-            }
-          })
-          .finally(() => pending.delete(tileId))
+            .then((tile) => {
+              if (currentGeneration !== requestGeneration || controller.signal.aborted) return
+              renderer.upload(tile)
+              rendererTileIds.add(tile.tileId)
+              window.__PJI_WORKBENCH_METRICS__.tilesTransferred += 1
+              window.__PJI_WORKBENCH_METRICS__.tileBytesTransferred +=
+                tile.rgba.byteLength + tile.values.byteLength
+              window.__PJI_WORKBENCH_METRICS__.tilePixelsTransferred += tile.width * tile.height
+              window.__PJI_WORKBENCH_METRICS__.largestTilePixels = Math.max(
+                window.__PJI_WORKBENCH_METRICS__.largestTilePixels,
+                tile.width * tile.height,
+              )
+              if (tileStatusRef.current !== null) {
+                tileStatusRef.current.textContent = `${rendererTileIds.size} bounded tiles`
+              }
+              onTile(tile, firstTile)
+              firstTile = false
+              draw()
+            })
+            .catch((error: unknown) => {
+              if (!controller.signal.aborted && tileStatusRef.current !== null) {
+                tileStatusRef.current.textContent =
+                  error instanceof Error ? error.message : `Tile ${requestId} failed`
+              }
+            })
+            .finally(() => pending.delete(tileId))
+        }
+
+        if (analysisOverlay !== undefined) {
+          const overlayTileId = `overlay:${analysisOverlay.resultHandleId}:${analysisOverlay.output}:${candidate.column}:${candidate.row}`
+          requiredOverlays.add(overlayTileId)
+          if (!renderer.hasOverlay(overlayTileId) && !pending.has(overlayTileId)) {
+            const overlayController = new AbortController()
+            pending.set(overlayTileId, overlayController)
+            void client
+              .requestAnalysisOverlay(
+                {
+                  tileId: overlayTileId,
+                  datasetHandleId: opened.handleId,
+                  generation: opened.generation,
+                  resultHandleId: analysisOverlay.resultHandleId,
+                  output: analysisOverlay.output,
+                  selection,
+                  component: 0,
+                  region,
+                },
+                overlayController.signal,
+              )
+              .then((tile) => {
+                if (overlayController.signal.aborted) return
+                renderer.uploadOverlay(tile, selectedLabel)
+                draw()
+              })
+              .catch((error: unknown) => {
+                if (!overlayController.signal.aborted && tileStatusRef.current !== null) {
+                  tileStatusRef.current.textContent =
+                    error instanceof Error ? error.message : 'Analysis overlay failed'
+                }
+              })
+              .finally(() => pending.delete(overlayTileId))
+          }
+        }
       }
       for (const [tileId, controller] of pending) {
         if (!required.has(tileId)) controller.abort()
       }
       rendererTileIds = required
       renderer.retain(required)
+      renderer.retainOverlays(requiredOverlays)
       draw()
     }
 
@@ -378,6 +575,28 @@ export function ScientificViewport({
       return { x: event.clientX - canvasBounds.left, y: event.clientY - canvasBounds.top }
     }
     const handlePointerDown = (event: PointerEvent): void => {
+      if (event.button === 0 && !spacePressed && roiTool !== 'select') {
+        event.preventDefault()
+        drawingStart = screenToWorld(pointerPosition(event), camera, viewport)
+        canvas.setPointerCapture(event.pointerId)
+        return
+      }
+      if (event.button === 0 && !spacePressed && roiTool === 'select') {
+        const screen = pointerPosition(event)
+        const hit = rois.toReversed().find((roi) =>
+          roiPoints(roi).some((point) => {
+            const candidate = worldToScreen(point, camera, viewport)
+            return Math.hypot(candidate.x - screen.x, candidate.y - screen.y) <= 9
+          }),
+        )
+        if (hit !== undefined) onSelectRoi?.(hit.id)
+        else {
+          const world = screenToWorld(screen, camera, viewport)
+          onSelectLabel?.(renderer.labelAt(world))
+        }
+        draw()
+        return
+      }
       if (event.button !== 1 && !(event.button === 0 && spacePressed)) return
       event.preventDefault()
       panning = true
@@ -408,6 +627,39 @@ export function ScientificViewport({
       }
     }
     const stopPanning = (event: PointerEvent): void => {
+      if (drawingStart !== undefined) {
+        const start = drawingStart
+        const end = screenToWorld(pointerPosition(event), camera, viewport)
+        drawingStart = undefined
+        const x = Math.max(0, Math.min(start.x, end.x))
+        const y = Math.max(0, Math.min(start.y, end.y))
+        const width = Math.max(0.5, Math.abs(end.x - start.x))
+        const height = Math.max(0.5, Math.abs(end.y - start.y))
+        if (roiTool === 'point') onCreateRoi?.({ kind: 'point', point: end })
+        else if (roiTool === 'line') onCreateRoi?.({ kind: 'line-segment', start, end })
+        else if (roiTool === 'polyline') onCreateRoi?.({ kind: 'polyline', points: [start, end] })
+        else if (roiTool === 'rectangle') onCreateRoi?.({ kind: 'rectangle', x, y, width, height })
+        else if (roiTool === 'ellipse') {
+          onCreateRoi?.({
+            kind: 'ellipse',
+            center: { x: x + width / 2, y: y + height / 2 },
+            radiusX: width / 2,
+            radiusY: height / 2,
+          })
+        } else if (roiTool === 'polygon') {
+          onCreateRoi?.({
+            kind: 'polygon',
+            points: [
+              { x, y },
+              { x: x + width, y },
+              { x: x + width, y: y + height },
+              { x, y: y + height },
+            ],
+          })
+        }
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+        return
+      }
       if (!panning) return
       panning = false
       canvas.setAttribute('data-panning', 'false')
@@ -426,6 +678,12 @@ export function ScientificViewport({
     }
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.code === 'Space') spacePressed = true
+      if (event.key === 'Escape') drawingStart = undefined
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedRoiId !== undefined) {
+        event.preventDefault()
+        onDeleteRoi?.(selectedRoiId)
+        return
+      }
       if (
         event.target !== canvas ||
         !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)
@@ -472,7 +730,24 @@ export function ScientificViewport({
       window.removeEventListener('keyup', handleKeyUp)
       renderer.dispose()
     }
-  }, [client, component, mapping, onReady, onTile, opened, selection])
+  }, [
+    analysisOverlay,
+    client,
+    component,
+    mapping,
+    onCreateRoi,
+    onDeleteRoi,
+    onReady,
+    onSelectRoi,
+    onSelectLabel,
+    onTile,
+    opened,
+    roiTool,
+    rois,
+    selectedLabel,
+    selectedRoiId,
+    selection,
+  ])
 
   return (
     <div className="mock-viewport scientific-viewport">

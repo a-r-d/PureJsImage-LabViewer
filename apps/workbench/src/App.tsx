@@ -1,9 +1,16 @@
 import type {
+  AnalysisCatalog,
+  AnalysisExecutionResponse,
+  AnalysisResultHandleId,
+  AnalysisTableFilter,
+  AnalysisTablePage,
+  AnalysisTableSort,
   DisplayMapping,
   OpenedDatasetDescriptor,
   OpenedSourceDescriptor,
   PlaneSelection,
   RenderTile,
+  RpcJsonObject,
 } from '@pji-workbench/contracts'
 import { createImagingWorkerClient, ImagingRpcError } from '@pji-workbench/imaging'
 import {
@@ -49,6 +56,7 @@ import {
 import {
   type CSSProperties,
   type FormEvent,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -56,7 +64,14 @@ import {
   useRef,
   useState,
 } from 'react'
-
+import {
+  ANALYSIS_OPERATIONS,
+  connectedComponentsGraph,
+  histogramGraph,
+  lineProfileGraph,
+  statisticsGraph,
+  thresholdGraph,
+} from './analysis-workflows.js'
 import {
   type CommandId,
   getCommandAvailability,
@@ -65,12 +80,25 @@ import {
 } from './commands.js'
 import type { PublicEnvironment } from './environment.js'
 import {
+  AnalysisInspector,
+  AnalysisResults,
+  type MaterialsPanelState,
+  RoiInspector,
+  readablePipeline,
+} from './MaterialsPanels.js'
+import {
   LocalWorkbenchPreferenceStore,
   PREFERENCE_BOUNDS,
   type WorkbenchPreferences,
 } from './preferences.js'
 import { WorkbenchWorkspaceRuntime } from './project-runtime.js'
-import { ScientificViewport, type ScientificViewportApi } from './ScientificViewport.js'
+import {
+  type AnalysisOverlaySelection,
+  type RoiTool,
+  ScientificViewport,
+  type ScientificViewportApi,
+  type ViewportRoi,
+} from './ScientificViewport.js'
 
 type InspectorTab = 'info' | 'display' | 'roi' | 'analysis' | 'history' | 'agent'
 type BottomTab = 'pipeline' | 'history' | 'histogram' | 'profile' | 'results' | 'log'
@@ -222,6 +250,8 @@ interface InspectorContentProps {
   readonly onMapping: (mapping: DisplayMapping) => void
   readonly onSelection: (selection: PlaneSelection) => void
   readonly history: readonly WorkspaceHistoryEntry[]
+  readonly roiContent: ReactNode
+  readonly analysisContent: ReactNode
 }
 
 function InspectorContent({
@@ -235,6 +265,8 @@ function InspectorContent({
   onMapping,
   onSelection,
   history,
+  roiContent,
+  analysisContent,
 }: InspectorContentProps) {
   if (tab === 'agent') {
     return (
@@ -380,16 +412,8 @@ function InspectorContent({
       </div>
     )
   }
-  if (tab === 'roi' || tab === 'analysis') {
-    return (
-      <div className="inspector-content">
-        <p className="panel-kicker">Runtime ready</p>
-        <p className="panel-note">
-          ROI and analysis composition build on this numeric dataset in the next prompts.
-        </p>
-      </div>
-    )
-  }
+  if (tab === 'roi') return roiContent
+  if (tab === 'analysis') return analysisContent
   if (tab === 'history') {
     return (
       <ol className="history-list">
@@ -437,6 +461,10 @@ function BottomContent({
   log,
   history,
   workspace,
+  analysisResults,
+  analysisState,
+  onEditNode,
+  onDeleteNode,
 }: {
   readonly tab: BottomTab
   readonly opened: OpenedDatasetDescriptor | undefined
@@ -444,6 +472,10 @@ function BottomContent({
   readonly log: readonly string[]
   readonly history: readonly WorkspaceHistoryEntry[]
   readonly workspace: WorkspaceSnapshot
+  readonly analysisResults: ReactNode
+  readonly analysisState: MaterialsPanelState
+  readonly onEditNode: (nodeId: string) => void
+  readonly onDeleteNode: (nodeId: string) => void
 }) {
   if (tab === 'pipeline') {
     return workspace.analysis.graph.nodes.length === 0 ? (
@@ -452,12 +484,45 @@ function BottomContent({
       </p>
     ) : (
       <ol className="history-list">
-        {workspace.analysis.graph.nodes.map((node) => (
-          <li key={node.id}>{node.label ?? node.operation.id}</li>
-        ))}
+        {readablePipeline(workspace.analysis.graph).map((node) => {
+          const hasConsumer = workspace.analysis.graph.nodes.some((candidate) =>
+            candidate.inputs.some(
+              ({ source }) => source.kind === 'node' && source.nodeId === node.id,
+            ),
+          )
+          const provenanceNodes = analysisState.execution?.provenance['nodes']
+          const provenance = Array.isArray(provenanceNodes)
+            ? provenanceNodes.find(
+                (candidate) =>
+                  typeof candidate === 'object' &&
+                  candidate !== null &&
+                  !Array.isArray(candidate) &&
+                  candidate['nodeId'] === node.id,
+              )
+            : undefined
+          return (
+            <li key={node.id}>
+              <strong>{node.label}</strong> · v{node.version}
+              <span>
+                <label>
+                  <input checked readOnly type="checkbox" /> Enabled
+                </label>{' '}
+                · {provenance === undefined ? 'committed' : 'complete · reference provider'}
+              </span>
+              <code>{JSON.stringify(node.parameters)}</code>
+              <div className="button-row">
+                <Button onClick={() => onEditNode(node.id)}>Select / edit</Button>
+                <Button disabled={hasConsumer} onClick={() => onDeleteNode(node.id)}>
+                  Delete
+                </Button>
+              </div>
+            </li>
+          )
+        })}
       </ol>
     )
   }
+  if (tab === 'results' || tab === 'profile') return analysisResults
   if (tab === 'history') {
     return (
       <ol className="history-list" aria-label="Project history">
@@ -557,6 +622,25 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [recentSources, setRecentSources] = useState(() => readRecentSources(window.localStorage))
   const [log, setLog] = useState<readonly string[]>([])
+  const [roiTool, setRoiTool] = useState<RoiTool>('select')
+  const [threshold, setThreshold] = useState(128)
+  const [thresholdMode, setThresholdMode] = useState<
+    'greater-than' | 'greater-than-or-equal' | 'less-than' | 'less-than-or-equal'
+  >('greater-than')
+  const [connectivity, setConnectivity] = useState<4 | 8>(8)
+  const [connectedPlanReady, setConnectedPlanReady] = useState(false)
+  const [analysisCatalog, setAnalysisCatalog] = useState<AnalysisCatalog>()
+  const [analysisState, setAnalysisState] = useState<MaterialsPanelState>({
+    busy: false,
+    tableOffset: 0,
+  })
+  const [analysisOverlay, setAnalysisOverlay] = useState<AnalysisOverlaySelection>()
+  const [previewEnabled, setPreviewEnabled] = useState(false)
+  const [tableFilter, setTableFilter] = useState<AnalysisTableFilter>()
+  const [tableSort, setTableSort] = useState<AnalysisTableSort>()
+  const analysisAbort = useRef<AbortController | undefined>(undefined)
+  const previewResult = useRef<AnalysisResultHandleId | undefined>(undefined)
+  const activeResult = useRef<AnalysisResultHandleId | undefined>(undefined)
   const viewportApi = useRef<ScientificViewportApi | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const projectImportInput = useRef<HTMLInputElement>(null)
@@ -583,6 +667,613 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const appendLog = useCallback((message: string): void => {
     setLog((current) => [...current.slice(-20), `${new Date().toLocaleTimeString()} · ${message}`])
   }, [])
+
+  const releaseAnalysisHandle = useCallback(
+    async (handle: AnalysisResultHandleId | undefined): Promise<void> => {
+      if (handle === undefined || opened === undefined) return
+      try {
+        await client.releaseAnalysis({
+          datasetHandleId: opened.handleId,
+          generation: opened.generation,
+          resultHandleId: handle,
+        })
+      } catch (releaseError) {
+        appendLog(
+          `Analysis result was already released: ${releaseError instanceof Error ? releaseError.message : 'stale handle'}`,
+        )
+      }
+    },
+    [appendLog, client, opened],
+  )
+
+  const cancelPreview = useCallback((): void => {
+    setPreviewEnabled(false)
+    analysisAbort.current?.abort(new DOMException('Threshold preview cancelled', 'AbortError'))
+    analysisAbort.current = undefined
+    const handle = previewResult.current
+    previewResult.current = undefined
+    setAnalysisOverlay((current) => (current?.resultHandleId === handle ? undefined : current))
+    void releaseAnalysisHandle(handle)
+    setAnalysisState((current) => ({
+      ...current,
+      busy: false,
+      message: 'Preview cancelled. The committed project is unchanged.',
+    }))
+  }, [releaseAnalysisHandle])
+
+  const previewThreshold = useCallback(async (): Promise<void> => {
+    if (opened === undefined) return
+    analysisAbort.current?.abort(new DOMException('Superseded threshold preview', 'AbortError'))
+    const controller = new AbortController()
+    analysisAbort.current = controller
+    const previous = previewResult.current
+    previewResult.current = undefined
+    if (previous !== undefined) await releaseAnalysisHandle(previous)
+    const graph = thresholdGraph({ component, threshold, mode: thresholdMode })
+    setAnalysisState((current) => ({
+      ...current,
+      busy: true,
+      message: 'Validating a bounded threshold preview…',
+    }))
+    try {
+      const normalized = await client.normalizeAnalysisParameters(
+        {
+          datasetHandleId: opened.handleId,
+          generation: opened.generation,
+          operation: { id: ANALYSIS_OPERATIONS.threshold, version: 1 },
+          parameters: graph.nodes[0]?.parameters ?? {},
+        },
+        controller.signal,
+      )
+      if (!normalized.valid) {
+        setAnalysisState((current) => ({
+          ...current,
+          busy: false,
+          message: String(normalized.issues[0]?.['message'] ?? 'Threshold parameters are invalid.'),
+        }))
+        return
+      }
+      const dryRun = await client.dryRunAnalysis(
+        {
+          datasetHandleId: opened.handleId,
+          generation: opened.generation,
+          graph: graph as unknown as RpcJsonObject,
+        },
+        controller.signal,
+      )
+      setAnalysisState((current) => ({ ...current, dryRun }))
+      if (!dryRun.valid) {
+        setAnalysisState((current) => ({
+          ...current,
+          busy: false,
+          message: 'Preview plan is invalid.',
+        }))
+        return
+      }
+      const execution = await client.executeAnalysis(
+        {
+          datasetHandleId: opened.handleId,
+          generation: opened.generation,
+          graph: graph as unknown as RpcJsonObject,
+        },
+        controller.signal,
+      )
+      previewResult.current = execution.resultHandleId
+      setAnalysisOverlay({ resultHandleId: execution.resultHandleId, output: 'mask' })
+      setAnalysisState((current) => ({
+        ...current,
+        busy: false,
+        message: `Preview ready in ${execution.elapsedMilliseconds.toFixed(1)} ms. No history entry was created.`,
+      }))
+    } catch (previewError) {
+      if (!controller.signal.aborted) {
+        setAnalysisState((current) => ({
+          ...current,
+          busy: false,
+          message: `${previewError instanceof Error ? previewError.message : 'Preview failed.'} The committed project is unchanged.`,
+        }))
+      }
+    }
+  }, [client, component, opened, releaseAnalysisHandle, threshold, thresholdMode])
+
+  useEffect(() => {
+    if (!previewEnabled || opened === undefined) return
+    const timer = window.setTimeout(() => void previewThreshold(), 250)
+    return () => window.clearTimeout(timer)
+  }, [opened, previewEnabled, previewThreshold])
+
+  useEffect(() => {
+    if (opened === undefined) {
+      setAnalysisCatalog(undefined)
+      return
+    }
+    const controller = new AbortController()
+    void client
+      .analysisCatalog(
+        { datasetHandleId: opened.handleId, generation: opened.generation },
+        controller.signal,
+      )
+      .then(setAnalysisCatalog)
+      .catch((catalogError: unknown) => {
+        if (!controller.signal.aborted)
+          appendLog(`Analysis catalog failed: ${String(catalogError)}`)
+      })
+    return () => controller.abort()
+  }, [appendLog, client, opened])
+
+  useEffect(() => {
+    return () => {
+      analysisAbort.current?.abort(new DOMException('Dataset changed', 'AbortError'))
+      const preview = previewResult.current
+      const active = activeResult.current
+      previewResult.current = undefined
+      activeResult.current = undefined
+      if (opened !== undefined) {
+        for (const handle of [preview, active]) {
+          if (handle !== undefined) {
+            void client
+              .releaseAnalysis({
+                datasetHandleId: opened.handleId,
+                generation: opened.generation,
+                resultHandleId: handle,
+              })
+              .catch(() => undefined)
+          }
+        }
+      }
+    }
+  }, [client, opened])
+
+  const loadTablePage = useCallback(
+    async (
+      execution: AnalysisExecutionResponse,
+      offset: number,
+      filter = tableFilter,
+      sort = tableSort,
+    ): Promise<AnalysisTablePage | undefined> => {
+      if (
+        opened === undefined ||
+        !execution.outputs.some(({ name, kind }) => name === 'objects' && kind === 'result')
+      ) {
+        return undefined
+      }
+      return client.requestAnalysisTablePage({
+        datasetHandleId: opened.handleId,
+        generation: opened.generation,
+        resultHandleId: execution.resultHandleId,
+        output: 'objects',
+        offset,
+        limit: 50,
+        ...(filter === undefined ? {} : { filter }),
+        ...(sort === undefined ? {} : { sort }),
+      })
+    },
+    [client, opened, tableFilter, tableSort],
+  )
+
+  const executeAnalysisGraph = useCallback(
+    async (
+      graph: WorkspaceSnapshot['analysis']['graph'],
+      options: {
+        readonly roi?: ViewportRoi
+        readonly overlay?: string
+        readonly commit?: boolean
+      } = {},
+    ): Promise<void> => {
+      if (opened === undefined) return
+      cancelPreview()
+      const controller = new AbortController()
+      analysisAbort.current = controller
+      setAnalysisState((current) => ({ ...current, busy: true, message: 'Planning analysis…' }))
+      try {
+        const request = {
+          datasetHandleId: opened.handleId,
+          generation: opened.generation,
+          graph: graph as unknown as RpcJsonObject,
+          ...(options.roi === undefined ? {} : { roi: options.roi as unknown as RpcJsonObject }),
+        }
+        const dryRun = await client.dryRunAnalysis(request, controller.signal)
+        setAnalysisState((current) => ({ ...current, dryRun }))
+        if (!dryRun.valid) {
+          setAnalysisState((current) => ({
+            ...current,
+            busy: false,
+            message: 'Analysis validation failed. The committed project is unchanged.',
+          }))
+          return
+        }
+        const execution = await client.executeAnalysis(request, controller.signal)
+        const previous = activeResult.current
+        activeResult.current = execution.resultHandleId
+        if (previous !== undefined) await releaseAnalysisHandle(previous)
+        if (options.commit === true) applyProjectMutation({ kind: 'analysis.set-graph', graph })
+        const table = await loadTablePage(execution, 0, undefined, undefined)
+        setAnalysisState({
+          busy: false,
+          execution,
+          dryRun,
+          tableOffset: 0,
+          ...(table === undefined ? {} : { table }),
+          message: `Analysis completed in ${execution.elapsedMilliseconds.toFixed(1)} ms.`,
+        })
+        setAnalysisOverlay(
+          options.overlay === undefined
+            ? undefined
+            : { resultHandleId: execution.resultHandleId, output: options.overlay },
+        )
+        setBottomTab(
+          table === undefined
+            ? options.roi?.geometry.kind === 'line-segment'
+              ? 'profile'
+              : 'results'
+            : 'results',
+        )
+        appendLog(
+          `Executed ${graph.nodes.map(({ label, operation }) => label ?? operation.id).join(' → ')}`,
+        )
+      } catch (executionError) {
+        if (!controller.signal.aborted) {
+          setAnalysisState((current) => ({
+            ...current,
+            busy: false,
+            message: `${executionError instanceof Error ? executionError.message : 'Analysis failed.'} The previous committed project remains intact.`,
+          }))
+        }
+      }
+    },
+    [
+      appendLog,
+      applyProjectMutation,
+      cancelPreview,
+      client,
+      loadTablePage,
+      opened,
+      releaseAnalysisHandle,
+    ],
+  )
+
+  const createRoi = useCallback(
+    async (geometry: ViewportRoi['geometry']): Promise<void> => {
+      if (opened === undefined || selection === undefined) return
+      const id = `roi-${crypto.randomUUID()}`
+      const normalized = await client.normalizeRoi({
+        datasetHandleId: opened.handleId,
+        generation: opened.generation,
+        roi: {
+          schemaVersion: 1,
+          id,
+          name: `${geometry.kind} ROI`,
+          axisIds: selection.displayAxes,
+          fixedIndices: selection.fixedIndices,
+          coordinateSpace: 'pixel',
+          geometry,
+          presentation: { style: { visible: true } },
+        } as unknown as RpcJsonObject,
+      })
+      if (!normalized.valid || normalized.roi === undefined) {
+        setError(String(normalized.issues[0]?.['message'] ?? 'The ROI is invalid.'))
+        return
+      }
+      const roi = normalized.roi as unknown as ViewportRoi
+      applyProjectMutation({ kind: 'roi.add', roi })
+      applyProjectMutation({ kind: 'roi.select', roiId: roi.id })
+      setRoiTool('select')
+    },
+    [applyProjectMutation, client, opened, selection],
+  )
+
+  const updateRoi = useCallback(
+    async (roi: ViewportRoi): Promise<void> => {
+      if (opened === undefined) return
+      const normalized = await client.normalizeRoi({
+        datasetHandleId: opened.handleId,
+        generation: opened.generation,
+        roi: roi as unknown as RpcJsonObject,
+      })
+      if (normalized.valid && normalized.roi !== undefined) {
+        applyProjectMutation({
+          kind: 'roi.update',
+          roiId: roi.id,
+          roi: normalized.roi as unknown as ViewportRoi,
+        })
+      }
+    },
+    [applyProjectMutation, client, opened],
+  )
+
+  const selectRoi = useCallback(
+    (roiId?: string): void => {
+      applyProjectMutation({ kind: 'roi.select', ...(roiId === undefined ? {} : { roiId }) })
+    },
+    [applyProjectMutation],
+  )
+
+  const deleteRoi = useCallback(
+    (roiId: string): void => {
+      applyProjectMutation({ kind: 'roi.remove', roiId })
+    },
+    [applyProjectMutation],
+  )
+
+  const handleCreateRoi = useCallback(
+    (geometry: ViewportRoi['geometry']): void => {
+      void createRoi(geometry)
+    },
+    [createRoi],
+  )
+
+  const applyThreshold = useCallback(async (): Promise<void> => {
+    if (opened === undefined) return
+    const graph = thresholdGraph({ component, threshold, mode: thresholdMode })
+    const dryRun = await client.dryRunAnalysis({
+      datasetHandleId: opened.handleId,
+      generation: opened.generation,
+      graph: graph as unknown as RpcJsonObject,
+    })
+    setAnalysisState((current) => ({ ...current, dryRun }))
+    if (!dryRun.valid) {
+      setAnalysisState((current) => ({
+        ...current,
+        message: 'Threshold was not applied because validation failed.',
+      }))
+      return
+    }
+    cancelPreview()
+    applyProjectMutation({ kind: 'analysis.set-graph', graph })
+    setAnalysisState((current) => ({
+      ...current,
+      message: 'Threshold committed as one semantic project revision.',
+    }))
+    setBottomTab('pipeline')
+  }, [applyProjectMutation, cancelPreview, client, component, opened, threshold, thresholdMode])
+
+  const runConnectedComponents = useCallback((): void => {
+    if (selection === undefined) return
+    const graph = connectedComponentsGraph({
+      component,
+      threshold,
+      mode: thresholdMode,
+      selection,
+      connectivity,
+    })
+    void executeAnalysisGraph(graph, { overlay: 'labels', commit: true })
+  }, [component, connectivity, executeAnalysisGraph, selection, threshold, thresholdMode])
+
+  const planConnectedComponents = useCallback(async (): Promise<void> => {
+    if (opened === undefined || selection === undefined) return
+    const graph = connectedComponentsGraph({
+      component,
+      threshold,
+      mode: thresholdMode,
+      selection,
+      connectivity,
+    })
+    setAnalysisState((current) => ({
+      ...current,
+      busy: true,
+      message: 'Planning connected components…',
+    }))
+    try {
+      const dryRun = await client.dryRunAnalysis({
+        datasetHandleId: opened.handleId,
+        generation: opened.generation,
+        graph: graph as unknown as RpcJsonObject,
+      })
+      setAnalysisState((current) => ({
+        ...current,
+        busy: false,
+        dryRun,
+        message: dryRun.valid
+          ? 'Connected-components plan ready. Review the resource estimate before running.'
+          : 'Connected-components plan is invalid.',
+      }))
+      setConnectedPlanReady(dryRun.valid)
+    } catch (planError) {
+      setConnectedPlanReady(false)
+      setAnalysisState((current) => ({
+        ...current,
+        busy: false,
+        message: planError instanceof Error ? planError.message : 'Planning failed.',
+      }))
+    }
+  }, [client, component, connectivity, opened, selection, threshold, thresholdMode])
+
+  const measureSelectedRoi = useCallback(
+    (kind: 'statistics' | 'histogram' | 'profile'): void => {
+      if (selection === undefined) return
+      const roi = workspace.analysis.roiSet.rois.find(
+        ({ id }) => id === workspace.workflow.selectedRoiId,
+      )
+      if (roi === undefined) return
+      const graph =
+        kind === 'statistics'
+          ? statisticsGraph(selection, component)
+          : kind === 'histogram'
+            ? histogramGraph(selection, component)
+            : lineProfileGraph(selection, component)
+      void executeAnalysisGraph(graph, { roi, commit: false })
+    },
+    [
+      component,
+      executeAnalysisGraph,
+      selection,
+      workspace.analysis.roiSet.rois,
+      workspace.workflow.selectedRoiId,
+    ],
+  )
+
+  const changeTablePage = useCallback(
+    (offset: number): void => {
+      const execution = analysisState.execution
+      if (execution === undefined) return
+      void loadTablePage(execution, offset).then((table) => {
+        if (table !== undefined) {
+          setAnalysisState((current) => ({ ...current, table, tableOffset: table.offset }))
+        }
+      })
+    },
+    [analysisState.execution, loadTablePage],
+  )
+
+  const changeTableSort = useCallback(
+    (column: string): void => {
+      const execution = analysisState.execution
+      if (execution === undefined) return
+      const next: AnalysisTableSort =
+        tableSort?.column === column && tableSort.direction === 'ascending'
+          ? { column, direction: 'descending' }
+          : { column, direction: 'ascending' }
+      setTableSort(next)
+      void loadTablePage(execution, 0, tableFilter, next).then((table) => {
+        if (table !== undefined)
+          setAnalysisState((current) => ({ ...current, table, tableOffset: 0 }))
+      })
+    },
+    [analysisState.execution, loadTablePage, tableFilter, tableSort],
+  )
+
+  const changeTableFilter = useCallback(
+    (column: string, minimum?: number): void => {
+      const execution = analysisState.execution
+      if (execution === undefined) return
+      const next = minimum === undefined ? undefined : { column, minimum }
+      setTableFilter(next)
+      void loadTablePage(execution, 0, next, tableSort).then((table) => {
+        if (table !== undefined)
+          setAnalysisState((current) => ({ ...current, table, tableOffset: 0 }))
+      })
+    },
+    [analysisState.execution, loadTablePage, tableSort],
+  )
+
+  const analysisPageRows = useCallback((page: AnalysisTablePage) => {
+    return Array.from({ length: page.rowCount }, (_value, row) =>
+      Object.fromEntries(page.columns.map((column) => [column.name, column.values[row] ?? null])),
+    )
+  }, [])
+
+  const downloadAnalysis = useCallback(
+    async (scope: 'selected' | 'all', format: 'csv' | 'json'): Promise<void> => {
+      const execution = analysisState.execution
+      if (execution === undefined) return
+      const parts: string[] = []
+      if (analysisState.table === undefined || opened === undefined) {
+        parts.push(JSON.stringify(execution.outputs, null, 2))
+      } else {
+        const headers = analysisState.table.columns.map(({ name }) => name)
+        const collect = (page: AnalysisTablePage): void => {
+          const pageRows = analysisPageRows(page)
+          if (format === 'csv') {
+            if (parts.length === 0) parts.push(`${headers.join(',')}\n`)
+            parts.push(
+              `${pageRows
+                .map((row) => headers.map((header) => JSON.stringify(row[header] ?? '')).join(','))
+                .join('\n')}\n`,
+            )
+          } else {
+            parts.push(...pageRows.map((row) => JSON.stringify(row)))
+          }
+        }
+        if (scope === 'selected') collect(analysisState.table)
+        else {
+          let offset = 0
+          while (offset < analysisState.table.totalRows) {
+            const page = await client.requestAnalysisTablePage({
+              datasetHandleId: opened.handleId,
+              generation: opened.generation,
+              resultHandleId: execution.resultHandleId,
+              output: 'objects',
+              offset,
+              limit: 200,
+              ...(tableFilter === undefined ? {} : { filter: tableFilter }),
+              ...(tableSort === undefined ? {} : { sort: tableSort }),
+            })
+            collect(page)
+            offset += page.rowCount
+            if (page.rowCount === 0) break
+          }
+        }
+        if (format === 'json') parts.splice(0, parts.length, `[${parts.join(',')}]`)
+      }
+      const blob = new Blob(parts, {
+        type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json',
+      })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `purejsimage-analysis.${format}`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      appendLog(`Exported ${scope} analysis rows as ${format.toUpperCase()}`)
+    },
+    [
+      analysisPageRows,
+      analysisState.execution,
+      analysisState.table,
+      appendLog,
+      client,
+      opened,
+      tableFilter,
+      tableSort,
+    ],
+  )
+
+  const pinAnalysisResult = useCallback((): void => {
+    const execution = analysisState.execution
+    const first = execution?.outputs[0]
+    if (execution === undefined || first === undefined) return
+    applyProjectMutation({
+      kind: 'result.pin',
+      result: {
+        id: `result-${crypto.randomUUID()}` as WorkspaceSnapshot['pinnedResults'][number]['id'],
+        graphOutput: first.name,
+        label: `${first.name} result`,
+        kind: first.kind,
+        summary: {
+          outputCount: execution.outputs.length,
+          elapsedMilliseconds: execution.elapsedMilliseconds,
+          outputs: execution.outputs.map(({ name, kind }) => ({ name, kind })),
+        },
+        createdAt: new Date().toISOString(),
+      },
+    })
+  }, [analysisState.execution, applyProjectMutation])
+
+  const selectAnalysisLabel = useCallback((selectedLabel?: number): void => {
+    setAnalysisState((current) => ({
+      ...current,
+      ...(selectedLabel === undefined ? { selectedLabel: undefined } : { selectedLabel }),
+    }))
+  }, [])
+
+  const deletePipelineNode = useCallback(
+    (nodeId: string): void => {
+      const graph = workspace.analysis.graph
+      if (
+        graph.nodes.some((node) =>
+          node.inputs.some(
+            (input) => input.source.kind === 'node' && input.source.nodeId === nodeId,
+          ),
+        )
+      ) {
+        setError(
+          'Delete downstream analysis steps before deleting this step. The graph is unchanged.',
+        )
+        return
+      }
+      applyProjectMutation({
+        kind: 'analysis.set-graph',
+        graph: {
+          ...graph,
+          nodes: graph.nodes.filter(({ id }) => id !== nodeId),
+          outputs: graph.outputs.filter(
+            ({ source }) => source.kind !== 'node' || source.nodeId !== nodeId,
+          ),
+        },
+      })
+    },
+    [applyProjectMutation, workspace.analysis.graph],
+  )
 
   useEffect(() => {
     void client.initialize().catch((initializationError: unknown) => {
@@ -1049,6 +1740,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const changeSelection = useCallback(
     (next: PlaneSelection): void => {
       if (opened === undefined) return
+      setConnectedPlanReady(false)
       void client
         .setPlane(opened.handleId, opened.generation, next)
         .then(() => {
@@ -1101,6 +1793,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       autoRangeLocked.current = false
       setMapping({ mode: 'linear', range: 'auto' })
       setComponent(next)
+      setConnectedPlanReady(false)
     },
     [applyProjectMutation, workspace.active],
   )
@@ -1228,6 +1921,82 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const themeIcon = preferences.theme === 'dark' ? 'sun' : 'moon'
   const oppositeTheme: ThemeName = preferences.theme === 'dark' ? 'light' : 'dark'
   const datasetName = opened?.dataset.name ?? opened?.dataset.id
+  const operationDescriptors = analysisCatalog?.capabilities['operationDescriptors']
+  const operationCount = Array.isArray(operationDescriptors) ? operationDescriptors.length : 0
+  const visibleRois = useMemo(
+    () =>
+      workspace.analysis.roiSet.rois.filter(
+        (roi) => roi.presentation?.style?.['visible'] !== false,
+      ),
+    [workspace.analysis.roiSet.rois],
+  )
+  const roiContent =
+    opened === undefined ? null : (
+      <RoiInspector
+        onDelete={deleteRoi}
+        onMeasure={measureSelectedRoi}
+        onRename={(roi, name) => {
+          void updateRoi({ ...roi, name: name.trim() || roi.id })
+        }}
+        onSelect={selectRoi}
+        onTool={setRoiTool}
+        onVisibility={(roi, visible) => {
+          void updateRoi({
+            ...roi,
+            presentation: {
+              ...roi.presentation,
+              style: { ...roi.presentation?.style, visible },
+            },
+          })
+        }}
+        opened={opened}
+        rois={workspace.analysis.roiSet.rois}
+        {...(workspace.workflow.selectedRoiId === undefined
+          ? {}
+          : { selectedRoiId: workspace.workflow.selectedRoiId })}
+        tool={roiTool}
+      />
+    )
+  const analysisContent = (
+    <AnalysisInspector
+      component={component}
+      planeLabel={selection?.displayAxes.join(' × ') ?? 'unavailable'}
+      connectedPlanReady={connectedPlanReady}
+      connectivity={connectivity}
+      mode={thresholdMode}
+      onApply={() => void applyThreshold()}
+      onCancelPreview={cancelPreview}
+      onConnectivity={(value) => {
+        setConnectivity(value)
+        setConnectedPlanReady(false)
+      }}
+      onMode={(value) => {
+        setThresholdMode(value)
+        setConnectedPlanReady(false)
+      }}
+      onPreview={() => setPreviewEnabled(true)}
+      onPlanObjects={() => void planConnectedComponents()}
+      onRunObjects={runConnectedComponents}
+      onThreshold={(value) => {
+        setThreshold(value)
+        setConnectedPlanReady(false)
+      }}
+      operationCount={operationCount}
+      state={analysisState}
+      threshold={threshold}
+    />
+  )
+  const analysisResults = (
+    <AnalysisResults
+      onExport={(scope, format) => void downloadAnalysis(scope, format)}
+      onFilter={changeTableFilter}
+      onPage={changeTablePage}
+      onPin={pinAnalysisResult}
+      onSelectLabel={selectAnalysisLabel}
+      onSort={changeTableSort}
+      state={analysisState}
+    />
+  )
 
   return (
     <ThemeRoot className="workbench-theme" theme={preferences.theme}>
@@ -1469,12 +2238,21 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                   </div>
                 ) : hasDataset && opened !== undefined && selection !== undefined ? (
                   <ScientificViewport
+                    analysisOverlay={analysisOverlay}
                     client={client}
                     component={component}
                     mapping={mapping}
                     onReady={setViewportApi}
+                    onCreateRoi={handleCreateRoi}
+                    onDeleteRoi={deleteRoi}
+                    onSelectRoi={selectRoi}
+                    onSelectLabel={selectAnalysisLabel}
                     onTile={onTile}
                     opened={opened}
+                    roiTool={roiTool}
+                    rois={visibleRois}
+                    selectedLabel={analysisState.selectedLabel}
+                    selectedRoiId={workspace.workflow.selectedRoiId}
                     selection={selection}
                   />
                 ) : (
@@ -1523,6 +2301,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               />
               <div className="inspector-scroll">
                 <InspectorContent
+                  analysisContent={analysisContent}
                   component={component}
                   history={historyState.undo}
                   mapping={mapping}
@@ -1530,6 +2309,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                   onMapping={changeMapping}
                   onSelection={changeSelection}
                   opened={opened}
+                  roiContent={roiContent}
                   selection={selection}
                   source={source}
                   tab={inspectorTab}
@@ -1564,10 +2344,14 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             />
             <div className="bottom-content">
               <BottomContent
+                analysisResults={analysisResults}
+                analysisState={analysisState}
                 histogram={histogram}
                 history={historyState.undo}
                 log={log}
                 opened={opened}
+                onDeleteNode={deletePipelineNode}
+                onEditNode={() => setInspectorTab('analysis')}
                 tab={bottomTab}
                 workspace={workspace}
               />

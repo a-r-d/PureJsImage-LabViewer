@@ -84,4 +84,51 @@ describe('imaging RPC validation', () => {
       }),
     ).toThrow(RpcValidationError)
   })
+
+  it('bounds analysis JSON, overlay pixels, and table pages before Worker execution', () => {
+    expect(() =>
+      validateWorkerRequest({
+        schemaVersion: RPC_SCHEMA_VERSION,
+        requestId: 'analysis-nan',
+        kind: 'analysis.execute',
+        payload: {
+          datasetHandleId: 'dataset-1',
+          generation: 1,
+          graph: { schemaVersion: 1, inputs: [], nodes: [], outputs: [], invalid: Number.NaN },
+        },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_PAYLOAD' }))
+    expect(() =>
+      validateWorkerRequest({
+        schemaVersion: RPC_SCHEMA_VERSION,
+        requestId: 'analysis-page',
+        kind: 'analysis.table-page',
+        payload: {
+          datasetHandleId: 'dataset-1',
+          generation: 1,
+          resultHandleId: 'result-1',
+          output: 'objects',
+          offset: 0,
+          limit: RPC_LIMITS.maxTablePageRows + 1,
+        },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'LIMIT_EXCEEDED' }))
+    expect(() =>
+      validateWorkerRequest({
+        schemaVersion: RPC_SCHEMA_VERSION,
+        requestId: 'analysis-overlay',
+        kind: 'analysis.overlay-tile',
+        payload: {
+          datasetHandleId: 'dataset-1',
+          generation: 1,
+          resultHandleId: 'result-1',
+          output: 'labels',
+          tileId: 'labels-0',
+          selection: { displayAxes: ['x', 'y'], fixedIndices: [], resolutionLevel: 0 },
+          component: 0,
+          region: { x: 0, y: 0, width: 513, height: 513 },
+        },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'LIMIT_EXCEEDED' }))
+  })
 })

@@ -181,6 +181,87 @@ test('saves and replays a semantic project after a browser reload', async ({ pag
   await expect(page.getByText('Saved locally', { exact: true })).toBeVisible()
 })
 
+test('draws and measures an ROI with bounded Worker results', async ({ page }) => {
+  await openSample(page)
+  await page.getByRole('tab', { name: 'ROI' }).click()
+  await page.getByRole('button', { name: 'rectangle', exact: true }).click()
+  const canvas = page.getByRole('img', { name: /Scientific image viewport/ })
+  const box = await canvas.boundingBox()
+  expect(box).not.toBeNull()
+  if (box === null) return
+  await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.45)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width * 0.58, box.y + box.height * 0.58)
+  await page.mouse.up()
+  await expect(
+    page.getByRole('list', { name: 'Regions of interest' }).getByRole('listitem'),
+  ).toHaveCount(1)
+  await page.getByRole('button', { name: 'Statistics' }).click()
+  await expect(page.getByTestId('analysis-results')).toContainText('1 bounded outputs')
+  await expect(page.getByTestId('analysis-results')).toContainText('statistics')
+  await page.getByRole('button', { name: 'Pin result' }).click()
+  await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible()
+})
+
+test('previews, commits, plans, and executes threshold connected components', async ({ page }) => {
+  test.setTimeout(60_000)
+  await openSample(page)
+  await page.getByRole('tab', { name: 'Analysis' }).click()
+  await page.getByLabel('Threshold value').fill('175')
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await expect(page.getByText(/Preview ready in/)).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: 'Apply threshold' }).click()
+  await expect(
+    page.getByText('Threshold committed as one semantic project revision.'),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Plan connected components' }).click()
+  await expect(page.getByText(/Connected-components plan ready/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Run connected components' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Run connected components' }).click()
+  await expect(page.getByTestId('analysis-results')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('analysis-results')).toContainText(/objects/)
+  await expect(page.getByRole('region', { name: 'Paged object measurements' })).toBeVisible()
+  const firstLabel = page.getByRole('button', { name: /Select label/ }).first()
+  await firstLabel.click()
+  await expect(firstLabel).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('supports a keyboard-only threshold commit path', async ({ page }) => {
+  await openSample(page)
+  await page.getByRole('tab', { name: 'Analysis' }).focus()
+  await page.keyboard.press('Enter')
+  await page.getByLabel('Threshold value').focus()
+  await page.keyboard.press('ControlOrMeta+A')
+  await page.keyboard.type('175')
+  await page.getByRole('button', { name: 'Preview', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByText(/Preview ready in/)).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: 'Apply threshold' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(
+    page.getByText('Threshold committed as one semantic project revision.'),
+  ).toBeVisible()
+})
+
+test('@a11y analysis controls and results have no serious violations', async ({ page }) => {
+  await openSample(page)
+  await page.getByRole('tab', { name: 'Analysis' }).click()
+  const results = await new AxeBuilder({ page }).analyze()
+  expect(
+    results.violations.filter(({ impact }) => impact === 'critical' || impact === 'serious'),
+  ).toEqual([])
+})
+
+test('@visual materials analysis inspector', async ({ browserName, page }) => {
+  test.skip(browserName !== 'chromium', 'Chromium owns the deterministic visual baselines.')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openSample(page)
+  await page.getByRole('tab', { name: 'Analysis' }).click()
+  await expect(page).toHaveScreenshot('workbench-materials-analysis.png', {
+    animations: 'disabled',
+  })
+})
+
 test('collapses the navigator on a narrow desktop while preserving the viewport', async ({
   page,
 }) => {

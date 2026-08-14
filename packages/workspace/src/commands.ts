@@ -1,4 +1,5 @@
 import type {
+  AnalysisGraph,
   AnalysisGraphInput,
   AnalysisGraphNode,
   AnalysisGraphOutput,
@@ -57,6 +58,7 @@ export type WorkspaceMutation =
   | Readonly<{ kind: 'display.set-layer'; layer: DisplayLayerState }>
   | Readonly<{ kind: 'display.remove-layer'; layerId: string }>
   | Readonly<{ kind: 'analysis.add-node'; node: AnalysisGraphNode }>
+  | Readonly<{ kind: 'analysis.set-graph'; graph: AnalysisGraph }>
   | Readonly<{ kind: 'analysis.update-node'; nodeId: string; node: AnalysisGraphNode }>
   | Readonly<{ kind: 'analysis.remove-node'; nodeId: string }>
   | Readonly<{
@@ -127,6 +129,7 @@ const COMMAND_KINDS = new Set<WorkspaceMutation['kind']>([
   'display.set-layer',
   'display.remove-layer',
   'analysis.add-node',
+  'analysis.set-graph',
   'analysis.update-node',
   'analysis.remove-node',
   'analysis.set-edge',
@@ -468,6 +471,8 @@ function applyMutation(
           },
         },
       }
+    case 'analysis.set-graph':
+      return { ...snapshot, analysis: { ...snapshot.analysis, graph: mutation.graph } }
     case 'analysis.update-node':
       if (mutation.node.id !== mutation.nodeId) conflict('updated analysis node ID cannot change')
       return {
@@ -743,6 +748,8 @@ export function invertWorkspaceMutation(
     }
     case 'analysis.add-node':
       return [{ kind: 'analysis.remove-node', nodeId: mutation.node.id }]
+    case 'analysis.set-graph':
+      return [{ kind: 'analysis.set-graph', graph: snapshot.analysis.graph }]
     case 'analysis.update-node': {
       const node = snapshot.analysis.graph.nodes.find(({ id }) => id === mutation.nodeId)
       if (node === undefined) conflict(`analysis node ${mutation.nodeId} does not exist`)
@@ -866,6 +873,8 @@ export function describeWorkspaceCommand(command: WorkspaceMutation): string {
       return `Removed display layer ${command.layerId}`
     case 'analysis.add-node':
       return `Added analysis step ${command.node.label ?? command.node.operation.id}`
+    case 'analysis.set-graph':
+      return `Updated analysis pipeline (${command.graph.nodes.length} steps)`
     case 'analysis.update-node':
       return `Updated analysis step ${command.node.label ?? command.node.operation.id}`
     case 'analysis.remove-node':

@@ -1,4 +1,16 @@
 import {
+  type AnalysisCatalog,
+  type AnalysisDryRunResponse,
+  type AnalysisExecutionResponse,
+  type AnalysisGraphRequest,
+  type AnalysisNormalizeRequest,
+  type AnalysisOverlayTile,
+  type AnalysisOverlayTileRequest,
+  type AnalysisParameterNormalization,
+  type AnalysisReleaseRequest,
+  type AnalysisRoiNormalization,
+  type AnalysisTablePage,
+  type AnalysisTablePageRequest,
   type DatasetHandleId,
   type DocumentId,
   type OpenedDatasetDescriptor,
@@ -141,6 +153,73 @@ export class ImagingWorkerClient {
     return this.#call('tile.request', request, signal).then((response) =>
       this.#payload(response, 'tile.ready'),
     )
+  }
+
+  analysisCatalog(
+    dataset: Pick<AnalysisGraphRequest, 'datasetHandleId' | 'generation'>,
+    signal?: AbortSignal,
+  ): Promise<AnalysisCatalog> {
+    return this.#call('analysis.catalog', dataset, signal).then((response) =>
+      this.#payload(response, 'analysis.catalog'),
+    )
+  }
+
+  normalizeAnalysisParameters(
+    request: AnalysisNormalizeRequest,
+    signal?: AbortSignal,
+  ): Promise<AnalysisParameterNormalization> {
+    return this.#call('analysis.normalize-parameters', request, signal).then((response) =>
+      this.#payload(response, 'analysis.parameters-normalized'),
+    )
+  }
+
+  normalizeRoi(
+    request: Extract<WorkerRequest, { kind: 'analysis.normalize-roi' }>['payload'],
+    signal?: AbortSignal,
+  ): Promise<AnalysisRoiNormalization> {
+    return this.#call('analysis.normalize-roi', request, signal).then((response) =>
+      this.#payload(response, 'analysis.roi-normalized'),
+    )
+  }
+
+  dryRunAnalysis(
+    request: AnalysisGraphRequest,
+    signal?: AbortSignal,
+  ): Promise<AnalysisDryRunResponse> {
+    return this.#call('analysis.dry-run', request, signal).then((response) =>
+      this.#payload(response, 'analysis.dry-run'),
+    )
+  }
+
+  executeAnalysis(
+    request: AnalysisGraphRequest,
+    signal?: AbortSignal,
+  ): Promise<AnalysisExecutionResponse> {
+    return this.#call('analysis.execute', request, signal).then((response) =>
+      this.#payload(response, 'analysis.executed'),
+    )
+  }
+
+  requestAnalysisOverlay(
+    request: AnalysisOverlayTileRequest,
+    signal?: AbortSignal,
+  ): Promise<AnalysisOverlayTile> {
+    return this.#call('analysis.overlay-tile', request, signal).then((response) =>
+      this.#payload(response, 'analysis.overlay-tile'),
+    )
+  }
+
+  requestAnalysisTablePage(
+    request: AnalysisTablePageRequest,
+    signal?: AbortSignal,
+  ): Promise<AnalysisTablePage> {
+    return this.#call('analysis.table-page', request, signal).then((response) =>
+      this.#payload(response, 'analysis.table-page'),
+    )
+  }
+
+  async releaseAnalysis(request: AnalysisReleaseRequest): Promise<void> {
+    await this.#call('analysis.release', request)
   }
 
   async diagnostics(): Promise<WorkerDiagnostics> {

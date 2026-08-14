@@ -4,16 +4,23 @@ import type {
   OpenedDatasetDescriptor,
   OpenedSourceDescriptor,
   RenderTile,
+  RpcJsonObject,
   SourceId,
   WorkerResponse,
 } from '@pji-workbench/contracts'
 import { rpcRequest } from '@pji-workbench/contracts'
 import {
+  analysisConnectedComponentsOperationId,
+  analysisLineProfileOperationId,
+  analysisStatisticsOperationId,
+  analysisThresholdOperationId,
   computeAnalysisProjectHashes,
   createBuiltInAnalysisOperationRegistry,
   createBuiltInAnalysisValueTypeRegistry,
+  scientificDatasetValueTypeId,
   validateAnalysisProjectV1,
 } from 'purejsimage/analysis'
+import { roiValueTypeId } from 'purejsimage/analysis/roi'
 import type { NormalizedScientificDatasetDescriptor } from 'purejsimage/scientific'
 import { encodeGsf } from 'purejsimage/scientific/readers/gsf'
 import { describe, expect, it } from 'vitest'
@@ -88,6 +95,82 @@ async function openGenerated(host: ImagingWorkerHost, generation = 1) {
   return { source, dataset }
 }
 
+async function openGeneratedValues(
+  host: ImagingWorkerHost,
+  width: number,
+  height: number,
+  values: Float32Array,
+  calibrated = true,
+) {
+  const bytes = encodeGsf({
+    width,
+    height,
+    values,
+    ...(calibrated ? { xyUnit: 'nm', xReal: width * 0.5, yReal: height * 0.75 } : {}),
+  })
+  const file = new File([bytes.slice().buffer as ArrayBuffer], 'analysis-fixture.gsf')
+  const sourceResult = await host.handle(
+    rpcRequest('analysis-source', 'source.open-local', {
+      generation: 1,
+      primaryId: 'file-0',
+      files: [
+        {
+          id: 'file-0',
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified,
+          blob: file,
+        },
+      ],
+    }),
+  )
+  const source = payload(sourceResult.response, 'source.opened') as OpenedSourceDescriptor
+  const datasetResult = await host.handle(
+    rpcRequest('analysis-dataset', 'dataset.open', {
+      documentId: source.documentId,
+      datasetId: source.datasets[0]?.id ?? 'missing',
+      generation: 1,
+    }),
+  )
+  return payload(datasetResult.response, 'dataset.opened') as OpenedDatasetDescriptor
+}
+
+function connectedComponentsGraph(connectivity: 4 | 8): RpcJsonObject {
+  return {
+    schemaVersion: 1,
+    inputs: [{ name: 'source', valueType: { id: scientificDatasetValueTypeId, version: 1 } }],
+    nodes: [
+      {
+        id: 'threshold',
+        operation: { id: analysisThresholdOperationId, version: 1 },
+        inputs: [{ port: 'dataset', source: { kind: 'input', input: 'source' } }],
+        parameters: { mode: 'greater-than', component: 0, threshold: 5 },
+      },
+      {
+        id: 'objects',
+        operation: { id: analysisConnectedComponentsOperationId, version: 1 },
+        inputs: [
+          {
+            port: 'dataset',
+            source: { kind: 'node', nodeId: 'threshold', output: 'dataset' },
+          },
+        ],
+        parameters: {
+          displayAxes: ['x', 'y'],
+          fixedIndices: [],
+          component: 0,
+          connectivity,
+        },
+      },
+    ],
+    outputs: [
+      { name: 'labels', source: { kind: 'node', nodeId: 'objects', output: 'labels' } },
+      { name: 'objects', source: { kind: 'node', nodeId: 'objects', output: 'objects' } },
+    ],
+  }
+}
+
 async function requestTile(
   host: ImagingWorkerHost,
   dataset: OpenedDatasetDescriptor,
@@ -128,6 +211,331 @@ function rangeFetch(bytes: Uint8Array): typeof fetch {
 }
 
 describe('PureJsImage Worker host', () => {
+  it('executes and releases a bounded threshold-to-object-table workflow through public APIs', async () => {
+    const host = new ImagingWorkerHost()
+    const values = new Float32Array(8 * 8)
+    for (const [x, y] of [
+      [0, 0],
+      [0, 1],
+      [5, 5],
+      [6, 5],
+    ] as const) {
+      values[y * 8 + x] = 10
+    }
+    const dataset = await openGeneratedValues(host, 8, 8, values)
+    const catalog = await host.handle(
+      rpcRequest('analysis-catalog', 'analysis.catalog', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+      }),
+    )
+    const capabilities = payload(catalog.response, 'analysis.catalog').capabilities
+    expect(capabilities['operationDescriptors']).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: analysisThresholdOperationId }),
+        expect.objectContaining({ id: analysisConnectedComponentsOperationId }),
+      ]),
+    )
+    const graph = connectedComponentsGraph(4)
+    const dryRun = await host.handle(
+      rpcRequest('analysis-plan', 'analysis.dry-run', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph,
+      }),
+    )
+    expect(payload(dryRun.response, 'analysis.dry-run')).toMatchObject({ valid: true })
+    const executed = await host.handle(
+      rpcRequest('analysis-execute', 'analysis.execute', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph,
+      }),
+    )
+    const execution = payload(executed.response, 'analysis.executed')
+    expect(execution.outputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'dataset', name: 'labels' }),
+        expect.objectContaining({ kind: 'result', name: 'objects' }),
+      ]),
+    )
+    expect(JSON.stringify(execution)).not.toContain('pixelCount":{"0"')
+
+    const pageResult = await host.handle(
+      rpcRequest('analysis-page', 'analysis.table-page', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+        output: 'objects',
+        offset: 0,
+        limit: 1,
+        sort: { column: 'pixelArea', direction: 'descending' },
+      }),
+    )
+    const page = payload(pageResult.response, 'analysis.table-page')
+    expect(page).toMatchObject({ rowCount: 1, totalRows: 2 })
+    expect(page.columns.find(({ name }) => name === 'physicalArea')?.unit).toBe('nm²')
+
+    const overlayResult = await host.handle(
+      rpcRequest('analysis-overlay', 'analysis.overlay-tile', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+        output: 'labels',
+        tileId: 'labels-0',
+        selection: dataset.selection,
+        component: 0,
+        region: { x: 0, y: 0, width: 8, height: 8 },
+      }),
+    )
+    const overlay = payload(overlayResult.response, 'analysis.overlay-tile')
+    expect(new Set(overlay.labels).size).toBe(3)
+    const pageLabel = page.columns.find(({ name }) => name === 'label')?.values[0]
+    expect(overlay.labels).toContain(pageLabel)
+    expect(overlay.rgba).toHaveLength(8 * 8 * 4)
+
+    const released = await host.handle(
+      rpcRequest('analysis-release', 'analysis.release', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+      }),
+    )
+    expect(released.response).toMatchObject({ ok: true, kind: 'analysis.released' })
+    const stale = await host.handle(
+      rpcRequest('analysis-stale-page', 'analysis.table-page', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+        output: 'objects',
+        offset: 0,
+        limit: 1,
+      }),
+    )
+    expect(stale.response).toMatchObject({ ok: false, error: { code: 'STALE_ID' } })
+
+    const cancelledExecution = host.handle(
+      rpcRequest('analysis-cancelled-execution', 'analysis.execute', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph,
+      }),
+    )
+    const cancellation = await host.handle(
+      rpcRequest('cancel-analysis-execution', 'request.cancel', {
+        targetRequestId: 'analysis-cancelled-execution',
+      }),
+    )
+    expect(cancellation.response).toMatchObject({
+      ok: true,
+      payload: { found: true },
+    })
+    await expect(cancelledExecution).resolves.toMatchObject({
+      response: { ok: false, error: { code: 'ABORTED' } },
+    })
+    await host.dispose()
+  })
+
+  it('normalizes ROI measurements and returns exact bounded statistics and line-profile summaries', async () => {
+    const host = new ImagingWorkerHost()
+    const dataset = await openGeneratedValues(
+      host,
+      4,
+      4,
+      Float32Array.from({ length: 16 }, (_value, index) => index + 1),
+    )
+    const rectangle = {
+      schemaVersion: 1,
+      id: 'rectangle',
+      axisIds: ['x', 'y'],
+      fixedIndices: [],
+      coordinateSpace: 'pixel',
+      geometry: { kind: 'rectangle', x: 1, y: 1, width: 2, height: 2 },
+    } as unknown as RpcJsonObject
+    const normalized = await host.handle(
+      rpcRequest('normalize-roi', 'analysis.normalize-roi', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        roi: rectangle,
+      }),
+    )
+    expect(payload(normalized.response, 'analysis.roi-normalized')).toMatchObject({ valid: true })
+    const statisticsGraph = {
+      schemaVersion: 1,
+      inputs: [
+        { name: 'source', valueType: { id: scientificDatasetValueTypeId, version: 1 } },
+        { name: 'selection', valueType: { id: roiValueTypeId, version: 1 } },
+      ],
+      nodes: [
+        {
+          id: 'statistics',
+          operation: { id: analysisStatisticsOperationId, version: 1 },
+          inputs: [
+            { port: 'dataset', source: { kind: 'input', input: 'source' } },
+            { port: 'roi', source: { kind: 'input', input: 'selection' } },
+          ],
+          parameters: {
+            displayAxes: ['x', 'y'],
+            fixedIndices: [],
+            component: 0,
+            percentiles: [50],
+            percentileMaxSamples: 64,
+            emptyPolicy: 'error',
+          },
+        },
+      ],
+      outputs: [
+        {
+          name: 'statistics',
+          source: { kind: 'node', nodeId: 'statistics', output: 'statistics' },
+        },
+      ],
+    } as unknown as RpcJsonObject
+    const statisticsResult = await host.handle(
+      rpcRequest('execute-statistics', 'analysis.execute', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph: statisticsGraph,
+        roi: rectangle,
+      }),
+    )
+    const statistics = payload(statisticsResult.response, 'analysis.executed')
+    const statisticsSummary = statistics.outputs.find(({ name }) => name === 'statistics')
+    expect(statisticsSummary).toMatchObject({ kind: 'result' })
+    if (statisticsSummary?.kind !== 'result') throw new Error('Statistics summary missing')
+    expect(statisticsSummary.summary['dimensions']).toEqual({ results: 8 })
+    const preview = statisticsSummary.summary['preview'] as Readonly<Record<string, RpcJsonObject>>
+    expect(preview['count']?.['preview']).toBe(4)
+    expect(preview['mean']?.['preview']).toBe(8.5)
+
+    const line = {
+      schemaVersion: 1,
+      id: 'line',
+      axisIds: ['x', 'y'],
+      fixedIndices: [],
+      coordinateSpace: 'pixel',
+      geometry: {
+        kind: 'line-segment',
+        start: { x: 0.5, y: 0.5 },
+        end: { x: 3.5, y: 0.5 },
+      },
+    } as unknown as RpcJsonObject
+    const profileGraph = {
+      schemaVersion: 1,
+      inputs: [
+        { name: 'source', valueType: { id: scientificDatasetValueTypeId, version: 1 } },
+        { name: 'selection', valueType: { id: roiValueTypeId, version: 1 } },
+      ],
+      nodes: [
+        {
+          id: 'profile',
+          operation: { id: analysisLineProfileOperationId, version: 1 },
+          inputs: [
+            { port: 'dataset', source: { kind: 'input', input: 'source' } },
+            { port: 'roi', source: { kind: 'input', input: 'selection' } },
+          ],
+          parameters: {
+            displayAxes: ['x', 'y'],
+            fixedIndices: [],
+            component: 0,
+            components: [0],
+            interpolation: 'nearest',
+            spacing: 1,
+            spacingSpace: 'pixel',
+            maxSamples: 16,
+            outside: 'error',
+            invalidPolicy: 'nan',
+          },
+        },
+      ],
+      outputs: [
+        { name: 'profile', source: { kind: 'node', nodeId: 'profile', output: 'profile' } },
+      ],
+    } as unknown as RpcJsonObject
+    const profileResult = await host.handle(
+      rpcRequest('execute-profile', 'analysis.execute', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph: profileGraph,
+        roi: line,
+      }),
+    )
+    const profile = payload(profileResult.response, 'analysis.executed')
+    const profileSummary = profile.outputs.find(({ name }) => name === 'profile')
+    if (profileSummary?.kind !== 'result') throw new Error('Profile summary missing')
+    expect(profileSummary.summary['preview']).toMatchObject({
+      distance: [0, 1, 2, 3],
+      value: [1, 2, 3, 4],
+    })
+    await host.dispose()
+  })
+
+  it('distinguishes diagonal particles under exact 4/8 connectivity semantics', async () => {
+    const host = new ImagingWorkerHost()
+    const values = new Float32Array(3 * 3)
+    values[0] = 10
+    values[4] = 10
+    const dataset = await openGeneratedValues(host, 3, 3, values)
+    const counts: number[] = []
+    for (const connectivity of [4, 8] as const) {
+      const executed = await host.handle(
+        rpcRequest(`diagonal-${connectivity}`, 'analysis.execute', {
+          datasetHandleId: dataset.handleId,
+          generation: 1,
+          graph: connectedComponentsGraph(connectivity),
+        }),
+      )
+      const execution = payload(executed.response, 'analysis.executed')
+      const pageResult = await host.handle(
+        rpcRequest(`diagonal-page-${connectivity}`, 'analysis.table-page', {
+          datasetHandleId: dataset.handleId,
+          generation: 1,
+          resultHandleId: execution.resultHandleId,
+          output: 'objects',
+          offset: 0,
+          limit: 10,
+        }),
+      )
+      counts.push(payload(pageResult.response, 'analysis.table-page').totalRows)
+      await host.handle(
+        rpcRequest(`diagonal-release-${connectivity}`, 'analysis.release', {
+          datasetHandleId: dataset.handleId,
+          generation: 1,
+          resultHandleId: execution.resultHandleId,
+        }),
+      )
+    }
+    expect(counts).toEqual([2, 1])
+    await host.dispose()
+  })
+
+  it('keeps missing calibration explicit and returns pixel-only object measurements', async () => {
+    const host = new ImagingWorkerHost()
+    const dataset = await openGeneratedValues(host, 2, 2, Float32Array.of(10, 0, 0, 0), false)
+    const executed = await host.handle(
+      rpcRequest('uncalibrated-execution', 'analysis.execute', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph: connectedComponentsGraph(4),
+      }),
+    )
+    const execution = payload(executed.response, 'analysis.executed')
+    const pageResult = await host.handle(
+      rpcRequest('uncalibrated-page', 'analysis.table-page', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+        output: 'objects',
+        offset: 0,
+        limit: 10,
+      }),
+    )
+    const page = payload(pageResult.response, 'analysis.table-page')
+    expect(page.columns.map(({ name }) => name)).toContain('pixelArea')
+    expect(page.columns.map(({ name }) => name)).not.toContain('physicalArea')
+    await host.dispose()
+  })
+
   it('accepts the persisted analysis slice through the public PureJsImage project validator', async () => {
     const host = new ImagingWorkerHost()
     const { source, dataset } = await openGenerated(host)

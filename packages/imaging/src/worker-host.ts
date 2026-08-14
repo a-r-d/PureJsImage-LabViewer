@@ -1,4 +1,5 @@
 import {
+  type AnalysisResultHandleId,
   type DatasetHandleId,
   type DocumentId,
   type OpenedDatasetDescriptor,
@@ -12,7 +13,23 @@ import {
   type WorkerRequest,
   type WorkerResponse,
 } from '@pji-workbench/contracts'
-import { createAnalysisController, createBuiltInAnalysisBundle } from 'purejsimage/analysis'
+import {
+  type AnalysisController,
+  type AnalysisExecutionResult,
+  createAnalysisController,
+  createBuiltInAnalysisBundle,
+  type PreparedAnalysisPlan,
+  scientificDatasetCharacteristics,
+} from 'purejsimage/analysis'
+import { hashCanonicalJson } from 'purejsimage/analysis/project'
+import {
+  summarizeResult,
+  type TableColumn,
+  type TableResult,
+  validateAnalysisResult,
+  validateTableResult,
+} from 'purejsimage/analysis/results'
+import { canonicalNormalizedRoiSemanticsJson, normalizeRoi } from 'purejsimage/analysis/roi'
 import {
   createTileDatasetIdentityForScientificDataset,
   createTileRuntime,
@@ -22,6 +39,7 @@ import {
 } from 'purejsimage/analysis/runtime'
 import {
   createScientificLibrary,
+  getScientificDatasetIdentity,
   type NumericTile,
   normalizeScientificRelativeName,
   numericTileSampleOffset,
@@ -59,7 +77,16 @@ interface DatasetRecord {
   readonly runtime: TileRuntime
   readonly tileSource: TileSource
   readonly tileIdentity: ReturnType<typeof createTileDatasetIdentityForScientificDataset>
+  readonly analysis: AnalysisController
+  readonly results: Map<AnalysisResultHandleId, AnalysisExecutionRecord>
   selection: PlaneSelection
+  closed: boolean
+}
+
+interface AnalysisExecutionRecord {
+  readonly id: AnalysisResultHandleId
+  readonly plan: PreparedAnalysisPlan
+  readonly execution: AnalysisExecutionResult
   closed: boolean
 }
 
@@ -271,7 +298,9 @@ export class ImagingWorkerHost {
       if (request.kind === 'worker.test-crash') throw new Error('Intentional worker crash test')
       const controller = new AbortController()
       const datasetHandleId =
-        request.kind === 'tile.request' ? request.payload.datasetHandleId : undefined
+        request.payload !== null && 'datasetHandleId' in request.payload
+          ? request.payload.datasetHandleId
+          : undefined
       this.#pending.set(request.requestId, {
         controller,
         ...(datasetHandleId === undefined ? {} : { datasetHandleId }),
@@ -314,6 +343,22 @@ export class ImagingWorkerHost {
         return this.#setPlane(request)
       case 'tile.request':
         return this.#requestTile(request, signal)
+      case 'analysis.catalog':
+        return this.#analysisCatalog(request)
+      case 'analysis.normalize-parameters':
+        return this.#normalizeAnalysisParameters(request)
+      case 'analysis.normalize-roi':
+        return this.#normalizeAnalysisRoi(request)
+      case 'analysis.dry-run':
+        return this.#dryRunAnalysis(request, signal)
+      case 'analysis.execute':
+        return this.#executeAnalysis(request, signal)
+      case 'analysis.overlay-tile':
+        return this.#analysisOverlayTile(request, signal)
+      case 'analysis.table-page':
+        return this.#analysisTablePage(request)
+      case 'analysis.release':
+        return this.#releaseAnalysisRequest(request)
       case 'diagnostics.get':
         return success(request.requestId, 'diagnostics', this.diagnostics())
       case 'request.cancel':
@@ -525,8 +570,9 @@ export class ImagingWorkerHost {
         metrics: true,
       })
       const bundle = createBuiltInAnalysisBundle({ descriptor: dataset.descriptor, runtime })
-      createAnalysisController({
+      const analysis = createAnalysisController({
         ...bundle,
+        roi: { descriptor: dataset.descriptor },
         library: { version: '0.10.0', buildFingerprint: 'pji-workbench-worker-v1' },
       })
       const handleId = this.#id('dataset') as DatasetHandleId
@@ -543,6 +589,8 @@ export class ImagingWorkerHost {
           generation: active.generation,
           unidentifiedDatasetId: summary.id,
         }),
+        analysis,
+        results: new Map(),
         selection: defaultPlaneSelection(datasetDescriptor(summary)),
         closed: false,
       }
@@ -663,6 +711,379 @@ export class ImagingWorkerHost {
     }
   }
 
+  #analysisRecord(payload: {
+    readonly datasetHandleId: DatasetHandleId
+    readonly generation: number
+  }) {
+    const active = this.#assertActive(payload.generation)
+    const record = active.datasets.get(payload.datasetHandleId)
+    if (record === undefined) throw this.#stale('dataset handle')
+    return record
+  }
+
+  #analysisCatalog(
+    request: Extract<WorkerRequest, { kind: 'analysis.catalog' }>,
+  ): WorkerHostResult {
+    try {
+      const record = this.#analysisRecord(request.payload)
+      return success(request.requestId, 'analysis.catalog', {
+        capabilities: record.analysis.capabilities,
+      })
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INVALID_PAYLOAD'))
+    }
+  }
+
+  #normalizeAnalysisParameters(
+    request: Extract<WorkerRequest, { kind: 'analysis.normalize-parameters' }>,
+  ): WorkerHostResult {
+    try {
+      const record = this.#analysisRecord(request.payload)
+      const normalized = record.analysis.normalizeOperationParameters(
+        request.payload.operation.id,
+        request.payload.operation.version,
+        request.payload.parameters,
+      )
+      return success(request.requestId, 'analysis.parameters-normalized', {
+        valid: normalized.valid,
+        issues: normalized.issues,
+        ...(normalized.value === undefined ? {} : { parameters: normalized.value }),
+      })
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INVALID_PAYLOAD'))
+    }
+  }
+
+  #normalizeAnalysisRoi(
+    request: Extract<WorkerRequest, { kind: 'analysis.normalize-roi' }>,
+  ): WorkerHostResult {
+    try {
+      const record = this.#analysisRecord(request.payload)
+      const roi = normalizeRoi(request.payload.roi, record.dataset.descriptor)
+      return success(request.requestId, 'analysis.roi-normalized', {
+        valid: true,
+        issues: [],
+        roi,
+      })
+    } catch (error) {
+      return success(request.requestId, 'analysis.roi-normalized', {
+        valid: false,
+        issues: [
+          {
+            code: 'invalid-roi',
+            path: '',
+            message: error instanceof Error ? error.message : 'The ROI is invalid.',
+          },
+        ],
+      })
+    }
+  }
+
+  async #analysisBindings(record: DatasetRecord, roiValue: unknown) {
+    const identity = getScientificDatasetIdentity(record.dataset)
+    if (identity === undefined) throw new Error('The dataset has no stable source identity')
+    const source = {
+      value: record.dataset,
+      identity,
+      characteristics: scientificDatasetCharacteristics(record.dataset),
+    }
+    if (roiValue === undefined) return { source }
+    const roi = normalizeRoi(roiValue, record.dataset.descriptor)
+    const domain = 'purejsimage.roi-semantics.v1'
+    return {
+      source,
+      selection: {
+        value: roi,
+        identity: {
+          kind: 'semantic-json' as const,
+          domain,
+          sha256: await hashCanonicalJson(domain, canonicalNormalizedRoiSemanticsJson(roi)),
+        },
+      },
+    }
+  }
+
+  async #dryRunAnalysis(
+    request: Extract<WorkerRequest, { kind: 'analysis.dry-run' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    try {
+      const record = this.#analysisRecord(request.payload)
+      const dryRun = await record.analysis.dryRun(request.payload.graph, {
+        bindings: await this.#analysisBindings(record, request.payload.roi),
+        policy: {
+          mode: 'pinned',
+          providerId: 'purejsimage.analysis.reference',
+          providerVersion: 1,
+        },
+        signal,
+      })
+      signal.throwIfAborted()
+      return success(request.requestId, 'analysis.dry-run', dryRun)
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INVALID_PAYLOAD'))
+    }
+  }
+
+  async #executeAnalysis(
+    request: Extract<WorkerRequest, { kind: 'analysis.execute' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    const started = performance.now()
+    let plan: PreparedAnalysisPlan | undefined
+    let execution: AnalysisExecutionResult | undefined
+    try {
+      const record = this.#analysisRecord(request.payload)
+      const options = {
+        bindings: await this.#analysisBindings(record, request.payload.roi),
+        policy: {
+          mode: 'pinned' as const,
+          providerId: 'purejsimage.analysis.reference',
+          providerVersion: 1,
+        },
+        signal,
+      }
+      const dryRun = await record.analysis.dryRun(request.payload.graph, options)
+      signal.throwIfAborted()
+      if (!dryRun.valid) {
+        throw new RpcValidationError('INVALID_PAYLOAD', JSON.stringify(dryRun.issues))
+      }
+      plan = await record.analysis.planGraph(request.payload.graph, options)
+      signal.throwIfAborted()
+      execution = await record.analysis.executeGraph(plan, { signal }).result
+      signal.throwIfAborted()
+      const id = this.#id('analysis-result') as AnalysisResultHandleId
+      const outputs = []
+      for (const [name, output] of execution.outputs.entries()) {
+        try {
+          outputs.push({
+            kind: 'result' as const,
+            name,
+            summary: summarizeResult(validateAnalysisResult(output), { maxPreviewValues: 16 }),
+          })
+        } catch {
+          if (this.#isScientificDataset(output)) {
+            outputs.push({
+              kind: 'dataset' as const,
+              name,
+              descriptor: output.descriptor,
+            })
+          }
+        }
+      }
+      const retained: AnalysisExecutionRecord = { id, plan, execution, closed: false }
+      record.results.set(id, retained)
+      plan = undefined
+      execution = undefined
+      return success(request.requestId, 'analysis.executed', {
+        resultHandleId: id,
+        outputs,
+        provenance: retained.execution.provenance,
+        elapsedMilliseconds: performance.now() - started,
+      })
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
+    } finally {
+      if (execution !== undefined) await execution.release()
+      if (plan !== undefined) await plan.dispose()
+    }
+  }
+
+  #isScientificDataset(value: unknown): value is ScientificDataset {
+    if (typeof value !== 'object' || value === null) return false
+    const candidate = value as { readonly descriptor?: unknown; readonly readPlane?: unknown }
+    return typeof candidate.descriptor === 'object' && typeof candidate.readPlane === 'function'
+  }
+
+  #analysisExecution(record: DatasetRecord, resultHandleId: AnalysisResultHandleId) {
+    const result = record.results.get(resultHandleId)
+    if (result === undefined || result.closed) throw this.#stale('analysis result')
+    return result
+  }
+
+  async #analysisOverlayTile(
+    request: Extract<WorkerRequest, { kind: 'analysis.overlay-tile' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    try {
+      const record = this.#analysisRecord(request.payload)
+      const result = this.#analysisExecution(record, request.payload.resultHandleId)
+      const output = result.execution.outputs.get(request.payload.output)
+      if (!this.#isScientificDataset(output)) {
+        throw new RpcValidationError('INVALID_PAYLOAD', 'The selected output is not a dataset')
+      }
+      const { region, selection } = request.payload
+      const labels = new Uint32Array(region.width * region.height)
+      const source = resolveNumericTileSource(output, { targetSampleType: 'float32' })
+      for await (const tile of source.readNumericTiles({
+        displayAxes: selection.displayAxes,
+        fixedIndices: selection.fixedIndices,
+        resolutionLevel: selection.resolutionLevel,
+        ...region,
+        targetSampleType: 'float32',
+        signal,
+      })) {
+        try {
+          const xStart = Math.max(region.x, tile.x)
+          const yStart = Math.max(region.y, tile.y)
+          const xEnd = Math.min(region.x + region.width, tile.x + tile.width)
+          const yEnd = Math.min(region.y + region.height, tile.y + tile.height)
+          for (let y = yStart; y < yEnd; y += 1) {
+            for (let x = xStart; x < xEnd; x += 1) {
+              const value = numericValue(tile, x - tile.x, y - tile.y, request.payload.component)
+              labels[(y - region.y) * region.width + x - region.x] =
+                Number.isFinite(value) && value > 0 ? Math.round(value) : 0
+            }
+          }
+        } finally {
+          tile.release()
+          this.#releases.tiles += 1
+        }
+      }
+      const rgba = new Uint8ClampedArray(labels.length * 4)
+      for (let index = 0; index < labels.length; index += 1) {
+        const label = labels[index] ?? 0
+        if (label === 0) continue
+        const offset = index * 4
+        rgba[offset] = (label * 47 + 223) % 256
+        rgba[offset + 1] = (label * 89 + 104) % 256
+        rgba[offset + 2] = (label * 131 + 31) % 256
+        rgba[offset + 3] = 138
+      }
+      return {
+        response: {
+          schemaVersion: RPC_SCHEMA_VERSION,
+          requestId: request.requestId,
+          ok: true,
+          kind: 'analysis.overlay-tile',
+          payload: {
+            tileId: request.payload.tileId,
+            resultHandleId: result.id,
+            output: request.payload.output,
+            region,
+            width: region.width,
+            height: region.height,
+            rgba,
+            labels,
+          },
+        },
+        transfer: [rgba.buffer, labels.buffer],
+      }
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
+    }
+  }
+
+  #tableCell(column: TableColumn, row: number): number | boolean | string | null {
+    if (column.validity !== undefined) {
+      const byte = column.validity.bits[Math.floor(row / 8)] ?? 0
+      if ((byte & (1 << (row % 8))) === 0) return null
+    }
+    if (column.kind === 'numeric') {
+      const value = column.values[row]
+      if (typeof value === 'bigint')
+        return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : String(value)
+      return value ?? null
+    }
+    if (column.kind === 'boolean') {
+      return ((column.values[Math.floor(row / 8)] ?? 0) & (1 << (row % 8))) !== 0
+    }
+    if (column.kind === 'category') return column.categories[column.codes[row] ?? -1] ?? null
+    const start = column.offsets[row]
+    const end = column.offsets[row + 1]
+    if (start === undefined || end === undefined) return null
+    return new TextDecoder().decode(column.data.subarray(start, end))
+  }
+
+  #numericTableValue(table: TableResult, columnName: string, row: number): number | undefined {
+    const column = table.columns.find((candidate) => candidate.name === columnName)
+    if (column?.kind !== 'numeric') return undefined
+    const value = this.#tableCell(column, row)
+    return typeof value === 'number' ? value : undefined
+  }
+
+  #analysisTablePage(
+    request: Extract<WorkerRequest, { kind: 'analysis.table-page' }>,
+  ): WorkerHostResult {
+    try {
+      const record = this.#analysisRecord(request.payload)
+      const result = this.#analysisExecution(record, request.payload.resultHandleId)
+      const table = validateTableResult(result.execution.outputs.get(request.payload.output))
+      let rows = Array.from({ length: table.rowCount }, (_, row) => row)
+      const filter = request.payload.filter
+      if (filter !== undefined) {
+        rows = rows.filter((row) => {
+          const value = this.#numericTableValue(table, filter.column, row)
+          return (
+            value !== undefined &&
+            (filter.minimum === undefined || value >= filter.minimum) &&
+            (filter.maximum === undefined || value <= filter.maximum)
+          )
+        })
+      }
+      const sort = request.payload.sort
+      if (sort !== undefined) {
+        const direction = sort.direction === 'ascending' ? 1 : -1
+        rows.sort((left, right) => {
+          const a = this.#numericTableValue(table, sort.column, left)
+          const b = this.#numericTableValue(table, sort.column, right)
+          if (a === undefined) return b === undefined ? left - right : 1
+          if (b === undefined) return -1
+          return a === b ? left - right : (a - b) * direction
+        })
+      }
+      const pageRows = rows.slice(
+        request.payload.offset,
+        request.payload.offset + request.payload.limit,
+      )
+      const selected =
+        request.payload.columns === undefined
+          ? table.columns
+          : request.payload.columns
+              .map((name) => table.columns.find((column) => column.name === name))
+              .filter((column): column is TableColumn => column !== undefined)
+      return success(request.requestId, 'analysis.table-page', {
+        offset: request.payload.offset,
+        rowCount: pageRows.length,
+        totalRows: rows.length,
+        columns: selected.map((column) => ({
+          name: column.name,
+          kind: column.kind,
+          ...('unit' in column && column.unit !== undefined ? { unit: column.unit } : {}),
+          values: pageRows.map((row) => this.#tableCell(column, row)),
+        })),
+      })
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INVALID_PAYLOAD'))
+    }
+  }
+
+  async #releaseAnalysisRequest(
+    request: Extract<WorkerRequest, { kind: 'analysis.release' }>,
+  ): Promise<WorkerHostResult> {
+    try {
+      const record = this.#analysisRecord(request.payload)
+      const result = this.#analysisExecution(record, request.payload.resultHandleId)
+      await this.#releaseAnalysis(record, result)
+      return success(request.requestId, 'analysis.released', {
+        resultHandleId: request.payload.resultHandleId,
+      })
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'STALE_ID'))
+    }
+  }
+
+  async #releaseAnalysis(record: DatasetRecord, result: AnalysisExecutionRecord): Promise<void> {
+    if (result.closed) return
+    result.closed = true
+    try {
+      await result.execution.release()
+    } finally {
+      await result.plan.dispose()
+      record.results.delete(result.id)
+    }
+  }
+
   #cancel(request: Extract<WorkerRequest, { kind: 'request.cancel' }>): WorkerHostResult {
     const pending = this.#pending.get(request.payload.targetRequestId)
     pending?.controller.abort(abortError('Request cancelled by the main thread'))
@@ -726,6 +1147,7 @@ export class ImagingWorkerHost {
         pending.controller.abort(abortError('Dataset closed'))
       }
     }
+    for (const result of [...record.results.values()]) await this.#releaseAnalysis(record, result)
     await record.runtime.dispose()
     this.#releases.runtimes += 1
     this.#releases.datasets += 1
