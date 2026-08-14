@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import '@pji-workbench/ui/styles.css'
 
 import { App } from './App.js'
 import { ErrorBoundary } from './ErrorBoundary.js'
