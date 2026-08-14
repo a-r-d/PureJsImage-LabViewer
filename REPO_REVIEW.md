@@ -2,6 +2,17 @@
 
 Baseline inspected: `a-r-d/PureJsImage-LabViewer` on `main` at commit `3729a846a084e38ae830c429ff5b30d448537cb2` (`prompt 4`). Every implementation prompt in this bundle tells Codex to inspect the actual current HEAD and working tree instead of assuming this baseline is still current.
 
+## Current status audit
+
+This review is a historical assessment of the prompt-04 baseline, not a description of the current merge gate. The findings were rechecked at commit `ea3ba35576cff50294b22fbe2c8c9aaac92f8aae` on 2026-08-14:
+
+- finding 1 is operationally resolved: the current build, quality, security, Chromium, Firefox, and WebKit CI jobs pass; Prompt 05 retains the deeper readiness and screenshot-determinism work;
+- finding 4 is resolved at the design-contract level by `docs/SCRIPTING_PLUGIN_V2.md`; sandbox and plugin implementation remains assigned to Prompts 06 and 10;
+- the recommended order is incorporated into `ROADMAP_AFTER_04.md` and Prompts 05–15;
+- findings 2, 3, 5, 6, and 7 remain valid implementation observations and are intentionally assigned to those prompts rather than being treated as undocumented cleanup.
+
+Do not reopen the old Chromium failure or regenerate platform-specific baselines from this historical text. Linux Chromium is the canonical visual environment; all hosts compare against the same reviewed baseline.
+
 ## What is already strong
 
 The project is well beyond a skeleton:
