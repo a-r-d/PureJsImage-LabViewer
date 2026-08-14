@@ -1,0 +1,213 @@
+apps/workbench/src/ErrorBoundary.tsx
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-34
+apps/workbench/tests/environment.test.ts
+  s_1fb3c891ca46c1::t_1b34d1bc8334f5 1-17
+pnpm-workspace.yaml
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 1-5
+package.json
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 1-11,15,17-23,25,27-39,46-47
+  s_1fb3c891ca46c1::t_dbdc9033bd6fb9 12-14,16,24,26
+  s_1fb3c891ca46c1::t_8b16a5aa8b13c3 42-45
+  s_1fb3c891ca46c1::t_12d157e5704242 40-41
+tooling/scripts/clean-package.mjs
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-11
+templates/biome.json
+  s_1fb3c891ca46c1::t_a698b380feed9a 2,46-51
+  s_1fb3c891ca46c1::t_c6c0cba5c80f11 24,26
+  s_1fb3c891ca46c1::t_f12c6b779ea2a6 3
+  s_1fb3c891ca46c1::t_86013cf592c3e4 52
+apps/workbench/wrangler.jsonc
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-8
+tooling/playwright/README.md
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-4
+packages/workspace/tsconfig.json
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-10
+packages/viewport/src/index.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-8
+packages/ui/src/index.tsx
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-13
+.gitignore
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 270-272
+packages/agent/tsconfig.json
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-10
+packages/ui/tests/index.test.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-9
+README.md
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 1,3-6,8-10,12,14-16,18-45,48-62,65,67-70,72-73,75,77-79,82-83,85,87-89,91-93,95,97-100,102,104-106
+packages/test-corpus/tests/index.test.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-13
+packages/viewport/tsconfig.json
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-10
+apps/workbench/tsconfig.app.json
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-19
+playwright.config.ts
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 1-9,11-18,20-28
+  s_1fb3c891ca46c1::t_8b16a5aa8b13c3 10
+  s_1fb3c891ca46c1::t_dbdc9033bd6fb9 19
+tooling/scripts/check-boundaries.mjs
+  s_1fb3c891ca46c1::t_8b16a5aa8b13c3 27-30
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-26,31-116
+packages/contracts/tsconfig.json
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-9
+apps-e2e/workbench/package.json
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-6
+.github/workflows/ci.yml
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-91
+tooling/typescript/base.json
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-27
+tooling/typescript/README.md
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-4
+tsconfig.json
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 1-15
+packages/imaging/tests/index.test.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-9
+turbo.json
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 1-10,12-29
+  s_1fb3c891ca46c1::t_1d744e5d1d7ed6 11
+biome.json
+  s_1fb3c891ca46c1::t_c6c0cba5c80f11 26,28
+  s_1fb3c891ca46c1::t_bf4fc592cbebe0 13
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 1-12,14-25,27,29-56
+packages/ui/tsconfig.json
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-9
+packages/test-corpus/package.json
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-15,18-26,29-30
+  s_1fb3c891ca46c1::t_5dd8a9f4a6237a 27-28
+  s_1fb3c891ca46c1::t_a58caec8baada8 16-17
+tooling/scripts/check-bundle-budget.mjs
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-37
+apps/workbench/tsconfig.node.json
+  s_1fb3c891ca46c1::t_e6c52ef8546fa4 5
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-4,6-9
+packages/plugin-sdk/tests/index.test.ts
+  s_1fb3c891ca46c1::t_8b16a5aa8b13c3 8-13
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-7,14-16
+apps/workbench/public/_headers
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-6
+packages/imaging/package.json
+  s_1fb3c891ca46c1::t_a58caec8baada8 16-17
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-15,18-26,29-30
+  s_1fb3c891ca46c1::t_5dd8a9f4a6237a 27-28
+tooling/typescript/node.json
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-7
+apps/workbench/src/App.tsx
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-53,56-61
+  s_1fb3c891ca46c1::t_33afdd617d6dbb 54-55
+apps/workbench/README.md
+  s_1fb3c891ca46c1::t_e6c52ef8546fa4 1-17
+tooling/scripts/check-static-security.mjs
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-9,11-23,33-38,51,54-70
+  s_1fb3c891ca46c1::t_6430e5a23b62dc 10,24-32,39-50,52-53
+packages/contracts/src/index.ts
+  s_1fb3c891ca46c1::t_6430e5a23b62dc 10-16,19,21-25
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-9,17-18,20,26-28
+packages/viewport/tests/index.test.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-11
+tooling/scripts/check-boundaries.test.ts
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-24
+packages/contracts/tests/index.test.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-17,21-22
+  s_1fb3c891ca46c1::t_8b16a5aa8b13c3 18-20
+apps/workbench/package.json
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-8,11-13,15-25,28-30,34,36,38-40
+  s_1fb3c891ca46c1::t_3b5b6e01a1b5fc 14
+  s_1fb3c891ca46c1::t_5dd8a9f4a6237a 26-27,31-33,35,37
+  s_1fb3c891ca46c1::t_1b34d1bc8334f5 9-10
+tooling/scripts/clean-root.mjs
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-5
+packages/agent/src/index.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-24
+packages/workspace/src/index.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-11
+apps/workbench/vite.config.ts
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-10
+apps/workbench/src/env.d.ts
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-9
+packages/plugin-sdk/src/index.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-14
+apps/workbench/src/styles.css
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-17,19-150,152-153
+  s_1fb3c891ca46c1::t_c6c0cba5c80f11 151
+  s_1fb3c891ca46c1::t_8b16a5aa8b13c3 18
+apps/workbench/src/main.tsx
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-5,7-20
+  s_1fb3c891ca46c1::t_c6c0cba5c80f11 6
+packages/agent/package.json
+  s_1fb3c891ca46c1::t_5dd8a9f4a6237a 26-27
+  s_1fb3c891ca46c1::t_a58caec8baada8 16-17
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-15,18-25,28-29
+packages/ui/package.json
+  s_1fb3c891ca46c1::t_5dd8a9f4a6237a 23,26-28
+  s_1fb3c891ca46c1::t_a58caec8baada8 16-17
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-9,12-15,18-22,24-25,29-33
+  s_1fb3c891ca46c1::t_2c8c1efba06e01 10-11
+.editorconfig
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 1-12
+packages/agent/tests/index.test.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-10
+packages/plugin-sdk/tsconfig.json
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-10
+vitest.config.ts
+  s_1fb3c891ca46c1::t_1b34d1bc8334f5 6-10
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 1-5,11-13
+packages/viewport/package.json
+  s_1fb3c891ca46c1::t_5dd8a9f4a6237a 26-27
+  s_1fb3c891ca46c1::t_a58caec8baada8 16-17
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-15,18-25,28-29
+apps/workbench/src/environment.ts
+  s_1fb3c891ca46c1::t_8b16a5aa8b13c3 21-24
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-8,13-17,20,25-30
+  s_1fb3c891ca46c1::t_6430e5a23b62dc 9-12,18-19
+tooling/vitest/README.md
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-4
+packages/workspace/package.json
+  s_1fb3c891ca46c1::t_a58caec8baada8 16-17
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-15,18-25,28-29
+  s_1fb3c891ca46c1::t_5dd8a9f4a6237a 26-27
+packages/imaging/tsconfig.json
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1,3-10
+  s_1fb3c891ca46c1::t_1d744e5d1d7ed6 2
+apps-e2e/workbench/tests/smoke.spec.ts
+  s_1fb3c891ca46c1::t_8b16a5aa8b13c3 15-17,33-35
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-14,18-32,36-38
+packages/plugin-sdk/package.json
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-15,18-25,28-29
+  s_1fb3c891ca46c1::t_a58caec8baada8 16-17
+  s_1fb3c891ca46c1::t_5dd8a9f4a6237a 26-27
+packages/workspace/tests/index.test.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-13
+apps/workbench/index.html
+  s_1fb3c891ca46c1::t_2fe5aa24d3d5ff 1-16
+packages/test-corpus/src/index.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-11
+.npmrc
+  s_1fb3c891ca46c1::t_d4315e6bffd2f3 1-6
+packages/imaging/src/index.ts
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-6
+tooling/typescript/browser.json
+  s_1fb3c891ca46c1::t_87332927cc91c9 1-8
+packages/test-corpus/tsconfig.json
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-10
+packages/contracts/package.json
+  s_1fb3c891ca46c1::t_5dd8a9f4a6237a 23-24
+  s_1fb3c891ca46c1::t_89d5c3cdeeed06 1-15,18-22,25-26
+  s_1fb3c891ca46c1::t_a58caec8baada8 16-17
+pnpm-lock.yaml
+  s_1fb3c891ca46c1::t_32860fc9466f23 1-2237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "22f04170b96376e7f3a1873e68825fd821509dc2",
+  "prompts": {},
+  "sessions": {
+    "s_1fb3c891ca46c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffd91-96e3-7ea1-897e-f2f6ce1de02a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
