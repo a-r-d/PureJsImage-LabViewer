@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/contracts" },
+    { "path": "./packages/workspace" },
+    { "path": "./packages/imaging" },
+    { "path": "./packages/viewport" },
+    { "path": "./packages/agent" },
+    { "path": "./packages/plugin-sdk" },
+    { "path": "./packages/ui" },
+    { "path": "./packages/test-corpus" },
+    { "path": "./apps/workbench/tsconfig.app.json" },
+    { "path": "./apps/workbench/tsconfig.node.json" }
+  ]
+}

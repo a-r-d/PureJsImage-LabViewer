@@ -267,6 +267,9 @@ benchmark/results/artifacts/
 artifacts/fuzz-crashes/
 playwright-report/
 test-results/
+.turbo/
+.wrangler/
+.dev.vars*
 
 # Local Rust build output; ready-to-run WASM artifacts are checked in under src.
 wasm/**/target/

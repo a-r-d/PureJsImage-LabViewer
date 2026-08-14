@@ -1,129 +1,106 @@
-# PureJsImage Materials Workbench starter kit
+# Materials Workbench
 
-This bundle is a launch plan for a new repository that consumes `purejsimage@0.10.0` as a normal published dependency and builds a browser-native scientific imaging application around it.
+Materials Workbench is a browser-native, local-first scientific imaging workbench for
+electron microscopy and adjacent engineering imagery. It consumes `purejsimage@0.10.0`
+through documented public package exports and keeps original files in the browser unless
+the user deliberately chooses a network action.
 
-Working repository name: **`purejsimage-materials-workbench`**  
-Working product name: **Materials Workbench**
+This bootstrap provides the strict monorepo, package boundaries, tests, and accessible
+single-route application shell. Scientific file opening and analysis workflows are added in
+later milestones described under [`prompts/`](prompts/).
 
-The name is intentionally provisional. The architecture is not.
+## Prerequisites
 
-## Product thesis
+- Node.js 24 LTS (the exact repository version is in `.nvmrc`)
+- Corepack enabled
+- pnpm 10.34.5, selected through the root `packageManager` field
 
-Build a zero-install, local-first scientific image workbench for electron microscopy and adjacent engineering imagery. The first release should make this complete workflow excellent:
-
-```text
-open original scientific file
-  → inspect metadata and calibration
-  → navigate and adjust display
-  → draw calibrated ROI
-  → threshold or filter
-  → connected components / particle measurement
-  → inspect tables and distributions
-  → save and replay a reproducible analysis
-  → ask an AI assistant to construct or modify that same analysis
+```sh
+corepack enable
+corepack prepare pnpm@10.34.5 --activate
+pnpm install --frozen-lockfile
 ```
 
-The application is not an ImageJ clone. It borrows the workflows scientists rely on from ImageJ/Fiji, DigitalMicrograph, Gwyddion, HyperSpy, napari, py4DSTEM, and industrial volume-analysis tools, while exploiting capabilities that are unusually natural in a web-native application:
+## Commands
 
-- no installation or plugin installation rights required;
-- direct local-file and HTTP Range access to original files;
-- bounded analysis of data too large to load wholesale;
-- reproducible, inspectable operation graphs;
-- an agent that uses the same validated command API as the UI;
-- editable browser plugins and recipes with explicit permissions;
-- optional cloud storage and compute later, not a prerequisite for local work.
+| Command | Purpose |
+| --- | --- |
+| `pnpm dev` | Run the workbench Vite development server |
+| `pnpm build` | Build packages and the app, then enforce the bundle budget |
+| `pnpm check` | Run the deterministic normal-CI merge gate |
+| `pnpm typecheck` | Type-check every workspace project |
+| `pnpm lint` | Run Biome, architecture boundaries, and static security checks |
+| `pnpm format` | Format the repository with Biome |
+| `pnpm format:check` | Check formatting without writing |
+| `pnpm test` | Run all Vitest projects |
+| `pnpm test:watch` | Run Vitest in watch mode |
+| `pnpm test:e2e` | Run the Playwright smoke suite in all three browsers |
+| `pnpm test:a11y` | Run accessibility-tagged Chromium checks |
+| `pnpm test:visual` | Run deterministic visual-invariant checks |
+| `pnpm test:corpus` | Validate the generated-corpus package skeleton |
+| `pnpm test:performance` | Run the initial browser performance budget |
+| `pnpm deploy:dry-run` | Build and validate the Cloudflare upload without deploying |
+| `pnpm clean` | Remove generated workspace output |
 
-## Recommended stack
-
-- **React**, not Preact, for ecosystem compatibility, accessibility tooling, error boundaries, test support, and fewer compatibility surprises. Rendering and analysis performance belong in the viewport and worker layers rather than in framework micro-optimizations.
-- **Vite** plus the official **Cloudflare Vite plugin**.
-- **pnpm workspaces** plus **Turborepo**.
-- **TypeScript strict mode** with project references and incremental builds.
-- **Biome** for formatting and linting.
-- **Vitest** for unit, contract, and integration tests.
-- **Playwright** for browser workflow, visual, accessibility, range-read, and performance tests.
-- **React Testing Library** only for genuinely DOM-oriented component behavior; prefer framework-independent package tests for core logic.
-- **Web Workers** for PureJsImage document access, analysis planning/execution, and large-data work.
-- **WebGL2 initially** behind a renderer interface; WebGPU remains an optional later renderer/compute implementation.
-- **Cloudflare Pages/Workers static asset deployment** for the initial client.
-
-## Repository shape
+## Repository map
 
 ```text
-apps/
-  workbench/              React application and Cloudflare deployment entry
-
-packages/
-  contracts/              stable JSON-safe cross-boundary contracts
-  workspace/              project state, commands, undo/redo, persistence
-  imaging/                public PureJsImage integration and worker RPC
-  viewport/               renderer-independent camera, tiles, overlays, picking
-  agent/                  OpenRouter gateway, tool loop, approvals, local history
-  plugin-sdk/             plugin manifests, capabilities, recipes, sandbox protocol
-  ui/                     design tokens and reusable accessible React components
-  test-corpus/            corpus manifest schema, download/verification utilities
-
-services/
-  README.md               future backend boundary; no speculative backend yet
-
-apps-e2e/
-  workbench/              Playwright workflows and fixture server
-
-tooling/
-  typescript/
-  vitest/
-  playwright/
-  scripts/
-
-docs/
-  PRODUCT_NORTH_STAR.md
-  ARCHITECTURE.md
-  UX_SYSTEM.md
-  AI_AGENT.md
-  PLUGIN_SYSTEM.md
-  TEST_CORPUS.md
-  QUALITY_GATES.md
-  DECISIONS.md
+apps/workbench             React 19 SPA and Cloudflare composition root
+apps-e2e/workbench         Playwright product smoke tests
+packages/contracts         JSON-safe cross-runtime contracts
+packages/workspace         Immutable semantic workspace foundations
+packages/imaging           Sole PureJsImage runtime integration boundary
+packages/viewport          Framework-neutral camera/render contracts
+packages/agent             Agent policy and deterministic tool-host foundations
+packages/plugin-sdk        Declarative plugin and recipe contracts
+packages/ui                Generic accessible React UI primitives
+packages/test-corpus       Scientific corpus manifest foundations
+tooling/typescript         Shared strict TypeScript configuration
+tooling/vitest             Shared unit-test configuration
+tooling/playwright         Shared browser-test documentation
+tooling/scripts            Boundary, security, and bundle-budget checks
+services                   Documented future backend boundary only
 ```
 
-Packages are private workspace packages by default. Do not add publishing/versioning machinery until there is a concrete package that outside consumers should install.
+## Package boundaries
 
-## Suggested execution order
+Applications compose packages; packages never import applications. `packages/imaging` is
+the only package allowed to import the PureJsImage runtime. Packages expose only their root
+entry point, and direct `src` deep imports are rejected by the architecture check. Contracts,
+workspace, agent, and plugin core remain framework and DOM independent.
 
-Run the prompts in `prompts/` sequentially:
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the complete dependency and runtime
+model.
 
-1. `00-bootstrap-monorepo.md`
-2. `01-workbench-shell-and-design-system.md`
-3. `02-purejsimage-worker-and-viewer.md`
-4. `03-workspace-project-and-history.md`
-5. `04-materials-analysis-workflows.md`
-6. `05-openrouter-agent.md`
-7. `06-plugin-foundation.md`
-8. `07-test-corpus-and-product-e2e.md`
-9. `08-ux-performance-and-accessibility.md`
-10. `09-cloudflare-deployment.md`
-11. `10-final-hardening.md`
+## Local development
 
-Each prompt assumes the previous prompt has completed, but still requires Codex to inspect the actual tree and preserve user changes.
+```sh
+pnpm install --frozen-lockfile
+pnpm dev
+```
 
-## Files intended to be copied into the new repository immediately
+The one client route is served by Vite. The application validates its small public build-time
+environment contract; secrets must not use the `VITE_` prefix.
 
-- `AGENTS.md`
-- everything under `docs/`
-- `datasets/corpus.yaml`
-- `datasets/README.md`
-- `services/README.md`
+## Cloudflare dry run
 
-The files under `templates/` are reference configurations. The bootstrap prompt should verify current compatible dependency versions before using them rather than copying stale version pins blindly.
+The official Cloudflare Vite plugin produces the static client output. SPA fallback is declared
+in `apps/workbench/wrangler.jsonc`. Validate the generated worker and asset manifest without
+creating remote resources:
 
-## Initial completion criterion
+```sh
+pnpm deploy:dry-run
+```
 
-The skeleton is successful when a clean browser session can:
+## Testing philosophy
 
-1. open a supported local or remote scientific file through public PureJsImage exports;
-2. render a calibrated plane with pan, zoom, display range, and metadata;
-3. draw an ROI and obtain a line profile or statistics;
-4. run threshold → connected components and display a virtualized object table;
-5. save and reload a local project containing the analysis graph and ROI set;
-6. let a mocked AI agent propose the same graph through validated tools;
-7. pass the complete unit, browser, corpus, accessibility, visual, and performance gates.
+Tests begin at public package boundaries, use deterministic local fixtures, and add browser,
+corpus, accessibility, visual, security, and performance coverage as behavior is implemented.
+No normal test uses a live API key, live model, or uncontrolled external dataset. Checks never
+regenerate scientific or visual goldens automatically.
+
+## Backend status
+
+Backend services are not implemented. Local file viewing, analysis, projects, and future BYOK
+agent use must remain complete browser-local workflows. [`services/README.md`](services/README.md)
+records the optional future service boundary without speculative CRUD code.

@@ -1,0 +1,10 @@
+{
+  "extends": "../../tooling/typescript/browser.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/imaging.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [{ "path": "../contracts" }]
+}

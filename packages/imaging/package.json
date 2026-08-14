@@ -1,0 +1,30 @@
+{
+  "name": "@pji-workbench/imaging",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "check": "corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build",
+    "lint": "biome check src tests",
+    "typecheck": "tsc --noEmit --composite false --incremental false -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/imaging",
+    "clean": "node ../../tooling/scripts/clean-package.mjs"
+  },
+  "dependencies": {
+    "@pji-workbench/contracts": "workspace:*",
+    "purejsimage": "0.10.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

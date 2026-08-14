@@ -1,15 +1,17 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
-  "root": false,
   "files": {
-    "ignoreUnknown": false,
     "includes": [
       "**",
       "!**/dist",
       "!**/coverage",
+      "!**/node_modules",
       "!**/playwright-report",
       "!**/test-results",
-      "!**/.cache"
+      "!**/.cache",
+      "!**/.turbo",
+      "!**/.wrangler",
+      "!pnpm-lock.yaml"
     ]
   },
   "formatter": {
