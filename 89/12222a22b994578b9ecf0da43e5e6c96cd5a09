@@ -1,0 +1,19 @@
+packages/imaging/src/package-version.ts
+  s_7165f5de464c72::t_3efee52803b867 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "8912222a22b994578b9ecf0da43e5e6c96cd5a09",
+  "prompts": {},
+  "sessions": {
+    "s_7165f5de464c72": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00cb1-090c-7a03-bc8c-5076be726c1b",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
