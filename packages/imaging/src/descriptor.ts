@@ -41,7 +41,7 @@ export function boundedMetadata(
 function axisDescriptor(
   axis: NormalizedScientificDatasetDescriptor['axes'][number],
 ): AxisDescriptor {
-  return {
+  const descriptor: AxisDescriptor = {
     id: axis.id,
     ...(axis.name === undefined ? {} : { name: axis.name }),
     kind: axis.kind,
@@ -49,6 +49,23 @@ function axisDescriptor(
     ...(axis.unit === undefined ? {} : { unit: axis.unit }),
     coordinates: boundedValue(axis.coordinates, 0) as AxisDescriptor['coordinates'],
   }
+  if (axis.calibration === undefined) return descriptor
+  return {
+    ...descriptor,
+    calibration: boundedValue(axis.calibration, 0) as NonNullable<AxisDescriptor['calibration']>,
+  }
+}
+
+function datasetCapabilities(
+  capabilities: NormalizedScientificDatasetDescriptor['capabilities'],
+): DatasetDescriptor['capabilities'] {
+  const mapped: DatasetDescriptor['capabilities'] = {
+    regionReads: capabilities.regionReads,
+    resolutionLevels: capabilities.resolutionLevels,
+    planeReads: capabilities.planeReads,
+  }
+  if (capabilities.seriesReads === undefined) return mapped
+  return { ...mapped, seriesReads: capabilities.seriesReads }
 }
 
 export function datasetDescriptor(summary: ScientificDatasetSummary): DatasetDescriptor {
@@ -70,7 +87,7 @@ export function datasetDescriptor(summary: ScientificDatasetSummary): DatasetDes
       level: level.level,
       axisLengths: level.axisLengths.map(({ axisId, length }) => ({ axisId, length })),
     })),
-    capabilities: descriptor.capabilities,
+    capabilities: datasetCapabilities(descriptor.capabilities),
     ...(descriptor.metadata === undefined
       ? {}
       : { metadata: boundedMetadata(descriptor.metadata) }),
@@ -78,6 +95,11 @@ export function datasetDescriptor(summary: ScientificDatasetSummary): DatasetDes
 }
 
 export function defaultPlaneSelection(descriptor: DatasetDescriptor): PlaneSelection {
+  if (descriptor.capabilities.planeReads.kind === 'none') {
+    throw new Error(
+      'This dataset is one-dimensional. The workbench currently displays two-dimensional planes only.',
+    )
+  }
   const firstAxis = descriptor.axes[0]
   const secondAxis = descriptor.axes[1]
   const pair =

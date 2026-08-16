@@ -168,8 +168,8 @@ importers:
         specifier: workspace:*
         version: link:../materials-analysis
       purejsimage:
-        specifier: 0.10.0
-        version: 0.10.0
+        specifier: 0.11.0
+        version: 0.11.0
     devDependencies:
       '@pji-workbench/test-corpus':
         specifier: workspace:*
@@ -184,8 +184,8 @@ importers:
   packages/materials-analysis:
     dependencies:
       purejsimage:
-        specifier: 0.10.0
-        version: 0.10.0
+        specifier: 0.11.0
+        version: 0.11.0
     devDependencies:
       typescript:
         specifier: 7.0.2
@@ -283,8 +283,8 @@ importers:
         specifier: workspace:*
         version: link:../contracts
       purejsimage:
-        specifier: 0.10.0
-        version: 0.10.0
+        specifier: 0.11.0
+        version: 0.11.0
     devDependencies:
       typescript:
         specifier: 7.0.2
@@ -1320,8 +1320,8 @@ packages:
     resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
     engines: {node: ^10 || ^12 || >=14}
 
-  purejsimage@0.10.0:
-    resolution: {integrity: sha512-61kekgp4drzmsufXoTa53sMtk4WGNkeKeNiqwjvACDmyLWtBQdWdFfZfFAxSLziPAYXLlhMJRsquDg5SSOv+Rg==}
+  purejsimage@0.11.0:
+    resolution: {integrity: sha512-l/mwUTX237c+oYyEyXc2FGZJ+11ZdtgP4pni3n/5S0jOaCK1ghXLEeLBIWfC2+Yb0MBhn2jEfkDnvSwmRrp15Q==}
     engines: {node: '>=22'}
 
   quickjs-emscripten-core@0.31.0:
@@ -2290,7 +2290,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  purejsimage@0.10.0: {}
+  purejsimage@0.11.0: {}
 
   quickjs-emscripten-core@0.31.0:
     dependencies:

@@ -13,27 +13,53 @@ handles do not cross the boundary.
 
 ## Public PureJsImage imports
 
-The integration uses these documented `purejsimage@0.10.0` paths and symbols:
+The integration uses these documented `purejsimage@0.11.0` paths and symbols:
 
 | Package path | Symbols |
 | --- | --- |
 | `purejsimage/scientific` | `createScientificLibrary`, `normalizeScientificRelativeName`, `resolveNumericTileSource`, `numericTileSampleOffset`, `supportsScientificPlaneRead` |
 | `purejsimage/scientific/browser` | `createScientificFileContext` |
-| `purejsimage/scientific/readers/gsf` | `gsfReader`, `encodeGsf` |
-| `purejsimage/scientific/readers/envi` | `enviReader` |
-| `purejsimage/scientific/readers/fits` | `fitsReader` |
-| `purejsimage/scientific/readers/mrc` | `mrcReader` |
-| `purejsimage/scientific/readers/cbf` | `cbfReader` |
+| `purejsimage/scientific/readers/png` | `pngReader` |
+| `purejsimage/scientific/readers/jpeg` | `jpegReader` |
+| `purejsimage/scientific/readers/webp` | `webpReader` |
+| `purejsimage/scientific/readers/bmp` | `bmpReader` |
+| `purejsimage/scientific/readers/jp2` | `jp2Reader` |
+| `purejsimage/scientific/readers/tiff` | `tiffReader` |
 | `purejsimage/scientific/readers/ome-tiff` | `omeTiffReader` |
 | `purejsimage/scientific/readers/aperio-svs` | `aperioSvsReader` |
+| `purejsimage/scientific/readers/digital-micrograph` | `digitalMicrographReader` |
+| `purejsimage/scientific/readers/tia-ser` | `tiaSerReader` |
+| `purejsimage/scientific/readers/tia-emi` | `tiaEmiReader` |
+| `purejsimage/scientific/readers/ncem-emd` | `ncemEmdReader` |
+| `purejsimage/scientific/readers/velox-emd` | `veloxEmdReader` |
+| `purejsimage/scientific/readers/blockfile` | `blockfileReader` |
+| `purejsimage/scientific/readers/mib` | `mibReader` |
+| `purejsimage/scientific/readers/gsf` | `gsfReader`, `encodeGsf` |
+| `purejsimage/scientific/readers/nanonis-sxm` | `nanonisSxmReader` |
+| `purejsimage/scientific/readers/igor-binary-wave` | `igorBinaryWaveReader` |
+| `purejsimage/scientific/readers/digital-surf` | `digitalSurfReader` |
+| `purejsimage/scientific/readers/x3p` | `x3pReader` |
+| `purejsimage/scientific/readers/mrc` | `mrcReader` |
+| `purejsimage/scientific/readers/nrrd` | `nrrdReader` |
+| `purejsimage/scientific/readers/meta-image` | `metaImageReader` |
+| `purejsimage/scientific/readers/nifti` | `niftiReader` |
+| `purejsimage/scientific/readers/envi` | `enviReader` |
+| `purejsimage/scientific/readers/fits` | `fitsReader` |
+| `purejsimage/scientific/readers/cbf` | `cbfReader` |
+| `purejsimage/scientific/readers/rpl` | `rplReader` |
+| `purejsimage/scientific/readers/emsa` | `emsaReader` |
+| `purejsimage/scientific/readers/ebsd-text` | `ebsdTextReader` |
+| `purejsimage/scientific/readers/npy` | `npyReader` |
 | `purejsimage/analysis/runtime` | `createTileRuntime`, `numericTileSourceToTileSource`, `createTileDatasetIdentityForScientificDataset` |
 | `purejsimage/analysis` | `createBuiltInAnalysisBundle`, `createAnalysisController` |
 | `purejsimage/sources/http-range` | `HttpRangeSource` |
 
-Each reader is behind an explicit dynamic import. The Vite Worker uses ES module output so GSF,
-ENVI, FITS, MRC, CBF, OME-TIFF, and Aperio code remain independently loadable chunks. No
-`purejsimage/src` path is permitted; `tooling/scripts/check-boundaries.mjs` enforces this for source
-and dynamic imports.
+Each of the 31 readers is behind an explicit dynamic import. The Vite Worker uses ES module
+output so individual format chunks stay independently loadable. Filename extensions choose a
+probe set; unknown extensions load the full catalog. One-dimensional series-only documents such
+as EMSA/MAS can open, but the viewport still requires a two-dimensional plane. Sparse Velox
+spectra remain outside this surface. No `purejsimage/src` path is permitted;
+`tooling/scripts/check-boundaries.mjs` enforces this for source and dynamic imports.
 
 ## RPC protocol
 

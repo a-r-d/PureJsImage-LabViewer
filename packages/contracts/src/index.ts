@@ -58,6 +58,14 @@ export interface Region {
   readonly height: number
 }
 
+export interface AxisCalibrationEvidence {
+  readonly kind: string
+  readonly resourceId: string
+  readonly locator: string
+  readonly formula?: string
+  readonly note?: string
+}
+
 export interface AxisDescriptor {
   readonly id: string
   readonly name?: string
@@ -69,6 +77,7 @@ export interface AxisDescriptor {
     | Readonly<{ type: 'linear'; origin: number; step: number }>
     | Readonly<{ type: 'lookup'; values: readonly number[] }>
     | Readonly<{ type: 'labels'; values: readonly string[] }>
+  readonly calibration?: AxisCalibrationEvidence | readonly AxisCalibrationEvidence[]
 }
 
 export interface ComponentDescriptor {
@@ -96,11 +105,15 @@ export interface DatasetDescriptor {
     regionReads: boolean
     resolutionLevels: boolean
     planeReads:
+      | Readonly<{ kind: 'none' }>
       | Readonly<{ kind: 'any-axis-pair' }>
       | Readonly<{
           kind: 'ordered-axis-pairs'
           pairs: readonly (readonly [string, string])[]
         }>
+    seriesReads?:
+      | Readonly<{ kind: 'any-axis' }>
+      | Readonly<{ kind: 'axes'; axes: readonly string[] }>
   }>
   readonly metadata?: Readonly<Record<string, unknown>>
 }

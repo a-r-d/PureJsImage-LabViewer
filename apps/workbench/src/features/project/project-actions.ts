@@ -1,4 +1,5 @@
 import type { OpenedSourceDescriptor } from '@pji-workbench/contracts'
+import { PUREJSIMAGE_PACKAGE_VERSION } from '@pji-workbench/imaging'
 import {
   createEmptyWorkspace,
   type DisplayLayerState,
@@ -21,7 +22,7 @@ export function createProject(title = 'Untitled microscopy project'): WorkspaceS
     projectId: crypto.randomUUID() as ProjectId,
     now: new Date().toISOString(),
     appVersion: '0.0.0',
-    pureJsImageVersion: '0.10.0',
+    pureJsImageVersion: PUREJSIMAGE_PACKAGE_VERSION,
   })
 }
 

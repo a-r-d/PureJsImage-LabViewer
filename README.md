@@ -1,7 +1,7 @@
 # Materials Workbench
 
 Materials Workbench is a browser-native, local-first scientific imaging workbench for
-electron microscopy and adjacent engineering imagery. It consumes `purejsimage@0.10.0`
+electron microscopy and adjacent engineering imagery. It consumes `purejsimage@0.11.0`
 through documented public package exports and keeps original files in the browser unless
 the user deliberately chooses a network action.
 

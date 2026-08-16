@@ -4,14 +4,22 @@ import {
   type ScientificReader,
   ScientificReaderRegistry,
 } from 'purejsimage/scientific'
+import * as allScientificReaders from 'purejsimage/scientific/readers/all'
 import { aperioSvsReader } from 'purejsimage/scientific/readers/aperio-svs'
 import { cbfReader } from 'purejsimage/scientific/readers/cbf'
+import { ebsdTextReader } from 'purejsimage/scientific/readers/ebsd-text'
 import { enviReader } from 'purejsimage/scientific/readers/envi'
 import { fitsReader } from 'purejsimage/scientific/readers/fits'
 import { encodeGsf, gsfReader } from 'purejsimage/scientific/readers/gsf'
 import { mrcReader } from 'purejsimage/scientific/readers/mrc'
+import { npyReader } from 'purejsimage/scientific/readers/npy'
+import { nrrdReader } from 'purejsimage/scientific/readers/nrrd'
 import { omeTiffReader } from 'purejsimage/scientific/readers/ome-tiff'
+import { pngReader } from 'purejsimage/scientific/readers/png'
+import { tiffReader } from 'purejsimage/scientific/readers/tiff'
 import { describe, expect, it } from 'vitest'
+
+import { readerKeysForSource, SUPPORTED_READERS } from '../src/worker-readers.js'
 
 interface TiffEntry {
   readonly tag: number
@@ -286,6 +294,10 @@ async function smoke(
   const summary = document.datasets[0]
   if (summary === undefined) throw new Error('Fixture has no dataset')
   const dataset = await document.openDataset(summary.id)
+  if (dataset.descriptor.capabilities.planeReads.kind === 'none') {
+    await document.close?.()
+    return document.datasets.map(({ id }) => id)
+  }
   const pair =
     dataset.descriptor.capabilities.planeReads.kind === 'ordered-axis-pairs'
       ? dataset.descriptor.capabilities.planeReads.pairs[0]
@@ -360,5 +372,108 @@ data file = scene.bin`)
       readerId: aperioSvsReader.descriptor.id,
     })
     expect(aperioDocument.datasets[0]?.descriptor.levels.map(({ level }) => level)).toEqual([0, 1])
+  })
+})
+
+function npyFixture(): Uint8Array<ArrayBuffer> {
+  const headerObject = "{'descr': '|u1', 'fortran_order': False, 'shape': (2, 2), }"
+  const unpadded = 10 + headerObject.length + 1
+  const paddedLength = Math.ceil(unpadded / 64) * 64
+  const header = `${headerObject}${' '.repeat(paddedLength - unpadded)}\n`
+  const output = new Uint8Array(10 + header.length + 4)
+  output.set([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 1, 0])
+  new DataView(output.buffer).setUint16(8, header.length, true)
+  output.set(new TextEncoder().encode(header), 10)
+  output.set([1, 2, 3, 4], 10 + header.length)
+  return output
+}
+
+function nrrdFixture(): Uint8Array<ArrayBuffer> {
+  const header = new TextEncoder().encode(`NRRD0004
+type: uint8
+dimension: 2
+sizes: 2 2
+encoding: raw
+endian: little
+
+`)
+  const output = new Uint8Array(header.length + 4)
+  output.set(header)
+  output.set([1, 2, 3, 4], header.length)
+  return output
+}
+
+function pngFixture(): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(
+    atob(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    ),
+    (character) => character.charCodeAt(0),
+  )
+}
+
+function angFixture(): Uint8Array<ArrayBuffer> {
+  return new TextEncoder().encode(`# TEM_PIXperUM 1.0
+# x-star 0.0
+# y-star 0.0
+# z-star 0.0
+# WorkingDistance 10.0
+# GRID: SqrGrid
+# XSTEP: 1.0
+# YSTEP: 1.0
+# NCOLS_ODD: 2
+# NCOLS_EVEN: 2
+# NROWS: 2
+0.0 0.0 0.0 0.0 0.0 1.0 0.9 1
+0.0 0.0 0.0 1.0 0.0 1.0 0.8 1
+0.0 0.0 0.0 0.0 1.0 1.0 0.7 1
+0.0 0.0 0.0 1.0 1.0 1.0 0.6 1
+`)
+}
+
+describe('0.11.0 scientific reader catalog', () => {
+  it('matches every live published reader descriptor', () => {
+    const live = Object.values(allScientificReaders)
+      .filter(
+        (
+          value,
+        ): value is { readonly descriptor: { readonly id: string; readonly format: string } } =>
+          typeof value === 'object' &&
+          value !== null &&
+          'descriptor' in value &&
+          typeof value.descriptor === 'object' &&
+          value.descriptor !== null &&
+          'id' in value.descriptor &&
+          typeof value.descriptor.id === 'string',
+      )
+      .map(({ descriptor }) => ({ id: descriptor.id, format: descriptor.format }))
+      .sort((left, right) => left.id.localeCompare(right.id))
+    expect(live).toEqual(
+      [...SUPPORTED_READERS]
+        .map(({ id, format }) => ({ id, format }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
+    )
+    expect(live).toHaveLength(31)
+  })
+
+  it('selects probe candidates from filename extensions', () => {
+    expect(readerKeysForSource('scan.dm4')).toEqual(['digital-micrograph'])
+    expect(readerKeysForSource('stack.emd')).toEqual(['ncem-emd', 'velox-emd'])
+    expect(readerKeysForSource('multiple.ome.tiff')).toEqual(['ome-tiff'])
+    expect(readerKeysForSource('plain.tif')).toEqual(['ome-tiff', 'aperio-svs', 'tiff'])
+    expect(readerKeysForSource('volume.nii.gz')).toEqual(['nifti'])
+    expect(readerKeysForSource('cube.raw')).toEqual(['rpl', 'envi'])
+    expect(readerKeysForSource('photo.png')).toEqual(['png'])
+    expect(readerKeysForSource('unknown.bin')).toEqual(
+      SUPPORTED_READERS.map(({ id }) => id.slice('purejsimage/'.length)),
+    )
+  })
+
+  it('opens generated NPY, NRRD, PNG, TIFF, and ANG fixtures', async () => {
+    await expect(smoke(npyReader, 'plane.npy', npyFixture())).resolves.toEqual(['array'])
+    await expect(smoke(nrrdReader, 'plane.nrrd', nrrdFixture())).resolves.toHaveLength(1)
+    await expect(smoke(pngReader, 'pixel.png', pngFixture())).resolves.toHaveLength(1)
+    await expect(smoke(tiffReader, 'classic.tif', classicTiff('plain'))).resolves.toHaveLength(1)
+    await expect(smoke(ebsdTextReader, 'map.ang', angFixture())).resolves.toHaveLength(1)
   })
 })

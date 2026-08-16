@@ -186,7 +186,7 @@ Open local or remote file
 → read cursor coordinates and values
 ```
 
-Formats initially exercised through PureJsImage should include the available public readers for GSF, ENVI, FITS, MRC/CCP4, CBF/imgCIF, OME-TIFF, and Aperio SVS. Ordinary TIFF and standard image formats can enter through the appropriate public image APIs.
+Formats initially exercised through PureJsImage should include the available public scientific readers: ordinary codec adapters (PNG, JPEG, WebP, BMP, JP2), native TIFF, OME-TIFF, Aperio SVS, DigitalMicrograph, TIA SER/EMI, NCEM and Velox EMD, ASTAR blockfiles, Merlin MIB, GSF, Nanonis SXM, Igor IBW, Digital Surf SUR/PRO, X3P, MRC/CCP4, NRRD, MetaImage, NIfTI, ENVI, FITS, CBF/imgCIF, RPL/RAW, EMSA/MAS, ANG/CTF, and NPY.
 
 ### Workflow B: ROI measurement
 

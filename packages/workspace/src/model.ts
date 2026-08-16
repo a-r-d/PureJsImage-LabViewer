@@ -188,7 +188,7 @@ export function createEmptyWorkspace(
       updatedAt: now,
       createdWith: {
         appVersion: options.appVersion ?? '0.0.0',
-        pureJsImageVersion: options.pureJsImageVersion ?? '0.10.0',
+        pureJsImageVersion: options.pureJsImageVersion ?? '0.11.0',
       },
     },
     sources: [],

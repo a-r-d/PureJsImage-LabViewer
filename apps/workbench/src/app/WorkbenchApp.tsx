@@ -25,6 +25,7 @@ import {
   createImagingWorkerClient,
   ImagingRpcError,
   type ImagingWorkerClient,
+  SUPPORTED_FILE_ACCEPT,
 } from '@pji-workbench/imaging'
 import { type BatchRecipeRow, runBatchRecipe } from '@pji-workbench/materials-analysis'
 import {
@@ -1250,7 +1251,7 @@ function WorkbenchRuntime({
         },
       ],
       requestedCapabilities: ['analysis.execute'],
-      compatibility: { pureJsImage: '^0.10.0', workbench: '>=0.0.0 <1.0.0' },
+      compatibility: { pureJsImage: '^0.11.0', workbench: '>=0.0.0 <1.0.0' },
     }
     const recipe: RecipeDocumentV1 = {
       ...base,
@@ -3461,7 +3462,7 @@ function WorkbenchRuntime({
               <Icon name="link" size={15} /> Open URL
             </Button>
             <input
-              accept=".gsf,.hdr,.envi,.fits,.fit,.fts,.mrc,.map,.ccp4,.cbf,.imgcif,.tif,.tiff,.svs"
+              accept={SUPPORTED_FILE_ACCEPT}
               aria-label="Choose local scientific files"
               className="visually-hidden"
               multiple

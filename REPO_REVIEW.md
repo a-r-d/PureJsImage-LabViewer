@@ -22,7 +22,7 @@ The project is well beyond a skeleton:
 - Biome, Vitest, Playwright, architecture checks, package builds, and Cloudflare dry runs exist;
 - the workbench opens real PureJsImage datasets through a Worker;
 - local and remote sources, tile transfer, cancellation, worker restart, preferences, project save/replay, ROI measurement, threshold preview, connected components, keyboard access, and accessibility have product tests;
-- the app already consumes `purejsimage` 0.10.0 through public exports only;
+- the app already consumes `purejsimage` 0.11.0 through public exports only;
 - deployment to `lab.purejsimage.com` already exists and needs no separate roadmap prompt.
 
 This is a good foundation. The next phase should deepen product capabilities rather than replace the stack.

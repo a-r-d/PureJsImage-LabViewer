@@ -932,7 +932,7 @@ describe('PureJsImage Worker host', () => {
         sourceReferences: [
           { id: 'source-1', identity: source.identity, locatorHint: { kind: 'sample' } },
         ],
-        createdWith: { packageVersion: '0.10.0', buildFingerprint: 'workbench-test' },
+        createdWith: { packageVersion: '0.11.0', buildFingerprint: 'workbench-test' },
         hashes,
       },
       {
@@ -945,16 +945,40 @@ describe('PureJsImage Worker host', () => {
     expect(validation.issues).toEqual([])
   })
 
-  it('pins the package and exposes the seven explicit reader descriptors', async () => {
-    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.10.0')
+  it('pins the package and exposes the thirty-one explicit reader descriptors', async () => {
+    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.11.0')
     expect(SUPPORTED_READERS.map(({ id }) => id)).toEqual([
-      'purejsimage/gsf',
-      'purejsimage/envi',
-      'purejsimage/fits',
-      'purejsimage/mrc',
-      'purejsimage/cbf',
+      'purejsimage/png',
+      'purejsimage/jpeg',
+      'purejsimage/webp',
+      'purejsimage/bmp',
+      'purejsimage/jp2',
+      'purejsimage/tiff',
       'purejsimage/ome-tiff',
       'purejsimage/aperio-svs',
+      'purejsimage/digital-micrograph',
+      'purejsimage/tia-ser',
+      'purejsimage/tia-emi',
+      'purejsimage/ncem-emd',
+      'purejsimage/velox-emd',
+      'purejsimage/blockfile',
+      'purejsimage/mib',
+      'purejsimage/gsf',
+      'purejsimage/nanonis-sxm',
+      'purejsimage/igor-binary-wave',
+      'purejsimage/digital-surf',
+      'purejsimage/x3p',
+      'purejsimage/mrc',
+      'purejsimage/nrrd',
+      'purejsimage/meta-image',
+      'purejsimage/nifti',
+      'purejsimage/envi',
+      'purejsimage/fits',
+      'purejsimage/cbf',
+      'purejsimage/rpl',
+      'purejsimage/emsa',
+      'purejsimage/ebsd-text',
+      'purejsimage/npy',
     ])
     const initialized = await new ImagingWorkerHost().handle(
       rpcRequest('initialize', 'worker.initialize', null),

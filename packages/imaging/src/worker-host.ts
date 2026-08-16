@@ -49,6 +49,7 @@ import { createScientificFileContext } from 'purejsimage/scientific/browser'
 import { HttpRangeSource } from 'purejsimage/sources/http-range'
 
 import { datasetDescriptor, defaultPlaneSelection, openedSourceDescriptor } from './descriptor.js'
+import { PUREJSIMAGE_PACKAGE_VERSION } from './package-version.js'
 import { createAnalysisBindings, isScientificDataset } from './worker-host/analysis-rpc.js'
 import {
   abortError,
@@ -584,7 +585,10 @@ export class ImagingWorkerHost {
         valueTypes: extensions.valueTypes,
         providers: extensions.providers,
         roi: { descriptor: dataset.descriptor },
-        library: { version: '0.10.0', buildFingerprint: 'pji-workbench-worker-v1' },
+        library: {
+          version: PUREJSIMAGE_PACKAGE_VERSION,
+          buildFingerprint: 'pji-workbench-worker-v1',
+        },
       })
       const handleId = this.#id('dataset') as DatasetHandleId
       const record: DatasetRecord = {
