@@ -156,6 +156,7 @@ export function independentOriginValue(scenarioId: string): number {
   if (scenarioId === 'generated.periodic-lattice') return 100 + 28
   if (scenarioId === 'generated.afm-tilted-surface') return 4 + 0.55
   if (scenarioId === 'generated.batch-particles') return 92 + 5
+  if (scenarioId === 'generated.drifting-stack') return 8
   throw new Error(`No independent generated reference for ${scenarioId}.`)
 }
 
@@ -237,6 +238,11 @@ export function independentSampleValue(
       5 * Math.cos(y / 23) +
       ((x * 13 + y * 7) % 17) +
       isolatedCalibratedParticle(width, height, x, y, true)
+  } else if (scenarioId === 'generated.drifting-stack') {
+    const dx = x - width * 0.35
+    const dy = y - height * 0.5
+    const radius = width * 0.12
+    value = 8 + (dx * dx + dy * dy <= radius * radius ? 40 : 0) + ((x + y) % 5) * 0.2
   } else throw new Error(`No independent generated reference for ${scenarioId}.`)
   return new Float32Array([value])[0] ?? Number.NaN
 }

@@ -25,11 +25,14 @@ export type GeneratedSampleId =
   | 'generated.periodic-lattice'
   | 'generated.afm-tilted-surface'
   | 'generated.batch-particles'
+  | 'generated.drifting-stack'
 
 export interface GeneratedSampleDefinition {
   readonly id: GeneratedSampleId
   readonly width: number
   readonly height: number
+  readonly frames?: number
+  readonly zReal?: number
   readonly filename: string
   readonly title: string
   readonly xyUnit: string
@@ -44,6 +47,7 @@ const SAMPLE_IDS = new Set<GeneratedSampleId>([
   'generated.periodic-lattice',
   'generated.afm-tilted-surface',
   'generated.batch-particles',
+  'generated.drifting-stack',
 ])
 
 export function generatedSampleDefinition(input: string | undefined): GeneratedSampleDefinition {
@@ -74,6 +78,20 @@ export function generatedSampleDefinition(input: string | undefined): GeneratedS
       xReal: 2_048,
       yReal: 1_536,
       valueUnit: 'nm',
+    }
+  if (sampleId === 'generated.drifting-stack')
+    return {
+      id: sampleId,
+      width: 64,
+      height: 64,
+      frames: 8,
+      zReal: 16,
+      filename: 'drifting-stack.nrrd',
+      title: 'Generated drifting calibrated stack',
+      xyUnit: 'nm',
+      xReal: 64,
+      yReal: 64,
+      valueUnit: 'a.u.',
     }
   return {
     id: sampleId,
@@ -148,6 +166,57 @@ function isolatedParticle(
     : 0
 }
 
+export function stackSampleValue(
+  x: number,
+  y: number,
+  z: number,
+  width: number,
+  height: number,
+): number {
+  const shift = z
+  const dx = x - (width * 0.35 + shift)
+  const dy = y - height * 0.5
+  const radius = width * 0.12
+  const disk = dx * dx + dy * dy <= radius * radius ? 40 : 0
+  return 8 + z * 1.5 + disk + ((x + y) % 5) * 0.2
+}
+
+export function sampleStackValues(width: number, height: number, frames: number): Float32Array {
+  const values = new Float32Array(width * height * frames)
+  for (let z = 0; z < frames; z += 1)
+    for (let y = 0; y < height; y += 1)
+      for (let x = 0; x < width; x += 1)
+        values[z * width * height + y * width + x] = stackSampleValue(x, y, z, width, height)
+  return values
+}
+
+export function encodeNrrdStack(
+  width: number,
+  height: number,
+  frames: number,
+  values: Float32Array,
+  options: Readonly<{ xStep: number; yStep: number; zStep: number; unit: string }>,
+): Uint8Array {
+  if (values.length !== width * height * frames)
+    throw new Error('NRRD stack length does not match width × height × frames.')
+  const header = new TextEncoder().encode(`NRRD0004
+type: float32
+dimension: 3
+sizes: ${width} ${height} ${frames}
+spacings: ${options.xStep} ${options.yStep} ${options.zStep}
+labels: "x" "y" "z"
+units: "${options.unit}" "${options.unit}" "${options.unit}"
+encoding: raw
+endian: little
+
+`)
+  const payload = new Uint8Array(values.buffer, values.byteOffset, values.byteLength)
+  const bytes = new Uint8Array(header.length + payload.length)
+  bytes.set(header)
+  bytes.set(payload, header.length)
+  return bytes
+}
+
 export function sampleValues(
   width: number,
   height: number,
@@ -175,6 +244,8 @@ export function sampleValues(
         values[y * width + x] = background + Math.min(1, particles) * 145
       } else if (sampleId === 'generated.calibrated-particles') {
         values[y * width + x] = semStyleBackground(x, y) + isolatedParticle(x, y, width, height)
+      } else if (sampleId === 'generated.drifting-stack') {
+        values[y * width + x] = stackSampleValue(x, y, 0, width, height)
       } else {
         values[y * width + x] =
           semStyleBackground(x, y) + isolatedParticle(x, y, width, height, true)

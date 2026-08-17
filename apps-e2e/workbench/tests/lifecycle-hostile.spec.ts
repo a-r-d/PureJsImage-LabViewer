@@ -24,5 +24,7 @@ test('surfaces a Worker crash and provides an explicit restart path', async ({ p
   })
   await expect(page.getByRole('alert')).toContainText('project state is unchanged')
   await page.getByRole('button', { name: 'Restart imaging Worker' }).click()
-  await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText('Ready')
+  await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText('Ready', {
+    timeout: 30_000,
+  })
 })

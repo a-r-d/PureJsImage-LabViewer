@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest'
 import {
   createEmptyWorkspace,
   type SemanticSourceId,
   type WorkspaceSnapshot,
 } from '@pji-workbench/workspace'
+import { describe, expect, it } from 'vitest'
 import {
   mutationsToReplaceOpenSource,
   snapshotWithVisibleWorkflow,

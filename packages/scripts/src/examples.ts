@@ -225,6 +225,23 @@ globalThis.__scriptMain = main
       { workflow: 'real-hhv6-histogram', bins: 64, component: 0 },
     ),
     await script(
+      'builtin.stack-mean-projection',
+      'Stack mean-projection script',
+      'Plans a mean projection along the generated eight-plane drifting stack.',
+      `import { lab } from '@lab/api'
+
+export async function main() {
+  const plan = await lab.analysis.dryRun({ workflow: 'stack-mean-projection', mode: 'mean', fixtureId: 'generated.drifting-stack' })
+  return { workflow: 'stack-mean-projection', frames: 8, plan }
+}
+
+globalThis.__scriptMain = main
+`,
+      'generated.drifting-stack',
+      ['analysis.dry-run'],
+      { workflow: 'stack-mean-projection', frames: 8 },
+    ),
+    await script(
       'builtin.batch-measurement',
       'Batch measurement script',
       'Requests a bounded local batch recipe proposal with per-item isolation.',

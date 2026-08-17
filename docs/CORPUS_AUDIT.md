@@ -10,7 +10,7 @@ enabled examples.
 
 | Status | Count | Meaning |
 | --- | ---: | --- |
-| Enabled | 9 | Five generated fixtures plus four exact public-domain bundled micrographs with bounded workflows and normal-CI coverage. |
+| Enabled | 10 | Six generated fixtures plus four exact public-domain bundled micrographs with bounded workflows and normal-CI coverage. |
 | Candidate | 5 | Scientifically useful record, but at least one identity, license, subset, or oracle gate remains. |
 | Scheduled | 3 | Exact upstream entry is known; large-data qualification belongs in controlled scheduled tests. |
 | Excluded | 1 | Capability or licensed exact-scenario boundary is not yet ready. |
@@ -25,6 +25,7 @@ enabled examples.
 | `generated.periodic-lattice` | enabled | ready | Deterministic calibrated frequencies, CC0, offline open, bounded FFT/radial-profile script. |
 | `generated.afm-tilted-surface` | enabled | ready | Deterministic calibrated height field, CC0, offline open, bounded leveling/roughness script. |
 | `generated.batch-particles` | enabled | ready | Deterministic mirrored isolated-disk field, CC0, bounded batch proposal and per-item isolation workflow. |
+| `generated.drifting-stack` | enabled | ready | Deterministic 64×64×8 NRRD volume with a one-pixel-per-plane disk walk, CC0, offline open, bounded mean-projection script. |
 | `cdc.ecoli-sem` | enabled | ready | Exact public-domain 700 × 475 CDC SEM JPEG plus full-resolution grayscale GSF intensity derivative, both SHA-256 pinned; offline source loading and committed threshold/components preset. |
 | `cdc.staph-aureus-sem` | enabled | ready | Exact public-domain 2100 × 1630 CDC SEM JPEG (PHIL 6486), SHA-256 pinned and opened as the original JPEG; offline source loading and a committed bright-object threshold/components starting point. |
 | `nih.hela-cells-3709` | enabled | ready | Exact public-domain NIH JPEG plus a bounded 1024 × 832 grayscale GSF intensity derivative, both SHA-256 pinned; offline source loading and ROI-first inspection workflow. |

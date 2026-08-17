@@ -376,7 +376,6 @@ function WorkbenchRuntime({
   const { applyProjectMutation, currentSnapshot, historyState, replaceWorkspace, stepHistory } =
     useWorkspaceHistory(initialWorkspace)
   const workspace = historyState.snapshot
-  const projectJson = useMemo(() => serializeWorkspaceProject(workspace), [workspace])
   const [savedProjectJson, setSavedProjectJson] = useState<string>()
   const [recentProjects, setRecentProjects] = useState<readonly ProjectSummary[]>([])
   const [projectDialog, setProjectDialog] = useState(false)
@@ -457,6 +456,7 @@ function WorkbenchRuntime({
   const generation = useRef(0)
   const openedAt = useRef(0)
   const autoRangeLocked = useRef(false)
+  const firstTileWaiters = useRef<Array<() => void>>([])
   const displayedRasterKey =
     analysisDataset === undefined
       ? 'source'
@@ -1550,7 +1550,7 @@ function WorkbenchRuntime({
                   .map((issue) => {
                     if (typeof issue === 'string') return issue
                     if (typeof issue === 'object' && issue !== null) {
-                      if ('message' in issue) return String(issue.message)
+                      if ('message' in issue) return String(issue['message'])
                       return JSON.stringify(issue)
                     }
                     return ''
@@ -1955,6 +1955,10 @@ function WorkbenchRuntime({
       setParticleSettings(DEFAULT_PARTICLE_WORKFLOW)
       setAnalysisDataset(undefined)
       setAnalysisOverlay(undefined)
+      setAnalysisState({ busy: false, tableOffset: 0 })
+      setBatchRows([])
+      setAdvancedPlan(undefined)
+      setAdvancedMessage(undefined)
       if (previousSemanticId !== undefined && previousSemanticId !== sourceMutation.source.id) {
         void runtime.releaseSource(previousSemanticId)
       }
@@ -1977,6 +1981,8 @@ function WorkbenchRuntime({
       window.__PJI_WORKBENCH_METRICS__.datasetPixels =
         (horizontal?.length ?? 0) * (vertical?.length ?? 0)
       openedAt.current = performance.now()
+      window.__PJI_WORKBENCH_METRICS__.firstTileMilliseconds = null
+      firstTileWaiters.current = []
       rememberSource(nextSource.source.name)
       appendLog(`Opened ${nextSource.source.name} with ${nextSource.reader.id}`)
       return nextDataset
@@ -2054,6 +2060,27 @@ function WorkbenchRuntime({
     [client, runOpen],
   )
 
+  const waitForFirstUsefulTile = useCallback((signal: AbortSignal): Promise<void> => {
+    if (autoRangeLocked.current || window.__PJI_WORKBENCH_METRICS__.firstTileMilliseconds !== null)
+      return Promise.resolve()
+    return new Promise((resolve, reject) => {
+      const finish = (): void => {
+        signal.removeEventListener('abort', onAbort)
+        window.clearTimeout(timeout)
+        resolve()
+      }
+      const onAbort = (): void => {
+        firstTileWaiters.current = firstTileWaiters.current.filter((waiter) => waiter !== finish)
+        signal.removeEventListener('abort', onAbort)
+        window.clearTimeout(timeout)
+        reject(new DOMException('Example action cancelled', 'AbortError'))
+      }
+      const timeout = window.setTimeout(finish, 15_000)
+      firstTileWaiters.current.push(finish)
+      signal.addEventListener('abort', onAbort, { once: true })
+    })
+  }, [])
+
   const openExample = useCallback(
     async (scenario: ExampleScenarioV1, signal: AbortSignal): Promise<void> => {
       const fixture = resolveExampleFixture(scenario.id)
@@ -2083,7 +2110,7 @@ function WorkbenchRuntime({
         )
         const preset = scenario.initialAnalysis
         if (preset !== undefined && openedExample !== undefined) {
-          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          await waitForFirstUsefulTile(signal)
           signal.throwIfAborted()
           setInspectorTab('analysis')
           const runPreset = (): Promise<boolean> =>
@@ -2129,7 +2156,7 @@ function WorkbenchRuntime({
         signal.removeEventListener('abort', cancel)
       }
     },
-    [appendLog, client, executeAnalysisGraph, openSample, runOpen],
+    [appendLog, client, executeAnalysisGraph, openSample, runOpen, waitForFirstUsefulTile],
   )
 
   const runExampleWorkflow = useCallback(
@@ -2312,6 +2339,16 @@ function WorkbenchRuntime({
         bottom: bottomTab,
       }),
     [bottomTab, currentSnapshot, inspectorTab],
+  )
+  const projectJson = useMemo(
+    () =>
+      serializeWorkspaceProject(
+        snapshotWithVisibleWorkflow(workspace, {
+          inspector: inspectorTab,
+          bottom: bottomTab,
+        }),
+      ),
+    [bottomTab, inspectorTab, workspace],
   )
 
   const saveProject = useCallback(async (): Promise<void> => {
@@ -2612,6 +2649,9 @@ function WorkbenchRuntime({
       })
       const elapsed = performance.now() - openedAt.current
       window.__PJI_WORKBENCH_METRICS__.firstTileMilliseconds = elapsed
+      const waiters = firstTileWaiters.current
+      firstTileWaiters.current = []
+      for (const waiter of waiters) waiter()
       setLog((current) => [
         ...current,
         `${new Date().toLocaleTimeString()} · First tile in ${elapsed.toFixed(1)} ms`,
@@ -3973,8 +4013,10 @@ function WorkbenchRuntime({
                     <Icon name="open" size={30} />
                     <p className="panel-kicker">Project open · source not bound</p>
                     <h2 id="empty-start-title">
-                      {(workspace.sources.find((reference) => !reference.bound) ?? workspace.sources[0])
-                        ?.label ?? 'This source'}{' '}
+                      {(
+                        workspace.sources.find((reference) => !reference.bound) ??
+                        workspace.sources[0]
+                      )?.label ?? 'This source'}{' '}
                       must be rebound
                     </h2>
                     <p>

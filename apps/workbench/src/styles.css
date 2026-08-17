@@ -281,7 +281,7 @@ canvas:focus-visible,
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  color: #edf3f7;
+  color: var(--wb-text);
   font: 10px / 1 var(--wb-font-mono);
   pointer-events: none;
   text-shadow: 0 1px 3px #000;

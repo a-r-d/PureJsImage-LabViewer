@@ -37,7 +37,7 @@ disabled.
 | 04 Materials analysis slice | Threshold preview/commit, CC, ROI measure | thin | ROI stats + particle path used; legacy threshold preview barely touched |
 | 07 Everyday toolbox | Operation browser, crop/rotate/flip, Gaussian/median, invert, calibration-from-line | thin | Invert Apply from the operation browser works (session 5). Crop/rotate/calibration-from-line unused |
 | 08 Particle workflow | Otsu, watershed, morphology, filters, linked table↔overlay | used / thin | Isolated-disk count works (10) if no leftover ROI. Watershed checkbox defaults on for the touching example; leftover ROI made the count 1 |
-| 09 FFT / AFM / stack / batch | FFT workspace, AFM leveling, stack projection/align, batch files | used / thin | Notch FFT used. Batch picked two local GSFs (session 7); Invert recipe refused as not valid for those files. Stack still needs a multi-plane dataset |
+| 09 FFT / AFM / stack / batch | FFT workspace, AFM leveling, stack projection/align, batch files | used | Particle-count batch 2/2. Generated drifting stack in the gallery; mean projection shows the walking disk (session 9). Invert is not a portable batch recipe |
 | 10 Script Studio | Write/edit/dry-run/test/install a script or recipe | used | Session 5: New draft + API explorer + Typecheck + Run; Install locally; hostile `while(true)` cancel. Run output lives in Console, below the fold |
 | 11 Example library | Open each enabled example, Run workflow vs Open, attribution | used | All four real examples opened in session 3. Run workflow opens Script Studio. |
 | 12 Corpus e2e | Scenario oracles, license/integrity | n/a as UX | Automated; not a user workflow |
@@ -69,10 +69,9 @@ Work from the 2026-08-16 implementation thread. Useful, but not a protocol pass.
 
 ## Highest-priority gaps still open
 
-1. **Stack/registration** still needs a multi-plane dataset (no generated volume yet).
-2. Batch can pick local files, but a committed Invert recipe is refused on other GSF files (`Recipe is not valid for this dataset`).
-3. Live agent evals.
-4. 200% page zoom is scrollable and inspector tabs are clickable; the example gallery is still cramped.
+1. Live agent evals.
+2. 200% example gallery is still cramped.
+3. Generated stack Info tab still lists `axis0/1/2`; the stack dropdown shows `z`. First-open of the 64×64 source plane can cancel its first tile.
 
 ## Sessions
 
@@ -255,5 +254,43 @@ Notes:
 - Invert is a bad default batch recipe. The intended path is a saved particle/count recipe; that is still unused.
 
 Next: a generated stack volume; a portable batch recipe (particle count) on two local files.
+
+### Session 8 — 2026-08-16
+
+- Tester: implementation agent
+- App: `ebfbc23` plus leftover-analysis-state cleanup · http://127.0.0.1:5173 · dark · 1440×900
+- Goal: the remaining open list — portable batch recipe, multi-plane stack
+- Evidence: `/tmp/usability-session8/*.png`
+
+| # | Workflow (prompt) | Steps taken | Outcome | Friction / bugs |
+|---|-------------------|-------------|---------|-----------------|
+| 1 | Portable batch (09) | Open Calibrated particle field, Dry-run + Run (10 particles), Choose `batch-particles-a.gsf` + `batch-particles-b.gsf` | Completed | **Batch complete: 2 succeeded, 0 failed, 0 cancelled.** Isolated Workers, per-row identity and recipe hash. Invert failed last session because that graph is not a portable recipe; the particle-count graph is. Source-identity cells are a raw JSON dump. |
+| 2 | Stack / mean projection (09) | Open local `drift-stack.nrrd` (48×48×6) | Completed | NRRD opens as `axis0 48 × axis1 48 × axis2 6`. Stack panel enables: **Axis 2 · 6 planes**, first 0 / last 5, Mean projection, Plan + Run enabled. Previous particle headline (“Counted 10 particles”) was still on screen after the open. **Fixed in-tree:** opening a new source now clears leftover analysis state. |
+
+Notes:
+
+- A 3D NRRD is enough to use the stack workspace. A generated gallery example would still help first-use (and should name axes x/y/z).
+- Live agent evals and 200% gallery polish were not this session.
+
+Next: generated stack example; shorter batch identity cells.
+
+### Session 9 — 2026-08-17
+
+- Tester: implementation agent
+- App: working tree after session 8 plus generated stack + batch-identity + analysis-tile fix · http://127.0.0.1:5173 · dark · 1440×900
+- Goal: remaining closable items — gallery stack example, readable batch identity
+- Evidence: `/tmp/usability-session9/*.png`, `/tmp/usability-session9b/*.png`
+
+| # | Workflow (prompt) | Steps taken | Outcome | Friction / bugs |
+|---|-------------------|-------------|---------|-----------------|
+| 1 | Generated stack (09, 11) | Example library → **Drifting calibrated stack** → Plan/Run mean projection | Completed after fix | Opens `drifting-stack.nrrd` as a **3D** NRRD, 1 nm/px, stack axis **z · 8 planes**. First source plane can show “Request cancelled.” After Run, the mean projection is a bright disk (smeared by the 1 px/plane walk). First tile of the projection failed until `targetSampleType` was stripped from analysis-result plane requests. Info tab still lists `axis0 × axis1 × axis2`. |
+| 2 | Batch identity (09) | Particle-count graph, batch two local GSFs | Completed | Identity cell is **`batch-particles-a.gsf · gsf`**, not the raw scientific-identity JSON. Full identity stays on the `title` tooltip. |
+
+Notes:
+
+- The generated-v1 oracle includes the stack as its z=0 plane (64×64, origin 8). Values were computed from the same formula as the generator, not auto-harvested from a failed golden.
+- Live agent evals and 200% gallery polish were not this session.
+
+Next: 200% gallery layout; first-open tile cancel on the tiny stack; live evals.
 
 <!-- New sessions go below. -->

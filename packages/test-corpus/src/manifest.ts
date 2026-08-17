@@ -114,6 +114,7 @@ const WORKFLOW_ACTIONS: Readonly<Record<string, readonly ExampleWorkflowStepActi
     'project.replay',
   ],
   'generated.particles.batch': ['gallery.open', 'source.inspect', 'analysis.batch', 'script.test'],
+  'generated.stack.projection': ['gallery.open', 'source.inspect', 'analysis.stack', 'script.test'],
   'real.ecoli.components': [
     'gallery.open',
     'source.inspect',
@@ -196,6 +197,14 @@ const GENERATED_TEST_PLANS: Readonly<Record<string, ExampleTestPlanV1>> = {
     accessibility: false,
     projectReplay: false,
     agentEvalCaseIds: ['run-bounded-batch'],
+  },
+  'generated.drifting-stack': {
+    tier: 'pr',
+    capabilities: ['analysis.stack-projection-registration', 'scripts.sandbox-recipe-replay'],
+    screenshotStates: [],
+    accessibility: false,
+    projectReplay: true,
+    agentEvalCaseIds: [],
   },
 }
 
@@ -332,7 +341,9 @@ function generated(
           ? 'touching-particles.gsf'
           : generatorId === 'generated.batch-particles'
             ? 'batch-particles.gsf'
-            : 'sample-sem.gsf'
+            : generatorId === 'generated.drifting-stack'
+              ? 'drifting-stack.nrrd'
+              : 'sample-sem.gsf'
   return {
     schemaVersion: CORPUS_SCHEMA_VERSION,
     id,
@@ -396,6 +407,7 @@ function bundled(
   workflows: readonly ExampleWorkflowV1[],
   expected: ExampleScenarioV1['expected'],
   initialAnalysis?: ExampleInitialAnalysisV1,
+  budgets: ExampleBudgetsV1 = BUNDLED_BUDGETS,
 ): ExampleScenarioV1 {
   const preview = previewFile ?? file
   const files =
@@ -428,7 +440,7 @@ function bundled(
     learningGoals,
     workflows,
     expected,
-    budgets: BUNDLED_BUDGETS,
+    budgets,
     testPlan:
       BUNDLED_TEST_PLANS[id] ??
       (() => {
@@ -604,6 +616,27 @@ const scenarios: readonly ExampleScenarioV1[] = [
     ],
     'batch',
   ),
+  generated(
+    'generated.drifting-stack',
+    'Drifting calibrated stack',
+    'Eight 64×64 planes of a bright disk that walks one pixel per frame. Mean projection and alignment have a known 6-plane stack axis.',
+    'Volume (synthetic)',
+    'generated.drifting-stack',
+    'NRRD',
+    '1 nm/px · 2 nm/plane · intensity a.u.',
+    ['stack', 'volume', 'projection', 'registration', 'NRRD'],
+    ['Select the stack axis', 'Plan a mean projection', 'Inspect plane-to-plane drift'],
+    [
+      workflow(
+        'generated.stack.projection',
+        'Project the drifting stack',
+        'builtin.stack-mean-projection',
+        'script',
+        'The workflow plans a mean projection along the eight-plane stack axis.',
+      ),
+    ],
+    'stack',
+  ),
   bundled(
     'cdc.ecoli-sem',
     'E. coli colony (real SEM)',
@@ -727,6 +760,10 @@ const scenarios: readonly ExampleScenarioV1[] = [
       mode: 'greater-than',
       connectivity: 8,
       overlay: 'labels',
+    },
+    {
+      ...BUNDLED_BUDGETS,
+      maxFirstUsefulTileMilliseconds: 6_000,
     },
   ),
   bundled(

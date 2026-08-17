@@ -27,6 +27,8 @@ The application is not yet versioned for release (`0.0.0`).
   "Dataset changed" abort.
 - Inspector and results tab switches no longer write “Changed project workspace view”
   undo entries. The last visible tabs are stored when the project is saved or exported.
+  The saved/unsaved indicator compares that same visible snapshot, so Save after a
+  title edit no longer stays on Unsaved changes.
 - Opening a new file or example replaces leftover sources and the previous analysis
   graph, so a second example no longer piles up in the navigator.
 - An imported project that still needs its original file shows a rebind card instead of
@@ -36,7 +38,24 @@ The application is not yet versioned for release (`0.0.0`).
   closed. The first viewport resize fits the specimen instead of leaving a 1:1 crop.
   Locking display auto-range no longer remounts the viewport, so remaining tiles fill
   the fitted frame instead of leaving black corners.
-- New project clears leftover analysis results, overlays, and batch rows.
+- New project and opening a new source both clear leftover analysis results, overlays,
+  and batch rows so a previous particle count cannot linger on the next file.
+- The mode rail stays above the results panel and scrolls when the window is short,
+  so Examples and Script Studio remain clickable at a 200-percent-equivalent viewport.
+- Analyzed examples wait for the first useful tile before running the preset, so the
+  specimen appears before the imaging Worker starts the included analysis.
+- Chromium visual baselines for the opened workspace now match the ten-disk sample,
+  fit-on-open camera, teal histogram, and generated source label.
+- The original 2100×1630 S. aureus JPEG has a 6 s first-tile budget. Firefox must
+  decode the full original file before the first 256-pixel tile; GSF derivatives stay
+  at 4 s.
+- A committed particle-count graph can be applied as a local-file batch; invert is not a
+  portable batch recipe. Batch identity cells show a filename/reader label instead of the
+  full scientific-identity JSON.
+- The example library includes a generated 64×64×8 drifting stack (NRRD) so the stack
+  workspace can be used without a local volume. Analysis-result tiles no longer forward
+  `targetSampleType` into PureJsImage plane requests, so mean-projection output can
+  render.
 - The workbench root can scroll, so 200 percent page zoom no longer traps inspector
   tabs under the viewport canvas. Batch rows include dry-run issue text when a recipe
   is refused for a file.

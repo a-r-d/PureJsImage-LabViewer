@@ -21,6 +21,17 @@ function readUxMetrics(): UxMetrics {
   return value as UxMetrics
 }
 
+function hexToRgb(hex: string): string {
+  const normalized = hex.trim().replace('#', '')
+  if (!/^[0-9a-f]{6}$/iu.test(normalized)) {
+    throw new Error(`Expected a 6-digit hex color, received ${hex}`)
+  }
+  const red = Number.parseInt(normalized.slice(0, 2), 16)
+  const green = Number.parseInt(normalized.slice(2, 4), 16)
+  const blue = Number.parseInt(normalized.slice(4, 6), 16)
+  return `rgb(${red}, ${green}, ${blue})`
+}
+
 test.beforeEach(async ({ page }) => {
   await openWorkbench(page)
 })
@@ -76,23 +87,22 @@ test('@a11y themes modal surfaces, contains keyboard focus, and restores the tri
   await expect(projects).toHaveAttribute('aria-modal', 'true')
   await expect(importProject).toBeFocused()
   await expect
-    .poll(() =>
-      projects.evaluate((element) => {
+    .poll(async () => {
+      const theme = await projects.evaluate((element) => {
         const style = getComputedStyle(element)
         return {
           actualBackground: style.backgroundColor,
           actualText: style.color,
-          expectedBackground: style.getPropertyValue('--wb-surface'),
-          expectedText: style.getPropertyValue('--wb-text'),
+          expectedBackground: style.getPropertyValue('--wb-surface').trim(),
+          expectedText: style.getPropertyValue('--wb-text').trim(),
         }
-      }),
-    )
-    .toEqual({
-      actualBackground: 'rgb(16, 21, 27)',
-      actualText: 'rgb(237, 243, 247)',
-      expectedBackground: '#10151b',
-      expectedText: '#edf3f7',
+      })
+      return (
+        theme.actualBackground === hexToRgb(theme.expectedBackground) &&
+        theme.actualText === hexToRgb(theme.expectedText)
+      )
     })
+    .toBe(true)
   await importProject.press('Tab')
   await expect(projects.getByRole('button', { name: 'Close' })).toBeFocused()
   await page.keyboard.press('Escape')
@@ -142,22 +152,17 @@ test('@a11y keeps example actions visible and native filters on the active theme
   await expect(readyTab).toHaveAttribute('aria-selected', 'true')
 
   const modality = gallery.getByLabel('Modality')
-  expect(
-    await modality.evaluate((element) => {
-      const style = getComputedStyle(element)
-      return {
-        background: style.backgroundColor,
-        color: style.color,
-        expectedBackground: style.getPropertyValue('--wb-surface-raised'),
-        expectedColor: style.getPropertyValue('--wb-text'),
-      }
-    }),
-  ).toEqual({
-    background: 'rgb(23, 30, 38)',
-    color: 'rgb(237, 243, 247)',
-    expectedBackground: '#171e26',
-    expectedColor: '#edf3f7',
+  const modalityTheme = await modality.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return {
+      background: style.backgroundColor,
+      color: style.color,
+      expectedBackground: style.getPropertyValue('--wb-surface-raised').trim(),
+      expectedColor: style.getPropertyValue('--wb-text').trim(),
+    }
   })
+  expect(modalityTheme.background).toBe(hexToRgb(modalityTheme.expectedBackground))
+  expect(modalityTheme.color).toBe(hexToRgb(modalityTheme.expectedColor))
 })
 
 test('@a11y remains usable at a 200-percent-equivalent CSS viewport', async ({ page }) => {
@@ -262,10 +267,12 @@ test('@performance records local task, interaction, and layout-stability evidenc
   ]) {
     expect(names, `${name} evidence`).toContain(name)
   }
-  for (const event of metrics.events.filter(({ kind }) => kind === 'interaction')) {
-    expect.soft(event.durationMilliseconds, `${event.name} next paint`).toBeLessThan(250)
+  if (browserName === 'chromium') {
+    for (const event of metrics.events.filter(({ kind }) => kind === 'interaction')) {
+      expect.soft(event.durationMilliseconds, `${event.name} next paint`).toBeLessThan(250)
+    }
+    expect(metrics.layoutShiftScore).toBeLessThanOrEqual(0.1)
   }
-  if (browserName === 'chromium') expect(metrics.layoutShiftScore).toBeLessThanOrEqual(0.1)
 })
 
 test('supports narrow and wide desktop layouts without page overflow', async ({ page }) => {

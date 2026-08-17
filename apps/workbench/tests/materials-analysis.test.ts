@@ -4,7 +4,10 @@ import type {
   PlaneSelection,
 } from '@pji-workbench/contracts'
 import { describe, expect, it } from 'vitest'
-import { surfaceProfileEndpoints } from '../src/AdvancedMaterialsWorkflows.js'
+import {
+  formatBatchSourceIdentity,
+  surfaceProfileEndpoints,
+} from '../src/AdvancedMaterialsWorkflows.js'
 import {
   appendDatasetAnalysisGraph,
   connectedComponentsGraph,
@@ -229,6 +232,19 @@ describe('materials analysis UI contracts', () => {
     const fromLeftoverMapping = displayRangeFromTile({ minimum: 0, maximum: 255 }, histogram)
     expect(fromData.maximum).toBeLessThanOrEqual(12)
     expect(fromLeftoverMapping.maximum).toBeGreaterThan(200)
+  })
+
+  it('shortens batch source identities to a filename or reader label', () => {
+    expect(formatBatchSourceIdentity('local-file:batch-a.gsf:12384:1')).toBe('batch-a.gsf')
+    expect(
+      formatBatchSourceIdentity(
+        JSON.stringify({
+          kind: 'scientific-dataset',
+          reader: { id: 'purejsimage/gsf', version: '1.0.0' },
+          resources: [{ id: 'batch-a.gsf' }],
+        }),
+      ),
+    ).toBe('batch-a.gsf · gsf')
   })
 
   it('defaults the AFM height profile to the included rectangle, not a 256-pixel corner', () => {

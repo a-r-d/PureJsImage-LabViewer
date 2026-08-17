@@ -114,6 +114,36 @@ export function surfaceProfileEndpoints(
   }
 }
 
+export function formatBatchSourceIdentity(identity: string): string {
+  const local = /^local-file:([^:]+):/.exec(identity)
+  if (local?.[1] !== undefined) return local[1]
+  if (!identity.startsWith('{'))
+    return identity.length > 56 ? `${identity.slice(0, 53)}…` : identity
+  try {
+    const parsed: unknown = JSON.parse(identity)
+    if (typeof parsed !== 'object' || parsed === null) return identity
+    const record = parsed as Readonly<Record<string, unknown>>
+    const reader = record['reader']
+    const readerId =
+      typeof reader === 'object' && reader !== null && 'id' in reader
+        ? String(reader.id).replace(/^purejsimage\//, '')
+        : undefined
+    const resources = record['resources']
+    const resource = Array.isArray(resources) ? resources[0] : undefined
+    const name =
+      typeof resource === 'object' && resource !== null && 'id' in resource
+        ? String(resource.id)
+        : typeof record['datasetId'] === 'string'
+          ? record['datasetId']
+          : undefined
+    if (name !== undefined && readerId !== undefined) return `${name} · ${readerId}`
+    if (name !== undefined) return name
+  } catch {
+    return identity
+  }
+  return identity.length > 56 ? `${identity.slice(0, 53)}…` : identity
+}
+
 function defaultStack(axis: AxisDescriptor | undefined): StackWorkspaceSettings {
   return {
     stackAxis: axis?.id ?? '',
@@ -725,7 +755,9 @@ export function AdvancedMaterialsWorkflows({
                     <td>{row.status}</td>
                     <td>{row.outputName}</td>
                     <td>
-                      <code>{row.sourceIdentity}</code>
+                      <code title={row.sourceIdentity}>
+                        {formatBatchSourceIdentity(row.sourceIdentity)}
+                      </code>
                     </td>
                     <td>
                       <code>{row.recipeHash}</code>

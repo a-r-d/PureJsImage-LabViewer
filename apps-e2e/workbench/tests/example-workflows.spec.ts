@@ -1,5 +1,8 @@
+import { scenarioTestArtifacts } from '@pji-workbench/test-corpus'
 import { expect, test } from '@playwright/test'
 import { openWorkbench } from './support/workbench.js'
+
+const prScenarios = scenarioTestArtifacts(['pr'])
 
 test.beforeEach(async ({ page }) => {
   await openWorkbench(page)
@@ -10,8 +13,8 @@ test('browses, filters, opens, and prepares verified example workflows without n
 }) => {
   await page.getByRole('button', { name: 'Examples mode' }).click()
   const gallery = page.getByRole('dialog', { name: 'Example library' })
-  await expect(gallery).toContainText('9 ready')
-  await expect(gallery.locator('.example-card')).toHaveCount(9)
+  await expect(gallery).toContainText(`${prScenarios.length} ready`)
+  await expect(gallery.locator('.example-card')).toHaveCount(prScenarios.length)
   await gallery.getByRole('searchbox', { name: 'Search' }).fill('roughness')
   const afm = gallery.locator('.example-card').filter({ hasText: 'Tilted AFM surface' })
   await expect(afm).toContainText('CC0-1.0')
@@ -30,13 +33,13 @@ test('browses, filters, opens, and prepares verified example workflows without n
   }
   await openExample.click()
   await expect(gallery).toBeHidden()
-  await expect(page.getByRole('button', { name: 'afm-tilted-surface.gsf sample' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'afm-tilted-surface.gsf generated' })).toBeVisible()
   await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText('2 nm/px')
   await page.getByLabel('Project title').fill('AFM corpus replay')
   await page.getByLabel('Project title').blur()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.reload()
-  await expect(page.getByRole('button', { name: 'afm-tilted-surface.gsf sample' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'afm-tilted-surface.gsf generated' })).toBeVisible()
   await expect(page.getByRole('img', { name: /Scientific image viewport/ })).toBeVisible()
   await page.getByRole('button', { name: 'New', exact: true }).click()
 

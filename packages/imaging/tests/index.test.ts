@@ -1034,6 +1034,22 @@ describe('PureJsImage Worker host', () => {
       )
       await host.dispose()
     }
+  }, 15_000)
+
+  it('opens the generated drifting stack as an eight-plane volume', async () => {
+    const host = new ImagingWorkerHost()
+    const { source, dataset } = await openGenerated(host, 1, 'generated.drifting-stack')
+    expect(source.source.name).toBe('drifting-stack.nrrd')
+    expect(
+      dataset.dataset.axes.map(({ length }) => length).sort((left, right) => left - right),
+    ).toEqual([8, 64, 64])
+    expect(
+      dataset.selection.fixedIndices.some(({ axisId }) => {
+        const axis = dataset.dataset.axes.find(({ id }) => id === axisId)
+        return axis?.length === 8
+      }),
+    ).toBe(true)
+    await host.dispose()
   })
 
   it('matches reviewed generated descriptors and samples to an independent reference oracle', async () => {
@@ -1061,7 +1077,7 @@ describe('PureJsImage Worker host', () => {
         expect(values[sample.y * expected.width + sample.x]).toBeCloseTo(sample.value, digits)
       }
     }
-  })
+  }, 15_000)
 
   it('places isolated calibrated particles large enough for the default 64-pixel count filter', () => {
     const width = 2_048

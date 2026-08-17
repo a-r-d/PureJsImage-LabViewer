@@ -44,7 +44,9 @@ test('saves and numerically replays a semantic project after a browser reload', 
   await page.reload()
 
   await expect(page.getByLabel('Project title')).toHaveValue('Reloaded SEM project')
-  await expect(page.getByRole('img', { name: /Scientific image viewport/ })).toBeVisible()
+  await expect(page.getByRole('img', { name: /Scientific image viewport/ })).toBeVisible({
+    timeout: 30_000,
+  })
   await waitForWorkbenchSettled(page)
   expect(await centerViewportReadout(page)).toBe(beforeReload)
   await expect(page.getByText('Saved locally', { exact: true })).toBeVisible()

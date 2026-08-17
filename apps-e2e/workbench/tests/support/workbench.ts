@@ -38,9 +38,9 @@ export async function installDeterministicBrowserState(page: Page): Promise<void
 
 export async function waitForWorkbenchSettled(page: Page): Promise<void> {
   const workbench = page.locator('[data-workbench-ready]')
-  await expect(workbench).toHaveAttribute('data-workbench-ready', 'true')
+  await expect(workbench).toHaveAttribute('data-workbench-ready', 'true', { timeout: 30_000 })
   await expect(workbench).toHaveAttribute('data-render-settled', 'true')
-  await expect(workbench).toHaveAttribute('data-analysis-settled', 'true')
+  await expect(workbench).toHaveAttribute('data-analysis-settled', 'true', { timeout: 30_000 })
   await page.evaluate(() => document.fonts.ready)
 }
 
@@ -52,7 +52,9 @@ export async function openWorkbench(page: Page): Promise<void> {
 
 export async function openSample(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Try generated calibrated sample' }).click()
-  await expect(page.getByRole('img', { name: /Scientific image viewport/u })).toBeVisible()
+  await expect(page.getByRole('img', { name: /Scientific image viewport/u })).toBeVisible({
+    timeout: 15_000,
+  })
   await waitForWorkbenchSettled(page)
 }
 

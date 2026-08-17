@@ -1056,19 +1056,11 @@ table,
   background: var(--wb-border);
 }
 
-.app-bar > .ui-toolbar:last-child .ui-tooltip__bubble {
-  right: 0;
-  left: auto;
-  transform: translateY(-3px);
-}
-
-.app-bar > .ui-toolbar:last-child .ui-tooltip:hover .ui-tooltip__bubble,
-.app-bar > .ui-toolbar:last-child .ui-tooltip:focus-within .ui-tooltip__bubble {
-  transform: translateY(0);
-}
-
 .mode-rail {
+  z-index: 4;
   gap: 5px;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-block: 8px;
 }
 
@@ -1086,6 +1078,17 @@ table,
 .mode-rail .ui-tooltip:hover .ui-tooltip__bubble,
 .mode-rail .ui-tooltip:focus-within .ui-tooltip__bubble {
   transform: translate(0, -50%);
+}
+
+.app-bar > .ui-toolbar:last-child .ui-tooltip__bubble {
+  right: 0;
+  left: auto;
+  transform: translateY(-3px);
+}
+
+.app-bar > .ui-toolbar:last-child .ui-tooltip:hover .ui-tooltip__bubble,
+.app-bar > .ui-toolbar:last-child .ui-tooltip:focus-within .ui-tooltip__bubble {
+  transform: translateY(0);
 }
 
 .mode-rail .ui-tooltip:has(.mode-rail__button[aria-pressed="true"]) .ui-tooltip__bubble {

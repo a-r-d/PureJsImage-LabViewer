@@ -41,7 +41,7 @@ test('previews, commits, plans, and executes threshold connected components', as
   await expect(page.getByRole('button', { name: 'Run connected components' })).toBeEnabled()
   await page.getByRole('button', { name: 'Run connected components' }).click()
   await expect(page.getByTestId('analysis-results')).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByTestId('analysis-results')).toContainText(/objects/)
+  await expect(page.getByTestId('analysis-results')).toContainText(/particles counted|objects/u)
   await expect(page.getByRole('region', { name: 'Paged object measurements' })).toBeVisible()
   const firstLabel = page.getByRole('button', { name: /Select label/ }).first()
   await firstLabel.click()

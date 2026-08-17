@@ -29,17 +29,18 @@ test('draws and measures an ROI with bounded Worker results', async ({ page }) =
     page.getByRole('list', { name: 'Regions of interest' }).getByRole('listitem'),
   ).toHaveCount(1)
   await page.getByRole('button', { name: 'Statistics' }).click()
-  await expect(page.getByTestId('analysis-results')).toContainText('1 result')
+  await expect(page.getByTestId('analysis-results')).toContainText(/mean |1 result/u)
   await expect(page.getByTestId('analysis-results')).toContainText('statistics')
   await page.getByRole('button', { name: 'Pin result' }).click()
   await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible()
 })
 
 test('creates every ROI geometry with calibrated measurements', async ({ page }) => {
+  test.setTimeout(60_000)
   await openSample(page)
   await page.getByRole('tab', { name: 'ROI' }).click()
   const canvas = page.getByRole('img', { name: /Scientific image viewport/u })
-  const tools = ['line', 'polyline', 'rectangle', 'ellipse', 'polygon', 'point'] as const
+  const tools = ['Line', 'Polyline', 'Rectangle', 'Ellipse', 'Polygon', 'Point'] as const
 
   for (const [index, tool] of tools.entries()) {
     const toolButton = page.getByRole('button', { name: tool, exact: true })

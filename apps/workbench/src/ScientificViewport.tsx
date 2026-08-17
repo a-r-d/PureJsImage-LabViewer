@@ -970,9 +970,11 @@ export function ScientificViewport({
     redrawRef.current?.()
   }, [selectedLabel])
 
+  const mappingKey = `${mapping.range}:${mapping.minimum ?? 'pending'}:${mapping.maximum ?? 'pending'}`
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mappingKey is the refetch signal; the effect only calls the latest scheduler.
   useEffect(() => {
     scheduleTilesRef.current()
-  }, [mapping])
+  }, [mappingKey])
 
   return (
     <div className="mock-viewport scientific-viewport">

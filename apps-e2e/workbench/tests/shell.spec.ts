@@ -92,8 +92,7 @@ test('persists theme, panel preferences, and source names without file contents'
     'aria-valuenow',
     width ?? '',
   )
-  await expect(page.getByText('sample-sem.gsf')).toBeVisible()
-  await expect(page.getByText('recent')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'sample-sem.gsf recent' })).toBeVisible()
 })
 
 test('collapses the navigator on a narrow desktop while preserving the viewport', async ({

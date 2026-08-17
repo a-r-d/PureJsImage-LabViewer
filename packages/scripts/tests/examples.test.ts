@@ -15,6 +15,7 @@ describe('Script Studio built-in examples', () => {
       'builtin.real-staph-components',
       'builtin.real-image-inspection',
       'builtin.real-hhv6-histogram',
+      'builtin.stack-mean-projection',
       'builtin.batch-measurement',
     ])
     expect(examples.map(({ tests }) => tests[0]?.fixtureId)).toEqual([
@@ -26,6 +27,7 @@ describe('Script Studio built-in examples', () => {
       'cdc.staph-aureus-sem',
       'nih.hela-cells-3709',
       'nci.hhv6-em',
+      'generated.drifting-stack',
       'generated.batch-particles',
     ])
     for (const example of examples) {

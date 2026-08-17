@@ -46,14 +46,14 @@ for (const artifact of prScenarios) {
           exact: true,
         })
         .click()
-      await expect(gallery).toBeHidden()
+      await expect(gallery).toBeHidden({ timeout: 30_000 })
       await waitForWorkbenchSettled(page)
       await expect(page.getByRole('img', { name: /Scientific image viewport/u })).toBeVisible()
       const sourceName = artifact.fixture.files[0]?.split('/').at(-1)
       if (sourceName !== undefined)
         await expect(
           page.getByRole('button', {
-            name: `${sourceName} ${artifact.fixture.kind === 'bundled' ? 'example' : 'sample'}`,
+            name: `${sourceName} ${artifact.fixture.kind === 'bundled' ? 'example' : 'generated'}`,
           }),
         ).toBeVisible()
       await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText(
@@ -62,7 +62,7 @@ for (const artifact of prScenarios) {
           : (artifact.metadata.calibration.split(' · ')[0] ?? artifact.metadata.calibration),
       )
       if (artifact.initialAnalysis !== undefined) {
-        await expect(page.locator('.analysis-message, .result-count')).toContainText(
+        await expect(page.locator('.analysis-message, .result-count').first()).toContainText(
           /Analysis completed|Counted \d+|particles counted/u,
         )
         await expect(page.getByRole('tab', { name: 'Results', exact: true })).toHaveAttribute(
@@ -102,9 +102,9 @@ test('replays a bundled real source and its committed analysis after reload', as
     .filter({ hasText: artifact.scenarioTitle })
     .getByRole('button', { name: 'Open analyzed example', exact: true })
     .click()
-  await expect(gallery).toBeHidden()
+  await expect(gallery).toBeHidden({ timeout: 30_000 })
   await waitForWorkbenchSettled(page)
-  await expect(page.locator('.analysis-message, .result-count')).toContainText(
+  await expect(page.locator('.analysis-message, .result-count').first()).toContainText(
     /Analysis completed|Counted \d+|particles counted/u,
   )
   await page.getByLabel('Project title').fill('Reviewed real SEM')

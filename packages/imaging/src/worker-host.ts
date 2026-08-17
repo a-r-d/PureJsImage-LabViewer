@@ -67,7 +67,9 @@ import type {
 } from './worker-host/runtime.js'
 import {
   assertRemoteUrl,
+  encodeNrrdStack,
   generatedSampleDefinition,
+  sampleStackValues,
   sampleValues,
   sourceName,
 } from './worker-host/source-rpc.js'
@@ -316,16 +318,25 @@ export class ImagingWorkerHost {
       const { encodeGsf } = await import('purejsimage/scientific/readers/gsf')
       const sample = generatedSampleDefinition(request.payload.sampleId)
       const { width, height } = sample
-      const bytes = encodeGsf({
-        width,
-        height,
-        values: sampleValues(width, height, sample.id),
-        xyUnit: sample.xyUnit,
-        xReal: sample.xReal,
-        yReal: sample.yReal,
-        valueUnit: sample.valueUnit,
-        metadata: { Title: sample.title, CorpusScenario: sample.id },
-      })
+      const frames = sample.frames
+      const bytes =
+        frames === undefined
+          ? encodeGsf({
+              width,
+              height,
+              values: sampleValues(width, height, sample.id),
+              xyUnit: sample.xyUnit,
+              xReal: sample.xReal,
+              yReal: sample.yReal,
+              valueUnit: sample.valueUnit,
+              metadata: { Title: sample.title, CorpusScenario: sample.id },
+            })
+          : encodeNrrdStack(width, height, frames, sampleStackValues(width, height, frames), {
+              xStep: sample.xReal / width,
+              yStep: sample.yReal / height,
+              zStep: (sample.zReal ?? frames) / frames,
+              unit: sample.xyUnit,
+            })
       const file = new File([bytes.slice().buffer as ArrayBuffer], sample.filename, {
         type: 'application/octet-stream',
         lastModified: 0,
@@ -1024,7 +1035,6 @@ export class ImagingWorkerHost {
         fixedIndices: selection.fixedIndices,
         resolutionLevel: selection.resolutionLevel,
         ...readRegion,
-        targetSampleType: 'float32',
         signal,
       })) {
         try {
@@ -1147,7 +1157,6 @@ export class ImagingWorkerHost {
         fixedIndices: request.payload.fixedIndices,
         resolutionLevel: request.payload.resolutionLevel,
         ...request.payload.region,
-        targetSampleType: 'float32',
         signal,
       })) {
         try {

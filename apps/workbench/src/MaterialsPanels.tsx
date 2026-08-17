@@ -1139,7 +1139,7 @@ export function collectionPreviewRows(
   return Object.entries(preview).flatMap(([label, field]) => {
     const record = asRecord(field)
     const value = record?.['preview']
-    if (typeof value !== 'number' || !Number.isFinite(value)) return []
+    if (record === undefined || typeof value !== 'number' || !Number.isFinite(value)) return []
     const unit = typeof record['unit'] === 'string' ? record['unit'] : undefined
     return unit === undefined ? [{ label, value }] : [{ label, value, unit }]
   })
