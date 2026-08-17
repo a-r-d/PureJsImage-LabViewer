@@ -24,7 +24,7 @@ enabled examples.
 | `generated.touching-particles` | enabled | ready | Deterministic overlapping disks, CC0, offline open, bounded watershed script. |
 | `generated.periodic-lattice` | enabled | ready | Deterministic calibrated frequencies, CC0, offline open, bounded FFT/radial-profile script. |
 | `generated.afm-tilted-surface` | enabled | ready | Deterministic calibrated height field, CC0, offline open, bounded leveling/roughness script. |
-| `generated.batch-particles` | enabled | ready | Deterministic local batch item, CC0, bounded batch proposal and per-item isolation workflow. |
+| `generated.batch-particles` | enabled | ready | Deterministic mirrored isolated-disk field, CC0, bounded batch proposal and per-item isolation workflow. |
 | `cdc.ecoli-sem` | enabled | ready | Exact public-domain 700 × 475 CDC SEM JPEG plus full-resolution grayscale GSF intensity derivative, both SHA-256 pinned; offline source loading and committed threshold/components preset. |
 | `cdc.staph-aureus-sem` | enabled | ready | Exact public-domain 2100 × 1630 CDC SEM JPEG (PHIL 6486), SHA-256 pinned and opened as the original JPEG; offline source loading and a committed bright-object threshold/components starting point. |
 | `nih.hela-cells-3709` | enabled | ready | Exact public-domain NIH JPEG plus a bounded 1024 × 832 grayscale GSF intensity derivative, both SHA-256 pinned; offline source loading and ROI-first inspection workflow. |

@@ -151,11 +151,11 @@ export function validateGeneratedReferenceOracleFile(
 }
 
 export function independentOriginValue(scenarioId: string): number {
-  if (scenarioId === 'generated.calibrated-particles') return 92 + 27 + 105
+  if (scenarioId === 'generated.calibrated-particles') return 92 + 5
   if (scenarioId === 'generated.touching-particles') return 38 + 4
   if (scenarioId === 'generated.periodic-lattice') return 100 + 28
   if (scenarioId === 'generated.afm-tilted-surface') return 4 + 0.55
-  if (scenarioId === 'generated.batch-particles') return 92 + 27
+  if (scenarioId === 'generated.batch-particles') return 92 + 5
   throw new Error(`No independent generated reference for ${scenarioId}.`)
 }
 
@@ -163,6 +163,36 @@ function disk(x: number, y: number, centerX: number, centerY: number, radius: nu
   const dx = x - centerX
   const dy = y - centerY
   return dx * dx + dy * dy <= radius * radius ? 1 : 0
+}
+
+function isolatedCalibratedParticle(
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  mirror = false,
+): number {
+  return (
+    [
+      [0.22, 0.28, 55],
+      [0.48, 0.21, 32],
+      [0.73, 0.33, 70],
+      [0.36, 0.54, 42],
+      [0.61, 0.57, 28],
+      [0.84, 0.49, 48],
+      [0.17, 0.74, 36],
+      [0.43, 0.79, 60],
+      [0.67, 0.77, 30],
+      [0.88, 0.81, 40],
+    ] as const
+  ).some(([fx, fy, radius]) => {
+    const centerX = Math.round(fx * width)
+    const mirroredX = mirror ? width - 1 - centerX : centerX
+    const centerY = Math.round(fy * height)
+    return disk(x, y, mirroredX, centerY, radius) === 1
+  })
+    ? 140
+    : 0
 }
 
 export function independentSampleValue(
@@ -193,13 +223,20 @@ export function independentSampleValue(
       disk(x, y, width * 0.55, height * 0.5, 170) +
       disk(x, y, width * 0.72, height * 0.34, 105)
     value = 38 + 5 * Math.sin(x / 41) + 4 * Math.cos(y / 37) + Math.min(1, particles) * 145
-  } else if (
-    scenarioId === 'generated.calibrated-particles' ||
-    scenarioId === 'generated.batch-particles'
-  ) {
-    const phase = scenarioId === 'generated.batch-particles' ? 11 : 0
-    const particle = ((x + phase) * 17 + y * 31) % 137 < 5 ? 105 : 0
-    value = 92 + 38 * Math.sin(x / 29) + 27 * Math.cos(y / 23) + particle + ((x * 13 + y * 7) % 17)
+  } else if (scenarioId === 'generated.calibrated-particles') {
+    value =
+      92 +
+      8 * Math.sin(x / 29) +
+      5 * Math.cos(y / 23) +
+      ((x * 13 + y * 7) % 17) +
+      isolatedCalibratedParticle(width, height, x, y)
+  } else if (scenarioId === 'generated.batch-particles') {
+    value =
+      92 +
+      8 * Math.sin(x / 29) +
+      5 * Math.cos(y / 23) +
+      ((x * 13 + y * 7) % 17) +
+      isolatedCalibratedParticle(width, height, x, y, true)
   } else throw new Error(`No independent generated reference for ${scenarioId}.`)
   return new Float32Array([value])[0] ?? Number.NaN
 }

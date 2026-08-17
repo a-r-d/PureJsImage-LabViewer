@@ -104,6 +104,50 @@ function disk(x: number, y: number, centerX: number, centerY: number, radius: nu
   return dx * dx + dy * dy <= radius * radius ? 1 : 0
 }
 
+function semStyleBackground(x: number, y: number): number {
+  return 92 + 8 * Math.sin(x / 29) + 5 * Math.cos(y / 23) + ((x * 13 + y * 7) % 17)
+}
+
+/** Isolated disks for the particle-count example. Keep in sync with the independent oracle. */
+function calibratedParticleDisks(
+  width: number,
+  height: number,
+): readonly Readonly<{ x: number; y: number; radius: number }>[] {
+  return (
+    [
+      [0.22, 0.28, 55],
+      [0.48, 0.21, 32],
+      [0.73, 0.33, 70],
+      [0.36, 0.54, 42],
+      [0.61, 0.57, 28],
+      [0.84, 0.49, 48],
+      [0.17, 0.74, 36],
+      [0.43, 0.79, 60],
+      [0.67, 0.77, 30],
+      [0.88, 0.81, 40],
+    ] as const
+  ).map(([fx, fy, radius]) => ({
+    x: Math.round(fx * width),
+    y: Math.round(fy * height),
+    radius,
+  }))
+}
+
+function isolatedParticle(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  mirror = false,
+): number {
+  return calibratedParticleDisks(width, height).some((particle) => {
+    const centerX = mirror ? width - 1 - particle.x : particle.x
+    return disk(x, y, centerX, particle.y, particle.radius) === 1
+  })
+    ? 140
+    : 0
+}
+
 export function sampleValues(
   width: number,
   height: number,
@@ -129,11 +173,11 @@ export function sampleValues(
           disk(x, y, width * 0.55, height * 0.5, 170) +
           disk(x, y, width * 0.72, height * 0.34, 105)
         values[y * width + x] = background + Math.min(1, particles) * 145
+      } else if (sampleId === 'generated.calibrated-particles') {
+        values[y * width + x] = semStyleBackground(x, y) + isolatedParticle(x, y, width, height)
       } else {
-        const wave = 38 * Math.sin(x / 29) + 27 * Math.cos(y / 23)
-        const phase = sampleId === 'generated.batch-particles' ? 11 : 0
-        const particle = ((x + phase) * 17 + y * 31) % 137 < 5 ? 105 : 0
-        values[y * width + x] = 92 + wave + particle + ((x * 13 + y * 7) % 17)
+        values[y * width + x] =
+          semStyleBackground(x, y) + isolatedParticle(x, y, width, height, true)
       }
     }
   }

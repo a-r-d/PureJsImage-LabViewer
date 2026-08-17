@@ -2033,6 +2033,11 @@ function WorkbenchRuntime({
           )
         }
         signal.throwIfAborted()
+        setParticleSettings(
+          scenario.id === 'generated.touching-particles'
+            ? { ...DEFAULT_PARTICLE_WORKFLOW, watershed: true }
+            : DEFAULT_PARTICLE_WORKFLOW,
+        )
         const preset = scenario.initialAnalysis
         if (preset !== undefined && openedExample !== undefined) {
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))

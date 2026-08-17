@@ -502,7 +502,7 @@ const scenarios: readonly ExampleScenarioV1[] = [
   generated(
     'generated.calibrated-particles',
     'Calibrated particle field',
-    'Known isolated particles on a calibrated, nonuniform SEM-style background.',
+    'Ten isolated disks on a gentle calibrated SEM-style background. Default Otsu particle counting finds all ten.',
     'SEM (synthetic)',
     'generated.calibrated-particles',
     'GSF',
@@ -523,7 +523,7 @@ const scenarios: readonly ExampleScenarioV1[] = [
   generated(
     'generated.touching-particles',
     'Touching-particle watershed',
-    'Overlapping calibrated disks expose the difference between components and watershed labels.',
+    'Three overlapping calibrated disks. Connected components merge the touching pair; turn Watershed on to split them.',
     'SEM (synthetic)',
     'generated.touching-particles',
     'GSF',
@@ -544,7 +544,7 @@ const scenarios: readonly ExampleScenarioV1[] = [
   generated(
     'generated.periodic-lattice',
     'Periodic lattice and FFT',
-    'A calibrated two-frequency lattice with a deterministic reciprocal-space signature.',
+    'A calibrated known-period lattice (32 px, 48 px, and a 96 px diagonal) with a deterministic reciprocal-space signature.',
     'HRTEM-style (synthetic)',
     'generated.periodic-lattice',
     'GSF',
@@ -586,7 +586,7 @@ const scenarios: readonly ExampleScenarioV1[] = [
   generated(
     'generated.batch-particles',
     'Repeatable particle batch',
-    'A local-only fixture family for per-item isolation, retry, and aggregate measurement review.',
+    'A mirrored copy of the isolated-disk field for local batch isolation, retry, and aggregate review. Disks stay large enough to count.',
     'SEM batch (synthetic)',
     'generated.batch-particles',
     'GSF',

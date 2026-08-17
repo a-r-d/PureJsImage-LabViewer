@@ -9,6 +9,15 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Changed
 
+- The generated calibrated particle field is ten isolated disks on the sinusoidal
+  SEM-style background, not 1-pixel modulo speckles. The gallery card and the
+  default particle-count workflow now describe the same image.
+- The batch particle fixture is a mirrored copy of those same disks, not another
+  1-pixel speckle field. Opening the touching-particle example turns Watershed on
+  so the advertised split is the default.
+- The calibrated particle background wave is weak enough that default Otsu
+  thresholding separates the ten disks. The previous strong checkerboard made
+  Otsu split the illumination, then Edge exclude dropped every object.
 - ROI inspector measurements are labeled Area / Perimeter / Centroid rows with pixel and
   physical units instead of a single run-on line.
 - Selecting an area ROI now targets particle analysis to that region and includes

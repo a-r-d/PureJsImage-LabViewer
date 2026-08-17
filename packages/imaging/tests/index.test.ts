@@ -1063,6 +1063,104 @@ describe('PureJsImage Worker host', () => {
     }
   })
 
+  it('places isolated calibrated particles large enough for the default 64-pixel count filter', () => {
+    const width = 2_048
+    const height = 1_536
+    const values = sampleValues(width, height, 'generated.calibrated-particles')
+    const origin = values[0] ?? Number.NaN
+    const diskCenter = values[430 * width + 451] ?? Number.NaN
+    expect(origin).toBeLessThan(150)
+    expect(diskCenter - origin).toBeGreaterThan(80)
+    let bright = 0
+    for (let index = 0; index < values.length; index += 1)
+      if ((values[index] ?? 0) > 180) bright += 1
+    expect(bright).toBeGreaterThan(64)
+  })
+
+  it('keeps ten isolated disks after an Otsu-like split and edge exclusion', () => {
+    const width = 2_048
+    const height = 1_536
+    const values = sampleValues(width, height, 'generated.calibrated-particles')
+    let minimum = Number.POSITIVE_INFINITY
+    let maximum = Number.NEGATIVE_INFINITY
+    for (const value of values) {
+      if (value < minimum) minimum = value
+      if (value > maximum) maximum = value
+    }
+    const bins = 256
+    const counts = new Array<number>(bins).fill(0)
+    const scale = (bins - 1) / Math.max(Number.EPSILON, maximum - minimum)
+    for (const value of values)
+      counts[Math.min(bins - 1, Math.round((value - minimum) * scale))] += 1
+    const total = values.length
+    let sum = 0
+    for (let index = 0; index < bins; index += 1) sum += index * (counts[index] ?? 0)
+    let sumBackground = 0
+    let weightBackground = 0
+    let best = 0
+    let bestVariance = -1
+    for (let index = 0; index < bins; index += 1) {
+      weightBackground += counts[index] ?? 0
+      if (weightBackground === 0) continue
+      const weightForeground = total - weightBackground
+      if (weightForeground === 0) break
+      sumBackground += index * (counts[index] ?? 0)
+      const meanBackground = sumBackground / weightBackground
+      const meanForeground = (sum - sumBackground) / weightForeground
+      const variance = weightBackground * weightForeground * (meanBackground - meanForeground) ** 2
+      if (variance > bestVariance) {
+        bestVariance = variance
+        best = index
+      }
+    }
+    const threshold = minimum + (best / (bins - 1)) * (maximum - minimum)
+    const seen = new Uint8Array(values.length)
+    const stack: number[] = []
+    let kept = 0
+    for (let start = 0; start < values.length; start += 1) {
+      if (seen[start] !== 0 || !((values[start] ?? 0) > threshold)) continue
+      stack.push(start)
+      seen[start] = 1
+      let size = 0
+      let touchesEdge = false
+      while (stack.length > 0) {
+        const index = stack.pop() ?? 0
+        size += 1
+        const x = index % width
+        const y = (index - x) / width
+        if (x === 0 || y === 0 || x === width - 1 || y === height - 1) touchesEdge = true
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            if (dx === 0 && dy === 0) continue
+            const nx = x + dx
+            const ny = y + dy
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+            const neighbor = ny * width + nx
+            if (seen[neighbor] !== 0 || !((values[neighbor] ?? 0) > threshold)) continue
+            seen[neighbor] = 1
+            stack.push(neighbor)
+          }
+        }
+      }
+      if (!touchesEdge && size >= 64) kept += 1
+    }
+    expect(kept).toBe(10)
+  })
+
+  it('mirrors the batch particle field instead of using 1-pixel modulo speckles', () => {
+    const width = 2_048
+    const height = 1_536
+    const values = sampleValues(width, height, 'generated.batch-particles')
+    const origin = values[0] ?? Number.NaN
+    const diskCenter = values[430 * width + 1_596] ?? Number.NaN
+    expect(origin).toBeLessThan(150)
+    expect(diskCenter - origin).toBeGreaterThan(60)
+    let bright = 0
+    for (let index = 0; index < values.length; index += 1)
+      if ((values[index] ?? 0) > 180) bright += 1
+    expect(bright).toBeGreaterThan(64)
+  })
+
   it('refuses unknown generated corpus source IDs', async () => {
     const response = await new ImagingWorkerHost().handle(
       rpcRequest('unknown-sample', 'source.open-sample', {
