@@ -764,7 +764,7 @@ export function ScientificViewport({
         const physical =
           horizontalCalibration === undefined || verticalCalibration === undefined
             ? ''
-            : ` · ${physicalX?.toFixed(4)}, ${physicalY?.toFixed(4)} ${horizontalCalibration.unit}`
+            : ` · ${physicalX?.toFixed(2)}, ${physicalY?.toFixed(2)} ${horizontalCalibration.unit}`
         const dSpacing =
           physicalX === undefined ||
           physicalY === undefined ||

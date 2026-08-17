@@ -837,7 +837,9 @@ function WorkbenchRuntime({
             ? `Preview ready in ${execution.elapsedMilliseconds.toFixed(1)} ms. No project revision was created.`
             : counted === undefined
               ? `Analysis completed in ${execution.elapsedMilliseconds.toFixed(1)} ms.`
-              : `Counted ${counted.toLocaleString()} particles in ${(execution.elapsedMilliseconds / 1_000).toFixed(1)} s.`
+              : counted === 0
+                ? 'No particles remained. If objects touch the ROI edge, set Edge objects to Include.'
+                : `Counted ${counted.toLocaleString()} particles in ${(execution.elapsedMilliseconds / 1_000).toFixed(1)} s.`
         reportParticleMessage(completionMessage)
         setAnalysisState({
           busy: false,
@@ -1114,6 +1116,27 @@ function WorkbenchRuntime({
       return selected
     return wholePlaneRoi(calibratedOpened ?? opened, selection)
   }, [calibratedOpened, opened, particleSettings.roiId, selection, workspace.analysis.roiSet.rois])
+
+  useEffect(() => {
+    const selectedId = workspace.workflow.selectedRoiId
+    if (selectedId === undefined) return
+    const selected = workspace.analysis.roiSet.rois.find(({ id }) => id === selectedId)
+    if (
+      selected === undefined ||
+      selected.geometry.kind === 'point' ||
+      selected.geometry.kind === 'line-segment' ||
+      selected.geometry.kind === 'polyline'
+    )
+      return
+    if (particleSettings.roiId === selectedId) return
+    setParticleSettings((current) => ({
+      ...current,
+      roiId: selectedId,
+      edgePolicy: 'include',
+    }))
+    setParticleDryRun(undefined)
+    setParticleDryRunIdentity(undefined)
+  }, [particleSettings.roiId, workspace.analysis.roiSet.rois, workspace.workflow.selectedRoiId])
 
   const particleGraph = useMemo(() => {
     if (selection === undefined) return undefined

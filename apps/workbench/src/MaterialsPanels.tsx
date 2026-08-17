@@ -185,7 +185,13 @@ function ParameterControl({
   return null
 }
 
-function roiMeasurement(roi: ViewportRoi, opened: OpenedDatasetDescriptor): string {
+interface RoiMetric {
+  readonly label: string
+  readonly pixel: string
+  readonly physical?: string
+}
+
+function roiMeasurement(roi: ViewportRoi, opened: OpenedDatasetDescriptor): readonly RoiMetric[] {
   const points =
     roi.geometry.kind === 'point'
       ? [roi.geometry.point]
@@ -266,67 +272,102 @@ function roiMeasurement(roi: ViewportRoi, opened: OpenedDatasetDescriptor): stri
                   2),
             }
           : undefined
-  const pixel =
-    pixelArea === undefined
-      ? lineLength > 0
-        ? `${lineLength.toFixed(2)} px`
-        : points[0] === undefined
-          ? 'pixel coordinates'
-          : `${points[0].x.toFixed(1)}, ${points[0].y.toFixed(1)} px`
-      : `area ${pixelArea.toFixed(2)} px²${pixelPerimeter === undefined ? '' : ` · perimeter ${pixelPerimeter.toFixed(2)} px`}${pixelCentroid === undefined ? '' : ` · centroid ${pixelCentroid.x.toFixed(2)}, ${pixelCentroid.y.toFixed(2)} px`}`
   const horizontal = opened.dataset.axes.find(({ id }) => id === roi.axisIds[0])
   const vertical = opened.dataset.axes.find(({ id }) => id === roi.axisIds[1])
-  if (
-    horizontal?.coordinates.type !== 'linear' ||
-    vertical?.coordinates.type !== 'linear' ||
-    horizontal.unit === undefined ||
-    horizontal.unit !== vertical.unit
-  ) {
-    return `${pixel} · physical calibration unavailable`
+  const calibrated =
+    horizontal?.coordinates.type === 'linear' &&
+    vertical?.coordinates.type === 'linear' &&
+    horizontal.unit !== undefined &&
+    horizontal.unit === vertical.unit
+  const scaleX = calibrated ? Math.abs(horizontal.coordinates.step) : undefined
+  const scaleY = calibrated ? Math.abs(vertical.coordinates.step) : undefined
+  const unit = calibrated ? horizontal.unit : undefined
+  const metrics: RoiMetric[] = []
+  const addMetric = (label: string, pixel: string, physical?: string): void => {
+    metrics.push(physical === undefined ? { label, pixel } : { label, pixel, physical })
   }
-  const scaleX = Math.abs(horizontal.coordinates.step)
-  const scaleY = Math.abs(vertical.coordinates.step)
-  const physicalPoint = points[0]
-  const physical =
-    pixelArea === undefined
-      ? points.length > 1
-        ? `${points
-            .slice(1)
-            .reduce((total, point, index) => {
-              const previous = points[index]
-              return previous === undefined
-                ? total
-                : total +
-                    Math.hypot((point.x - previous.x) * scaleX, (point.y - previous.y) * scaleY)
-            }, 0)
-            .toFixed(2)} ${horizontal.unit}`
-        : physicalPoint === undefined
-          ? 'calibrated coordinates'
-          : `${(horizontal.coordinates.origin + physicalPoint.x * horizontal.coordinates.step).toFixed(2)}, ${(vertical.coordinates.origin + physicalPoint.y * vertical.coordinates.step).toFixed(2)} ${horizontal.unit}`
-      : `area ${(pixelArea * scaleX * scaleY).toFixed(2)} ${horizontal.unit}²${
-          pixelPerimeter === undefined
-            ? ''
-            : ` · perimeter ${(
-                roi.geometry.kind === 'rectangle'
-                  ? 2 * (roi.geometry.width * scaleX + roi.geometry.height * scaleY)
-                  : roi.geometry.kind === 'ellipse'
-                    ? Math.PI *
-                      (3 * (roi.geometry.radiusX * scaleX + roi.geometry.radiusY * scaleY) -
-                        Math.sqrt(
-                          (3 * roi.geometry.radiusX * scaleX + roi.geometry.radiusY * scaleY) *
-                            (roi.geometry.radiusX * scaleX + 3 * roi.geometry.radiusY * scaleY),
-                        ))
-                    : roi.geometry.kind === 'polygon'
-                      ? polygonPerimeter(
-                          roi.geometry.points.map((point) => ({
-                            x: point.x * scaleX,
-                            y: point.y * scaleY,
-                          })),
-                        )
-                      : 0
-              ).toFixed(2)} ${horizontal.unit}`
-        }${pixelCentroid === undefined ? '' : ` · centroid ${(horizontal.coordinates.origin + pixelCentroid.x * horizontal.coordinates.step).toFixed(2)}, ${(vertical.coordinates.origin + pixelCentroid.y * vertical.coordinates.step).toFixed(2)} ${horizontal.unit}`}`
-  return `${pixel} · ${physical}`
+  if (pixelArea !== undefined) {
+    addMetric(
+      'Area',
+      `${pixelArea.toFixed(1)} px²`,
+      scaleX === undefined || scaleY === undefined || unit === undefined
+        ? undefined
+        : `${(pixelArea * scaleX * scaleY).toFixed(2)} ${unit}²`,
+    )
+  }
+  if (pixelPerimeter !== undefined) {
+    const physicalPerimeter =
+      scaleX === undefined || scaleY === undefined || unit === undefined
+        ? undefined
+        : roi.geometry.kind === 'rectangle'
+          ? 2 * (roi.geometry.width * scaleX + roi.geometry.height * scaleY)
+          : roi.geometry.kind === 'ellipse'
+            ? Math.PI *
+              (3 * (roi.geometry.radiusX * scaleX + roi.geometry.radiusY * scaleY) -
+                Math.sqrt(
+                  (3 * roi.geometry.radiusX * scaleX + roi.geometry.radiusY * scaleY) *
+                    (roi.geometry.radiusX * scaleX + 3 * roi.geometry.radiusY * scaleY),
+                ))
+            : roi.geometry.kind === 'polygon'
+              ? polygonPerimeter(
+                  roi.geometry.points.map((point) => ({
+                    x: point.x * (scaleX ?? 1),
+                    y: point.y * (scaleY ?? 1),
+                  })),
+                )
+              : undefined
+    addMetric(
+      'Perimeter',
+      `${pixelPerimeter.toFixed(1)} px`,
+      physicalPerimeter === undefined || unit === undefined
+        ? undefined
+        : `${physicalPerimeter.toFixed(2)} ${unit}`,
+    )
+  }
+  if (lineLength > 0 && pixelArea === undefined) {
+    const physicalLength =
+      scaleX === undefined || scaleY === undefined
+        ? undefined
+        : points.slice(1).reduce((total, point, index) => {
+            const previous = points[index]
+            return previous === undefined
+              ? total
+              : total + Math.hypot((point.x - previous.x) * scaleX, (point.y - previous.y) * scaleY)
+          }, 0)
+    addMetric(
+      'Length',
+      `${lineLength.toFixed(1)} px`,
+      physicalLength === undefined || unit === undefined
+        ? undefined
+        : `${physicalLength.toFixed(2)} ${unit}`,
+    )
+  }
+  if (pixelCentroid !== undefined) {
+    addMetric(
+      'Centroid',
+      `${pixelCentroid.x.toFixed(1)}, ${pixelCentroid.y.toFixed(1)} px`,
+      !calibrated || unit === undefined
+        ? undefined
+        : `${(horizontal.coordinates.origin + pixelCentroid.x * horizontal.coordinates.step).toFixed(2)}, ${(vertical.coordinates.origin + pixelCentroid.y * vertical.coordinates.step).toFixed(2)} ${unit}`,
+    )
+  } else if (points[0] !== undefined && pixelArea === undefined && lineLength === 0) {
+    const point = points[0]
+    addMetric(
+      'Point',
+      `${point.x.toFixed(1)}, ${point.y.toFixed(1)} px`,
+      !calibrated || unit === undefined
+        ? undefined
+        : `${(horizontal.coordinates.origin + point.x * horizontal.coordinates.step).toFixed(2)}, ${(vertical.coordinates.origin + point.y * vertical.coordinates.step).toFixed(2)} ${unit}`,
+    )
+  }
+  if (metrics.length === 0) {
+    addMetric(
+      'Geometry',
+      'pixel coordinates',
+      calibrated ? undefined : 'physical calibration unavailable',
+    )
+  }
+  return metrics
 }
 
 export function RoiInspector({
@@ -428,7 +469,17 @@ export function RoiInspector({
                 />
                 Visible
               </label>
-              <small>{roiMeasurement(roi, opened)}</small>
+              <dl className="roi-metrics">
+                {roiMeasurement(roi, opened).map((metric) => (
+                  <div key={metric.label}>
+                    <dt>{metric.label}</dt>
+                    <dd>
+                      <span>{metric.pixel}</span>
+                      {metric.physical === undefined ? null : <span>{metric.physical}</span>}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
               <Button onClick={() => onDelete(roi.id)}>Delete</Button>
             </li>
           )
@@ -1244,7 +1295,7 @@ export function AnalysisResults({
   const headline =
     table !== undefined && objectTable
       ? `${table.totalRows.toLocaleString()} particles counted`
-      : `${execution.outputs.length} analysis outputs`
+      : `${execution.outputs.length} ${execution.outputs.length === 1 ? 'result' : 'results'}`
   return (
     <div className="analysis-results" data-testid="analysis-results">
       <div className="result-summary-row">

@@ -12,7 +12,7 @@
   gap: 3px;
   padding: 7px 4px;
   border-right: 1px solid var(--wb-border);
-  background: var(--wb-surface-raised);
+  background: var(--wb-background);
 }
 
 .mode-rail__button {
@@ -1019,6 +1019,11 @@ table,
   transform: translate(0, -50%);
 }
 
+.mode-rail .ui-tooltip:has(.mode-rail__button[aria-pressed="true"]) .ui-tooltip__bubble {
+  opacity: 0;
+  visibility: hidden;
+}
+
 .workbench-theme:has([role="dialog"][aria-modal="true"]) .ui-tooltip__bubble,
 .workbench-theme:has([role="dialog"][aria-modal="true"]) .ui-tooltip:hover .ui-tooltip__bubble,
 .workbench-theme:has([role="dialog"][aria-modal="true"])
@@ -1114,10 +1119,12 @@ table,
   justify-items: center;
   gap: 10px;
   padding: 28px;
-  border: 1px solid var(--wb-border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--wb-surface) 94%, transparent);
-  box-shadow: var(--wb-elevation-panel);
+  border: 1px solid var(--wb-border-strong);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--wb-surface) 97%, var(--wb-accent) 3%);
+  box-shadow:
+    var(--wb-elevation-panel),
+    inset 0 1px 0 color-mix(in srgb, var(--wb-accent) 16%, transparent);
   color: var(--wb-text-muted);
   text-align: center;
 }

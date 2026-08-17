@@ -157,9 +157,15 @@ export function ParticleAnalysisWorkflow({
         <label>
           Region
           <select
-            onChange={(event) =>
-              patch('roiId', event.target.value === '' ? undefined : event.target.value)
-            }
+            onChange={(event) => {
+              const roiId = event.target.value === '' ? undefined : event.target.value
+              const { roiId: _roiId, ...rest } = settings
+              onChange({
+                ...rest,
+                ...(roiId === undefined ? {} : { roiId }),
+                edgePolicy: roiId === undefined ? 'exclude' : 'include',
+              })
+            }}
             value={settings.roiId ?? ''}
           >
             <option value="">Whole active plane</option>

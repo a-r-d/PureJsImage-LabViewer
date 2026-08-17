@@ -29,7 +29,7 @@ test('draws and measures an ROI with bounded Worker results', async ({ page }) =
     page.getByRole('list', { name: 'Regions of interest' }).getByRole('listitem'),
   ).toHaveCount(1)
   await page.getByRole('button', { name: 'Statistics' }).click()
-  await expect(page.getByTestId('analysis-results')).toContainText('1 bounded outputs')
+  await expect(page.getByTestId('analysis-results')).toContainText('1 result')
   await expect(page.getByTestId('analysis-results')).toContainText('statistics')
   await page.getByRole('button', { name: 'Pin result' }).click()
   await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible()
