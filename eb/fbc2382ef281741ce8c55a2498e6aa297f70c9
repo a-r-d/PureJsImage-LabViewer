@@ -1,0 +1,40 @@
+CHANGELOG.md
+  h_9f4a25732fa0c1 21-46,61-63
+apps-e2e/workbench/tests/shell.spec.ts
+  h_9f4a25732fa0c1 96
+apps/workbench/src/MaterialsPanels.tsx
+  h_9f4a25732fa0c1 446-462,1128-1147,1157-1162,1164-1171,1387-1424,1482,1519-1534,1544-1547,1553
+apps/workbench/src/ParticleAnalysisWorkflow.tsx
+  h_9f4a25732fa0c1 109,125,438-440
+apps/workbench/src/ScientificViewport.tsx
+  h_9f4a25732fa0c1 35-49,481-483,600,604-605,617,634,725,750-753,930,973-976
+apps/workbench/src/app/WorkbenchApp.tsx
+  h_9f4a25732fa0c1 128,130,159,713-714,720-722,727-728,832-833,868-869,1548-1566,1945-1950,1952-1960,1984,2089,2091-2098,2114-2123,2267-2268,2308-2316,2319,2328,2332,2357,2371-2376,2603-2606,3150,3188,3365-3371,3863,3971-3998
+apps/workbench/src/features/project/project-actions.ts
+  h_9f4a25732fa0c1 29-75
+apps/workbench/src/styles.css
+  h_9f4a25732fa0c1 16,138
+apps/workbench/src/styles/shell.css
+  h_9f4a25732fa0c1 114-120,127-150,1188
+apps/workbench/tests/materials-analysis.test.ts
+  h_9f4a25732fa0c1 22,142-171,218-233
+apps/workbench/tests/project-actions.test.ts
+  h_9f4a25732fa0c1 1-75
+docs/USABILITY_TEST_LOG.md
+  h_9f4a25732fa0c1 1-259
+docs/USABILITY_TEST_PROTOCOL.md
+  h_9f4a25732fa0c1 3-5
+packages/workspace/src/commands.ts
+  h_9f4a25732fa0c1 922
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "ebfbc2382ef281741ce8c55a2498e6aa297f70c9",
+  "prompts": {},
+  "humans": {
+    "h_9f4a25732fa0c1": {
+      "author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
