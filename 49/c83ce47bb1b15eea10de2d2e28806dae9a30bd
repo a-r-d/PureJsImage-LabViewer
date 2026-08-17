@@ -1,0 +1,74 @@
+CHANGELOG.md
+  h_9f4a25732fa0c1 30-31,41-58
+apps-e2e/workbench/tests/core-analysis.spec.ts
+  h_9f4a25732fa0c1 44
+apps-e2e/workbench/tests/example-workflows.spec.ts
+  h_9f4a25732fa0c1 1,5-6,16-17,36,42
+apps-e2e/workbench/tests/examples.spec.ts
+  h_9f4a25732fa0c1 49,56,65,105,107
+apps-e2e/workbench/tests/lifecycle-hostile.spec.ts
+  h_9f4a25732fa0c1 27-29
+apps-e2e/workbench/tests/performance.spec.ts
+  h_9f4a25732fa0c1 46
+apps-e2e/workbench/tests/project-replay.spec.ts
+  h_9f4a25732fa0c1 47-49
+apps-e2e/workbench/tests/roi-measurement.spec.ts
+  h_9f4a25732fa0c1 32,39,43
+apps-e2e/workbench/tests/shell.spec.ts
+  h_9f4a25732fa0c1 95
+apps-e2e/workbench/tests/support/workbench.ts
+  h_9f4a25732fa0c1 41,43,55-57
+apps-e2e/workbench/tests/ux-validation.spec.ts
+  h_9f4a25732fa0c1 24-34,90-91,96-97,99-103,105,155-162,164-165,270-274
+apps/workbench/src/AdvancedMaterialsWorkflows.tsx
+  h_9f4a25732fa0c1 117-146,758-760
+apps/workbench/src/MaterialsPanels.tsx
+  h_9f4a25732fa0c1 1142
+apps/workbench/src/ScientificViewport.tsx
+  h_9f4a25732fa0c1 973-974,977
+apps/workbench/src/app/WorkbenchApp.tsx
+  h_9f4a25732fa0c1 459,1553,1958-1961,1984-1985,2063-2083,2113,2159,2343-2352,2652-2654,4016-4019
+apps/workbench/src/styles.css
+  h_9f4a25732fa0c1 284
+apps/workbench/src/styles/shell.css
+  h_9f4a25732fa0c1 1060,1062-1063,1083-1093
+apps/workbench/tests/materials-analysis.test.ts
+  h_9f4a25732fa0c1 7-10,237-249
+apps/workbench/tests/project-actions.test.ts
+  h_9f4a25732fa0c1 6
+docs/CORPUS_AUDIT.md
+  h_9f4a25732fa0c1 13,28
+docs/USABILITY_TEST_LOG.md
+  h_9f4a25732fa0c1 40,72-74,258-295
+packages/imaging/src/worker-host.ts
+  h_9f4a25732fa0c1 70,72,321-339
+packages/imaging/src/worker-host/source-rpc.ts
+  h_9f4a25732fa0c1 28,34-35,50,82-95,169-219,247-248
+packages/imaging/tests/index.test.ts
+  h_9f4a25732fa0c1 1037-1052,1080
+packages/scripts/src/examples.ts
+  h_9f4a25732fa0c1 227-243
+packages/scripts/tests/examples.test.ts
+  h_9f4a25732fa0c1 18,30
+packages/test-corpus/expected/generated-v1.json
+  h_9f4a25732fa0c1 89-104
+packages/test-corpus/src/manifest.ts
+  h_9f4a25732fa0c1 117,201-208,344-346,410,443,619-639,764-767
+packages/test-corpus/src/reference-oracle.ts
+  h_9f4a25732fa0c1 159,241-245
+packages/test-corpus/tests/index.test.ts
+  h_9f4a25732fa0c1 34,85,162-163
+playwright.config.ts
+  h_9f4a25732fa0c1 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "49c83ce47bb1b15eea10de2d2e28806dae9a30bd",
+  "prompts": {},
+  "humans": {
+    "h_9f4a25732fa0c1": {
+      "author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
