@@ -125,7 +125,9 @@ import {
   createProject,
   downloadProject,
   LAST_PROJECT_KEY,
+  mutationsToReplaceOpenSource,
   projectSourceMutation,
+  snapshotWithVisibleWorkflow,
 } from '../features/project/project-actions.js'
 import { useWorkspaceHistory } from '../features/project/useWorkspaceHistory.js'
 import { useWorkbenchPreferences } from '../features/settings/useWorkbenchPreferences.js'
@@ -154,6 +156,7 @@ import {
   type AnalysisDatasetSelection,
   type AnalysisOverlaySelection,
   displayRangeFromTile,
+  quantitativeRangeFromValues,
   type RoiTool,
   ScientificViewport,
   type ScientificViewportApi,
@@ -707,19 +710,22 @@ function WorkbenchRuntime({
   }, [appendLog, client, opened])
 
   useEffect(() => {
+    const trackedAbort = analysisAbort.current
+    const trackedOpened = opened
     return () => {
       const preview = previewResult.current
       const active = activeResult.current
       previewResult.current = undefined
       activeResult.current = undefined
-      if (opened !== undefined) {
-        analysisAbort.current?.abort(new DOMException('Dataset changed', 'AbortError'))
+      if (trackedAbort !== undefined && analysisAbort.current === trackedAbort)
+        trackedAbort.abort(new DOMException('Dataset changed', 'AbortError'))
+      if (trackedOpened !== undefined) {
         for (const handle of [preview, active]) {
           if (handle !== undefined) {
             void client
               .releaseAnalysis({
-                datasetHandleId: opened.handleId,
-                generation: opened.generation,
+                datasetHandleId: trackedOpened.handleId,
+                generation: trackedOpened.generation,
                 resultHandleId: handle,
               })
               .catch(() => undefined)
@@ -823,6 +829,8 @@ function WorkbenchRuntime({
               'azimuthalProfile',
               'surfaceProfile',
               'profile',
+              'histogram',
+              'heightHistogram',
             ].includes(name),
         )
         const seriesExports = await Promise.all(
@@ -857,6 +865,8 @@ function WorkbenchRuntime({
               }
             : undefined,
         )
+        autoRangeLocked.current = false
+        setMapping({ mode: 'linear', range: 'auto' })
         const counted =
           table !== undefined && (tableOutput === undefined || tableOutput === 'objects')
             ? table.totalRows
@@ -1535,7 +1545,25 @@ function WorkbenchRuntime({
                 roi: roi as unknown as RpcJsonObject,
               }
               const dryRun = await batchClient.dryRunAnalysis(request, signal)
-              if (!dryRun.valid) throw new Error('Recipe is not valid for this dataset.')
+              if (!dryRun.valid) {
+                const detail = dryRun.issues
+                  .map((issue) => {
+                    if (typeof issue === 'string') return issue
+                    if (typeof issue === 'object' && issue !== null) {
+                      if ('message' in issue) return String(issue.message)
+                      return JSON.stringify(issue)
+                    }
+                    return ''
+                  })
+                  .filter((message) => message.length > 0)
+                  .slice(0, 3)
+                  .join(' ')
+                throw new Error(
+                  detail.length > 0
+                    ? `Recipe is not valid for this dataset. ${detail}`
+                    : 'Recipe is not valid for this dataset.',
+                )
+              }
               const execution = await batchClient.executeAnalysis(request, signal)
               await batchClient.releaseAnalysis({
                 datasetHandleId: openedDataset.handleId,
@@ -1914,7 +1942,22 @@ function WorkbenchRuntime({
           component: 0,
         },
       }
+      const previous = currentSnapshot()
+      const leftoverRois = previous.analysis.roiSet.rois
+      const previousSemanticId = runtime.current?.semanticSourceId
+      for (const leftover of mutationsToReplaceOpenSource(previous)) {
+        applyProjectMutation(leftover)
+      }
       applyProjectMutation(mutation)
+      for (const roi of leftoverRois) applyProjectMutation({ kind: 'roi.remove', roiId: roi.id })
+      if (leftoverRois.length > 0 || currentSnapshot().workflow.selectedRoiId !== undefined)
+        applyProjectMutation({ kind: 'roi.select' })
+      setParticleSettings(DEFAULT_PARTICLE_WORKFLOW)
+      setAnalysisDataset(undefined)
+      setAnalysisOverlay(undefined)
+      if (previousSemanticId !== undefined && previousSemanticId !== sourceMutation.source.id) {
+        void runtime.releaseSource(previousSemanticId)
+      }
       runtime.adopt(sourceMutation.source.id, nextSource, nextDataset)
       setSource(nextSource)
       setOpened(nextDataset)
@@ -1938,7 +1981,7 @@ function WorkbenchRuntime({
       appendLog(`Opened ${nextSource.source.name} with ${nextSource.reader.id}`)
       return nextDataset
     },
-    [appendLog, applyProjectMutation, rememberSource, runtime],
+    [appendLog, applyProjectMutation, currentSnapshot, rememberSource, runtime],
   )
 
   const runOpen = useCallback(
@@ -2043,19 +2086,16 @@ function WorkbenchRuntime({
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
           signal.throwIfAborted()
           setInspectorTab('analysis')
-          const succeeded =
+          const runPreset = (): Promise<boolean> =>
             preset.kind === 'histogram'
-              ? await executeAnalysisGraph(
-                  histogramGraph(openedExample.selection, preset.component),
-                  {
-                    roi: wholePlaneRoi(openedExample, openedExample.selection),
-                    commit: true,
-                    throwOnError: true,
-                    dataset: openedExample,
-                    workerClient: client,
-                  },
-                )
-              : await executeAnalysisGraph(
+              ? executeAnalysisGraph(histogramGraph(openedExample.selection, preset.component), {
+                  roi: wholePlaneRoi(openedExample, openedExample.selection),
+                  commit: true,
+                  throwOnError: true,
+                  dataset: openedExample,
+                  workerClient: client,
+                })
+              : executeAnalysisGraph(
                   connectedComponentsGraph({
                     component: preset.component,
                     threshold: preset.threshold,
@@ -2071,6 +2111,16 @@ function WorkbenchRuntime({
                     workerClient: client,
                   },
                 )
+          let succeeded = false
+          try {
+            succeeded = await runPreset()
+          } catch (presetError) {
+            const aborted = presetError instanceof DOMException && presetError.name === 'AbortError'
+            if (!aborted) throw presetError
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+            signal.throwIfAborted()
+            succeeded = await runPreset()
+          }
           if (!succeeded)
             throw new Error(`${preset.title} could not be applied to ${scenario.title}.`)
           appendLog(`Opened ${scenario.title} with ${preset.title} already applied`)
@@ -2214,6 +2264,8 @@ function WorkbenchRuntime({
                   }
                 : undefined,
             )
+            autoRangeLocked.current = false
+            setMapping({ mode: 'linear', range: 'auto' })
             setAnalysisState({
               busy: false,
               dryRun,
@@ -2253,9 +2305,18 @@ function WorkbenchRuntime({
     [currentSnapshot, replaceWorkspace, replayWorkspace],
   )
 
+  const visibleWorkspace = useCallback(
+    (): WorkspaceSnapshot =>
+      snapshotWithVisibleWorkflow(currentSnapshot(), {
+        inspector: inspectorTab,
+        bottom: bottomTab,
+      }),
+    [bottomTab, currentSnapshot, inspectorTab],
+  )
+
   const saveProject = useCallback(async (): Promise<void> => {
     try {
-      const saved = currentSnapshot()
+      const saved = visibleWorkspace()
       await projectStore.save(saved)
       setSavedProjectJson(serializeWorkspaceProject(saved))
       window.localStorage.setItem(LAST_PROJECT_KEY, saved.project.id)
@@ -2264,11 +2325,11 @@ function WorkbenchRuntime({
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to save the project.')
     }
-  }, [appendLog, currentSnapshot, projectStore, refreshRecentProjects])
+  }, [appendLog, projectStore, refreshRecentProjects, visibleWorkspace])
 
   const saveProjectAs = useCallback(async (): Promise<void> => {
     try {
-      const current = currentSnapshot()
+      const current = visibleWorkspace()
       const now = new Date().toISOString()
       const copy = importWorkspaceProject(
         JSON.stringify({
@@ -2293,7 +2354,7 @@ function WorkbenchRuntime({
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to save a project copy.')
     }
-  }, [appendLog, currentSnapshot, projectStore, refreshRecentProjects, replaceWorkspace])
+  }, [appendLog, projectStore, refreshRecentProjects, replaceWorkspace, visibleWorkspace])
 
   const newProject = useCallback((): void => {
     const previous = currentSnapshot()
@@ -2307,6 +2368,12 @@ function WorkbenchRuntime({
     setMapping({ mode: 'linear', range: 'auto' })
     setComponent(0)
     setError(undefined)
+    setAnalysisDataset(undefined)
+    setAnalysisOverlay(undefined)
+    setAnalysisState({ busy: false, tableOffset: 0 })
+    setBatchRows([])
+    setAdvancedPlan(undefined)
+    setAdvancedMessage(undefined)
     void reconciler.reconcile(previous, snapshot).catch((releaseError: unknown) => {
       setError(
         `${releaseError instanceof Error ? releaseError.message : 'Runtime cleanup failed.'} The new project remains active.`,
@@ -2533,7 +2600,10 @@ function WorkbenchRuntime({
     if (first && !autoRangeLocked.current) {
       setHistogram(tile.histogram)
       autoRangeLocked.current = true
-      const displayRange = displayRangeFromTile(tile.range, tile.histogram)
+      const displayRange = displayRangeFromTile(
+        quantitativeRangeFromValues(tile.values),
+        tile.histogram,
+      )
       setMapping({
         mode: 'linear',
         range: 'auto',
@@ -3077,7 +3147,7 @@ function WorkbenchRuntime({
           ['workspace.new@1', commandAction(newProject)],
           ['workspace.openProject@1', commandAction(openProjectDialog)],
           ['workspace.save@1', commandAction(saveProject)],
-          ['workspace.export@1', commandAction(() => downloadProject(workspace))],
+          ['workspace.export@1', commandAction(() => downloadProject(visibleWorkspace()))],
           ['workspace.undo@1', commandAction(() => performHistory('undo'))],
           ['workspace.redo@1', commandAction(() => performHistory('redo'))],
           ['viewport.fit@1', commandAction(() => viewportApi.current?.fit())],
@@ -3115,6 +3185,7 @@ function WorkbenchRuntime({
       selection,
       scriptStore,
       updatePreferences,
+      visibleWorkspace,
       workspace,
     ],
   )
@@ -3290,6 +3361,13 @@ function WorkbenchRuntime({
           onCancel={() => {
             cancelPreview()
             setParticleMessage('Preview cancelled. The committed project is unchanged.')
+          }}
+          onCancelRun={() => {
+            analysisAbort.current?.abort(
+              new DOMException('Particle analysis cancelled', 'AbortError'),
+            )
+            setParticleMessage('Particle analysis cancelled. The committed project is unchanged.')
+            setAnalysisState((current) => ({ ...current, busy: false }))
           }}
           onChange={(settings) => {
             setParticleSettings(settings)
@@ -3782,7 +3860,7 @@ function WorkbenchRuntime({
                 ) : null}
                 {workspace.sources.length === 0
                   ? recentSources.map((name) => (
-                      <TreeRow depth={1} detail="rebind required" key={name} label={name} />
+                      <TreeRow depth={1} detail="recent" key={name} label={name} />
                     ))
                   : null}
               </nav>
@@ -3890,6 +3968,34 @@ function WorkbenchRuntime({
                     selectedRoiId={workspace.workflow.selectedRoiId}
                     selection={selection}
                   />
+                ) : workspace.sources.length > 0 ? (
+                  <section className="empty-start" aria-labelledby="empty-start-title">
+                    <Icon name="open" size={30} />
+                    <p className="panel-kicker">Project open · source not bound</p>
+                    <h2 id="empty-start-title">
+                      {(workspace.sources.find((reference) => !reference.bound) ?? workspace.sources[0])
+                        ?.label ?? 'This source'}{' '}
+                      must be rebound
+                    </h2>
+                    <p>
+                      Select the original file. Its identity will be checked before analysis can
+                      replay.
+                    </p>
+                    <div className="empty-start__actions">
+                      <Button
+                        onClick={() => {
+                          const unbound =
+                            workspace.sources.find((reference) => !reference.bound) ??
+                            workspace.sources[0]
+                          if (unbound !== undefined) setRebindSourceId(unbound.id)
+                          rebindInput.current?.click()
+                        }}
+                        variant="primary"
+                      >
+                        <Icon name="open" size={16} /> Choose source files
+                      </Button>
+                    </div>
+                  </section>
                 ) : (
                   <section className="empty-start" aria-labelledby="empty-start-title">
                     <Icon name="open" size={30} />
@@ -3972,10 +4078,6 @@ function WorkbenchRuntime({
                 onSelect={(tab) => {
                   measureUxNextPaint('inspector.tab')
                   setInspectorTab(tab)
-                  applyProjectMutation({
-                    kind: 'project.set-workflow',
-                    workflow: { ...workspace.workflow, inspector: tab },
-                  })
                 }}
                 selectedId={inspectorTab === 'history' ? 'info' : inspectorTab}
               />
@@ -4015,10 +4117,6 @@ function WorkbenchRuntime({
               label="Analysis output sections"
               onSelect={(tab) => {
                 setBottomTab(tab)
-                applyProjectMutation({
-                  kind: 'project.set-workflow',
-                  workflow: { ...workspace.workflow, bottom: tab },
-                })
               }}
               selectedId={bottomTab}
             />

@@ -1,5 +1,8 @@
 # Usability test protocol
 
+Hands-on session notes live in `docs/USABILITY_TEST_LOG.md`. This file is the
+moderated-scientist protocol; the log is the running record of what we actually tried.
+
 ## Purpose and scope
 
 This protocol tests whether a scientist can complete the core PureJsImage Lab workflow without coaching. It evaluates task completion, readability, navigation, accessibility, and perceived performance. It is not a test of the participant.

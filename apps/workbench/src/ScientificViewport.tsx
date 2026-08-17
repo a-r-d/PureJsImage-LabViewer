@@ -32,6 +32,21 @@ import { measureUxNextPaint } from './ux-instrumentation.js'
 const TILE_SIZE = 256
 const PREFETCH_TILES = 1
 
+export function quantitativeRangeFromValues(
+  values: ArrayLike<number>,
+): Readonly<{ minimum: number; maximum: number }> {
+  let minimum = Number.POSITIVE_INFINITY
+  let maximum = Number.NEGATIVE_INFINITY
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index]
+    if (value === undefined || !Number.isFinite(value)) continue
+    minimum = Math.min(minimum, value)
+    maximum = Math.max(maximum, value)
+  }
+  if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return { minimum: 0, maximum: 1 }
+  return { minimum, maximum }
+}
+
 export function displayRangeFromTile(
   range: Readonly<{ minimum: number; maximum: number }>,
   histogram: readonly number[],
@@ -463,6 +478,9 @@ export function ScientificViewport({
   const redrawRef = useRef<(() => void) | null>(null)
   const selectedLabelRef = useRef(selectedLabel)
   selectedLabelRef.current = selectedLabel
+  const mappingRef = useRef(mapping)
+  mappingRef.current = mapping
+  const scheduleTilesRef = useRef<() => void>(() => undefined)
   const coordinateRef = useRef<HTMLSpanElement>(null)
   const zoomRef = useRef<HTMLSpanElement>(null)
   const tileStatusRef = useRef<HTMLSpanElement>(null)
@@ -579,10 +597,12 @@ export function ScientificViewport({
 
     const scheduleTiles = (): void => {
       onRenderSettled?.(false)
+      const currentMapping = mappingRef.current
       const visible = visibleWorldBounds(camera, viewport)
       const candidates = planVisibleTileRegions(bounds, visible, TILE_SIZE, PREFETCH_TILES)
       const scheduledCandidates =
-        mapping.range === 'auto' && (mapping.minimum === undefined || mapping.maximum === undefined)
+        currentMapping.range === 'auto' &&
+        (currentMapping.minimum === undefined || currentMapping.maximum === undefined)
           ? candidates.slice(0, 1)
           : candidates
       const required = new Set<string>()
@@ -594,7 +614,7 @@ export function ScientificViewport({
           width: candidate.width,
           height: candidate.height,
         }
-        const mappingKey = `${mapping.range}:${mapping.minimum ?? 'pending'}:${mapping.maximum ?? 'pending'}`
+        const mappingKey = `${currentMapping.range}:${currentMapping.minimum ?? 'pending'}:${currentMapping.maximum ?? 'pending'}`
         const tileId = `${opened.generation}:${analysisDataset?.resultHandleId ?? 'source'}:${requestGeneration}:${renderedSelection.displayAxes.join('-')}:${renderedSelection.resolutionLevel}:${component}:${mappingKey}:${candidate.column}:${candidate.row}`
         required.add(tileId)
         if (!renderer.has(tileId) && !pending.has(tileId)) {
@@ -611,7 +631,7 @@ export function ScientificViewport({
             fixedIndices: renderedSelection.fixedIndices,
             resolutionLevel: renderedSelection.resolutionLevel,
             component,
-            mapping,
+            mapping: currentMapping,
             region,
             priority: candidate.priority,
           }
@@ -702,6 +722,7 @@ export function ScientificViewport({
       renderer.retainOverlays(requiredOverlays)
       draw()
     }
+    scheduleTilesRef.current = scheduleTiles
 
     const fit = (): void => {
       camera = fitCameraToBounds(bounds, viewport, 32)
@@ -726,7 +747,10 @@ export function ScientificViewport({
         height: Math.max(1, entry.contentRect.height),
       }
       renderer.configure(viewport)
-      camera = resizeCamera(camera, previous, viewport, bounds)
+      camera =
+        previous.width <= 1 && previous.height <= 1
+          ? fitCameraToBounds(bounds, viewport, 32)
+          : resizeCamera(camera, previous, viewport, bounds)
       scheduleTiles()
     })
     resizeObserver.observe(canvas)
@@ -903,6 +927,7 @@ export function ScientificViewport({
 
     return () => {
       requestGeneration += 1
+      scheduleTilesRef.current = () => undefined
       onReady(null)
       onRenderSettled?.(false)
       for (const controller of pending.values()) controller.abort()
@@ -926,7 +951,6 @@ export function ScientificViewport({
     analysisPoints,
     client,
     component,
-    mapping,
     onCreateRoi,
     onDeleteRoi,
     onReady,
@@ -945,6 +969,10 @@ export function ScientificViewport({
     rendererRef.current?.selectLabel(selectedLabel)
     redrawRef.current?.()
   }, [selectedLabel])
+
+  useEffect(() => {
+    scheduleTilesRef.current()
+  }, [mapping])
 
   return (
     <div className="mock-viewport scientific-viewport">

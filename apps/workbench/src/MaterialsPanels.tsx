@@ -443,6 +443,23 @@ export function RoiInspector({
         Drag to draw. Handles remain screen-sized while zooming. Escape cancels; Delete removes the
         selected ROI.
       </p>
+      <div className="button-row">
+        <Button disabled={selected === undefined} onClick={() => onMeasure('statistics')}>
+          Statistics
+        </Button>
+        <Button disabled={selected === undefined} onClick={() => onMeasure('histogram')}>
+          Histogram
+        </Button>
+        <Button
+          disabled={
+            selected === undefined ||
+            (selected.geometry.kind !== 'line-segment' && selected.geometry.kind !== 'polyline')
+          }
+          onClick={() => onMeasure('profile')}
+        >
+          Line profile
+        </Button>
+      </div>
       <ul className="roi-list" aria-label="Regions of interest">
         {rois.length === 0 ? <li>No ROIs yet.</li> : null}
         {rois.map((roi) => {
@@ -485,23 +502,6 @@ export function RoiInspector({
           )
         })}
       </ul>
-      <div className="button-row">
-        <Button disabled={selected === undefined} onClick={() => onMeasure('statistics')}>
-          Statistics
-        </Button>
-        <Button disabled={selected === undefined} onClick={() => onMeasure('histogram')}>
-          Histogram
-        </Button>
-        <Button
-          disabled={
-            selected === undefined ||
-            (selected.geometry.kind !== 'line-segment' && selected.geometry.kind !== 'polyline')
-          }
-          onClick={() => onMeasure('profile')}
-        >
-          Line profile
-        </Button>
-      </div>
       <fieldset className="calibration-editor">
         <legend>Calibration</legend>
         <p className="panel-note">
@@ -1125,6 +1125,26 @@ export function formatRoughnessHeadline(execution: AnalysisExecutionResponse): s
   return `Rq ${metrics.rq.toPrecision(4)}${unit} · Ra ${metrics.ra.toPrecision(4)}${unit} · Rz ${metrics.rz.toPrecision(4)}${unit}`
 }
 
+export function collectionPreviewRows(
+  execution: AnalysisExecutionResponse,
+): readonly Readonly<{ label: string; value: number; unit?: string }>[] {
+  const result = execution.outputs.find(
+    (item) =>
+      item.kind === 'result' &&
+      (item.name === 'statistics' || item.summary['kind'] === 'collection'),
+  )
+  if (result?.kind !== 'result') return []
+  const preview = asRecord(result.summary['preview'])
+  if (preview === undefined) return []
+  return Object.entries(preview).flatMap(([label, field]) => {
+    const record = asRecord(field)
+    const value = record?.['preview']
+    if (typeof value !== 'number' || !Number.isFinite(value)) return []
+    const unit = typeof record['unit'] === 'string' ? record['unit'] : undefined
+    return unit === undefined ? [{ label, value }] : [{ label, value, unit }]
+  })
+}
+
 export function analysisResultHeadline(state: MaterialsPanelState): string {
   const execution = state.execution
   if (execution === undefined) return ''
@@ -1134,10 +1154,21 @@ export function analysisResultHeadline(state: MaterialsPanelState): string {
     return `${table.totalRows.toLocaleString()} particles counted`
   if (table !== undefined && state.tableOutput === 'peaks')
     return `${table.totalRows.toLocaleString()} peaks`
-  return (
-    formatRoughnessHeadline(execution) ??
-    `${execution.outputs.length} ${execution.outputs.length === 1 ? 'result' : 'results'}`
+  const roughness = formatRoughnessHeadline(execution)
+  if (roughness !== undefined) return roughness
+  if (
+    execution.outputs.some(
+      (output) => output.kind === 'result' && output.summary['kind'] === 'histogram',
+    )
   )
+    return 'Intensity histogram'
+  const scalars = collectionPreviewRows(execution)
+  const mean = scalars.find(({ label }) => label === 'mean')
+  if (mean !== undefined) {
+    const unit = mean.unit === undefined ? '' : ` ${mean.unit}`
+    return `mean ${mean.value.toPrecision(4)}${unit}`
+  }
+  return `${execution.outputs.length} ${execution.outputs.length === 1 ? 'result' : 'results'}`
 }
 
 export function shouldShowResultPreview(
@@ -1353,6 +1384,44 @@ function ScientificSeriesPlot({
   )
 }
 
+function AnalysisHistogramPlot({
+  name,
+  series,
+}: Readonly<{ name: string; series: AnalysisSeriesExport }>) {
+  const edge = series.columns.find(({ name: column }) => column === 'binMinimum')
+  const counts = series.columns.find(({ name: column }) => column === 'count')
+  if (edge === undefined || counts === undefined) return null
+  const bins = edge.values.flatMap((x, index) => {
+    const count = counts.values[index]
+    return typeof x === 'number' && typeof count === 'number' && Number.isFinite(count)
+      ? [{ x, count }]
+      : []
+  })
+  if (bins.length === 0) return null
+  const maximum = Math.max(1, ...bins.map(({ count }) => count))
+  return (
+    <figure className="scientific-series">
+      <figcaption>
+        {name} · {edge.name}
+        {edge.unit === undefined ? '' : ` (${edge.unit})`} / count
+      </figcaption>
+      <div className="result-plot" role="img" aria-label={`${name} intensity histogram`}>
+        {bins.map((bin) => (
+          <span
+            key={`h-${bin.x}-${bin.count}`}
+            style={{ height: `${Math.max(2, (bin.count / maximum) * 54)}px` }}
+          />
+        ))}
+      </div>
+      <small>
+        {bins.length.toLocaleString()} bins · {bins[0]?.x.toPrecision(4)}–
+        {bins[bins.length - 1]?.x.toPrecision(4)}
+        {edge.unit === undefined ? '' : ` ${edge.unit}`}
+      </small>
+    </figure>
+  )
+}
+
 function DriftTrajectory({ page }: { readonly page: AnalysisTablePage }) {
   const xColumn = page.columns.find(({ name }) => name === 'offsetX')
   const yColumn = page.columns.find(({ name }) => name === 'offsetY')
@@ -1410,6 +1479,7 @@ export function AnalysisResults({
   const table = state.table
   const objectTable = state.tableOutput === undefined || state.tableOutput === 'objects'
   const roughness = roughnessMetrics(execution)
+  const collectionRows = roughness === undefined ? collectionPreviewRows(execution) : []
   const hasDetailedPlot =
     (state.seriesExports !== undefined && state.seriesExports.length > 0) ||
     state.distribution !== undefined
@@ -1446,6 +1516,22 @@ export function AnalysisResults({
           </dl>
         </section>
       )}
+      {collectionRows.length === 0 ? null : (
+        <section className="roughness-summary" aria-label="ROI statistics">
+          <h3>ROI statistics</h3>
+          <dl>
+            {collectionRows.map(({ label, value, unit }) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>
+                  {value.toPrecision(4)}
+                  {unit === undefined ? '' : ` ${unit}`}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
       {shouldShowResultPreview(execution, state.seriesExports) ? (
         <ResultPreviewPlot execution={execution} />
       ) : null}
@@ -1455,12 +1541,16 @@ export function AnalysisResults({
       {state.seriesExports?.map(({ name, data }) =>
         name === 'sizeDistribution' || name === 'distribution' ? (
           <ParticleDistribution distribution={data} key={name} />
+        ) : name === 'histogram' ||
+          name === 'heightHistogram' ||
+          data.columns.some(({ name: column }) => column === 'count') ? (
+          <AnalysisHistogramPlot key={name} name={name} series={data} />
         ) : (
           <ScientificSeriesPlot key={name} name={name} series={data} />
         ),
       )}
       {table === undefined ? (
-        hasDetailedPlot || roughness !== undefined ? (
+        hasDetailedPlot || roughness !== undefined || collectionRows.length > 0 ? (
           <details className="result-json-details">
             <summary>Raw output descriptors</summary>
             <pre className="result-json">{JSON.stringify(rawOutputs, null, 2)}</pre>

@@ -19,7 +19,7 @@ import {
   frequencyPeakAnnotations,
   shouldShowResultPreview,
 } from '../src/MaterialsPanels.js'
-import { displayRangeFromTile } from '../src/ScientificViewport.js'
+import { displayRangeFromTile, quantitativeRangeFromValues } from '../src/ScientificViewport.js'
 
 const selection: PlaneSelection = {
   displayAxes: ['x', 'y'],
@@ -139,6 +139,36 @@ describe('materials analysis UI contracts', () => {
     expect(shouldShowResultPreview(execution, undefined)).toBe(true)
   })
 
+  it('formats ROI statistics as a mean headline instead of a raw JSON dump', () => {
+    const execution: AnalysisExecutionResponse = {
+      resultHandleId: 'stats-result' as AnalysisExecutionResponse['resultHandleId'],
+      outputs: [
+        {
+          kind: 'result',
+          name: 'statistics',
+          summary: {
+            kind: 'collection',
+            preview: {
+              count: { preview: 4 },
+              mean: { preview: 8.5, unit: 'a.u.' },
+              minimum: { preview: 1 },
+              maximum: { preview: 16 },
+            },
+          },
+        },
+      ],
+      provenance: {},
+      elapsedMilliseconds: 8,
+    }
+    expect(
+      analysisResultHeadline({
+        busy: false,
+        tableOffset: 0,
+        execution,
+      }),
+    ).toBe('mean 8.500 a.u.')
+  })
+
   it('formats AFM roughness as the results headline', () => {
     const execution: AnalysisExecutionResponse = {
       resultHandleId: 'surface-result' as AnalysisExecutionResponse['resultHandleId'],
@@ -183,6 +213,22 @@ describe('materials analysis UI contracts', () => {
         Array.from({ length: 64 }, () => 100),
       ),
     ).toEqual({ minimum: 0, maximum: 255 })
+  })
+
+  it('locks FFT auto-range from quantitative values, not a leftover 0–255 mapping', () => {
+    const values = new Float32Array(64)
+    values[0] = 12
+    values[1] = 3.2
+    values[2] = 2.8
+    expect(quantitativeRangeFromValues(values)).toEqual({ minimum: 0, maximum: 12 })
+    const histogram = Array.from({ length: 64 }, () => 0)
+    histogram[0] = 61
+    histogram[16] = 2
+    histogram[63] = 1
+    const fromData = displayRangeFromTile({ minimum: 0, maximum: 12 }, histogram)
+    const fromLeftoverMapping = displayRangeFromTile({ minimum: 0, maximum: 255 }, histogram)
+    expect(fromData.maximum).toBeLessThanOrEqual(12)
+    expect(fromLeftoverMapping.maximum).toBeGreaterThan(200)
   })
 
   it('defaults the AFM height profile to the included rectangle, not a 256-pixel corner', () => {

@@ -919,7 +919,7 @@ export function describeWorkspaceCommand(command: WorkspaceMutation): string {
     case 'source.add':
       return `Added source ${command.source.label}`
     case 'source.remove':
-      return `Removed source ${command.sourceId}`
+      return 'Removed the previous source'
     case 'source.rebind':
       return `Rebound source ${command.sourceId}`
     case 'dataset.select':

@@ -13,7 +13,7 @@ body,
   height: 100%;
   min-height: 100%;
   margin: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 button,
 input,
@@ -135,6 +135,7 @@ canvas:focus-visible,
 .navigator-panel,
 .inspector-panel,
 .bottom-panel {
+  z-index: 3;
   overflow: hidden;
   border: 0;
 }

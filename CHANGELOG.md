@@ -18,6 +18,32 @@ The application is not yet versioned for release (`0.0.0`).
 - The calibrated particle background wave is weak enough that default Otsu
   thresholding separates the ten disks. The previous strong checkerboard made
   Otsu split the illumination, then Edge exclude dropped every object.
+- ROI Statistics, Histogram, and Line profile sit directly under the draw tools
+  so a newly drawn region can be measured without scrolling past calibration.
+- Opening a new source or example drops leftover ROIs and particle targeting from
+  the previous file so a measure box cannot silently shrink the next particle count.
+- ROI Statistics results lead with mean and labeled scalars instead of a raw JSON
+  dump. Opening an analyzed example no longer fails the gallery with a stale
+  "Dataset changed" abort.
+- Inspector and results tab switches no longer write “Changed project workspace view”
+  undo entries. The last visible tabs are stored when the project is saved or exported.
+- Opening a new file or example replaces leftover sources and the previous analysis
+  graph, so a second example no longer piles up in the navigator.
+- An imported project that still needs its original file shows a rebind card instead of
+  the first-run “Start with an original file” empty state. Recent names are labeled
+  recent, not rebind required.
+- Script Studio keeps the run-status footer visible when the capability review is
+  closed. The first viewport resize fits the specimen instead of leaving a 1:1 crop.
+  Locking display auto-range no longer remounts the viewport, so remaining tiles fill
+  the fitted frame instead of leaving black corners.
+- New project clears leftover analysis results, overlays, and batch rows.
+- The workbench root can scroll, so 200 percent page zoom no longer traps inspector
+  tabs under the viewport canvas. Batch rows include dry-run issue text when a recipe
+  is refused for a file.
+- Particle analysis exposes Cancel run next to Dry-run / Run so an admitted plan
+  can be stopped without hunting the advanced-materials cancel control.
+- Analysis histograms (HHV-6, ROI Histogram) plot bin counts instead of a
+  16-sample preview or a bin-edge diagonal.
 - ROI inspector measurements are labeled Area / Perimeter / Centroid rows with pixel and
   physical units instead of a single run-on line.
 - Selecting an area ROI now targets particle analysis to that region and includes
@@ -32,7 +58,9 @@ The application is not yet versioned for release (`0.0.0`).
 - Switching to a derived analysis plane (FFT magnitude, leveled AFM surface) re-runs display
   auto-range, so leftover source 0–255 mapping no longer crushes log1p spectra to black.
   A singleton top histogram bin (DC or a hot pixel) is excluded from that stretch so
-  lattice spots stay visible.
+  lattice spots stay visible. The lock now uses quantitative tile values, not the first
+  tile's leftover display mapping, so Run FFT workspace (including notch) no longer stays
+  black after the source 0–255 stretch.
 - FFT viewport labels skip the DC/beam-center peak, use d-spacing, and keep one label per
   distinct spacing so conjugate spots do not stack the same text.
 - Line-profile and other series results hide the coarse 16-sample bar preview when the real

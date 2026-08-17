@@ -93,7 +93,7 @@ test('persists theme, panel preferences, and source names without file contents'
     width ?? '',
   )
   await expect(page.getByText('sample-sem.gsf')).toBeVisible()
-  await expect(page.getByText('rebind required')).toBeVisible()
+  await expect(page.getByText('recent')).toBeVisible()
 })
 
 test('collapses the navigator on a narrow desktop while preserving the viewport', async ({

@@ -111,10 +111,41 @@ table,
   box-shadow: var(--wb-elevation-dialog);
   color: var(--wb-text);
   display: grid;
+  grid-template-areas:
+    "header"
+    "notice"
+    "toolbar"
+    "review"
+    "layout"
+    "status";
   grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
   height: min(94vh, 960px);
   overflow: hidden;
   width: min(98vw, 1680px);
+}
+
+.script-studio__header {
+  grid-area: header;
+}
+
+.script-studio__notice {
+  grid-area: notice;
+}
+
+.script-studio__toolbar {
+  grid-area: toolbar;
+}
+
+.script-studio__review {
+  grid-area: review;
+}
+
+.script-studio__layout {
+  grid-area: layout;
+}
+
+.script-studio__status {
+  grid-area: status;
 }
 
 .script-studio__header,
@@ -1154,6 +1185,7 @@ table,
   z-index: 1;
   display: grid;
   width: min(620px, calc(100% - 40px));
+  max-width: 100%;
   justify-items: center;
   gap: 10px;
   padding: 28px;

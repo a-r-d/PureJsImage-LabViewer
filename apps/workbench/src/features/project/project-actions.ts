@@ -26,6 +26,53 @@ export function createProject(title = 'Untitled microscopy project'): WorkspaceS
   })
 }
 
+const EMPTY_ANALYSIS_GRAPH = {
+  schemaVersion: 1 as const,
+  inputs: [],
+  nodes: [],
+  outputs: [],
+}
+
+export function mutationsToReplaceOpenSource(
+  snapshot: WorkspaceSnapshot,
+): readonly WorkspaceMutation[] {
+  const mutations: WorkspaceMutation[] = []
+  for (const binding of snapshot.analysis.bindings) {
+    mutations.push({ kind: 'analysis.remove-binding', input: binding.input })
+  }
+  if (
+    snapshot.analysis.graph.nodes.length > 0 ||
+    snapshot.analysis.graph.inputs.length > 0 ||
+    snapshot.analysis.graph.outputs.length > 0
+  ) {
+    mutations.push({ kind: 'analysis.set-graph', graph: EMPTY_ANALYSIS_GRAPH })
+  }
+  for (const source of snapshot.sources) {
+    mutations.push({ kind: 'source.remove', sourceId: source.id })
+  }
+  return mutations
+}
+
+export function snapshotWithVisibleWorkflow(
+  snapshot: WorkspaceSnapshot,
+  workflow: Pick<WorkspaceSnapshot['workflow'], 'inspector' | 'bottom'>,
+): WorkspaceSnapshot {
+  if (
+    snapshot.workflow.inspector === workflow.inspector &&
+    snapshot.workflow.bottom === workflow.bottom
+  ) {
+    return snapshot
+  }
+  return {
+    ...snapshot,
+    workflow: {
+      ...snapshot.workflow,
+      inspector: workflow.inspector,
+      bottom: workflow.bottom,
+    },
+  }
+}
+
 export function projectSourceMutation(
   nextSource: OpenedSourceDescriptor,
   locator: WorkspaceSourceReference['locator'],

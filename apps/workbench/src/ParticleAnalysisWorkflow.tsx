@@ -106,6 +106,7 @@ export function ParticleAnalysisWorkflow({
   onPlan,
   onRun,
   onCancel,
+  onCancelRun,
   onSaveRecipe,
   onOpenScripts,
 }: {
@@ -121,6 +122,7 @@ export function ParticleAnalysisWorkflow({
   readonly onPlan: () => void
   readonly onRun: () => void
   readonly onCancel: () => void
+  readonly onCancelRun: () => void
   readonly onSaveRecipe: () => void
   readonly onOpenScripts: () => void
 }) {
@@ -432,6 +434,9 @@ export function ParticleAnalysisWorkflow({
             variant="primary"
           >
             Run particle analysis
+          </Button>
+          <Button disabled={!busy} onClick={onCancelRun}>
+            Cancel run
           </Button>
         </div>
         {dryRun?.valid === true ? null : (
