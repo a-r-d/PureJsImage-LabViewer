@@ -1,0 +1,33 @@
+apps/workbench/src/app/WorkbenchApp.tsx
+  s_91ff1f8baba74e::t_75de77314a3e45 2036-2040
+docs/CORPUS_AUDIT.md
+  s_91ff1f8baba74e::t_95b25da4eb92d5 27
+packages/imaging/src/worker-host/source-rpc.ts
+  s_80e149f944adf4::t_b946f5cd191099 107-150,176-177,179-180
+packages/test-corpus/src/reference-oracle.ts
+  s_80e149f944adf4::t_d194482c2fb505 154,158,168-197,226-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "998c733e7e888cb4e07cbb179649f030b322079d",
+  "prompts": {},
+  "sessions": {
+    "s_80e149f944adf4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00d3f-a3a2-7921-a442-a9f1d25ec60d",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    },
+    "s_91ff1f8baba74e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00d4b-5363-7233-a906-ba3ee3d89dac",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
