@@ -1,0 +1,32 @@
+CHANGELOG.md
+  h_9f4a25732fa0c1 10-27
+apps-e2e/workbench/tests/roi-measurement.spec.ts
+  h_9f4a25732fa0c1 32
+apps/workbench/src/MaterialsPanels.tsx
+  h_9f4a25732fa0c1 188-194,277-325,327-370,472-482,1298
+apps/workbench/src/ParticleAnalysisWorkflow.tsx
+  h_9f4a25732fa0c1 160-168
+apps/workbench/src/ScientificViewport.tsx
+  h_9f4a25732fa0c1 767
+apps/workbench/src/app/WorkbenchApp.tsx
+  h_9f4a25732fa0c1 840-842,1120-1140
+apps/workbench/src/styles.css
+  h_9f4a25732fa0c1 47,62,79-84,98,105,111,120,166,192,210-211,220,230,378-406,444,450,458,743,797,833-834,836,852-853
+apps/workbench/src/styles/shell.css
+  h_9f4a25732fa0c1 15,1022-1026,1122-1127
+packages/ui/src/index.tsx
+  h_9f4a25732fa0c1 69-85,88-96,98-104
+packages/ui/src/styles.css
+  h_9f4a25732fa0c1 5,7,15,20-26,29,31,35-36,104-105,179,194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "042c593ba59b5a0dd420f7847dfe14d7a59487b0",
+  "prompts": {},
+  "humans": {
+    "h_9f4a25732fa0c1": {
+      "author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
