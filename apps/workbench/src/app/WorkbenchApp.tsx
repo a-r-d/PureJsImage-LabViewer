@@ -139,6 +139,8 @@ import {
 import {
   AnalysisInspector,
   AnalysisResults,
+  formatRoughnessHeadline,
+  frequencyPeakAnnotations,
   type MaterialsPanelState,
   RoiInspector,
 } from '../MaterialsPanels.js'
@@ -151,6 +153,7 @@ import { PREFERENCE_BOUNDS } from '../preferences.js'
 import {
   type AnalysisDatasetSelection,
   type AnalysisOverlaySelection,
+  displayRangeFromTile,
   type RoiTool,
   ScientificViewport,
   type ScientificViewportApi,
@@ -313,6 +316,23 @@ function executeOnlyAction(
   return { execute: (input) => execute(input) }
 }
 
+function analysisOutputLabel(output: string): string {
+  switch (output) {
+    case 'magnitude':
+      return 'FFT magnitude'
+    case 'power':
+      return 'FFT power'
+    case 'frequencyMask':
+      return 'frequency mask'
+    case 'corrected':
+      return 'leveled surface'
+    case 'grainMask':
+      return 'grain mask'
+    default:
+      return output
+  }
+}
+
 export function WorkbenchApp({ environment }: { readonly environment: PublicEnvironment }) {
   return (
     <WorkbenchProviders>
@@ -434,6 +454,14 @@ function WorkbenchRuntime({
   const generation = useRef(0)
   const openedAt = useRef(0)
   const autoRangeLocked = useRef(false)
+  const displayedRasterKey =
+    analysisDataset === undefined
+      ? 'source'
+      : `analysis:${analysisDataset.resultHandleId}:${analysisDataset.output}`
+  useEffect(() => {
+    autoRangeLocked.current = displayedRasterKey.length === 0
+    setMapping({ mode: 'linear', range: 'auto' })
+  }, [displayedRasterKey])
   const openUrlDialog = useCallback((): void => {
     if (!urlDialogReturnFocus.current?.isConnected)
       urlDialogReturnFocus.current =
@@ -794,6 +822,7 @@ function WorkbenchRuntime({
               'radialProfile',
               'azimuthalProfile',
               'surfaceProfile',
+              'profile',
             ].includes(name),
         )
         const seriesExports = await Promise.all(
@@ -832,11 +861,14 @@ function WorkbenchRuntime({
           table !== undefined && (tableOutput === undefined || tableOutput === 'objects')
             ? table.totalRows
             : undefined
+        const roughness = formatRoughnessHeadline(execution)
         const completionMessage =
           options.preview === true
             ? `Preview ready in ${execution.elapsedMilliseconds.toFixed(1)} ms. No project revision was created.`
             : counted === undefined
-              ? `Analysis completed in ${execution.elapsedMilliseconds.toFixed(1)} ms.`
+              ? roughness === undefined
+                ? `Analysis completed in ${execution.elapsedMilliseconds.toFixed(1)} ms.`
+                : `Leveled surface · ${roughness} in ${execution.elapsedMilliseconds.toFixed(1)} ms.`
               : counted === 0
                 ? 'No particles remained. If objects touch the ROI edge, set Edge objects to Include.'
                 : `Counted ${counted.toLocaleString()} particles in ${(execution.elapsedMilliseconds / 1_000).toFixed(1)} s.`
@@ -865,11 +897,11 @@ function WorkbenchRuntime({
               },
         )
         setBottomTab(
-          table === undefined
-            ? options.roi?.geometry.kind === 'line-segment'
-              ? 'profile'
-              : 'results'
-            : 'results',
+          graph.outputs.some(({ name }) => name === 'profile')
+            ? 'profile'
+            : table === undefined
+              ? 'results'
+              : 'results',
         )
         appendLog(
           `Executed ${graph.nodes.map(({ label, operation }) => label ?? operation.id).join(' → ')}`,
@@ -1553,11 +1585,25 @@ function WorkbenchRuntime({
           : kind === 'histogram'
             ? histogramGraph(selection, component)
             : lineProfileGraph(selection, component)
-      const activeGraph =
-        analysisDataset === undefined
-          ? graph
-          : appendDatasetAnalysisGraph(workspace.analysis.graph, graph)
-      void executeAnalysisGraph(activeGraph, { roi, commit: false })
+      try {
+        const canReuseAnalysis =
+          analysisDataset !== undefined && workspace.analysis.graph.outputs.length === 1
+        if (!canReuseAnalysis && analysisDataset !== undefined) {
+          setAnalysisDataset(undefined)
+          setAnalysisOverlay(undefined)
+        }
+        const activeGraph =
+          canReuseAnalysis && analysisDataset !== undefined
+            ? appendDatasetAnalysisGraph(workspace.analysis.graph, graph, analysisDataset.output)
+            : graph
+        void executeAnalysisGraph(activeGraph, { roi, commit: false })
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'The selected measurement could not be attached to the current analysis.'
+        setAnalysisState((current) => ({ ...current, busy: false, message }))
+      }
     },
     [
       analysisDataset,
@@ -1622,12 +1668,8 @@ function WorkbenchRuntime({
 
   const frequencyAnnotations = useMemo(() => {
     if (analysisState.tableOutput !== 'peaks' || analysisState.table === undefined) return []
-    return analysisPageRows(analysisState.table).flatMap((row, index) =>
-      typeof row['x'] === 'number' && typeof row['y'] === 'number'
-        ? [{ x: row['x'], y: row['y'], label: `Peak ${index + 1}` }]
-        : [],
-    )
-  }, [analysisPageRows, analysisState.table, analysisState.tableOutput])
+    return frequencyPeakAnnotations(analysisState.table)
+  }, [analysisState.table, analysisState.tableOutput])
 
   const downloadAnalysis = useCallback(
     async (scope: 'selected' | 'all', format: 'csv' | 'json'): Promise<void> => {
@@ -2486,11 +2528,12 @@ function WorkbenchRuntime({
     if (first && !autoRangeLocked.current) {
       setHistogram(tile.histogram)
       autoRangeLocked.current = true
+      const displayRange = displayRangeFromTile(tile.range, tile.histogram)
       setMapping({
         mode: 'linear',
         range: 'auto',
-        minimum: tile.range.minimum,
-        maximum: tile.range.maximum,
+        minimum: displayRange.minimum,
+        maximum: displayRange.maximum,
       })
       const elapsed = performance.now() - openedAt.current
       window.__PJI_WORKBENCH_METRICS__.firstTileMilliseconds = elapsed
@@ -3327,6 +3370,12 @@ function WorkbenchRuntime({
               })
           }}
           {...(advancedPlan === undefined ? {} : { plan: advancedPlan })}
+          planeHeight={
+            opened.dataset.axes.find(({ id }) => id === selection.displayAxes[1])?.length ?? 1
+          }
+          planeWidth={
+            opened.dataset.axes.find(({ id }) => id === selection.displayAxes[0])?.length ?? 1
+          }
           rois={workspace.analysis.roiSet.rois}
           selection={selection}
         />
@@ -3767,6 +3816,12 @@ function WorkbenchRuntime({
                       <span>{source?.source.name}</span>
                       <span aria-hidden="true">/</span>
                       <strong>{datasetName}</strong>
+                      {analysisDataset === undefined ? null : (
+                        <>
+                          <span aria-hidden="true">/</span>
+                          <strong>{analysisOutputLabel(analysisDataset.output)}</strong>
+                        </>
+                      )}
                     </>
                   ) : (
                     <span>No dataset</span>

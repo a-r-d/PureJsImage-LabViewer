@@ -385,11 +385,15 @@ export function lineProfileGraph(selection: PlaneSelection, component: number): 
 export function appendDatasetAnalysisGraph(
   base: AnalysisGraph,
   measurement: AnalysisGraph,
+  preferredOutput?: string,
 ): AnalysisGraph {
   if (base.nodes.length === 0) return measurement
-  const baseOutput = base.outputs[0]
-  if (base.outputs.length !== 1 || baseOutput === undefined)
-    throw new Error('The current analysis graph must have one dataset output.')
+  const baseOutput =
+    (preferredOutput === undefined
+      ? undefined
+      : base.outputs.find(({ name }) => name === preferredOutput)) ?? base.outputs[0]
+  if (baseOutput === undefined)
+    throw new Error('The current analysis graph has no dataset output to measure.')
   const sourceInput = measurement.inputs.find(({ name }) => name === SOURCE_INPUT.name)
   if (sourceInput === undefined) throw new Error('The measurement graph has no dataset input.')
   const measurementNodeIds = new Set(measurement.nodes.map(({ id }) => id))

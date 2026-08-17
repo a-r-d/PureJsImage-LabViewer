@@ -15,6 +15,21 @@ The application is not yet versioned for release (`0.0.0`).
   edge-touching objects, so a drawn box no longer silently counts zero.
 - Statistics headlines say "1 result" instead of "analysis outputs". Viewport physical
   coordinates use two decimal places.
+- FFT plan summaries show peak memory and compute time instead of a raw JSON identity dump.
+- Line profile after an FFT (or any multi-output analysis) measures the source again instead
+  of crashing, and the Line Profile tab shows the distance/value series.
+- FFT results headline is "N peaks". The inverse-FFT disclaimer no longer cites PureJsImage
+  0.10.0.
+- Switching to a derived analysis plane (FFT magnitude, leveled AFM surface) re-runs display
+  auto-range, so leftover source 0–255 mapping no longer crushes log1p spectra to black.
+  A singleton top histogram bin (DC or a hot pixel) is excluded from that stretch so
+  lattice spots stay visible.
+- FFT viewport labels skip the DC/beam-center peak, use d-spacing, and keep one label per
+  distinct spacing so conjugate spots do not stack the same text.
+- Line-profile and other series results hide the coarse 16-sample bar preview when the real
+  polyline is already shown.
+- AFM height profiles default to the current plane or selected rectangle instead of a
+  hardcoded 0–255 corner. Results lead with Rq/Ra/Rz instead of a raw JSON dump.
 
 - Dark and light themes use a sharper instrument palette: deeper canvas, more distinct
   chrome surfaces, and a teal-cyan accent instead of washed sky blue. Scientific ROI

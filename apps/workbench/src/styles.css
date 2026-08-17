@@ -680,12 +680,20 @@ canvas:focus-visible,
   color: inherit;
   font: inherit;
 }
+.result-json-details {
+  margin: 0;
+}
+.result-json-details summary {
+  cursor: pointer;
+  color: var(--wb-text-muted);
+  font-size: 11px;
+}
 .result-json {
   max-height: 190px;
   margin: 0;
   overflow: auto;
   color: var(--wb-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .result-plot {
   display: flex;

@@ -1032,6 +1032,123 @@ export function analysisPageRows(
   )
 }
 
+const MAX_FREQUENCY_PEAK_LABELS = 8
+
+export function frequencyPeakAnnotations(
+  page: AnalysisTablePage,
+): readonly Readonly<{ x: number; y: number; label: string }>[] {
+  const dUnit = page.columns.find(({ name }) => name === 'dSpacing')?.unit
+  const frequencyUnit = page.columns.find(({ name }) => name === 'radialFrequency')?.unit
+  const annotations: { x: number; y: number; label: string }[] = []
+  const labeledKeys = new Set<string>()
+  const labeledPoints: { x: number; y: number }[] = []
+  for (const row of analysisPageRows(page)) {
+    const x = row['x']
+    const y = row['y']
+    if (typeof x !== 'number' || typeof y !== 'number') continue
+    const radial = row['radialFrequency']
+    const frequencyX = row['frequencyX']
+    const frequencyY = row['frequencyY']
+    const isDc =
+      (typeof radial === 'number' && Number.isFinite(radial) && radial <= 0) ||
+      (typeof frequencyX === 'number' &&
+        typeof frequencyY === 'number' &&
+        frequencyX === 0 &&
+        frequencyY === 0)
+    if (isDc) continue
+    const dSpacing = row['dSpacing']
+    const key =
+      typeof dSpacing === 'number' && Number.isFinite(dSpacing)
+        ? `d:${dSpacing.toPrecision(3)}`
+        : typeof radial === 'number' && Number.isFinite(radial)
+          ? `f:${radial.toPrecision(3)}`
+          : `p:${annotations.length}`
+    const tooClose = labeledPoints.some((point) => Math.hypot(point.x - x, point.y - y) < 28)
+    const label =
+      labeledKeys.has(key) || tooClose
+        ? ''
+        : typeof dSpacing === 'number' && Number.isFinite(dSpacing)
+          ? `d=${dSpacing.toPrecision(3)}${dUnit === undefined ? '' : ` ${dUnit}`}`
+          : typeof radial === 'number' && Number.isFinite(radial)
+            ? `${radial.toPrecision(3)}${frequencyUnit === undefined ? '' : ` ${frequencyUnit}`}`
+            : `Peak ${annotations.length + 1}`
+    if (label !== '') {
+      labeledKeys.add(key)
+      labeledPoints.push({ x, y })
+    }
+    annotations.push({ x, y, label })
+    if (annotations.length >= MAX_FREQUENCY_PEAK_LABELS) break
+  }
+  return annotations
+}
+
+function previewScalar(
+  preview: RpcJsonObject | undefined,
+  name: string,
+): Readonly<{ value: number; unit?: string }> | undefined {
+  const field = asRecord(preview?.[name])
+  const value = field?.['preview']
+  if (field === undefined || typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  const unit = typeof field['unit'] === 'string' ? field['unit'] : undefined
+  return unit === undefined ? { value } : { value, unit }
+}
+
+export function roughnessMetrics(
+  execution: AnalysisExecutionResponse,
+): Readonly<{ ra: number; rq: number; rz: number; unit?: string }> | undefined {
+  const output = execution.outputs.find(
+    (item) => item.kind === 'result' && item.name === 'roughness',
+  )
+  if (output?.kind !== 'result') return undefined
+  const preview = asRecord(output.summary['preview'])
+  const ra = previewScalar(preview, 'Ra')
+  const rq = previewScalar(preview, 'Rq')
+  const rz = previewScalar(preview, 'Rz')
+  if (ra === undefined || rq === undefined || rz === undefined) return undefined
+  const metadata = asRecord(output.summary['metadata'])
+  const reportedUnit =
+    rq.unit ??
+    ra.unit ??
+    rz.unit ??
+    (typeof metadata?.['zUnit'] === 'string' ? metadata['zUnit'] : undefined)
+  const unit =
+    reportedUnit === undefined || reportedUnit === 'dataset value' ? undefined : reportedUnit
+  return unit === undefined
+    ? { ra: ra.value, rq: rq.value, rz: rz.value }
+    : { ra: ra.value, rq: rq.value, rz: rz.value, unit }
+}
+
+export function formatRoughnessHeadline(execution: AnalysisExecutionResponse): string | undefined {
+  const metrics = roughnessMetrics(execution)
+  if (metrics === undefined) return undefined
+  const unit = metrics.unit === undefined ? '' : ` ${metrics.unit}`
+  return `Rq ${metrics.rq.toPrecision(4)}${unit} · Ra ${metrics.ra.toPrecision(4)}${unit} · Rz ${metrics.rz.toPrecision(4)}${unit}`
+}
+
+export function analysisResultHeadline(state: MaterialsPanelState): string {
+  const execution = state.execution
+  if (execution === undefined) return ''
+  const table = state.table
+  const objectTable = state.tableOutput === undefined || state.tableOutput === 'objects'
+  if (table !== undefined && objectTable)
+    return `${table.totalRows.toLocaleString()} particles counted`
+  if (table !== undefined && state.tableOutput === 'peaks')
+    return `${table.totalRows.toLocaleString()} peaks`
+  return (
+    formatRoughnessHeadline(execution) ??
+    `${execution.outputs.length} ${execution.outputs.length === 1 ? 'result' : 'results'}`
+  )
+}
+
+export function shouldShowResultPreview(
+  execution: AnalysisExecutionResponse,
+  seriesExports: MaterialsPanelState['seriesExports'],
+): boolean {
+  const result = execution.outputs.find((output) => output.kind === 'result')
+  if (result?.kind !== 'result') return false
+  return !seriesExports?.some(({ name }) => name === result.name)
+}
+
 function numericPreview(value: unknown): readonly number[] {
   return Array.isArray(value)
     ? value.filter((item): item is number => typeof item === 'number')
@@ -1292,21 +1409,46 @@ export function AnalysisResults({
   }
   const table = state.table
   const objectTable = state.tableOutput === undefined || state.tableOutput === 'objects'
-  const headline =
-    table !== undefined && objectTable
-      ? `${table.totalRows.toLocaleString()} particles counted`
-      : `${execution.outputs.length} ${execution.outputs.length === 1 ? 'result' : 'results'}`
+  const roughness = roughnessMetrics(execution)
+  const hasDetailedPlot =
+    (state.seriesExports !== undefined && state.seriesExports.length > 0) ||
+    state.distribution !== undefined
+  const rawOutputs = execution.outputs.map(({ kind, name, ...rest }) => ({ kind, name, ...rest }))
   return (
     <div className="analysis-results" data-testid="analysis-results">
       <div className="result-summary-row">
-        <strong className="result-count">{headline}</strong>
+        <strong className="result-count">{analysisResultHeadline(state)}</strong>
         <span>{execution.elapsedMilliseconds.toFixed(1)} ms</span>
         <Button onClick={onPin}>Pin result</Button>
         <Button onClick={() => onExport('selected', 'csv')}>Export selected CSV</Button>
         <Button onClick={() => onExport('all', 'csv')}>Export all CSV</Button>
         <Button onClick={() => onExport('all', 'json')}>Export JSON</Button>
       </div>
-      <ResultPreviewPlot execution={execution} />
+      {roughness === undefined ? null : (
+        <section className="roughness-summary" aria-label="Surface roughness">
+          <h3>Surface roughness</h3>
+          <dl>
+            {(
+              [
+                ['Rq', roughness.rq],
+                ['Ra', roughness.ra],
+                ['Rz', roughness.rz],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>
+                  {value.toPrecision(4)}
+                  {roughness.unit === undefined ? '' : ` ${roughness.unit}`}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
+      {shouldShowResultPreview(execution, state.seriesExports) ? (
+        <ResultPreviewPlot execution={execution} />
+      ) : null}
       {state.seriesExports === undefined && state.distribution !== undefined ? (
         <ParticleDistribution distribution={state.distribution} />
       ) : null}
@@ -1318,13 +1460,14 @@ export function AnalysisResults({
         ),
       )}
       {table === undefined ? (
-        <pre className="result-json">
-          {JSON.stringify(
-            execution.outputs.map(({ kind, name, ...rest }) => ({ kind, name, ...rest })),
-            null,
-            2,
-          )}
-        </pre>
+        hasDetailedPlot || roughness !== undefined ? (
+          <details className="result-json-details">
+            <summary>Raw output descriptors</summary>
+            <pre className="result-json">{JSON.stringify(rawOutputs, null, 2)}</pre>
+          </details>
+        ) : (
+          <pre className="result-json">{JSON.stringify(rawOutputs, null, 2)}</pre>
+        )
       ) : (
         <>
           <div className="result-summary-row">

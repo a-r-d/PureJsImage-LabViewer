@@ -32,6 +32,27 @@ import { measureUxNextPaint } from './ux-instrumentation.js'
 const TILE_SIZE = 256
 const PREFETCH_TILES = 1
 
+export function displayRangeFromTile(
+  range: Readonly<{ minimum: number; maximum: number }>,
+  histogram: readonly number[],
+): Readonly<{ minimum: number; maximum: number }> {
+  const { minimum, maximum } = range
+  if (!(maximum > minimum) || histogram.length === 0) return range
+  const total = histogram.reduce((sum, count) => sum + count, 0)
+  if (total === 0) return range
+  const lastIndex = histogram.length - 1
+  const topCount = histogram[lastIndex] ?? 0
+  if (topCount / total >= 0.001) return range
+  for (let index = lastIndex - 1; index >= 0; index -= 1) {
+    if ((histogram[index] ?? 0) === 0) continue
+    return {
+      minimum,
+      maximum: minimum + ((index + 1) / histogram.length) * (maximum - minimum),
+    }
+  }
+  return range
+}
+
 export interface ScientificViewportApi {
   fit(): void
   oneToOne(): void

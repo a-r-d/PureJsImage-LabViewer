@@ -6,7 +6,7 @@ import type {
 import type { BatchRecipeRow } from '@pji-workbench/materials-analysis'
 import { Button } from '@pji-workbench/ui'
 import type { WorkspaceSnapshot } from '@pji-workbench/workspace'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 export interface FftWorkspaceSettings {
   readonly roiId: string
@@ -93,6 +93,27 @@ export const DEFAULT_SURFACE_WORKSPACE: SurfaceWorkspaceSettings = {
   grainUpper: 1,
 }
 
+export function surfaceProfileEndpoints(
+  width: number,
+  height: number,
+  roi?: Readonly<{ x: number; y: number; width: number; height: number }>,
+): Pick<SurfaceWorkspaceSettings, 'profileX0' | 'profileY0' | 'profileX1' | 'profileY1'> {
+  if (roi !== undefined) {
+    return {
+      profileX0: roi.x,
+      profileY0: roi.y,
+      profileX1: roi.x + Math.max(0, roi.width - 1),
+      profileY1: roi.y + Math.max(0, roi.height - 1),
+    }
+  }
+  return {
+    profileX0: 0,
+    profileY0: 0,
+    profileX1: Math.max(0, width - 1),
+    profileY1: Math.max(0, height - 1),
+  }
+}
+
 function defaultStack(axis: AxisDescriptor | undefined): StackWorkspaceSettings {
   return {
     stackAxis: axis?.id ?? '',
@@ -129,16 +150,37 @@ function numeric(
   )
 }
 
+function formatPlanEstimate(value: unknown, kind: 'bytes' | 'ms'): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'unresolved'
+  if (kind === 'bytes') {
+    if (value >= 1_048_576) return `${(value / 1_048_576).toFixed(1)} MiB`
+    if (value >= 1_024) return `${Math.round(value / 1_024)} KiB`
+    return `${Math.round(value)} B`
+  }
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)} s`
+  return `${Math.round(value)} ms`
+}
+
 function PlanSummary({ plan }: { readonly plan: AdvancedPlanState | undefined }) {
   if (plan === undefined) return <p>No reviewed plan yet.</p>
-  const estimate = plan.dryRun.plan
+  const record =
+    typeof plan.dryRun.plan === 'object' &&
+    plan.dryRun.plan !== null &&
+    !Array.isArray(plan.dryRun.plan)
+      ? (plan.dryRun.plan['totalEstimate'] as Readonly<Record<string, unknown>> | undefined)
+      : undefined
+  const total =
+    typeof record === 'object' && record !== null && !Array.isArray(record) ? record : undefined
   return (
     <div className="advanced-plan" role="status">
       <strong>{plan.dryRun.valid ? 'Plan admitted' : 'Plan refused'}</strong>
       <span>
-        {plan.dryRun.warnings.length} warnings · identity {plan.identity.slice(0, 16)}
+        {formatPlanEstimate(total?.['peakWorkingBytes'], 'bytes')} peak ·{' '}
+        {formatPlanEstimate(total?.['computeMilliseconds'], 'ms')} compute
+        {plan.dryRun.warnings.length === 0
+          ? ''
+          : ` · ${plan.dryRun.warnings.length} warning${plan.dryRun.warnings.length === 1 ? '' : 's'}`}
       </span>
-      <code>{estimate === null ? 'No executable plan' : JSON.stringify(estimate)}</code>
     </div>
   )
 }
@@ -159,6 +201,8 @@ export function AdvancedMaterialsWorkflows({
   onRunStack,
   onRunSurface,
   plan,
+  planeHeight,
+  planeWidth,
   rois,
   selection,
 }: Readonly<{
@@ -177,6 +221,8 @@ export function AdvancedMaterialsWorkflows({
   onRunStack(settings: StackWorkspaceSettings): void
   onRunSurface(settings: SurfaceWorkspaceSettings): void
   plan?: AdvancedPlanState
+  planeHeight: number
+  planeWidth: number
   rois: readonly Roi[]
   selection: PlaneSelection
 }>) {
@@ -185,7 +231,10 @@ export function AdvancedMaterialsWorkflows({
     [axes, selection.displayAxes],
   )
   const [fft, setFft] = useState(DEFAULT_FFT_WORKSPACE)
-  const [surface, setSurface] = useState(DEFAULT_SURFACE_WORKSPACE)
+  const [surface, setSurface] = useState(() => ({
+    ...DEFAULT_SURFACE_WORKSPACE,
+    ...surfaceProfileEndpoints(planeWidth, planeHeight),
+  }))
   const [stack, setStack] = useState(() => defaultStack(stackAxes[0]))
   const [batchConcurrency, setBatchConcurrency] = useState(2)
   const batchInput = useRef<HTMLInputElement>(null)
@@ -197,6 +246,23 @@ export function AdvancedMaterialsWorkflows({
     key: Key,
     value: SurfaceWorkspaceSettings[Key],
   ): void => setSurface((current) => ({ ...current, [key]: value }))
+  const applySurfaceRoi = (roiId: string): void => {
+    const selected = rois.find((roi) => roi.id === roiId)
+    const rectangle = selected?.geometry.kind === 'rectangle' ? selected.geometry : undefined
+    setSurface((current) => ({
+      ...current,
+      roiId,
+      ...surfaceProfileEndpoints(planeWidth, planeHeight, rectangle),
+    }))
+  }
+
+  useEffect(() => {
+    setSurface((current) =>
+      current.roiId === 'whole-plane'
+        ? { ...current, ...surfaceProfileEndpoints(planeWidth, planeHeight) }
+        : current,
+    )
+  }, [planeHeight, planeWidth])
   const patchStack = <Key extends keyof StackWorkspaceSettings>(
     key: Key,
     value: StackWorkspaceSettings[Key],
@@ -330,7 +396,8 @@ export function AdvancedMaterialsWorkflows({
           <p className="advanced-materials__truth">
             Beam center is the centered DC sample. Local maxima use the visible absolute threshold.
             No crystallographic indexing or phase identification is claimed. Inverse FFT is not
-            exposed because PureJsImage 0.10.0 has no public complex-dataset value contract.
+            exposed because the public analysis contract does not yet carry a complex-dataset value
+            type.
           </p>
           <div className="button-row">
             <Button disabled={busy} onClick={() => onPlanFft(fft)}>
@@ -472,10 +539,7 @@ export function AdvancedMaterialsWorkflows({
         <div className="form-stack advanced-materials__body">
           <label>
             Included area / exclusion boundary
-            <select
-              onChange={(event) => patchSurface('roiId', event.target.value)}
-              value={surface.roiId}
-            >
+            <select onChange={(event) => applySurfaceRoi(event.target.value)} value={surface.roiId}>
               <option value="whole-plane">Whole active plane</option>
               {rois.flatMap((roi) =>
                 roi.geometry.kind === 'rectangle' ||
@@ -584,8 +648,10 @@ export function AdvancedMaterialsWorkflows({
             )}
           </div>
           <p>
-            Ra is mean absolute deviation, Rq is RMS deviation, and Rz is maximum minus minimum over
-            the admitted area. X/Y and Z units are reported independently.
+            The height profile defaults to the included rectangle diagonal so it samples the
+            admitted area, not a 256-pixel corner. Ra is mean absolute deviation, Rq is RMS
+            deviation, and Rz is maximum minus minimum over the admitted area. X/Y and Z units are
+            reported independently.
           </p>
           <div className="button-row">
             <Button disabled={busy} onClick={() => onPlanSurface(surface)}>
