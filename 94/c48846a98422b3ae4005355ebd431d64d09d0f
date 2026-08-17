@@ -1,0 +1,51 @@
+CHANGELOG.md
+  s_e1649b41d8dd86::t_7461651574dbf1 1-33
+apps-e2e/workbench/tests/core-analysis.spec.ts
+  s_e1649b41d8dd86::t_f17f12df85345b 126
+apps-e2e/workbench/tests/fft-materials.spec.ts
+  s_e1649b41d8dd86::t_31f3e28514ef75 24
+apps-e2e/workbench/tests/particle-analysis.spec.ts
+  s_e1649b41d8dd86::t_be5c5f09d635e4 46-48
+apps-e2e/workbench/tests/roi-measurement.spec.ts
+  s_e1649b41d8dd86::t_d0be244444789b 19,62,80
+apps-e2e/workbench/tests/ux-validation.spec.ts
+  s_e1649b41d8dd86::t_1454fab82d2ef3 232
+apps/workbench/src/MaterialsPanels.tsx
+  s_e1649b41d8dd86::t_e9ddd68b952635 359-366,390,397,1244-1247,1251,1281-1283
+apps/workbench/src/app/WorkbenchApp.tsx
+  s_e1649b41d8dd86::t_5c1c791861e4ac 137,831-834,838-840,3399,3615-3619,3967
+apps/workbench/src/features/examples/ExampleGallery.tsx
+  s_e1649b41d8dd86::t_0bbff663b48b6b 345-350
+apps/workbench/src/styles.css
+  s_e1649b41d8dd86::t_1827e43adb7bd1 385,390-391,395-408
+docs/IMAGING_WORKER.md
+  s_e1649b41d8dd86::t_295e2682fa9333 61-63
+packages/imaging/src/worker-host.ts
+  s_e1649b41d8dd86::t_843dabb7352779 50,79-85,605,608-611
+packages/imaging/src/worker-host/analysis-rpc.ts
+  s_e1649b41d8dd86::t_2cf939886b5a92 11,27,30,33-34,51
+packages/imaging/src/worker-host/runtime.ts
+  s_e1649b41d8dd86::t_68ff187dad7bf8 44
+packages/imaging/tests/codec-plane-cache.test.ts
+  s_e1649b41d8dd86::t_69fae78cf4f001 1-104
+packages/ui/src/index.tsx
+  s_e1649b41d8dd86::t_9227d33c1bdf88 175,181,185-188
+packages/ui/src/styles.css
+  s_e1649b41d8dd86::t_d898cbd256e96d 74-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "94c48846a98422b3ae4005355ebd431d64d09d0f",
+  "prompts": {},
+  "sessions": {
+    "s_e1649b41d8dd86": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00cb2-b775-7471-b1fd-fbe33ff8c58f",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
