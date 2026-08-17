@@ -8,6 +8,7 @@ import {
   type ScientificDataset,
 } from 'purejsimage/scientific'
 
+import { wrapCodecAdapterDataset } from '../codec-plane-cache.js'
 import type { DatasetRecord } from './runtime.js'
 
 export function isScientificDataset(value: unknown): value is ScientificDataset {
@@ -23,13 +24,14 @@ export async function createAnalysisBindings(
 ): Promise<Readonly<Record<string, AnalysisInputBinding>>> {
   const identity = getScientificDatasetIdentity(record.dataset)
   if (identity === undefined) throw new Error('The dataset has no stable source identity')
+  const analysisSource = wrapCodecAdapterDataset(record.dataset, record.readerId)
   const dataset: ScientificDataset =
     calibration === undefined
-      ? record.dataset
+      ? analysisSource
       : {
           descriptor: normalizeScientificDatasetDescriptor({
-            ...record.dataset.descriptor,
-            axes: record.dataset.descriptor.axes.map((axis) => {
+            ...analysisSource.descriptor,
+            axes: analysisSource.descriptor.axes.map((axis) => {
               const index = calibration.axisIds.indexOf(axis.id)
               const step = calibration.unitsPerPixel[index]
               if (index < 0 || step === undefined || !Number.isFinite(step) || step <= 0)
@@ -46,7 +48,7 @@ export async function createAnalysisBindings(
               }
             }),
           }),
-          readPlane: (request) => record.dataset.readPlane(request),
+          readPlane: (request) => analysisSource.readPlane(request),
         }
   const source = {
     value: dataset,

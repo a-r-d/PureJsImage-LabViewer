@@ -359,7 +359,7 @@ table,
 
 .example-gallery__filters input::placeholder {
   color: var(--wb-text-muted);
-  opacity: 1;
+  opacity: 0.62;
 }
 
 .example-gallery__error,
@@ -707,6 +707,31 @@ table,
   align-items: start;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+}
+
+.particle-workflow__heading > div {
+  min-width: 0;
+}
+
+.particle-workflow__heading p {
+  overflow-wrap: anywhere;
+}
+
+.particle-workflow label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  color: var(--wb-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.particle-workflow select,
+.particle-workflow input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
 }
 
 .particle-workflow__heading h3,
@@ -982,6 +1007,27 @@ table,
   margin-top: auto;
 }
 
+.mode-rail .ui-tooltip__bubble {
+  top: 50%;
+  left: calc(100% + 8px);
+  right: auto;
+  transform: translate(0, -50%);
+}
+
+.mode-rail .ui-tooltip:hover .ui-tooltip__bubble,
+.mode-rail .ui-tooltip:focus-within .ui-tooltip__bubble {
+  transform: translate(0, -50%);
+}
+
+.workbench-theme:has([role="dialog"][aria-modal="true"]) .ui-tooltip__bubble,
+.workbench-theme:has([role="dialog"][aria-modal="true"]) .ui-tooltip:hover .ui-tooltip__bubble,
+.workbench-theme:has([role="dialog"][aria-modal="true"])
+  .ui-tooltip:focus-within
+  .ui-tooltip__bubble {
+  opacity: 0;
+  visibility: hidden;
+}
+
 .mode-rail__button {
   width: 36px;
   height: 36px;
@@ -1132,6 +1178,7 @@ table,
 
 .inspector-content,
 .panel-placeholder {
+  min-width: 0;
   padding: 14px;
 }
 
@@ -1180,8 +1227,8 @@ table,
     justify-content: center;
   }
 
-  .app-bar__project-action,
-  .toolbar-divider {
+  .app-bar .app-bar__project-action,
+  .app-bar .toolbar-divider {
     display: none;
   }
 
@@ -1196,15 +1243,36 @@ table,
   }
 
   .app-bar {
-    grid-template-columns: minmax(150px, 1fr) auto;
+    overflow-x: auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .app-identity {
+    min-width: 0;
+  }
+
+  .app-identity h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .app-bar > .ui-toolbar:nth-child(2) {
     justify-self: end;
   }
 
+  .app-bar .app-bar__projects,
   .app-bar > .ui-toolbar:last-child,
   .app-bar > .ui-toolbar:nth-child(2) > .ui-button:last-of-type {
+    display: none;
+  }
+
+  .mock-viewport__readout {
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+
+  .mock-viewport__readout > span:first-child {
     display: none;
   }
 

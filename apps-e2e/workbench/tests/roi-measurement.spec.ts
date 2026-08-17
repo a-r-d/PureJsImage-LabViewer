@@ -16,7 +16,7 @@ test.afterEach(async ({ page }, testInfo) => {
 test('draws and measures an ROI with bounded Worker results', async ({ page }) => {
   await openSample(page)
   await page.getByRole('tab', { name: 'ROI' }).click()
-  await page.getByRole('button', { name: 'rectangle', exact: true }).click()
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click()
   const canvas = page.getByRole('img', { name: /Scientific image viewport/ })
   const box = await canvas.boundingBox()
   expect(box).not.toBeNull()
@@ -59,7 +59,7 @@ test('creates every ROI geometry with calibrated measurements', async ({ page })
     await expect(
       page.getByRole('list', { name: 'Regions of interest' }).getByRole('listitem'),
     ).toHaveCount(index + 1)
-    await expect(page.getByRole('button', { name: 'select', exact: true })).toHaveAttribute(
+    await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
@@ -77,7 +77,7 @@ test('calibrates from a known line, measures in physical units, and reloads the 
 }) => {
   await openSample(page)
   await page.getByRole('tab', { name: 'ROI' }).click()
-  await page.getByRole('button', { name: 'line', exact: true }).click()
+  await page.getByRole('button', { name: 'Line', exact: true }).click()
   const canvas = page.getByRole('img', { name: /Scientific image viewport/ })
   const box = await canvas.boundingBox()
   expect(box).not.toBeNull()

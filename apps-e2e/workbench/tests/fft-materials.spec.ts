@@ -21,7 +21,7 @@ test('runs a bounded FFT workspace with calibrated frequency cursor, peaks, expo
   test.setTimeout(120_000)
   await openSample(page)
   await page.getByRole('tab', { name: 'ROI' }).click()
-  await page.getByRole('button', { name: 'rectangle', exact: true }).click()
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click()
   const canvas = page.getByRole('img', { name: /Scientific image viewport/ })
   const box = await canvas.boundingBox()
   expect(box).not.toBeNull()

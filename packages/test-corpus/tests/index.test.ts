@@ -31,10 +31,10 @@ describe('generated corpus foundation', () => {
     const validation = validateCorpusManifest(corpusManifest)
     expect(validation.ok).toBe(true)
     expect(Object.isFrozen(corpusManifest)).toBe(true)
-    expect(enabledExampleScenarios()).toHaveLength(8)
+    expect(enabledExampleScenarios()).toHaveLength(9)
     expect(
       enabledExampleScenarios().filter(({ source }) => source.kind === 'bundled'),
-    ).toHaveLength(3)
+    ).toHaveLength(4)
     expect(enabledExampleScenarios().every(({ expected }) => expected.length > 0)).toBe(true)
     expect(researchExampleScenarios().length).toBeGreaterThanOrEqual(8)
     expect(new Set(corpusManifest.scenarios.map(({ id }) => id)).size).toBe(
@@ -66,11 +66,23 @@ describe('generated corpus foundation', () => {
         mediaType: 'application/octet-stream',
       },
     })
+    expect(resolveExampleFixture('cdc.staph-aureus-sem')).toEqual({
+      scenarioId: 'cdc.staph-aureus-sem',
+      requiresNetwork: false,
+      locator: {
+        kind: 'bundled',
+        path: 'examples/real/staph-aureus-sem.jpg',
+        name: 'staph-aureus-sem.jpg',
+        size: 1_272_863,
+        sha256: 'b51027770e00eb1065bd6e0c83e56265181b28559aee0e6d3ee04778514d8032',
+        mediaType: 'image/jpeg',
+      },
+    })
   })
 
   it('generates immutable PR artifacts and a complete cross-tier capability matrix', () => {
     const artifacts = scenarioTestArtifacts()
-    expect(artifacts).toHaveLength(8)
+    expect(artifacts).toHaveLength(9)
     expect(Object.isFrozen(artifacts)).toBe(true)
     expect(new Set(artifacts.map(({ fixture }) => fixture.kind))).toEqual(
       new Set(['generated', 'bundled']),
@@ -147,8 +159,8 @@ describe('generated corpus foundation', () => {
 
   it('keeps unqualified external data out of the enabled catalog with auditable reasons', () => {
     const audit = createCorpusAuditReport(corpusManifest)
-    expect(audit.counts.enabled).toBe(8)
-    expect(audit.entries.filter(({ ready }) => ready)).toHaveLength(8)
+    expect(audit.counts.enabled).toBe(9)
+    expect(audit.entries.filter(({ ready }) => ready)).toHaveLength(9)
     expect(audit.entries.find(({ id }) => id === 'zenodo.indentation-masks')).toMatchObject({
       status: 'candidate',
       ready: false,

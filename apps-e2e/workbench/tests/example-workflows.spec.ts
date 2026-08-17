@@ -10,8 +10,8 @@ test('browses, filters, opens, and prepares verified example workflows without n
 }) => {
   await page.getByRole('button', { name: 'Examples mode' }).click()
   const gallery = page.getByRole('dialog', { name: 'Example library' })
-  await expect(gallery).toContainText('8 ready')
-  await expect(gallery.locator('.example-card')).toHaveCount(8)
+  await expect(gallery).toContainText('9 ready')
+  await expect(gallery.locator('.example-card')).toHaveCount(9)
   await gallery.getByRole('searchbox', { name: 'Search' }).fill('roughness')
   const afm = gallery.locator('.example-card').filter({ hasText: 'Tilted AFM surface' })
   await expect(afm).toContainText('CC0-1.0')

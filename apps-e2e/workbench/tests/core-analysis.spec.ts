@@ -123,7 +123,7 @@ test('chains crop and filtering into a line profile and bounded CSV export', asy
   await expect(page.getByText(/Analysis completed in/)).toBeVisible({ timeout: 15_000 })
 
   await page.getByRole('tab', { name: 'ROI' }).click()
-  await page.getByRole('button', { name: 'line', exact: true }).click()
+  await page.getByRole('button', { name: 'Line', exact: true }).click()
   const canvas = page.getByRole('img', { name: /Scientific image viewport/ })
   const box = await canvas.boundingBox()
   expect(box).not.toBeNull()

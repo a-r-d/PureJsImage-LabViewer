@@ -58,7 +58,9 @@ Each of the 31 readers is behind an explicit dynamic import. The Vite Worker use
 output so individual format chunks stay independently loadable. Filename extensions choose a
 probe set; unknown extensions load the full catalog. One-dimensional series-only documents such
 as EMSA/MAS can open, but the viewport still requires a two-dimensional plane. Sparse Velox
-spectra remain outside this surface. No `purejsimage/src` path is permitted;
+spectra remain outside this surface. JPEG, PNG, WebP, BMP, and JP2 scientific adapters can
+decode origin-relative bands but reject many interior tiled requests; the imaging Worker
+materializes one cached plane and crops viewport tiles and analysis plane reads from it. No `purejsimage/src` path is permitted;
 `tooling/scripts/check-boundaries.mjs` enforces this for source and dynamic imports.
 
 ## RPC protocol

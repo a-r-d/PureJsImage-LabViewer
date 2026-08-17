@@ -342,7 +342,12 @@ export function ExampleGallery({
                 </select>
               </label>
             ))}
-            <Button onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</Button>
+            <Button
+              disabled={Object.values(filters).every((value) => value === '')}
+              onClick={() => setFilters(EMPTY_FILTERS)}
+            >
+              Clear filters
+            </Button>
           </div>
 
           {error === undefined ? null : (

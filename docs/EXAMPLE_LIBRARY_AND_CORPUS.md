@@ -11,7 +11,7 @@ The example system serves three purposes simultaneously:
 Every example is a versioned scenario, not merely an image thumbnail.
 
 The Prompt 11 baseline implements this contract in `packages/test-corpus`. Five distinct,
-deterministic GSF scenarios and three exact public-domain real electron micrographs are enabled
+deterministic GSF scenarios and four exact public-domain real electron micrographs are enabled
 offline and share their descriptors with the workbench gallery, fixture resolver, workflow
 buttons, initial-analysis presets, project replay, and tests. Other researched datasets remain in
 a separate planned/candidate/scheduled/excluded queue until every gate below is satisfied. See

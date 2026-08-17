@@ -54,7 +54,8 @@ export function InspectorContent({
       <div className="inspector-content agent-panel" data-testid="agent-panel">
         <p className="panel-kicker">User-approved tool client</p>
         <div className="agent-message">
-          The semantic action host is ready. Model access remains disabled until Prompt 14.
+          The workbench can run the same approved analysis actions as the rest of the UI. Connect a
+          model key when you want the agent to propose those actions.
         </div>
         <Button disabled variant="primary">
           Review proposed plan
@@ -64,7 +65,15 @@ export function InspectorContent({
     )
   }
   if (source === undefined || opened === undefined || selection === undefined) {
-    return <p className="panel-placeholder">Open a dataset to inspect {tab} settings.</p>
+    const emptyCopy: Readonly<Record<InspectorTab, string>> = {
+      info: 'Open a dataset to inspect calibration, axes, and file metadata.',
+      display: 'Open a dataset to adjust display mapping without changing source pixels.',
+      roi: 'Open a dataset to draw regions and measure them.',
+      analysis: 'Open a dataset to run a guided analysis recipe.',
+      history: 'Open a dataset to inspect project history.',
+      agent: 'Open a dataset before reviewing an agent plan.',
+    }
+    return <p className="panel-placeholder">{emptyCopy[tab]}</p>
   }
   if (tab === 'display') {
     const pairs = axisPairOptions(opened)

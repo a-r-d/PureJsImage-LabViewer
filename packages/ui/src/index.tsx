@@ -172,15 +172,20 @@ export function IconButton({
   tooltip = label,
   children,
   className = '',
+  onClick,
   ...props
 }: IconButtonProps) {
   return (
     <Tooltip label={tooltip}>
       <Button
+        {...props}
         aria-label={label}
         className={`ui-icon-button ${className}`}
         variant="ghost"
-        {...props}
+        onClick={(event) => {
+          onClick?.(event)
+          event.currentTarget.blur()
+        }}
       >
         {children}
       </Button>

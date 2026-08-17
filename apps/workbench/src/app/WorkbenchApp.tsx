@@ -134,6 +134,7 @@ import {
   fileSize,
   RECENT_SOURCE_KEY,
   readRecentSources,
+  sourceLocatorDetail,
 } from '../features/source/source-model.js'
 import {
   AnalysisInspector,
@@ -827,10 +828,16 @@ function WorkbenchRuntime({
               }
             : undefined,
         )
+        const counted =
+          table !== undefined && (tableOutput === undefined || tableOutput === 'objects')
+            ? table.totalRows
+            : undefined
         const completionMessage =
           options.preview === true
             ? `Preview ready in ${execution.elapsedMilliseconds.toFixed(1)} ms. No project revision was created.`
-            : `Analysis completed in ${execution.elapsedMilliseconds.toFixed(1)} ms.`
+            : counted === undefined
+              ? `Analysis completed in ${execution.elapsedMilliseconds.toFixed(1)} ms.`
+              : `Counted ${counted.toLocaleString()} particles in ${(execution.elapsedMilliseconds / 1_000).toFixed(1)} s.`
         reportParticleMessage(completionMessage)
         setAnalysisState({
           busy: false,
@@ -3389,7 +3396,7 @@ function WorkbenchRuntime({
               <Icon name="file-new" />
             </IconButton>
             <Button
-              className="app-bar__project-action"
+              className="app-bar__projects"
               onClick={(event) => {
                 projectDialogReturnFocus.current = event.currentTarget
                 executeCommand('workspace.openProject')
@@ -3605,7 +3612,11 @@ function WorkbenchRuntime({
                     <TreeRow
                       key={reference.id}
                       label={reference.label}
-                      detail={reference.bound ? reference.locator.kind : 'rebind required'}
+                      detail={
+                        reference.bound
+                          ? sourceLocatorDetail(reference.locator.kind)
+                          : 'rebind required'
+                      }
                       selected={workspace.active?.sourceId === reference.id}
                       onSelect={() => {
                         if (!reference.bound) {
@@ -3953,7 +3964,7 @@ function WorkbenchRuntime({
           <StatusItem label="Source">
             {source === undefined
               ? 'No source open'
-              : `${source.source.name} · ${source.source.kind}`}
+              : `${source.source.name} · ${sourceLocatorDetail(source.source.kind)}`}
           </StatusItem>
           <span className="status-spacer" />
           <StatusItem label="Calibration">

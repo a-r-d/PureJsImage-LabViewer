@@ -229,7 +229,7 @@ test('@performance records local task, interaction, and layout-stability evidenc
   test.setTimeout(60_000)
   await openSample(page)
   await page.getByRole('tab', { name: 'ROI' }).click()
-  await page.getByRole('button', { name: 'rectangle', exact: true }).click()
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click()
   const canvas = page.getByRole('img', { name: /Scientific image viewport/u })
   const box = await canvas.boundingBox()
   if (box === null) throw new Error('Scientific viewport was unavailable.')

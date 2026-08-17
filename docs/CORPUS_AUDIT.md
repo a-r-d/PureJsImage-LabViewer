@@ -10,7 +10,7 @@ enabled examples.
 
 | Status | Count | Meaning |
 | --- | ---: | --- |
-| Enabled | 8 | Five generated fixtures plus three exact public-domain bundled micrographs with bounded workflows and normal-CI coverage. |
+| Enabled | 9 | Five generated fixtures plus four exact public-domain bundled micrographs with bounded workflows and normal-CI coverage. |
 | Candidate | 5 | Scientifically useful record, but at least one identity, license, subset, or oracle gate remains. |
 | Scheduled | 3 | Exact upstream entry is known; large-data qualification belongs in controlled scheduled tests. |
 | Excluded | 1 | Capability or licensed exact-scenario boundary is not yet ready. |
@@ -26,6 +26,7 @@ enabled examples.
 | `generated.afm-tilted-surface` | enabled | ready | Deterministic calibrated height field, CC0, offline open, bounded leveling/roughness script. |
 | `generated.batch-particles` | enabled | ready | Deterministic local batch item, CC0, bounded batch proposal and per-item isolation workflow. |
 | `cdc.ecoli-sem` | enabled | ready | Exact public-domain 700 × 475 CDC SEM JPEG plus full-resolution grayscale GSF intensity derivative, both SHA-256 pinned; offline source loading and committed threshold/components preset. |
+| `cdc.staph-aureus-sem` | enabled | ready | Exact public-domain 2100 × 1630 CDC SEM JPEG (PHIL 6486), SHA-256 pinned and opened as the original JPEG; offline source loading and a committed bright-object threshold/components starting point. |
 | `nih.hela-cells-3709` | enabled | ready | Exact public-domain NIH JPEG plus a bounded 1024 × 832 grayscale GSF intensity derivative, both SHA-256 pinned; offline source loading and ROI-first inspection workflow. |
 | `nci.hhv6-em` | enabled | ready | Exact public-domain NCI TEM JPEG plus a bounded 1024 × 690 grayscale GSF intensity derivative, both SHA-256 pinned; offline source loading and a committed whole-plane histogram. |
 | `nist.sem-detection-limits` | candidate | not ready | NIST publishes SHA-256 for `mask_sets.zip`; exact bytes, immutable file URL, selected archive members, redistribution decision, and result oracle remain pending. |
@@ -43,6 +44,11 @@ enabled examples.
 - [CDC E. coli SEM source record](https://commons.wikimedia.org/wiki/File:Scanning_electron_micrograph_of_an_E._coli_colony.jpg)
   preserves the PHIL 10071 attribution, exact source JPEG, and U.S. Government public-domain
   determination. The workspace GSF converts that JPEG to grayscale intensity values without resizing.
+- [CDC Staphylococcus aureus SEM source record](https://commons.wikimedia.org/wiki/File:Staphylococcus_aureus_01.jpg)
+  preserves the PHIL 6486 attribution (Janice Carr; CDC/Matthew J. Arduino), exact 2,100 × 1,630
+  JPEG, and U.S. Government public-domain determination (PD-USGov-HHS-CDC). The workbench opens that
+  original JPEG through the scientific codec adapter; there is no GSF derivative. A 2 µm scale bar
+  and instrument legend are source annotations, not machine-readable calibration.
 - [NIH HeLa electron micrograph source record](https://commons.wikimedia.org/wiki/File:HeLa_Cells_Image_3709-PH.jpg)
   identifies NIH image 3709-PH and its public-domain status. The workspace GSF is a documented
   1024 × 832 grayscale Lanczos derivative.

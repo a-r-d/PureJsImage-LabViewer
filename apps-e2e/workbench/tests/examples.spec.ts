@@ -53,7 +53,7 @@ for (const artifact of prScenarios) {
       if (sourceName !== undefined)
         await expect(
           page.getByRole('button', {
-            name: `${sourceName} ${artifact.fixture.kind === 'bundled' ? 'bundled' : 'sample'}`,
+            name: `${sourceName} ${artifact.fixture.kind === 'bundled' ? 'example' : 'sample'}`,
           }),
         ).toBeVisible()
       await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText(
@@ -62,7 +62,9 @@ for (const artifact of prScenarios) {
           : (artifact.metadata.calibration.split(' · ')[0] ?? artifact.metadata.calibration),
       )
       if (artifact.initialAnalysis !== undefined) {
-        await expect(page.locator('.analysis-message')).toContainText('Analysis completed')
+        await expect(page.locator('.analysis-message, .result-count')).toContainText(
+          /Analysis completed|Counted \d+|particles counted/u,
+        )
         await expect(page.getByRole('tab', { name: 'Results', exact: true })).toHaveAttribute(
           'aria-selected',
           'true',
@@ -102,7 +104,9 @@ test('replays a bundled real source and its committed analysis after reload', as
     .click()
   await expect(gallery).toBeHidden()
   await waitForWorkbenchSettled(page)
-  await expect(page.locator('.analysis-message')).toContainText('Analysis completed')
+  await expect(page.locator('.analysis-message, .result-count')).toContainText(
+    /Analysis completed|Counted \d+|particles counted/u,
+  )
   await page.getByLabel('Project title').fill('Reviewed real SEM')
   await page.getByLabel('Project title').blur()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -111,7 +115,7 @@ test('replays a bundled real source and its committed analysis after reload', as
   await page.reload()
 
   await expect(page.getByLabel('Project title')).toHaveValue('Reviewed real SEM')
-  await expect(page.getByRole('button', { name: 'e-coli-sem.gsf bundled' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'e-coli-sem.gsf example' })).toBeVisible()
   await expect(page.getByRole('img', { name: /Scientific image viewport/u })).toBeVisible()
   await expect(page.getByRole('status', { name: 'Workbench status' })).toContainText('Uncalibrated')
   await page.getByRole('tab', { name: 'Analysis' }).click()

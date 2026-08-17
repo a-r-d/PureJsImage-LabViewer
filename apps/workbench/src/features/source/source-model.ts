@@ -36,6 +36,14 @@ export function axisPairOptions(
   return pairs
 }
 
+export function sourceLocatorDetail(kind: string): string {
+  if (kind === 'sample') return 'generated'
+  if (kind === 'bundled') return 'example'
+  if (kind === 'local') return 'local file'
+  if (kind === 'remote') return 'remote'
+  return kind
+}
+
 export function calibrationLabel(opened: OpenedDatasetDescriptor | undefined): string {
   if (opened === undefined) return 'Uncalibrated'
   const axis = opened.dataset.axes.find(
@@ -47,5 +55,7 @@ export function calibrationLabel(opened: OpenedDatasetDescriptor | undefined): s
 }
 
 export function sourceSummary(source: OpenedSourceDescriptor | undefined): string {
-  return source === undefined ? 'No source open' : `${source.source.name} · ${source.source.kind}`
+  return source === undefined
+    ? 'No source open'
+    : `${source.source.name} · ${sourceLocatorDetail(source.source.kind)}`
 }

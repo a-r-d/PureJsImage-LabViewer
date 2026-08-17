@@ -382,13 +382,29 @@ canvas:focus-visible,
 }
 .estimate-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
   margin: 0;
 }
 .estimate-grid div {
+  display: grid;
+  gap: 3px;
   padding: 6px;
   border: 1px solid var(--wb-border);
+}
+.estimate-grid span {
+  color: var(--wb-text-muted);
+  font-size: 11px;
+}
+.estimate-grid strong {
+  overflow: hidden;
+  font-family: var(--wb-font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-count {
+  font-size: 16px;
 }
 .estimate-grid dt {
   color: var(--wb-text-muted);

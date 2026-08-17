@@ -174,6 +174,23 @@ globalThis.__scriptMain = main
       { workflow: 'real-ecoli-components', threshold: 46_260, connectivity: 8 },
     ),
     await script(
+      'builtin.real-staph-components',
+      'Real S. aureus JPEG segmentation review',
+      'Documents the bounded threshold and connected-components preset applied to the original CDC Staphylococcus SEM JPEG.',
+      `import { lab } from '@lab/api'
+
+export async function main() {
+  const plan = await lab.analysis.dryRun({ workflow: 'connected-components', threshold: 128, mode: 'greater-than', connectivity: 8, component: 0, fixtureId: 'cdc.staph-aureus-sem' })
+  return { workflow: 'real-staph-components', threshold: 128, connectivity: 8, plan }
+}
+
+globalThis.__scriptMain = main
+`,
+      'cdc.staph-aureus-sem',
+      ['analysis.dry-run'],
+      { workflow: 'real-staph-components', threshold: 128, connectivity: 8 },
+    ),
+    await script(
       'builtin.real-image-inspection',
       'Real micrograph inspection',
       'Plans an ROI-first inspection without inventing calibration absent from the source file.',

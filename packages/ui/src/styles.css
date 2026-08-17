@@ -71,6 +71,12 @@
   transform: translate(-50%, 0);
 }
 
+input::placeholder,
+textarea::placeholder {
+  color: var(--wb-text-muted);
+  opacity: 0.62;
+}
+
 .ui-tabs {
   display: flex;
   min-width: 0;

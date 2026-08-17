@@ -47,7 +47,7 @@ import {
 } from 'purejsimage/scientific'
 import { createScientificFileContext } from 'purejsimage/scientific/browser'
 import { HttpRangeSource } from 'purejsimage/sources/http-range'
-
+import { cacheCodecAdapterPlane, usesCodecAdapterReader } from './codec-plane-cache.js'
 import { datasetDescriptor, defaultPlaneSelection, openedSourceDescriptor } from './descriptor.js'
 import { PUREJSIMAGE_PACKAGE_VERSION } from './package-version.js'
 import { createAnalysisBindings, isScientificDataset } from './worker-host/analysis-rpc.js'
@@ -75,6 +75,13 @@ import { mapTile, numericValue } from './worker-host/view-rpc.js'
 import { loadReadersForSource, SUPPORTED_READERS } from './worker-readers.js'
 
 export type { WorkerHostResult } from './worker-host/protocol.js'
+
+function wrapNumericSource(
+  source: ReturnType<typeof resolveNumericTileSource>,
+  readerId: string,
+): ReturnType<typeof resolveNumericTileSource> {
+  return usesCodecAdapterReader(readerId) ? cacheCodecAdapterPlane(source) : source
+}
 
 const MAX_SERIES_EXPORT_CELLS = 1_000_000
 
@@ -595,9 +602,13 @@ export class ImagingWorkerHost {
         handleId,
         summary,
         dataset,
+        readerId: active.document.reader.id,
         runtime,
         tileSource: numericTileSourceToTileSource(
-          resolveNumericTileSource(dataset, { targetSampleType: 'float32' }),
+          wrapNumericSource(
+            resolveNumericTileSource(dataset, { targetSampleType: 'float32' }),
+            active.document.reader.id,
+          ),
         ),
         tileIdentity: createTileDatasetIdentityForScientificDataset(dataset, {
           sessionId: handleId,

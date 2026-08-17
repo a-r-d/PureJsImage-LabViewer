@@ -35,8 +35,8 @@ export const DEFAULT_PARTICLE_WORKFLOW: ParticleWorkflowSettings = Object.freeze
   closeRadius: 0,
   fillHoles: true,
   clearBorder: false,
-  minimumObjectPixels: 8,
-  watershed: true,
+  minimumObjectPixels: 64,
+  watershed: false,
   minimumPeakDistance: 3,
   connectivity: 8,
   edgePolicy: 'exclude',
@@ -51,11 +51,27 @@ export const DEFAULT_PARTICLE_WORKFLOW: ParticleWorkflowSettings = Object.freeze
   overlayView: 'labels',
 })
 
-function estimateValue(dryRun: AnalysisDryRunResponse | undefined, key: string): string {
+function formatEstimate(value: unknown, kind: 'bytes' | 'ms'): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'unresolved'
+  if (kind === 'bytes') {
+    if (value >= 1_048_576) return `${(value / 1_048_576).toFixed(1)} MiB`
+    if (value >= 1_024) return `${Math.round(value / 1_024)} KiB`
+    return `${Math.round(value)} B`
+  }
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)} s`
+  return `${Math.round(value)} ms`
+}
+
+function estimateValue(
+  dryRun: AnalysisDryRunResponse | undefined,
+  key: string,
+  kind: 'bytes' | 'ms',
+): string {
   const estimate = dryRun?.plan?.['totalEstimate']
-  return typeof estimate === 'object' && estimate !== null && !Array.isArray(estimate)
-    ? String((estimate as Readonly<Record<string, unknown>>)[key] ?? 'unresolved')
-    : 'plan required'
+  if (typeof estimate !== 'object' || estimate === null || Array.isArray(estimate)) {
+    return 'plan required'
+  }
+  return formatEstimate((estimate as Readonly<Record<string, unknown>>)[key], kind)
 }
 
 function numeric(
@@ -133,7 +149,7 @@ export function ParticleAnalysisWorkflow({
           <p className="panel-kicker">Guided, inspectable recipe</p>
           <h3 id="particle-workflow-title">Particle analysis</h3>
         </div>
-        <span>{graphSteps.length} visible steps</span>
+        <span>{graphSteps.length} steps</span>
       </div>
 
       <fieldset>
@@ -388,21 +404,36 @@ export function ParticleAnalysisWorkflow({
         <section className="estimate-grid" aria-label="Particle analysis resource estimate">
           <div>
             <span>Peak memory</span>
-            <strong>{estimateValue(dryRun, 'peakWorkingBytes')} bytes</strong>
+            <strong>{estimateValue(dryRun, 'peakWorkingBytes', 'bytes')}</strong>
           </div>
           <div>
             <span>Compute</span>
-            <strong>{estimateValue(dryRun, 'computeMilliseconds')} ms</strong>
+            <strong>{estimateValue(dryRun, 'computeMilliseconds', 'ms')}</strong>
           </div>
         </section>
         <div className="button-row">
           <Button disabled={busy} onClick={onPlan}>
             Dry-run full workflow
           </Button>
-          <Button disabled={busy || dryRun?.valid !== true} onClick={onRun} variant="primary">
+          <Button
+            disabled={busy || dryRun?.valid !== true}
+            onClick={onRun}
+            title={
+              dryRun?.valid === true
+                ? 'Execute the planned particle workflow'
+                : 'Plan the workflow first so memory and time are estimated'
+            }
+            variant="primary"
+          >
             Run particle analysis
           </Button>
         </div>
+        {dryRun?.valid === true ? null : (
+          <p className="panel-note">
+            Plan the workflow before running. This estimates memory and keeps accidental full-plane
+            work visible.
+          </p>
+        )}
       </fieldset>
 
       <fieldset>

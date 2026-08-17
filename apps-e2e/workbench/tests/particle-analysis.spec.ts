@@ -43,7 +43,9 @@ test('completes the keyboard-guided particle workflow with linked results and re
   await expect(run).toBeEnabled()
   await run.focus()
   await page.keyboard.press('Enter')
-  await expect(workflow.getByText(/Analysis completed in/)).toBeVisible({ timeout: 60_000 })
+  await expect(workflow.getByText(/Counted \d+ particles in|Analysis completed in/u)).toBeVisible({
+    timeout: 60_000,
+  })
 
   const results = page.getByTestId('analysis-results')
   const particleTable = results

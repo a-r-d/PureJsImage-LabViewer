@@ -356,14 +356,14 @@ export function RoiInspector({
   readonly onCalibration: (calibration?: Omit<CalibrationOverride, 'datasetReferenceId'>) => void
   readonly opened: OpenedDatasetDescriptor
 }) {
-  const tools: readonly RoiTool[] = [
-    'select',
-    'point',
-    'line',
-    'polyline',
-    'rectangle',
-    'ellipse',
-    'polygon',
+  const tools: readonly (readonly [RoiTool, string])[] = [
+    ['select', 'Select'],
+    ['point', 'Point'],
+    ['line', 'Line'],
+    ['polyline', 'Polyline'],
+    ['rectangle', 'Rectangle'],
+    ['ellipse', 'Ellipse'],
+    ['polygon', 'Polygon'],
   ]
   const selected = rois.find(({ id }) => id === selectedRoiId)
   const horizontal = opened.dataset.axes.find(({ id }) => id === opened.selection.displayAxes[0])
@@ -387,14 +387,14 @@ export function RoiInspector({
     <div className="inspector-content form-stack" data-testid="roi-inspector">
       <fieldset className="tool-grid">
         <legend>Viewport tool</legend>
-        {tools.map((candidate) => (
+        {tools.map(([candidate, label]) => (
           <Button
             aria-pressed={tool === candidate}
             key={candidate}
             onClick={() => onTool(candidate)}
             variant={tool === candidate ? 'primary' : 'secondary'}
           >
-            {candidate}
+            {label}
           </Button>
         ))}
       </fieldset>
@@ -1241,10 +1241,14 @@ export function AnalysisResults({
   }
   const table = state.table
   const objectTable = state.tableOutput === undefined || state.tableOutput === 'objects'
+  const headline =
+    table !== undefined && objectTable
+      ? `${table.totalRows.toLocaleString()} particles counted`
+      : `${execution.outputs.length} analysis outputs`
   return (
     <div className="analysis-results" data-testid="analysis-results">
       <div className="result-summary-row">
-        <strong>{execution.outputs.length} bounded outputs</strong>
+        <strong className="result-count">{headline}</strong>
         <span>{execution.elapsedMilliseconds.toFixed(1)} ms</span>
         <Button onClick={onPin}>Pin result</Button>
         <Button onClick={() => onExport('selected', 'csv')}>Export selected CSV</Button>
@@ -1274,8 +1278,9 @@ export function AnalysisResults({
         <>
           <div className="result-summary-row">
             <strong>
-              {table.totalRows.toLocaleString()}{' '}
-              {objectTable ? 'objects' : `${state.tableOutput ?? 'result'} rows`}
+              {objectTable
+                ? 'Object measurements'
+                : `${table.totalRows.toLocaleString()} ${state.tableOutput ?? 'result'} rows`}
             </strong>
             {objectTable ? (
               <label>

@@ -41,6 +41,7 @@ export interface DatasetRecord {
   readonly handleId: DatasetHandleId
   readonly summary: ScientificDatasetSummary
   readonly dataset: ScientificDataset
+  readonly readerId: string
   readonly runtime: TileRuntime
   readonly tileSource: TileSource
   readonly tileIdentity: ReturnType<typeof createTileDatasetIdentityForScientificDataset>

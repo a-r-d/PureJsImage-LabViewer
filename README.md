@@ -7,7 +7,8 @@ the user deliberately chooses a network action.
 
 This bootstrap provides the strict monorepo, package boundaries, tests, and accessible
 single-route application shell. Scientific file opening and analysis workflows are added in
-later milestones described under [`prompts/`](prompts/).
+later milestones described under [`prompts/`](prompts/). Notable product changes are recorded
+in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Prerequisites
 

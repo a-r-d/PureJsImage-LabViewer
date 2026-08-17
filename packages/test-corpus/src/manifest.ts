@@ -122,6 +122,14 @@ const WORKFLOW_ACTIONS: Readonly<Record<string, readonly ExampleWorkflowStepActi
     'project.replay',
     'accessibility.scan',
   ],
+  'real.staph.components': [
+    'gallery.open',
+    'source.inspect',
+    'analysis.core',
+    'analysis.particles',
+    'project.replay',
+    'accessibility.scan',
+  ],
   'real.hela.inspect': ['gallery.open', 'source.inspect', 'viewport.inspect', 'project.replay'],
   'real.hhv6.histogram': [
     'gallery.open',
@@ -193,6 +201,23 @@ const GENERATED_TEST_PLANS: Readonly<Record<string, ExampleTestPlanV1>> = {
 
 const BUNDLED_TEST_PLANS: Readonly<Record<string, ExampleTestPlanV1>> = {
   'cdc.ecoli-sem': {
+    tier: 'pr',
+    capabilities: [
+      'source.reader-dataset',
+      'source.first-useful-tile',
+      'viewport.navigation-value-readout',
+      'analysis.threshold-morphology-watershed',
+      'analysis.components-filtering-measurements',
+      'project.save-reopen-rebind',
+      'accessibility.keyboard',
+      'results.linked-selection',
+    ],
+    screenshotStates: ['opened', 'analysis'],
+    accessibility: true,
+    projectReplay: true,
+    agentEvalCaseIds: [],
+  },
+  'cdc.staph-aureus-sem': {
     tier: 'pr',
     capabilities: [
       'source.reader-dataset',
@@ -360,10 +385,11 @@ function bundled(
   summary: string,
   modality: string,
   vendor: string,
+  format: string,
   calibration: string,
   landingPage: string,
   file: CorpusFileV1,
-  previewFile: CorpusFileV1,
+  previewFile: CorpusFileV1 | undefined,
   attribution: string,
   tags: readonly string[],
   learningGoals: readonly string[],
@@ -371,25 +397,30 @@ function bundled(
   expected: ExampleScenarioV1['expected'],
   initialAnalysis?: ExampleInitialAnalysisV1,
 ): ExampleScenarioV1 {
+  const preview = previewFile ?? file
+  const files =
+    previewFile === undefined || previewFile.path === file.path ? [file] : [file, previewFile]
   return {
     schemaVersion: CORPUS_SCHEMA_VERSION,
     id,
     status: 'enabled',
     tier: 'bundled',
     statusReason:
-      'Public-domain source provenance, a documented scientific-format derivative, exact integrity, offline delivery, and bounded CI coverage are verified.',
+      format === 'GSF'
+        ? 'Public-domain source provenance, a documented scientific-format derivative, exact integrity, offline delivery, and bounded CI coverage are verified.'
+        : 'Public-domain source provenance, exact original-file integrity, offline delivery, and bounded CI coverage are verified.',
     title,
     summary,
     modality,
     vendor,
-    format: 'GSF',
+    format,
     sizeClass: file.sizeBytes !== undefined && file.sizeBytes < 500_000 ? 'tiny' : 'small',
     calibration,
-    source: { kind: 'bundled', landingPage, files: [file, previewFile] },
+    source: { kind: 'bundled', landingPage, files },
     license: { ...PUBLIC_DOMAIN_MARK, attribution, citation: landingPage },
     preview: {
       kind: 'bundled-image',
-      value: `/${previewFile.path}`,
+      value: `/${preview.path}`,
       alt: `${title} real-data preview`,
     },
     ...(initialAnalysis === undefined ? {} : { initialAnalysis }),
@@ -579,6 +610,7 @@ const scenarios: readonly ExampleScenarioV1[] = [
     'A CDC scanning electron micrograph of an E. coli colony with instrument annotations and a 2 µm scale bar, opened as a full-resolution grayscale GSF derivative.',
     'SEM (real)',
     'CDC Public Health Image Library · Janice Haney Carr',
+    'GSF',
     'Scale bar visible in source · no machine-readable calibration embedded',
     'https://commons.wikimedia.org/wiki/File:Scanning_electron_micrograph_of_an_E._coli_colony.jpg',
     {
@@ -638,11 +670,72 @@ const scenarios: readonly ExampleScenarioV1[] = [
     },
   ),
   bundled(
+    'cdc.staph-aureus-sem',
+    'S. aureus cocci (real SEM JPEG)',
+    'A CDC scanning electron micrograph of vancomycin-intermediate Staphylococcus aureus, opened as the original 2100 by 1630 JPEG rather than a converted derivative.',
+    'SEM (real)',
+    'CDC Public Health Image Library · Janice Carr',
+    'JPEG',
+    'Visible 2 µm scale bar in source annotation · no machine-readable calibration embedded',
+    'https://commons.wikimedia.org/wiki/File:Staphylococcus_aureus_01.jpg',
+    {
+      path: 'examples/real/staph-aureus-sem.jpg',
+      sizeBytes: 1_272_863,
+      sha256: 'b51027770e00eb1065bd6e0c83e56265181b28559aee0e6d3ee04778514d8032',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/5/57/Staphylococcus_aureus_01.jpg',
+      mediaType: 'image/jpeg',
+      delivery: 'bundled',
+    },
+    undefined,
+    'CDC / Janice Carr and Matthew J. Arduino, PHIL 6486; public-domain original JPEG opened without resampling or GSF conversion.',
+    ['real-data', 'SEM', 'bacteria', 'JPEG', 'threshold', 'connected-components', 'particles'],
+    [
+      'Open an original JPEG through the scientific codec adapter',
+      'Review a bright-object segmentation starting point on clustered cocci',
+      'Treat the 2 µm scale bar and instrument legend as source annotation, not measured pixels',
+    ],
+    [
+      workflow(
+        'real.staph.components',
+        'Count bright cocci',
+        'builtin.real-staph-components',
+        'script',
+        'A reviewed manual threshold and connected-components result opens with the original JPEG.',
+      ),
+    ],
+    [
+      {
+        id: 'real.staph.source-dimensions',
+        level: 'exact',
+        description: 'The original JPEG decodes to 2100 by 1630 pixels.',
+        value: '2100x1630',
+      },
+      {
+        id: 'real.staph.analysis-visible',
+        level: 'product',
+        description: 'The opened workspace includes a committed threshold/components graph.',
+        value: true,
+      },
+    ],
+    {
+      kind: 'connected-components',
+      title: 'Bright-cocci segmentation',
+      description:
+        'Red-channel intensity > 128 with 8-connected labeling. This is a reviewable starting point, not a Staphylococcus cell census. Touching cocci merge; the 2 µm scale bar and instrument legend are source annotations.',
+      component: 0,
+      threshold: 128,
+      mode: 'greater-than',
+      connectivity: 8,
+      overlay: 'labels',
+    },
+  ),
+  bundled(
     'nih.hela-cells-3709',
     'Dividing HeLa cells (real EM)',
     'An NIH electron micrograph showing dividing HeLa cells and dense surface ultrastructure, opened as a bounded 1024-pixel grayscale GSF derivative.',
     'Electron microscopy (real)',
     'National Institutes of Health',
+    'GSF',
     'No machine-readable calibration embedded · measurements remain in pixels',
     'https://commons.wikimedia.org/wiki/File:HeLa_Cells_Image_3709-PH.jpg',
     {
@@ -690,6 +783,7 @@ const scenarios: readonly ExampleScenarioV1[] = [
     'An NCI transmission electron micrograph with mature HHV-6 virions and a labeled structural inset, opened as a bounded 1024-pixel grayscale GSF derivative.',
     'TEM (real)',
     'NCI Laboratory of Tumor Cell Biology · Bernard Kramarsky',
+    'GSF',
     'No machine-readable calibration embedded · measurements remain in pixels',
     'https://commons.wikimedia.org/wiki/File:HHV-6_-_EM.jpg',
     {
