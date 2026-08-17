@@ -1,0 +1,39 @@
+CHANGELOG.md
+  s_91ff1f8baba74e::t_7a764550d66626 18-32
+apps/workbench/src/MaterialsPanels.tsx
+  s_80e149f944adf4::t_03331344d79b4c 1035-1151,1412-1416,1420,1427-1451,1463-1470
+apps/workbench/src/analysis-workflows.ts
+  s_91ff1f8baba74e::t_ce714920a9de25 388,391-396
+apps/workbench/src/app/WorkbenchApp.tsx
+  s_80e149f944adf4::t_9e83d7b747bb19 142-143,156,319-335,457-464,825,864,869-871,900-904,1588-1606,1671-1672,2531,2535-2536,3373-3378,3819-3824
+apps/workbench/src/styles.css
+  s_80e149f944adf4::t_0aae463ac321f7 683-690,696
+apps/workbench/src/styles/shell.css
+  s_91ff1f8baba74e::t_e6be42d8f170e7 915-952
+apps/workbench/tests/materials-analysis.test.ts
+  s_80e149f944adf4::t_0379c9f8062584 1-5,7,9,11,15-22,53-81,100-201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "dc9c3e03d0469e57470251e089896e58645f3501",
+  "prompts": {},
+  "sessions": {
+    "s_80e149f944adf4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00d3f-a3a2-7921-a442-a9f1d25ec60d",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    },
+    "s_91ff1f8baba74e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00d4b-5363-7233-a906-ba3ee3d89dac",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
