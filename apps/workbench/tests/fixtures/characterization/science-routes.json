@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "application": "science-workbench",
+  "routes": [
+    {
+      "path": "/",
+      "id": "science-workbench",
+      "component": "WorkbenchApp",
+      "title": "Materials Workbench",
+      "readyAttribute": "data-workbench-ready"
+    },
+    {
+      "path": "/__ui-lab",
+      "id": "ui-lab",
+      "component": "UiLab",
+      "title": "PureJsImage Lab · UI system V2",
+      "readyAttribute": "data-workbench-ready"
+    }
+  ]
+}

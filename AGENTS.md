@@ -32,6 +32,7 @@ Read these before changing architecture or workflow behavior:
 - `docs/AGENT_EVALS.md`
 - `docs/QUALITY_GATES.md`
 - `docs/DECISIONS.md`
+- `docs/adr/0001-shared-showcase-monorepo.md`
 
 ## Repository rules
 

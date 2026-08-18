@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 1,
+  "application": "science-workbench",
+  "recordedAt": "2026-08-18",
+  "budgets": {
+    "routeChunkGzipBytes": 307200,
+    "languageWorkerGzipBytes": 1024000,
+    "warmShellInteractiveMilliseconds": 1000,
+    "largestTilePixels": 65536
+  },
+  "bundle": {
+    "buildRoot": "apps/workbench/dist",
+    "assets": [
+      {
+        "logicalName": "aperio-svs.js",
+        "source": "apps/workbench/dist/assets/aperio-svs-BS4n144n.js",
+        "gzipBytes": 5041
+      },
+      {
+        "logicalName": "blockfile.js",
+        "source": "apps/workbench/dist/assets/blockfile-ChEztaKc.js",
+        "gzipBytes": 2497
+      },
+      {
+        "logicalName": "bmp.js",
+        "source": "apps/workbench/dist/assets/bmp-C04YxdWg.js",
+        "gzipBytes": 4132
+      },
+      {
+        "logicalName": "cbf.js",
+        "source": "apps/workbench/dist/assets/cbf-rX8Zrj-D.js",
+        "gzipBytes": 4283
+      },
+      {
+        "logicalName": "CodeMirrorEditor.js",
+        "source": "apps/workbench/dist/assets/CodeMirrorEditor-BpctbM2f.js",
+        "gzipBytes": 165926
+      },
+      {
+        "logicalName": "crc32.js",
+        "source": "apps/workbench/dist/assets/crc32-CamaxAuY.js",
+        "gzipBytes": 269
+      },
+      {
+        "logicalName": "dataset-adapters.js",
+        "source": "apps/workbench/dist/assets/dataset-adapters-DTjzOXfL.js",
+        "gzipBytes": 2046
+      },
+      {
+        "logicalName": "digital-micrograph.js",
+        "source": "apps/workbench/dist/assets/digital-micrograph-DEjQsz2u.js",
+        "gzipBytes": 8714
+      },
+      {
+        "logicalName": "digital-surf.js",
+        "source": "apps/workbench/dist/assets/digital-surf-B54GYYoI.js",
+        "gzipBytes": 3978
+      },
+      {
+        "logicalName": "ebsd-text.js",
+        "source": "apps/workbench/dist/assets/ebsd-text-BwfOYSy-.js",
+        "gzipBytes": 2949
+      },
+      {
+        "logicalName": "emsa.js",
+        "source": "apps/workbench/dist/assets/emsa-DPcEuGav.js",
+        "gzipBytes": 2310
+      },
+      {
+        "logicalName": "emscripten-module.browser.js",
+        "source": "apps/workbench/dist/assets/emscripten-module.browser-CyA-5pVk.js",
+        "gzipBytes": 5104
+      },
+      {
+        "logicalName": "envi.js",
+        "source": "apps/workbench/dist/assets/envi-CN5Vud-9.js",
+        "gzipBytes": 4914
+      },
+      {
+        "logicalName": "examples.js",
+        "source": "apps/workbench/dist/assets/examples-EesanLNf.js",
+        "gzipBytes": 1855
+      },
+      {
+        "logicalName": "ffi.js",
+        "source": "apps/workbench/dist/assets/ffi-DBVe9U3D.js",
+        "gzipBytes": 1014
+      },
+      {
+        "logicalName": "fits.js",
+        "source": "apps/workbench/dist/assets/fits-BGw8oVnn.js",
+        "gzipBytes": 5818
+      },
+      {
+        "logicalName": "gsf.js",
+        "source": "apps/workbench/dist/assets/gsf-vKT_f9W7.js",
+        "gzipBytes": 3228
+      },
+      {
+        "logicalName": "hdf5-file.js",
+        "source": "apps/workbench/dist/assets/hdf5-file-DASKaYXG.js",
+        "gzipBytes": 34490
+      },
+      {
+        "logicalName": "helpers.js",
+        "source": "apps/workbench/dist/assets/helpers-C6J-PiRl.js",
+        "gzipBytes": 462
+      },
+      {
+        "logicalName": "igor-binary-wave.js",
+        "source": "apps/workbench/dist/assets/igor-binary-wave-CeZtiZHA.js",
+        "gzipBytes": 3259
+      },
+      {
+        "logicalName": "image-codec-reader.js",
+        "source": "apps/workbench/dist/assets/image-codec-reader-BWtY15Ao.js",
+        "gzipBytes": 2698
+      },
+      {
+        "logicalName": "index.js",
+        "source": "apps/workbench/dist/assets/index-BsChTh28.js",
+        "gzipBytes": 177707
+      },
+      {
+        "logicalName": "interchange-shared.js",
+        "source": "apps/workbench/dist/assets/interchange-shared-G9DZv29P.js",
+        "gzipBytes": 2677
+      },
+      {
+        "logicalName": "jp2.js",
+        "source": "apps/workbench/dist/assets/jp2-po30WmoB.js",
+        "gzipBytes": 329
+      },
+      {
+        "logicalName": "jpeg.js",
+        "source": "apps/workbench/dist/assets/jpeg-B7PCFfvm.js",
+        "gzipBytes": 18985
+      },
+      {
+        "logicalName": "jpeg.js#1",
+        "source": "apps/workbench/dist/assets/jpeg-DEY3F0A3.js",
+        "gzipBytes": 321
+      },
+      {
+        "logicalName": "jpeg2000.js",
+        "source": "apps/workbench/dist/assets/jpeg2000-D4MtiGuh.js",
+        "gzipBytes": 15694
+      },
+      {
+        "logicalName": "language-client.js",
+        "source": "apps/workbench/dist/assets/language-client-DTHSxQf6.js",
+        "gzipBytes": 838
+      },
+      {
+        "logicalName": "language.worker.js",
+        "source": "apps/workbench/dist/assets/language.worker-_TFzLBn-.js",
+        "gzipBytes": 969005
+      },
+      {
+        "logicalName": "meta-image.js",
+        "source": "apps/workbench/dist/assets/meta-image-DPGNce34.js",
+        "gzipBytes": 2784
+      },
+      {
+        "logicalName": "metadata.js",
+        "source": "apps/workbench/dist/assets/metadata-D9bjv5JR.js",
+        "gzipBytes": 5984
+      },
+      {
+        "logicalName": "mib.js",
+        "source": "apps/workbench/dist/assets/mib-CxaGavbk.js",
+        "gzipBytes": 2847
+      },
+      {
+        "logicalName": "module-6F3E5H7Y.js",
+        "source": "apps/workbench/dist/assets/module-6F3E5H7Y-Bk_Kqtn5.js",
+        "gzipBytes": 8208
+      },
+      {
+        "logicalName": "mrc.js",
+        "source": "apps/workbench/dist/assets/mrc-BdvTab0P.js",
+        "gzipBytes": 4118
+      },
+      {
+        "logicalName": "nanonis-sxm.js",
+        "source": "apps/workbench/dist/assets/nanonis-sxm-B4_p4R5c.js",
+        "gzipBytes": 3186
+      },
+      {
+        "logicalName": "ncem-emd.js",
+        "source": "apps/workbench/dist/assets/ncem-emd-CzqOUabZ.js",
+        "gzipBytes": 5716
+      },
+      {
+        "logicalName": "nifti.js",
+        "source": "apps/workbench/dist/assets/nifti-DYTmzYNg.js",
+        "gzipBytes": 4058
+      },
+      {
+        "logicalName": "npy.js",
+        "source": "apps/workbench/dist/assets/npy-Nkp6zaba.js",
+        "gzipBytes": 2212
+      },
+      {
+        "logicalName": "nrrd.js",
+        "source": "apps/workbench/dist/assets/nrrd-CHMksqJI.js",
+        "gzipBytes": 3622
+      },
+      {
+        "logicalName": "ome-tiff.js",
+        "source": "apps/workbench/dist/assets/ome-tiff-Brx2EWku.js",
+        "gzipBytes": 4993
+      },
+      {
+        "logicalName": "png.js",
+        "source": "apps/workbench/dist/assets/png-Dsh60Rqc.js",
+        "gzipBytes": 7632
+      },
+      {
+        "logicalName": "raster.js",
+        "source": "apps/workbench/dist/assets/raster-C0xyVPAw.js",
+        "gzipBytes": 142
+      },
+      {
+        "logicalName": "reader.js",
+        "source": "apps/workbench/dist/assets/reader-COheuCH2.js",
+        "gzipBytes": 10912
+      },
+      {
+        "logicalName": "rpl.js",
+        "source": "apps/workbench/dist/assets/rpl-BRTTEi6W.js",
+        "gzipBytes": 2720
+      },
+      {
+        "logicalName": "sandbox.worker.js",
+        "source": "apps/workbench/dist/assets/sandbox.worker-D-A7JJMB.js",
+        "gzipBytes": 5746
+      },
+      {
+        "logicalName": "ScriptStudioSurface.js",
+        "source": "apps/workbench/dist/assets/ScriptStudioSurface-BaiHu4dh.js",
+        "gzipBytes": 5477
+      },
+      {
+        "logicalName": "shared.js",
+        "source": "apps/workbench/dist/assets/shared-DVv8vx6Z.js",
+        "gzipBytes": 591
+      },
+      {
+        "logicalName": "studio-operations.js",
+        "source": "apps/workbench/dist/assets/studio-operations-BtF1cDKm.js",
+        "gzipBytes": 1516
+      },
+      {
+        "logicalName": "tia-emi.js",
+        "source": "apps/workbench/dist/assets/tia-emi-_zloui9S.js",
+        "gzipBytes": 3701
+      },
+      {
+        "logicalName": "tia-ser.js",
+        "source": "apps/workbench/dist/assets/tia-ser-Ba6Vlb_I.js",
+        "gzipBytes": 7148
+      },
+      {
+        "logicalName": "tiff.js",
+        "source": "apps/workbench/dist/assets/tiff-B0tLqP8F.js",
+        "gzipBytes": 10354
+      },
+      {
+        "logicalName": "tiff.js#1",
+        "source": "apps/workbench/dist/assets/tiff-KinB0bTX.js",
+        "gzipBytes": 37366
+      },
+      {
+        "logicalName": "velox-emd.js",
+        "source": "apps/workbench/dist/assets/velox-emd-DcWf1Ygs.js",
+        "gzipBytes": 4839
+      },
+      {
+        "logicalName": "webp.js",
+        "source": "apps/workbench/dist/assets/webp-CgXXecVh.js",
+        "gzipBytes": 22619
+      },
+      {
+        "logicalName": "worker-entry.js",
+        "source": "apps/workbench/dist/assets/worker-entry-BwzWo_f2.js",
+        "gzipBytes": 117787
+      },
+      {
+        "logicalName": "x3p.js",
+        "source": "apps/workbench/dist/assets/x3p-Iqc3y22M.js",
+        "gzipBytes": 5237
+      },
+      {
+        "logicalName": "xml.js",
+        "source": "apps/workbench/dist/assets/xml-A8vdJVvv.js",
+        "gzipBytes": 1558
+      }
+    ]
+  }
+}

@@ -1,0 +1,406 @@
+{
+  "application": "science-workbench",
+  "documentationOperationIds": [
+    "purejsimage.analysis.crop",
+    "purejsimage.analysis.resample",
+    "purejsimage.analysis.gaussian-blur",
+    "purejsimage.analysis.statistics",
+    "purejsimage.analysis.histogram",
+    "purejsimage.analysis.line-profile",
+    "pji-workbench.materials.geometry.rotate-right-angle",
+    "pji-workbench.materials.geometry.flip",
+    "pji-workbench.materials.geometry.translate",
+    "pji-workbench.materials.numeric.convert",
+    "pji-workbench.materials.numeric.normalize",
+    "pji-workbench.materials.numeric.clamp",
+    "pji-workbench.materials.numeric.invert",
+    "pji-workbench.materials.numeric.gamma",
+    "pji-workbench.materials.numeric.log",
+    "pji-workbench.materials.numeric.square-root",
+    "pji-workbench.materials.numeric.add-constant",
+    "pji-workbench.materials.numeric.subtract-constant",
+    "pji-workbench.materials.numeric.multiply-constant",
+    "pji-workbench.materials.numeric.divide-constant",
+    "pji-workbench.materials.numeric.image-calculator",
+    "pji-workbench.materials.filter.box",
+    "pji-workbench.materials.filter.median",
+    "pji-workbench.materials.filter.minimum",
+    "pji-workbench.materials.filter.maximum",
+    "pji-workbench.materials.filter.convolution",
+    "pji-workbench.materials.filter.unsharp-mask",
+    "pji-workbench.materials.filter.gradient",
+    "pji-workbench.materials.filter.laplacian",
+    "pji-workbench.materials.filter.outlier",
+    "pji-workbench.materials.filter.background-subtract",
+    "pji-workbench.materials.segmentation.threshold-reference",
+    "pji-workbench.materials.segmentation.binary-erode",
+    "pji-workbench.materials.segmentation.binary-dilate",
+    "pji-workbench.materials.segmentation.binary-open",
+    "pji-workbench.materials.segmentation.binary-close",
+    "pji-workbench.materials.segmentation.binary-fill-holes",
+    "pji-workbench.materials.segmentation.binary-clear-border",
+    "pji-workbench.materials.segmentation.binary-remove-small",
+    "pji-workbench.materials.segmentation.binary-outline",
+    "pji-workbench.materials.segmentation.euclidean-distance-transform",
+    "pji-workbench.materials.segmentation.watershed",
+    "pji-workbench.materials.particles.analyze",
+    "pji-workbench.materials.frequency.fft-2d",
+    "pji-workbench.materials.stack.sum-projection",
+    "pji-workbench.materials.stack.montage",
+    "pji-workbench.materials.stack.statistics",
+    "pji-workbench.materials.stack.phase-correlation-align",
+    "pji-workbench.materials.surface.correct",
+    "pji-workbench.materials.surface.analyze"
+  ],
+  "enabledBundledExampleIds": [
+    "cdc.ecoli-sem",
+    "cdc.staph-aureus-sem",
+    "nih.hela-cells-3709",
+    "nci.hhv6-em"
+  ],
+  "enabledExampleIds": [
+    "generated.calibrated-particles",
+    "generated.touching-particles",
+    "generated.periodic-lattice",
+    "generated.afm-tilted-surface",
+    "generated.batch-particles",
+    "generated.drifting-stack",
+    "cdc.ecoli-sem",
+    "cdc.staph-aureus-sem",
+    "nih.hela-cells-3709",
+    "nci.hhv6-em"
+  ],
+  "materialsOperationIds": [
+    "pji-workbench.materials.geometry.rotate-right-angle",
+    "pji-workbench.materials.geometry.flip",
+    "pji-workbench.materials.geometry.translate",
+    "pji-workbench.materials.numeric.convert",
+    "pji-workbench.materials.numeric.normalize",
+    "pji-workbench.materials.numeric.clamp",
+    "pji-workbench.materials.numeric.invert",
+    "pji-workbench.materials.numeric.gamma",
+    "pji-workbench.materials.numeric.log",
+    "pji-workbench.materials.numeric.square-root",
+    "pji-workbench.materials.numeric.add-constant",
+    "pji-workbench.materials.numeric.subtract-constant",
+    "pji-workbench.materials.numeric.multiply-constant",
+    "pji-workbench.materials.numeric.divide-constant",
+    "pji-workbench.materials.numeric.image-calculator",
+    "pji-workbench.materials.filter.box",
+    "pji-workbench.materials.filter.median",
+    "pji-workbench.materials.filter.minimum",
+    "pji-workbench.materials.filter.maximum",
+    "pji-workbench.materials.filter.convolution",
+    "pji-workbench.materials.filter.unsharp-mask",
+    "pji-workbench.materials.filter.gradient",
+    "pji-workbench.materials.filter.laplacian",
+    "pji-workbench.materials.filter.outlier",
+    "pji-workbench.materials.filter.background-subtract",
+    "pji-workbench.materials.segmentation.threshold-reference",
+    "pji-workbench.materials.segmentation.binary-erode",
+    "pji-workbench.materials.segmentation.binary-dilate",
+    "pji-workbench.materials.segmentation.binary-open",
+    "pji-workbench.materials.segmentation.binary-close",
+    "pji-workbench.materials.segmentation.binary-fill-holes",
+    "pji-workbench.materials.segmentation.binary-clear-border",
+    "pji-workbench.materials.segmentation.binary-remove-small",
+    "pji-workbench.materials.segmentation.binary-outline",
+    "pji-workbench.materials.segmentation.euclidean-distance-transform",
+    "pji-workbench.materials.segmentation.watershed",
+    "pji-workbench.materials.particles.analyze",
+    "pji-workbench.materials.frequency.fft-2d",
+    "pji-workbench.materials.stack.sum-projection",
+    "pji-workbench.materials.stack.montage",
+    "pji-workbench.materials.stack.statistics",
+    "pji-workbench.materials.stack.phase-correlation-align",
+    "pji-workbench.materials.surface.correct",
+    "pji-workbench.materials.surface.analyze"
+  ],
+  "operations": [
+    {
+      "id": "pji-workbench.materials.filter.background-subtract",
+      "title": "Local background subtraction",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.filter.box",
+      "title": "Mean / box filter",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.filter.convolution",
+      "title": "Convolution kernel",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.filter.gradient",
+      "title": "Sobel / Scharr gradient",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.filter.laplacian",
+      "title": "Laplacian",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.filter.maximum",
+      "title": "Maximum filter",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.filter.median",
+      "title": "Median filter",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.filter.minimum",
+      "title": "Minimum filter",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.filter.outlier",
+      "title": "Outlier / despeckle filter",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.filter.unsharp-mask",
+      "title": "Unsharp mask",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.frequency.fft-2d",
+      "title": "2D FFT workspace",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.geometry.flip",
+      "title": "Flip plane",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.geometry.rotate-right-angle",
+      "title": "Rotate right angle",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.geometry.translate",
+      "title": "Translate plane",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.add-constant",
+      "title": "Add constant",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.clamp",
+      "title": "Clamp",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.convert",
+      "title": "Convert numeric type",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.divide-constant",
+      "title": "Divide constant",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.gamma",
+      "title": "Gamma transform",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.image-calculator",
+      "title": "Image calculator",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.invert",
+      "title": "Invert data",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.log",
+      "title": "Log transform",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.multiply-constant",
+      "title": "Multiply constant",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.normalize",
+      "title": "Normalize range",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.square-root",
+      "title": "Square-root transform",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.numeric.subtract-constant",
+      "title": "Subtract constant",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.particles.analyze",
+      "title": "Particle filtering and measurements",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.binary-clear-border",
+      "title": "Clear border objects",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.binary-close",
+      "title": "Binary close",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.binary-dilate",
+      "title": "Binary dilate",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.binary-erode",
+      "title": "Binary erode",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.binary-fill-holes",
+      "title": "Fill binary holes",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.binary-open",
+      "title": "Binary open",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.binary-outline",
+      "title": "Binary outline",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.binary-remove-small",
+      "title": "Remove small objects",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.euclidean-distance-transform",
+      "title": "Euclidean distance transform",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.threshold-reference",
+      "title": "Reference threshold methods",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.segmentation.watershed",
+      "title": "Watershed touching particles",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.stack.montage",
+      "title": "Stack montage",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.stack.phase-correlation-align",
+      "title": "Phase-correlation stack alignment",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.stack.statistics",
+      "title": "Stack statistics",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.stack.sum-projection",
+      "title": "Stack sum projection",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.surface.analyze",
+      "title": "AFM/SPM surface analysis",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.surface.correct",
+      "title": "AFM/SPM surface correction",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.connected-components",
+      "title": "Connected components and object measurements",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.crop",
+      "title": "Crop scientific dataset",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.gaussian-blur",
+      "title": "Gaussian blur scientific dataset",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.histogram",
+      "title": "Scientific ROI histogram",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.line-profile",
+      "title": "Calibrated scientific line profile",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.projection",
+      "title": "Project scientific dataset",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.resample",
+      "title": "Resample scientific dataset",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.select-resolution-level",
+      "title": "Select scientific resolution level",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.slice",
+      "title": "Slice scientific dataset",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.statistics",
+      "title": "Scientific ROI statistics",
+      "version": 1
+    },
+    {
+      "id": "purejsimage.analysis.threshold",
+      "title": "Threshold scientific dataset",
+      "version": 1
+    }
+  ],
+  "presetIds": [
+    "denoise-gaussian",
+    "despeckle",
+    "unsharp",
+    "background",
+    "particle-threshold",
+    "fft-workspace",
+    "afm-surface"
+  ],
+  "schemaVersion": 1
+}

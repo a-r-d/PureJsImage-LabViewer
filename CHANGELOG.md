@@ -7,6 +7,12 @@ The application is not yet versioned for release (`0.0.0`).
 
 ## [Unreleased]
 
+### Added
+
+- Architecture decision record for a shared showcase monorepo (gallery, science, and geo;
+  medical later), compile-time domain profiles, separate deploys, and a characterization
+  suite that locks current science workbench behavior without moving application code.
+
 ### Changed
 
 - The generated calibrated particle field is ten isolated disks on the sinusoidal

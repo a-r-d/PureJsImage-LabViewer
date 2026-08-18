@@ -42,9 +42,18 @@ Workspace packages are `private: true` and consumed from source during developme
 
 Do not add Changesets, semantic-release, independent package versions, or npm publishing jobs until a package has an identified external user.
 
-## One client now, multiple clients possible later
+## Shared showcase monorepo with compile-time domain profiles
 
-`apps/workbench` is the only client. Shared packages must not import from it. A future viewer embed, teaching client, pathology client, or desktop shell can compose the same packages.
+This repository is the PureJsImage showcase monorepo. Gallery, science, and geo are the
+initial applications; medical is added only when that domain is implemented. Each domain
+app is separately built and deployed. A lightweight gallery links to those apps. Shared
+behavior is a compile-time domain profile, not a runtime third-party plugin host and not a
+cloned standalone tree. PureJsImage remains a separate core-library repository. UI and
+future agents use the same semantic action host, and large raster work stays behind the
+imaging Worker.
+
+See [`docs/adr/0001-shared-showcase-monorepo.md`](./adr/0001-shared-showcase-monorepo.md).
+`apps/workbench` remains the science application until a later, characterization-gated move.
 
 ## Backend boundary without speculative backend code
 

@@ -1,7 +1,10 @@
 import { scenarioArtifact } from '@pji-workbench/test-corpus'
 import { expect, test } from '@playwright/test'
 import { attachScenarioEvidence } from './support/scenario-evidence.js'
+import { readScienceWorkbenchBaselines } from './support/science-baselines.js'
 import { openSample, openWorkbench } from './support/workbench.js'
+
+const budgets = readScienceWorkbenchBaselines().budgets
 
 test.beforeEach(async ({ page }) => {
   await openWorkbench(page)
@@ -42,7 +45,7 @@ test('@performance transfers bounded tiles rather than a whole plane', async ({ 
   await page.waitForTimeout(300)
   const metrics = await page.evaluate(() => ({ ...window.__PJI_WORKBENCH_METRICS__ }))
   expect(metrics.firstTileMilliseconds).not.toBeNull()
-  expect(metrics.largestTilePixels).toBeLessThanOrEqual(256 * 256)
+  expect(metrics.largestTilePixels).toBeLessThanOrEqual(budgets.largestTilePixels)
   expect(metrics.largestTilePixels).toBeLessThan(metrics.datasetPixels)
   expect(metrics.tilePixelsTransferred).toBeGreaterThan(0)
   expect(metrics.sourceBytes).toBeGreaterThan(0)
@@ -55,5 +58,5 @@ test('@performance reaches an interactive shell within the warm budget', async (
       ? navigation.domInteractive
       : Number.POSITIVE_INFINITY
   })
-  expect(interactiveMilliseconds).toBeLessThan(1_000)
+  expect(interactiveMilliseconds).toBeLessThan(budgets.warmShellInteractiveMilliseconds)
 })

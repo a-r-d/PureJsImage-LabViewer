@@ -69,7 +69,10 @@ Vitest covers:
 - enabled-scenario license, exact-file, workflow, expected-result, and budget completeness;
 - corrupt/offline cache, retry, cancellation, byte-limit, and Range/full-download separation;
 - archive traversal, encoded traversal, symlink, duplicate, file-count, expansion, and ratio refusal;
-- PureJsImage integration through only public exports.
+- PureJsImage integration through only public exports;
+- science-workbench characterization fixtures for the action catalog, reader registry,
+  analysis identities, routes, project save/load, and recorded bundle/performance baselines.
+  Normal CI must not regenerate those fixtures on failure.
 
 Tests should assert cleanup and cancellation, not just output.
 
@@ -182,6 +185,9 @@ Track distributions, not one anecdotal number:
 - agent tool round-trip excluding live model latency.
 
 Fail on meaningful regressions against checked budgets. Record the test machine/browser details.
+The reviewed science-workbench baseline in `tooling/baselines/science-workbench.json` records
+current gzip asset sizes and the performance budgets enforced by the bundle and Playwright
+checks. Update it only after inspecting an intentional size or budget change.
 
 ## Security checks
 

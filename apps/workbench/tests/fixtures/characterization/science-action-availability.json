@@ -1,0 +1,337 @@
+{
+  "application": "science-workbench",
+  "datasetOpen": {
+    "analysis.batch.request-execute@1": {
+      "available": true
+    },
+    "analysis.cancel@1": {
+      "available": true
+    },
+    "analysis.catalog.read@1": {
+      "available": true
+    },
+    "analysis.connected-components.execute@1": {
+      "available": true
+    },
+    "analysis.connected-components.plan@1": {
+      "available": true
+    },
+    "analysis.describe@1": {
+      "available": true
+    },
+    "analysis.dry-run@1": {
+      "available": true
+    },
+    "analysis.graph.request-execute@1": {
+      "available": true
+    },
+    "analysis.normalize@1": {
+      "available": true
+    },
+    "analysis.request-execute@1": {
+      "available": true
+    },
+    "analysis.threshold.commit@1": {
+      "available": true
+    },
+    "analysis.threshold.preview@1": {
+      "available": true
+    },
+    "dataset.describe@1": {
+      "available": true
+    },
+    "dataset.list@1": {
+      "available": true
+    },
+    "palette.open@1": {
+      "available": true
+    },
+    "panel.agent@1": {
+      "available": true
+    },
+    "panel.select@1": {
+      "available": true
+    },
+    "pipeline.node.remove@1": {
+      "available": true
+    },
+    "pipeline.read@1": {
+      "available": true
+    },
+    "result.export.propose@1": {
+      "available": true
+    },
+    "result.page.read@1": {
+      "available": true
+    },
+    "result.summary.read@1": {
+      "available": true
+    },
+    "roi.create@1": {
+      "available": true
+    },
+    "roi.list@1": {
+      "available": true
+    },
+    "roi.remove@1": {
+      "available": true
+    },
+    "roi.select@1": {
+      "available": true
+    },
+    "roi.update@1": {
+      "available": true
+    },
+    "script.apply_patch@1": {
+      "available": true
+    },
+    "script.create_draft@1": {
+      "available": true
+    },
+    "script.diff@1": {
+      "available": true
+    },
+    "script.log@1": {
+      "available": true
+    },
+    "script.read@1": {
+      "available": true
+    },
+    "script.request_execute@1": {
+      "available": true
+    },
+    "script.request_install@1": {
+      "available": true
+    },
+    "script.run_tests@1": {
+      "available": true
+    },
+    "script.typecheck@1": {
+      "available": true
+    },
+    "source.list@1": {
+      "available": true
+    },
+    "source.open-local@1": {
+      "available": true
+    },
+    "source.open-remote@1": {
+      "available": true
+    },
+    "theme.toggle@1": {
+      "available": true
+    },
+    "viewport.fit@1": {
+      "available": true
+    },
+    "viewport.oneToOne@1": {
+      "available": true
+    },
+    "viewport.state.propose@1": {
+      "available": true
+    },
+    "viewport.state.read@1": {
+      "available": true
+    },
+    "workspace.export@1": {
+      "available": true
+    },
+    "workspace.new@1": {
+      "available": true
+    },
+    "workspace.openProject@1": {
+      "available": true
+    },
+    "workspace.openSample@1": {
+      "available": true
+    },
+    "workspace.redo@1": {
+      "available": true
+    },
+    "workspace.save@1": {
+      "available": true
+    },
+    "workspace.summary.read@1": {
+      "available": true
+    },
+    "workspace.undo@1": {
+      "available": true
+    }
+  },
+  "emptyWorkspace": {
+    "analysis.batch.request-execute@1": {
+      "available": true
+    },
+    "analysis.cancel@1": {
+      "available": true
+    },
+    "analysis.catalog.read@1": {
+      "available": true
+    },
+    "analysis.connected-components.execute@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.connected-components.plan@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.describe@1": {
+      "available": true
+    },
+    "analysis.dry-run@1": {
+      "available": true
+    },
+    "analysis.graph.request-execute@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.normalize@1": {
+      "available": true
+    },
+    "analysis.request-execute@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.threshold.commit@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.threshold.preview@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "dataset.describe@1": {
+      "available": true
+    },
+    "dataset.list@1": {
+      "available": true
+    },
+    "palette.open@1": {
+      "available": true
+    },
+    "panel.agent@1": {
+      "available": true
+    },
+    "panel.select@1": {
+      "available": true
+    },
+    "pipeline.node.remove@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "pipeline.read@1": {
+      "available": true
+    },
+    "result.export.propose@1": {
+      "available": true
+    },
+    "result.page.read@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "result.summary.read@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "roi.create@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "roi.list@1": {
+      "available": true
+    },
+    "roi.remove@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "roi.select@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "roi.update@1": {
+      "available": true
+    },
+    "script.apply_patch@1": {
+      "available": true
+    },
+    "script.create_draft@1": {
+      "available": true
+    },
+    "script.diff@1": {
+      "available": true
+    },
+    "script.log@1": {
+      "available": true
+    },
+    "script.read@1": {
+      "available": true
+    },
+    "script.request_execute@1": {
+      "available": true
+    },
+    "script.request_install@1": {
+      "available": true
+    },
+    "script.run_tests@1": {
+      "available": true
+    },
+    "script.typecheck@1": {
+      "available": true
+    },
+    "source.list@1": {
+      "available": true
+    },
+    "source.open-local@1": {
+      "available": true
+    },
+    "source.open-remote@1": {
+      "available": true
+    },
+    "theme.toggle@1": {
+      "available": true
+    },
+    "viewport.fit@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "viewport.oneToOne@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "viewport.state.propose@1": {
+      "available": true
+    },
+    "viewport.state.read@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "workspace.export@1": {
+      "available": true
+    },
+    "workspace.new@1": {
+      "available": true
+    },
+    "workspace.openProject@1": {
+      "available": true
+    },
+    "workspace.openSample@1": {
+      "available": true
+    },
+    "workspace.redo@1": {
+      "available": false,
+      "reason": "Nothing to redo."
+    },
+    "workspace.save@1": {
+      "available": true
+    },
+    "workspace.summary.read@1": {
+      "available": true
+    },
+    "workspace.undo@1": {
+      "available": false,
+      "reason": "Nothing to undo."
+    }
+  },
+  "schemaVersion": 1
+}

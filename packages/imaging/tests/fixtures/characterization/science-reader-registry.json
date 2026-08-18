@@ -1,0 +1,237 @@
+{
+  "accept": ".ang,.blo,.bmp,.cbf,.ccp4,.ctf,.dat,.dib,.dm3,.dm4,.emd,.emi,.emsa,.envi,.fit,.fits,.fts,.gsf,.hdr,.ibw,.img,.imgcif,.jp2,.jpe,.jpeg,.jpg,.map,.mha,.mhd,.mib,.mrc,.msa,.nhdr,.nii,.nii.gz,.npy,.nrrd,.ome.tif,.ome.tiff,.png,.pro,.raw,.rpl,.ser,.sur,.svs,.sxm,.tif,.tiff,.webp,.x3p",
+  "application": "science-workbench",
+  "pureJsImagePackageVersion": "0.11.0",
+  "readers": [
+    {
+      "extensions": ["png"],
+      "format": "PNG",
+      "id": "purejsimage/png",
+      "mediaTypes": ["image/png"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["jpg", "jpeg", "jpe"],
+      "format": "JPEG",
+      "id": "purejsimage/jpeg",
+      "mediaTypes": ["image/jpeg"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["webp"],
+      "format": "WebP",
+      "id": "purejsimage/webp",
+      "mediaTypes": ["image/webp"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["bmp", "dib"],
+      "format": "BMP",
+      "id": "purejsimage/bmp",
+      "mediaTypes": ["image/bmp", "image/x-ms-bmp"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["jp2"],
+      "format": "JPEG 2000 / JP2",
+      "id": "purejsimage/jp2",
+      "mediaTypes": ["image/jp2"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["tif", "tiff"],
+      "format": "TIFF",
+      "id": "purejsimage/tiff",
+      "mediaTypes": ["image/tiff", "image/x-tiff"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["tif", "tiff"],
+      "format": "OME-TIFF",
+      "id": "purejsimage/ome-tiff",
+      "mediaTypes": ["image/tiff", "image/x-tiff"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["svs"],
+      "format": "Aperio SVS",
+      "id": "purejsimage/aperio-svs",
+      "mediaTypes": ["image/tiff", "image/x-tiff"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["dm3", "dm4"],
+      "format": "Gatan DigitalMicrograph",
+      "id": "purejsimage/digital-micrograph",
+      "mediaTypes": [
+        "application/x-gatan-dm3",
+        "application/x-gatan-dm4",
+        "application/x-digital-micrograph"
+      ],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["ser"],
+      "format": "FEI/Thermo TIA SER",
+      "id": "purejsimage/tia-ser",
+      "mediaTypes": [
+        "application/x-fei-ser",
+        "application/x-thermo-tia-ser",
+        "application/x-tia-ser"
+      ],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["emi"],
+      "format": "FEI/Thermo TIA EMI",
+      "id": "purejsimage/tia-emi",
+      "mediaTypes": [
+        "application/x-fei-emi",
+        "application/x-thermo-tia-emi",
+        "application/x-tia-emi"
+      ],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["emd"],
+      "format": "NCEM EMD 0.2",
+      "id": "purejsimage/ncem-emd",
+      "mediaTypes": ["application/x-hdf5"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["emd"],
+      "format": "FEI/Thermo Velox EMD",
+      "id": "purejsimage/velox-emd",
+      "mediaTypes": ["application/x-hdf5"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["blo"],
+      "format": "NanoMegas ASTAR blockfile",
+      "id": "purejsimage/blockfile",
+      "mediaTypes": ["application/x-nanomegas-blo"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["mib"],
+      "format": "Quantum Detectors Merlin MIB",
+      "id": "purejsimage/mib",
+      "mediaTypes": ["application/x-merlin-mib"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["gsf"],
+      "format": "Gwyddion Simple Field",
+      "id": "purejsimage/gsf",
+      "mediaTypes": ["application/x-gwyddion-spm"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["sxm"],
+      "format": "Nanonis SXM",
+      "id": "purejsimage/nanonis-sxm",
+      "mediaTypes": ["application/x-nanonis-sxm"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["ibw"],
+      "format": "Igor Binary Wave v5",
+      "id": "purejsimage/igor-binary-wave",
+      "mediaTypes": ["application/x-igor-binary-wave"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["sur", "pro"],
+      "format": "Digital Surf SUR/PRO",
+      "id": "purejsimage/digital-surf",
+      "mediaTypes": ["application/x-digitalsurf-sur"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["x3p"],
+      "format": "X3P surface exchange",
+      "id": "purejsimage/x3p",
+      "mediaTypes": ["application/x-x3p"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["mrc", "map", "ccp4"],
+      "format": "MRC/CCP4",
+      "id": "purejsimage/mrc",
+      "mediaTypes": ["application/x-mrc", "application/x-ccp4"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["nrrd", "nhdr"],
+      "format": "NRRD",
+      "id": "purejsimage/nrrd",
+      "mediaTypes": ["application/x-nrrd"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["mhd", "mha"],
+      "format": "MetaImage MHD/MHA",
+      "id": "purejsimage/meta-image",
+      "mediaTypes": ["application/x-metaimage"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["nii", "gz"],
+      "format": "NIfTI-1/2",
+      "id": "purejsimage/nifti",
+      "mediaTypes": ["application/x-nifti"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["hdr", "img", "dat", "raw"],
+      "format": "ENVI",
+      "id": "purejsimage/envi",
+      "mediaTypes": ["application/x-envi"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["fits", "fit", "fts"],
+      "format": "FITS",
+      "id": "purejsimage/fits",
+      "mediaTypes": ["application/fits", "image/fits"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["cbf"],
+      "format": "CBF/imgCIF",
+      "id": "purejsimage/cbf",
+      "mediaTypes": ["application/x-cbf"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["rpl", "raw"],
+      "format": "Lispix RPL/RAW",
+      "id": "purejsimage/rpl",
+      "mediaTypes": ["application/x-rpl", "application/x-lispix-raw"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["msa", "emsa"],
+      "format": "EMSA/MAS spectrum",
+      "id": "purejsimage/emsa",
+      "mediaTypes": ["application/x-emsa-mas"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["ang", "ctf"],
+      "format": "ANG/CTF orientation map",
+      "id": "purejsimage/ebsd-text",
+      "mediaTypes": ["application/x-ebsd-ang", "application/x-ebsd-ctf"],
+      "version": "1.0.0"
+    },
+    {
+      "extensions": ["npy"],
+      "format": "NumPy NPY",
+      "id": "purejsimage/npy",
+      "mediaTypes": ["application/x-npy"],
+      "version": "1.0.0"
+    }
+  ],
+  "schemaVersion": 1
+}

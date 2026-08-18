@@ -13,11 +13,23 @@ The concrete scientific source, Worker RPC, and renderer tile lifecycle is docum
 6. **One source of truth per concern.** Avoid dual state between React, worker, URL, local storage, and project documents.
 7. **Measured performance over folklore.** React versus Preact is less important than tile latency, transfer, draw calls, cache reuse, and result virtualization.
 
+## Showcase applications
+
+The repository is a shared showcase monorepo. Science, geo, and a lightweight gallery are
+the initial applications; medical is added later. Each domain app is a separate build and
+deploy. Shared behavior is selected by a compile-time domain profile. This is not a runtime
+third-party plugin ecosystem, and PureJsImage stays a separate core-library repository.
+
+`apps/workbench` is still the science workbench. Do not move application code until the
+science characterization suite stays green. See
+[`adr/0001-shared-showcase-monorepo.md`](./adr/0001-shared-showcase-monorepo.md).
+
 ## Monorepo
 
 ```text
 apps/workbench
   Browser app, Cloudflare entry, composition root, routes, feature controllers, and panels.
+  This is the science showcase until a later characterization-gated move.
 
 packages/actions
   JSON-safe semantic action descriptors, deterministic registry, availability, validation,

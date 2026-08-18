@@ -10,6 +10,11 @@ single-route application shell. Scientific file opening and analysis workflows a
 later milestones described under [`prompts/`](prompts/). Notable product changes are recorded
 in [`CHANGELOG.md`](CHANGELOG.md).
 
+The repository is becoming a shared showcase monorepo: separately built gallery, science,
+and geo applications, with medical added later. Shared behavior will be a compile-time
+domain profile. The current `apps/workbench` science UI is unchanged until a later
+characterization-gated move. See [`docs/adr/0001-shared-showcase-monorepo.md`](docs/adr/0001-shared-showcase-monorepo.md).
+
 ## Prerequisites
 
 - Node.js 24 LTS (the exact repository version is in `.nvmrc`)

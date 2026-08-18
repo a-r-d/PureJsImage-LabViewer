@@ -1,44 +1,30 @@
-import { readdir, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { gzipSync } from 'node:zlib'
+import { fileURLToPath } from 'node:url'
 
-const MAX_ROUTE_CHUNK_GZIP_BYTES = 300 * 1024
-const MAX_LAZY_LANGUAGE_WORKER_GZIP_BYTES = 1_000 * 1024
+import { collectBundleInventory, compareBundleInventory } from './bundle-sizes.mjs'
+
 const root = process.cwd()
 const buildRoot = path.join(root, 'apps/workbench/dist')
+const baselinePath = fileURLToPath(new URL('../baselines/science-workbench.json', import.meta.url))
 
-async function collectJavaScript(directory) {
-  const entries = await readdir(directory, { withFileTypes: true })
-  const files = []
-  for (const entry of entries) {
-    const file = path.join(directory, entry.name)
-    if (entry.isDirectory()) files.push(...(await collectJavaScript(file)))
-    else if (entry.name.endsWith('.js')) files.push(file)
-  }
-  return files
+const baseline = JSON.parse(await readFile(baselinePath, 'utf8'))
+if (
+  baseline.schemaVersion !== 1 ||
+  baseline.application !== 'science-workbench' ||
+  baseline.bundle === undefined ||
+  baseline.budgets === undefined
+) {
+  throw new Error('Science workbench bundle baseline is missing or invalid.')
 }
 
-const files = await collectJavaScript(buildRoot)
-if (files.length === 0) {
-  throw new Error(`No JavaScript build output found under ${path.relative(root, buildRoot)}`)
+const inventory = await collectBundleInventory(buildRoot)
+for (const asset of inventory.assets) {
+  console.log(`${asset.logicalName}: ${asset.gzipBytes} bytes gzip (${asset.source})`)
 }
 
-let failed = false
-for (const file of files.sort()) {
-  const bytes = await readFile(file)
-  const gzipBytes = gzipSync(bytes).byteLength
-  const relative = path.relative(root, file)
-  const budget = path.basename(file).startsWith('language.worker-')
-    ? MAX_LAZY_LANGUAGE_WORKER_GZIP_BYTES
-    : MAX_ROUTE_CHUNK_GZIP_BYTES
-  const budgetKind = path.basename(file).startsWith('language.worker-')
-    ? 'lazy language Worker'
-    : 'route chunk'
-  console.log(`${relative}: ${gzipBytes} bytes gzip`)
-  if (gzipBytes > budget) {
-    console.error(`${relative} exceeds the ${budget}-byte ${budgetKind} budget`)
-    failed = true
-  }
+const failures = compareBundleInventory(inventory, baseline.bundle, baseline.budgets)
+if (failures.length > 0) {
+  console.error(`Science workbench bundle characterization failed:\n${failures.join('\n')}`)
+  process.exitCode = 1
 }
-
-if (failed) process.exitCode = 1

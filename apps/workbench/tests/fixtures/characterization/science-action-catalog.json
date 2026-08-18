@@ -1,0 +1,1210 @@
+{
+  "actions": [
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "expensive",
+      "description": "Create a bounded batch-recipe proposal without opening files or executing items.",
+      "id": "analysis.batch.request-execute",
+      "inputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Request local batch execution",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "analysis",
+      "cost": "interactive",
+      "description": "Request cancellation of the currently active analysis operation.",
+      "id": "analysis.cancel",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Cancel active analysis",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "analysis",
+      "cost": "trivial",
+      "description": "Return bounded operation identities and titles.",
+      "id": "analysis.catalog.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.catalog"],
+      "schemaVersion": 1,
+      "title": "Read analysis catalog",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "expensive",
+      "description": "Execute the reviewed connected-components plan.",
+      "id": "analysis.connected-components.execute",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Run connected components",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "interactive",
+      "description": "Dry-run connected components and return resource estimates.",
+      "id": "analysis.connected-components.plan",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["analysis.dry-run"],
+      "schemaVersion": 1,
+      "title": "Plan connected components",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "analysis",
+      "cost": "trivial",
+      "description": "Describe one versioned operation.",
+      "id": "analysis.describe",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["operationId"],
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.catalog"],
+      "schemaVersion": 1,
+      "title": "Describe analysis operation",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "interactive",
+      "description": "Return a bounded resource plan without execution.",
+      "id": "analysis.dry-run",
+      "inputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.dry-run"],
+      "schemaVersion": 1,
+      "title": "Dry-run analysis operation",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "expensive",
+      "description": "Validate, plan, and execute an explicit visible analysis graph after approval.",
+      "id": "analysis.graph.request-execute",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "graph": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "roiId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["graph"],
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": ["completed"],
+            "type": "string"
+          }
+        },
+        "required": ["status"],
+        "type": "object"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Request analysis graph execution",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "analysis",
+      "cost": "trivial",
+      "description": "Normalize bounded operation parameters.",
+      "id": "analysis.normalize",
+      "inputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.dry-run"],
+      "schemaVersion": 1,
+      "title": "Normalize analysis input",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "expensive",
+      "description": "Create a reviewed execution proposal without bypassing approval.",
+      "id": "analysis.request-execute",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": ["preview", "apply"],
+            "type": "string"
+          },
+          "operationId": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "operationVersion": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": ["operationId", "operationVersion", "parameters", "mode"],
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Request analysis execution",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "interactive",
+      "description": "Normalize and commit one threshold graph change.",
+      "id": "analysis.threshold.commit",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Commit threshold",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "interactive",
+      "description": "Run a bounded threshold preview without project history.",
+      "id": "analysis.threshold.preview",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Preview threshold",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "dataset",
+      "cost": "trivial",
+      "description": "Read one bounded dataset descriptor.",
+      "id": "dataset.describe",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "datasetId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["datasetId"],
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["dataset.read-descriptor"],
+      "schemaVersion": 1,
+      "title": "Describe dataset",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "dataset",
+      "cost": "trivial",
+      "description": "List bounded dataset descriptors.",
+      "id": "dataset.list",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "maxItems": 256,
+        "type": "array"
+      },
+      "permissions": ["dataset.read-descriptor"],
+      "schemaVersion": 1,
+      "title": "List datasets",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "ui",
+      "cost": "trivial",
+      "description": "Search available semantic workbench actions.",
+      "id": "palette.open",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["ui.propose"],
+      "schemaVersion": 1,
+      "title": "Open command palette",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "ui",
+      "cost": "trivial",
+      "description": "Open the disabled future-agent surface.",
+      "id": "panel.agent",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["ui.propose"],
+      "schemaVersion": 1,
+      "title": "Show agent panel",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "ui",
+      "cost": "trivial",
+      "description": "Open a named workbench surface.",
+      "id": "panel.select",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "panel": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["panel"],
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["ui.propose"],
+      "schemaVersion": 1,
+      "title": "Select workbench panel",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "pipeline",
+      "cost": "trivial",
+      "description": "Remove an unconsumed operation node.",
+      "id": "pipeline.node.remove",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["workspace.propose"],
+      "schemaVersion": 1,
+      "title": "Remove pipeline node",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "pipeline",
+      "cost": "trivial",
+      "description": "Return the bounded committed operation graph.",
+      "id": "pipeline.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.read"],
+      "schemaVersion": 1,
+      "title": "Read analysis pipeline",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "results",
+      "cost": "external",
+      "description": "Validate a bounded result export proposal without creating a file.",
+      "id": "result.export.propose",
+      "inputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["file.export"],
+      "schemaVersion": 1,
+      "title": "Propose result CSV export",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "results",
+      "cost": "interactive",
+      "description": "Read one bounded page from a result table.",
+      "id": "result.page.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["result.read-page"],
+      "schemaVersion": 1,
+      "title": "Read result page",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "results",
+      "cost": "trivial",
+      "description": "Read one bounded result summary without table payloads.",
+      "id": "result.summary.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["result.read-summary"],
+      "schemaVersion": 1,
+      "title": "Read result summary",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "roi",
+      "cost": "interactive",
+      "description": "Create a validated ROI on the active dataset.",
+      "id": "roi.create",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "kind": {
+            "enum": ["rectangle", "ellipse", "line", "polygon"],
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "width": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          }
+        },
+        "required": ["kind", "label"],
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["roi.propose"],
+      "schemaVersion": 1,
+      "title": "Create ROI",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "roi",
+      "cost": "trivial",
+      "description": "List bounded semantic ROI descriptors.",
+      "id": "roi.list",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "maxItems": 256,
+        "type": "array"
+      },
+      "permissions": ["roi.read"],
+      "schemaVersion": 1,
+      "title": "List ROIs",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "roi",
+      "cost": "trivial",
+      "description": "Remove a workspace ROI through project history.",
+      "id": "roi.remove",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["roi.propose"],
+      "schemaVersion": 1,
+      "title": "Remove ROI",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "roi",
+      "cost": "trivial",
+      "description": "Select a workspace ROI.",
+      "id": "roi.select",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["roi.propose"],
+      "schemaVersion": 1,
+      "title": "Select ROI",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "roi",
+      "cost": "trivial",
+      "description": "Validate a bounded ROI update proposal without applying it.",
+      "id": "roi.update",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "patch": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "roiId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["roiId", "patch"],
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["roi.propose"],
+      "schemaVersion": 1,
+      "title": "Propose ROI update",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "scripts",
+      "cost": "interactive",
+      "description": "Apply a revision-checked source replacement to a draft.",
+      "id": "script.apply_patch",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 262144,
+            "type": "string"
+          }
+        },
+        "required": ["id", "expectedDigest", "source"],
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.propose"],
+      "schemaVersion": 1,
+      "title": "Apply script patch",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "scripts",
+      "cost": "interactive",
+      "description": "Create a bounded local draft for review.",
+      "id": "script.create_draft",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["id", "title"],
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.propose"],
+      "schemaVersion": 1,
+      "title": "Create script draft",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "scripts",
+      "cost": "interactive",
+      "description": "Return a bounded saved-versus-draft diff.",
+      "id": "script.diff",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["id", "expectedDigest"],
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.read"],
+      "schemaVersion": 1,
+      "title": "Read script diff",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "scripts",
+      "cost": "trivial",
+      "description": "Record one bounded sandbox log line.",
+      "id": "script.log",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["message"],
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["workspace.read"],
+      "schemaVersion": 1,
+      "title": "Write bounded script log",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "scripts",
+      "cost": "interactive",
+      "description": "Read one bounded local script or recipe.",
+      "id": "script.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.read"],
+      "schemaVersion": 1,
+      "title": "Read script",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "scripts",
+      "cost": "expensive",
+      "description": "Create an execution proposal for exact reviewed content.",
+      "id": "script.request_execute",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["id", "expectedDigest"],
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Request script execution",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "scripts",
+      "cost": "external",
+      "description": "Create an installation proposal for exact reviewed content.",
+      "id": "script.request_install",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["id", "expectedDigest"],
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.propose"],
+      "schemaVersion": 1,
+      "title": "Request local script installation",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "scripts",
+      "cost": "expensive",
+      "description": "Run deterministic fixture tests in the restricted runtime.",
+      "id": "script.run_tests",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["id", "expectedDigest"],
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Run script tests",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "scripts",
+      "cost": "interactive",
+      "description": "Typecheck a script in the lazy language Worker.",
+      "id": "script.typecheck",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["id", "expectedDigest"],
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.read"],
+      "schemaVersion": 1,
+      "title": "Typecheck script",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "source",
+      "cost": "trivial",
+      "description": "List bounded source descriptors.",
+      "id": "source.list",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "maxItems": 64,
+        "type": "array"
+      },
+      "permissions": ["source.read-metadata"],
+      "schemaVersion": 1,
+      "title": "List sources",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "source",
+      "cost": "interactive",
+      "description": "Open user-selected local scientific files.",
+      "id": "source.open-local",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["source.read-metadata"],
+      "schemaVersion": 1,
+      "title": "Open local source",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "source",
+      "cost": "external",
+      "description": "Open an explicit HTTPS range-backed source.",
+      "id": "source.open-remote",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["network.explicit-hosts"],
+      "schemaVersion": 1,
+      "title": "Open remote source",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "settings",
+      "cost": "trivial",
+      "description": "Switch between light and dark workbench themes.",
+      "id": "theme.toggle",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["ui.propose"],
+      "schemaVersion": 1,
+      "title": "Toggle color theme",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "viewport",
+      "cost": "trivial",
+      "description": "Fit the active dataset in the specimen viewport.",
+      "id": "viewport.fit",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["viewport.propose"],
+      "schemaVersion": 1,
+      "title": "Fit image to viewport",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "viewport",
+      "cost": "trivial",
+      "description": "Show one source pixel per display pixel.",
+      "id": "viewport.oneToOne",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["viewport.propose"],
+      "schemaVersion": 1,
+      "title": "Set viewport to 1:1",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "viewport",
+      "cost": "trivial",
+      "description": "Validate a bounded viewport state proposal without mutating the camera.",
+      "id": "viewport.state.propose",
+      "inputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "mutability": "proposal",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["viewport.propose"],
+      "schemaVersion": 1,
+      "title": "Propose viewport state",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "viewport",
+      "cost": "trivial",
+      "description": "Read a bounded camera and selection summary.",
+      "id": "viewport.state.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["viewport.read"],
+      "schemaVersion": 1,
+      "title": "Read viewport state",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "project",
+      "cost": "external",
+      "description": "Export a bounded project document.",
+      "id": "workspace.export",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["file.export"],
+      "schemaVersion": 1,
+      "title": "Export project JSON",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "project",
+      "cost": "trivial",
+      "description": "Create a new local workspace.",
+      "id": "workspace.new",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["workspace.propose"],
+      "schemaVersion": 1,
+      "title": "New project",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "project",
+      "cost": "trivial",
+      "description": "Open the local project browser.",
+      "id": "workspace.openProject",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["workspace.propose"],
+      "schemaVersion": 1,
+      "title": "Open recent project",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "source",
+      "cost": "interactive",
+      "description": "Open the deterministic generated calibrated sample.",
+      "id": "workspace.openSample",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["source.read-metadata"],
+      "schemaVersion": 1,
+      "title": "Open sample SEM image",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "project",
+      "cost": "trivial",
+      "description": "Redo one semantic project command.",
+      "id": "workspace.redo",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["workspace.propose"],
+      "schemaVersion": 1,
+      "title": "Redo project change",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "project",
+      "cost": "trivial",
+      "description": "Save the current project to IndexedDB.",
+      "id": "workspace.save",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["workspace.propose"],
+      "schemaVersion": 1,
+      "title": "Save project locally",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "workspace",
+      "cost": "trivial",
+      "description": "Return a bounded semantic workspace and revision summary.",
+      "id": "workspace.summary.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.read"],
+      "schemaVersion": 1,
+      "title": "Read workspace summary",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "project",
+      "cost": "trivial",
+      "description": "Undo one semantic project command.",
+      "id": "workspace.undo",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "null"
+      },
+      "permissions": ["workspace.propose"],
+      "schemaVersion": 1,
+      "title": "Undo project change",
+      "version": 1
+    }
+  ],
+  "application": "science-workbench",
+  "schemaVersion": 1
+}
