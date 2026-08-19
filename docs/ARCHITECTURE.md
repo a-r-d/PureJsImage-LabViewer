@@ -43,6 +43,13 @@ packages/workspace
   Immutable workspace state, commands, revisions, undo/redo, project persistence,
   user-visible activity/history, selection, and orchestration state.
 
+packages/workbench-core
+  Headless shared workbench runtime and compile-time domain profiles. Owns science
+  action descriptors, reader/example registries, source/project/activity controllers,
+  and domain-level agent policy. No React and no PureJsImage runtime imports.
+  UI contributions (panels, routes, empty state, default layout) are a sibling
+  compile-time object, not part of the headless profile.
+
 packages/imaging
   The only package that directly composes PureJsImage readers, scientific documents,
   analysis controller/runtime, and worker-side lifecycles.

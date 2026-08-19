@@ -33,8 +33,8 @@
       },
       {
         "logicalName": "CodeMirrorEditor.js",
-        "source": "apps/workbench/dist/assets/CodeMirrorEditor-BpctbM2f.js",
-        "gzipBytes": 165926
+        "source": "apps/workbench/dist/assets/CodeMirrorEditor-Cub7908f.js",
+        "gzipBytes": 165925
       },
       {
         "logicalName": "crc32.js",
@@ -78,8 +78,8 @@
       },
       {
         "logicalName": "examples.js",
-        "source": "apps/workbench/dist/assets/examples-EesanLNf.js",
-        "gzipBytes": 1855
+        "source": "apps/workbench/dist/assets/examples-DWgSHnbC.js",
+        "gzipBytes": 1856
       },
       {
         "logicalName": "ffi.js",
@@ -118,8 +118,8 @@
       },
       {
         "logicalName": "index.js",
-        "source": "apps/workbench/dist/assets/index-BsChTh28.js",
-        "gzipBytes": 177707
+        "source": "apps/workbench/dist/assets/index-CCrGjEsH.js",
+        "gzipBytes": 180472
       },
       {
         "logicalName": "interchange-shared.js",
@@ -238,8 +238,8 @@
       },
       {
         "logicalName": "ScriptStudioSurface.js",
-        "source": "apps/workbench/dist/assets/ScriptStudioSurface-BaiHu4dh.js",
-        "gzipBytes": 5477
+        "source": "apps/workbench/dist/assets/ScriptStudioSurface-CIPTEBww.js",
+        "gzipBytes": 5486
       },
       {
         "logicalName": "shared.js",
@@ -248,8 +248,8 @@
       },
       {
         "logicalName": "studio-operations.js",
-        "source": "apps/workbench/dist/assets/studio-operations-BtF1cDKm.js",
-        "gzipBytes": 1516
+        "source": "apps/workbench/dist/assets/studio-operations-BCxTNFK1.js",
+        "gzipBytes": 1517
       },
       {
         "logicalName": "tia-emi.js",

@@ -1,9 +1,4 @@
-import {
-  type ActionAbortSignal,
-  type ActionHandler,
-  type JsonValue,
-  WorkbenchActionHost,
-} from '@pji-workbench/actions'
+import type { ActionAbortSignal, JsonValue, WorkbenchActionHost } from '@pji-workbench/actions'
 import type {
   AnalysisCatalog,
   AnalysisDryRunResponse,
@@ -21,21 +16,14 @@ import type {
   RenderTile,
   RpcJsonObject,
 } from '@pji-workbench/contracts'
-import {
-  createImagingWorkerClient,
-  ImagingRpcError,
-  type ImagingWorkerClient,
-  SUPPORTED_FILE_ACCEPT,
-} from '@pji-workbench/imaging'
+import { createImagingWorkerClient, type ImagingWorkerClient } from '@pji-workbench/imaging'
 import { type BatchRecipeRow, runBatchRecipe } from '@pji-workbench/materials-analysis'
 import {
-  type AnalysisScriptDocumentV1,
-  normalizeStudioDocument,
   type RecipeDocumentV1,
   recipeContentIntegrity,
   validateRecipeDocument,
 } from '@pji-workbench/plugin-sdk'
-import { generateScriptApi, type ScriptActionInvoker } from '@pji-workbench/scripts'
+import type { ScriptActionInvoker } from '@pji-workbench/scripts'
 import {
   type ExampleScenarioV1,
   type ExampleWorkflowV1,
@@ -57,8 +45,35 @@ import {
   TreeRow,
 } from '@pji-workbench/ui'
 import {
+  ActivityController,
+  type CommandContext,
+  type CommandId,
+  commitOpenedSource,
+  type DomainUiContributions,
+  datasetSelectMutation,
+  duplicateProjectSnapshot,
+  exampleScenariosForProfile,
+  fileAcceptForProfile,
+  formatOpenSourceError,
+  getCommandAvailability,
+  type HeadlessDomainProfile,
+  localSourceLocator,
+  remoteSourceLocator,
+  resolveShortcut,
+  rpcObject,
+  sampleSourceLocator,
+  scienceDomainProfile,
+  scienceUiContributions,
+  selectWorkflowLayerMutation,
+  selectWorkflowResultMutation,
+  setProjectTitleMutation,
+  sourceRebindMutation,
+  type WorkbenchActionId,
+  workbenchActionRegistry,
+  workbenchCommands,
+} from '@pji-workbench/workbench-core'
+import {
   type CalibrationOverride,
-  datasetReferenceId,
   importWorkspaceProject,
   type ProjectId,
   type ProjectSummary,
@@ -66,8 +81,6 @@ import {
   semanticIdentityEqual,
   serializeWorkspaceProject,
   validateSemanticIdentity,
-  type WorkspaceDatasetReference,
-  type WorkspaceMutation,
   type WorkspaceSnapshot,
   type WorkspaceSourceReference,
 } from '@pji-workbench/workspace'
@@ -103,15 +116,6 @@ import {
   thresholdGraph,
   toolboxOperationGraph,
 } from '../analysis-workflows.js'
-import {
-  type CommandContext,
-  type CommandId,
-  getCommandAvailability,
-  resolveShortcut,
-  type WorkbenchActionId,
-  workbenchActionRegistry,
-  workbenchCommands,
-} from '../commands.js'
 import type { PublicEnvironment } from '../environment.js'
 import { ExampleGallery } from '../features/examples/ExampleGallery.js'
 import {
@@ -125,8 +129,6 @@ import {
   createProject,
   downloadProject,
   LAST_PROJECT_KEY,
-  mutationsToReplaceOpenSource,
-  projectSourceMutation,
   snapshotWithVisibleWorkflow,
 } from '../features/project/project-actions.js'
 import { useWorkspaceHistory } from '../features/project/useWorkspaceHistory.js'
@@ -167,6 +169,7 @@ import {
   initializeUxInstrumentation,
   measureUxNextPaint,
 } from '../ux-instrumentation.js'
+import { createWorkbenchActionHost } from './create-workbench-action-host.js'
 import { handleDialogKeyDown } from './dialog-keyboard.js'
 import { WorkbenchProviders, type WorkbenchServices } from './WorkbenchProviders.js'
 import { WorkbenchShell } from './WorkbenchShell.js'
@@ -204,12 +207,6 @@ interface ToolboxOperation {
   readonly inputs: readonly RpcJsonObject[]
   readonly outputs: readonly RpcJsonObject[]
   readonly parameters: RpcJsonObject
-}
-
-function rpcObject(value: unknown): RpcJsonObject | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as RpcJsonObject)
-    : undefined
 }
 
 function catalogOperation(
@@ -295,30 +292,6 @@ const ACTIVE_ACTION_SIGNAL: ActionAbortSignal = {
   throwIfAborted: () => undefined,
 }
 
-function commandAction(execute: () => Promise<void> | void): ActionHandler<CommandContext> {
-  return {
-    execute: async () => {
-      await execute()
-      return null
-    },
-  }
-}
-
-function fixtureAction(
-  execute: (input: JsonValue) => JsonValue | Promise<JsonValue>,
-): ActionHandler<CommandContext> {
-  return {
-    dryRun: (input) => execute(input),
-    execute: (input) => execute(input),
-  }
-}
-
-function executeOnlyAction(
-  execute: (input: JsonValue) => JsonValue | Promise<JsonValue>,
-): ActionHandler<CommandContext> {
-  return { execute: (input) => execute(input) }
-}
-
 function analysisOutputLabel(output: string): string {
   switch (output) {
     case 'magnitude':
@@ -336,19 +309,33 @@ function analysisOutputLabel(output: string): string {
   }
 }
 
-export function WorkbenchApp({ environment }: { readonly environment: PublicEnvironment }) {
+export function WorkbenchApp({
+  environment,
+  profile = scienceDomainProfile,
+  ui = scienceUiContributions,
+}: {
+  readonly environment: PublicEnvironment
+  readonly profile?: HeadlessDomainProfile<CommandContext>
+  readonly ui?: DomainUiContributions
+}) {
   return (
     <WorkbenchProviders>
-      {(services) => <WorkbenchRuntime environment={environment} services={services} />}
+      {(services) => (
+        <WorkbenchRuntime environment={environment} profile={profile} services={services} ui={ui} />
+      )}
     </WorkbenchProviders>
   )
 }
 
 function WorkbenchRuntime({
   environment,
+  profile,
+  ui,
   services: { client, preferenceStore, projectStore, scriptStore, runtime, reconciler },
 }: {
   readonly environment: PublicEnvironment
+  readonly profile: HeadlessDomainProfile<CommandContext>
+  readonly ui: DomainUiContributions
   readonly services: WorkbenchServices
 }) {
   const uxInstrumentationInitialized = useRef(false)
@@ -405,8 +392,8 @@ function WorkbenchRuntime({
   const urlInput = useRef<HTMLInputElement>(null)
   const urlDialogReturnFocus = useRef<HTMLElement>(null)
   const [remoteUrl, setRemoteUrl] = useState('')
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('info')
-  const [bottomTab, setBottomTab] = useState<BottomTab>('histogram')
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>(ui.defaultLayout.inspectorTab)
+  const [bottomTab, setBottomTab] = useState<BottomTab>(ui.defaultLayout.bottomTab)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteOperationId, setPaletteOperationId] = useState<string>()
   const [exampleGalleryOpen, setExampleGalleryOpen] = useState(false)
@@ -442,7 +429,7 @@ function WorkbenchRuntime({
   const [tableFilter, setTableFilter] = useState<AnalysisTableFilter>()
   const [tableSort, setTableSort] = useState<AnalysisTableSort>()
   const openedRef = useRef<OpenedDatasetDescriptor | undefined>(undefined)
-  const analysisAbort = useRef<AbortController | undefined>(undefined)
+  const activity = useRef(new ActivityController())
   const batchCancel = useRef<(() => void) | undefined>(undefined)
   const batchCancelItem = useRef<((itemId: string) => boolean) | undefined>(undefined)
   const previewResult = useRef<AnalysisResultHandleId | undefined>(undefined)
@@ -452,11 +439,11 @@ function WorkbenchRuntime({
   const fileInput = useRef<HTMLInputElement>(null)
   const projectImportInput = useRef<HTMLInputElement>(null)
   const rebindInput = useRef<HTMLInputElement>(null)
-  const openAbort = useRef<AbortController | undefined>(undefined)
-  const generation = useRef(0)
   const openedAt = useRef(0)
   const autoRangeLocked = useRef(false)
   const firstTileWaiters = useRef<Array<() => void>>([])
+  const fileAccept = useMemo(() => fileAcceptForProfile(profile), [profile])
+  const enabledExamples = useMemo(() => exampleScenariosForProfile(profile), [profile])
   const displayedRasterKey =
     analysisDataset === undefined
       ? 'source'
@@ -581,8 +568,8 @@ function WorkbenchRuntime({
 
   const cancelPreview = useCallback((): void => {
     setPreviewEnabled(false)
-    analysisAbort.current?.abort(new DOMException('Threshold preview cancelled', 'AbortError'))
-    analysisAbort.current = undefined
+    activity.current.analysis?.abort(new DOMException('Threshold preview cancelled', 'AbortError'))
+    activity.current.analysis = undefined
     const handle = previewResult.current
     previewResult.current = undefined
     setAnalysisOverlay((current) => (current?.resultHandleId === handle ? undefined : current))
@@ -599,9 +586,9 @@ function WorkbenchRuntime({
     if (opened === undefined) return
     measureUxNextPaint('threshold.preview')
     const finishUxTask = beginUxTask('threshold.preview')
-    analysisAbort.current?.abort(new DOMException('Superseded threshold preview', 'AbortError'))
+    activity.current.analysis?.abort(new DOMException('Superseded threshold preview', 'AbortError'))
     const controller = new AbortController()
-    analysisAbort.current = controller
+    activity.current.analysis = controller
     const previous = previewResult.current
     previewResult.current = undefined
     if (previous !== undefined) await releaseAnalysisHandle(previous)
@@ -710,14 +697,14 @@ function WorkbenchRuntime({
   }, [appendLog, client, opened])
 
   useEffect(() => {
-    const trackedAbort = analysisAbort.current
+    const trackedAbort = activity.current.analysis
     const trackedOpened = opened
     return () => {
       const preview = previewResult.current
       const active = activeResult.current
       previewResult.current = undefined
       activeResult.current = undefined
-      if (trackedAbort !== undefined && analysisAbort.current === trackedAbort)
+      if (trackedAbort !== undefined && activity.current.analysis === trackedAbort)
         trackedAbort.abort(new DOMException('Dataset changed', 'AbortError'))
       if (trackedOpened !== undefined) {
         for (const handle of [preview, active]) {
@@ -783,7 +770,7 @@ function WorkbenchRuntime({
       if (target === undefined) return false
       cancelPreview()
       const controller = new AbortController()
-      analysisAbort.current = controller
+      activity.current.analysis = controller
       const reportParticleMessage = (message: string): void => {
         if (options.surface === 'particle') setParticleMessage(message)
         if (options.surface === 'advanced') setAdvancedMessage(message)
@@ -1221,8 +1208,8 @@ function WorkbenchRuntime({
     )
       return
     const controller = new AbortController()
-    analysisAbort.current?.abort(new DOMException('Superseded particle plan', 'AbortError'))
-    analysisAbort.current = controller
+    activity.current.analysis?.abort(new DOMException('Superseded particle plan', 'AbortError'))
+    activity.current.analysis = controller
     const planningMessage = 'Planning the complete particle workflow with hard memory admission…'
     setParticleMessage(planningMessage)
     setAnalysisState((current) => ({
@@ -1375,9 +1362,9 @@ function WorkbenchRuntime({
       roi?: ViewportRoi,
     ): Promise<void> => {
       if (opened === undefined) return
-      analysisAbort.current?.abort(new DOMException('Superseded advanced plan', 'AbortError'))
+      activity.current.analysis?.abort(new DOMException('Superseded advanced plan', 'AbortError'))
       const controller = new AbortController()
-      analysisAbort.current = controller
+      activity.current.analysis = controller
       setAdvancedPlan(undefined)
       setAdvancedMessage(`Planning ${kind} workflow…`)
       setAnalysisState((current) => ({ ...current, busy: true }))
@@ -1930,28 +1917,13 @@ function WorkbenchRuntime({
           nextSource.generation,
           signal,
         ))
-      const sourceMutation = projectSourceMutation(nextSource, locator)
-      const dataset = sourceMutation.datasets[0]
-      if (dataset === undefined) throw new Error('The document contains no scientific datasets.')
-      const mutation: WorkspaceMutation = {
-        ...sourceMutation,
-        activate: {
-          sourceId: sourceMutation.source.id,
-          datasetReferenceId: dataset.id,
-          plane: nextDataset.selection,
-          component: 0,
-        },
-      }
-      const previous = currentSnapshot()
-      const leftoverRois = previous.analysis.roiSet.rois
       const previousSemanticId = runtime.current?.semanticSourceId
-      for (const leftover of mutationsToReplaceOpenSource(previous)) {
-        applyProjectMutation(leftover)
-      }
-      applyProjectMutation(mutation)
-      for (const roi of leftoverRois) applyProjectMutation({ kind: 'roi.remove', roiId: roi.id })
-      if (leftoverRois.length > 0 || currentSnapshot().workflow.selectedRoiId !== undefined)
-        applyProjectMutation({ kind: 'roi.select' })
+      const sourceMutation = commitOpenedSource(
+        { currentSnapshot, applyMutation: applyProjectMutation },
+        nextSource,
+        locator,
+        nextDataset,
+      )
       setParticleSettings(DEFAULT_PARTICLE_WORKFLOW)
       setAnalysisDataset(undefined)
       setAnalysisOverlay(undefined)
@@ -2004,37 +1976,28 @@ function WorkbenchRuntime({
       workerClient = client,
     ): Promise<OpenedDatasetDescriptor | undefined> => {
       const finishUxTask = beginUxTask('source.open')
-      openAbort.current?.abort()
-      const controller = new AbortController()
-      openAbort.current = controller
-      const nextGeneration = generation.current + 1
+      const { generation: nextGeneration, signal } = activity.current.startOpen()
       setStatus('opening')
       setError(undefined)
       try {
-        const openedResult = await opener(nextGeneration, controller.signal)
+        const openedResult = await opener(nextGeneration, signal)
         const nextSource = 'dataset' in openedResult ? openedResult.source : openedResult
         const preparedDataset = 'dataset' in openedResult ? openedResult.dataset : undefined
         const nextDataset = await finishOpen(
           nextSource,
           locator,
-          controller.signal,
+          signal,
           workerClient,
           preparedDataset,
         )
-        generation.current = nextGeneration
+        activity.current.completeOpen(nextGeneration)
         setStatus('ready')
         return nextDataset
       } catch (openError) {
-        if (controller.signal.aborted) {
+        if (signal.aborted) {
           appendLog('Source opening cancelled; the previous workspace was retained')
         } else {
-          const message =
-            openError instanceof ImagingRpcError
-              ? `${openError.message}${openError.detail.guidance === undefined ? '' : ` ${openError.detail.guidance}`}`
-              : openError instanceof Error
-                ? openError.message
-                : 'Unable to open the source.'
-          setError(`${message} The previous workspace remains unchanged.`)
+          setError(`${formatOpenSourceError(openError)} The previous workspace remains unchanged.`)
         }
         setStatus('ready')
         if (throwOnError) throw openError
@@ -2050,10 +2013,7 @@ function WorkbenchRuntime({
     (sampleId = 'generated.calibrated-particles', throwOnError = false) => {
       return runOpen(
         (nextGeneration, signal) => client.openSample(nextGeneration, signal, sampleId),
-        {
-          kind: 'sample',
-          sampleId,
-        },
+        sampleSourceLocator(sampleId),
         throwOnError,
       )
     },
@@ -2085,8 +2045,8 @@ function WorkbenchRuntime({
     async (scenario: ExampleScenarioV1, signal: AbortSignal): Promise<void> => {
       const fixture = resolveExampleFixture(scenario.id)
       const cancel = (): void => {
-        openAbort.current?.abort()
-        analysisAbort.current?.abort(new DOMException('Example action cancelled', 'AbortError'))
+        activity.current.cancelOpen()
+        activity.current.cancelAnalysis('Example action cancelled')
       }
       signal.addEventListener('abort', cancel, { once: true })
       try {
@@ -2182,13 +2142,7 @@ function WorkbenchRuntime({
       if (primary === undefined) return
       void runOpen(
         (nextGeneration, signal) => client.openLocal(files, primary, nextGeneration, signal),
-        {
-          kind: 'local',
-          name: primary.name,
-          size: primary.size,
-          lastModified: primary.lastModified,
-          companionNames: files.slice(1).map(({ name }) => name),
-        },
+        localSourceLocator(files),
       )
     },
     [client, runOpen],
@@ -2198,8 +2152,8 @@ function WorkbenchRuntime({
     async (snapshot: WorkspaceSnapshot, previous: WorkspaceSnapshot | undefined): Promise<void> => {
       setStatus('opening')
       setError(undefined)
-      analysisAbort.current?.abort(new DOMException('Workspace replayed', 'AbortError'))
-      analysisAbort.current = undefined
+      activity.current.analysis?.abort(new DOMException('Workspace replayed', 'AbortError'))
+      activity.current.analysis = undefined
       const handles = [...new Set([previewResult.current, activeResult.current])].filter(
         (handle): handle is AnalysisResultHandleId => handle !== undefined,
       )
@@ -2254,7 +2208,7 @@ function WorkbenchRuntime({
             ({ datasetReferenceId }) => datasetReferenceId === snapshot.active?.datasetReferenceId,
           )
           setMapping(layer?.mapping ?? { mode: 'linear', range: 'auto' })
-          generation.current = materialized.source.generation
+          activity.current.syncGeneration(materialized.source.generation)
           appendLog(
             `Replayed ${materialized.source.source.name} from project revision ${snapshot.revision}`,
           )
@@ -2367,20 +2321,7 @@ function WorkbenchRuntime({
   const saveProjectAs = useCallback(async (): Promise<void> => {
     try {
       const current = visibleWorkspace()
-      const now = new Date().toISOString()
-      const copy = importWorkspaceProject(
-        JSON.stringify({
-          ...current,
-          revision: 0,
-          project: {
-            ...current.project,
-            id: crypto.randomUUID() as ProjectId,
-            title: `${current.project.title} copy`,
-            createdAt: now,
-            updatedAt: now,
-          },
-        }),
-      )
+      const copy = importWorkspaceProject(JSON.stringify(duplicateProjectSnapshot(current)))
       replaceWorkspace(copy)
       setSavedProjectJson(undefined)
       await projectStore.save(copy)
@@ -2454,29 +2395,7 @@ function WorkbenchRuntime({
     ): void => {
       const primary = files[0]
       if (primary === undefined) return
-      const datasets: readonly WorkspaceDatasetReference[] = nextSource.datasets.map(
-        (descriptor) => ({
-          id: datasetReferenceId(sourceId, descriptor.id),
-          sourceId,
-          datasetId: descriptor.id,
-          identity: validateSemanticIdentity(descriptor.identity),
-          descriptor,
-        }),
-      )
-      applyProjectMutation({
-        kind: 'source.rebind',
-        sourceId,
-        locator: {
-          kind: 'local',
-          name: primary.name,
-          size: primary.size,
-          lastModified: primary.lastModified,
-          companionNames: files.slice(1).map(({ name }) => name),
-        },
-        identity: validateSemanticIdentity(nextSource.identity),
-        bound: true,
-        datasets,
-      })
+      applyProjectMutation(sourceRebindMutation(sourceId, files, nextSource))
       runtime.bindLocalFiles(sourceId, files)
       runtime.adopt(sourceId, nextSource, nextDataset)
       setSource(nextSource)
@@ -2503,7 +2422,7 @@ function WorkbenchRuntime({
       setStatus('opening')
       setError(undefined)
       try {
-        const nextGeneration = generation.current + 1
+        const nextGeneration = activity.current.generation + 1
         const nextSource = await client.openLocal(files, primary, nextGeneration)
         const descriptor = nextSource.datasets.find(({ id }) => id === activeDataset.datasetId)
         if (descriptor === undefined) {
@@ -2530,7 +2449,7 @@ function WorkbenchRuntime({
           setStatus('ready')
           return
         }
-        generation.current = nextGeneration
+        activity.current.completeOpen(nextGeneration)
         applyRebind(sourceReference.id, files, nextSource, nextDataset)
       } catch (rebindError) {
         setStatus('ready')
@@ -2586,15 +2505,9 @@ function WorkbenchRuntime({
         if (sourceReference === undefined || datasetReference === undefined) {
           throw new Error('The selected dataset is not present in the semantic project.')
         }
-        applyProjectMutation({
-          kind: 'dataset.select',
-          selection: {
-            sourceId: sourceReference.id,
-            datasetReferenceId: datasetReference.id,
-            plane: next.selection,
-            component: 0,
-          },
-        })
+        applyProjectMutation(
+          datasetSelectMutation(sourceReference.id, datasetReference.id, next.selection),
+        )
         const previous = opened
         setOpened(next)
         setSelection(next.selection)
@@ -2719,492 +2632,48 @@ function WorkbenchRuntime({
   const actionHostRef = useRef<WorkbenchActionHost<CommandContext> | undefined>(undefined)
   const actionHost = useMemo(
     () =>
-      new WorkbenchActionHost(
+      createWorkbenchActionHost(
         workbenchActionRegistry,
-        new Map<string, ActionHandler<CommandContext>>([
-          [
-            'workspace.openSample@1',
-            commandAction(async () => {
-              await openSample()
-            }),
-          ],
-          [
-            'workspace.summary.read@1',
-            fixtureAction(() => ({
-              id: 'workspace:generated-particles',
-              title: 'Generated calibrated particles',
-              revision: 1,
-              sourceCount: 1,
-              datasetCount: 1,
-              roiCount: 1,
-            })),
-          ],
-          [
-            'source.list@1',
-            fixtureAction(() => [
-              { id: 'source:generated-particles', label: 'Generated particles', kind: 'generated' },
-            ]),
-          ],
-          [
-            'dataset.list@1',
-            fixtureAction(() => [
-              { id: 'dataset:particles', name: 'Calibrated particles', axes: ['y', 'x'] },
-            ]),
-          ],
-          [
-            'dataset.describe@1',
-            fixtureAction(() => ({
-              id: 'dataset:particles',
-              name: 'Calibrated particles',
-              shape: [512, 512],
-              components: 1,
-              calibration: { x: 2.5, y: 2.5, unit: 'nm', source: 'generated fixture' },
-            })),
-          ],
-          [
-            'roi.list@1',
-            fixtureAction(() => [
-              {
-                id: 'roi:known-region',
-                kind: 'rectangle',
-                label: 'Known particles',
-                bounds: { x: 32, y: 40, width: 224, height: 192 },
-              },
-            ]),
-          ],
-          [
-            'roi.create@1',
-            fixtureAction((input) => ({
-              proposalId: 'proposal:roi-1',
-              status: 'requires-approval',
-              normalized: input,
-            })),
-          ],
-          [
-            'roi.update@1',
-            fixtureAction((input) => ({
-              proposalId: 'proposal:roi-update',
-              status: 'requires-approval',
-              normalized: input,
-            })),
-          ],
-          [
-            'analysis.catalog.read@1',
-            fixtureAction(() => ({
-              operations: [
-                { id: 'threshold.manual', version: 1, title: 'Manual threshold' },
-                { id: 'measure.statistics', version: 1, title: 'ROI statistics' },
-              ],
-            })),
-          ],
-          [
-            'analysis.describe@1',
-            fixtureAction(() => ({
-              id: 'threshold.manual',
-              version: 1,
-              acceptedDatasets: ['scalar-2d'],
-              deterministic: true,
-            })),
-          ],
-          [
-            'analysis.normalize@1',
-            fixtureAction((input) => ({ normalized: input, operationVersion: 1 })),
-          ],
-          [
-            'analysis.dry-run@1',
-            fixtureAction((input) => ({
-              planId: 'plan:threshold-1',
-              normalized: input,
-              estimatedPeakBytes: 1_048_576,
-              estimatedTiles: 4,
-              status: 'reviewed-fixture-plan',
-            })),
-          ],
-          [
-            'analysis.graph.request-execute@1',
-            {
-              execute: async (input, _context, signal) => {
-                signal.throwIfAborted()
-                const request = rpcObject(input)
-                const graph = rpcObject(request?.['graph'])
-                const roiId = request?.['roiId']
-                if (
-                  graph === undefined ||
-                  (roiId !== undefined && typeof roiId !== 'string') ||
-                  opened === undefined ||
-                  selection === undefined
-                )
-                  throw new Error('Analysis graph action input is invalid.')
-                const roi =
-                  typeof roiId === 'string'
-                    ? workspace.analysis.roiSet.rois.find(({ id }) => id === roiId)
-                    : wholePlaneRoi(calibratedOpened ?? opened, selection)
-                if (roi === undefined) throw new Error('The recipe ROI is no longer available.')
-                await executeAnalysisGraph(
-                  graph as unknown as WorkspaceSnapshot['analysis']['graph'],
-                  {
-                    roi,
-                    overlay: 'labels',
-                    overlayView: particleSettings.overlayView,
-                    overlayTableOutput: 'objects',
-                    commit: true,
-                  },
-                )
-                return { status: 'completed' }
-              },
-            },
-          ],
-          [
-            'analysis.request-execute@1',
-            {
-              execute: async (input, _context, signal) => {
-                signal.throwIfAborted()
-                const request = rpcObject(input)
-                const operationId = request?.['operationId']
-                const operationVersion = request?.['operationVersion']
-                const parameters = rpcObject(request?.['parameters'])
-                const mode = request?.['mode']
-                if (
-                  typeof operationId !== 'string' ||
-                  typeof operationVersion !== 'number' ||
-                  parameters === undefined ||
-                  (mode !== 'preview' && mode !== 'apply')
-                ) {
-                  throw new Error('Analysis action input is invalid.')
-                }
-                const operation = catalogOperation(analysisCatalog, operationId, operationVersion)
-                if (operation === undefined) {
-                  throw new Error('Analysis operation is unavailable.')
-                }
-                await runToolboxOperation(operation, parameters, mode)
-                return {
-                  operationId,
-                  operationVersion,
-                  mode,
-                  status: mode === 'preview' ? 'previewed' : 'applied',
-                }
-              },
-            },
-          ],
-          [
-            'analysis.batch.request-execute@1',
-            fixtureAction((input) => ({
-              proposalId: 'proposal:batch',
-              status: 'requires-approval',
-              bounded: true,
-              request: input,
-            })),
-          ],
-          [
-            'analysis.cancel@1',
-            executeOnlyAction(() => {
-              analysisAbort.current?.abort(
-                new DOMException('Cancelled by semantic action.', 'AbortError'),
-              )
-              return { status: 'cancel-requested' }
-            }),
-          ],
-          [
-            'result.summary.read@1',
-            fixtureAction(() => ({ resultId: 'result:fixture', rowCount: 12, bounded: true })),
-          ],
-          [
-            'result.page.read@1',
-            fixtureAction(() => ({ resultId: 'result:fixture', offset: 0, rows: [] })),
-          ],
-          [
-            'pipeline.read@1',
-            fixtureAction(() => workspace.analysis.graph as unknown as JsonValue),
-          ],
-          [
-            'result.export.propose@1',
-            fixtureAction((input) => ({
-              proposalId: 'proposal:result-export',
-              status: 'requires-approval',
-              format: 'csv',
-              request: input,
-            })),
-          ],
-          [
-            'viewport.state.read@1',
-            fixtureAction(() => ({ center: [256, 256], zoom: 1, datasetId: 'dataset:particles' })),
-          ],
-          [
-            'viewport.state.propose@1',
-            fixtureAction((input) => ({ proposalId: 'proposal:viewport-1', state: input })),
-          ],
-          [
-            'panel.select@1',
-            fixtureAction((input) => ({ proposalId: 'proposal:panel-1', panel: input })),
-          ],
-          [
-            'script.log@1',
-            fixtureAction((input) => {
-              const message =
-                typeof input === 'object' && input !== null && !Array.isArray(input)
-                  ? (input as { readonly [key: string]: JsonValue })['message']
-                  : undefined
-              if (typeof message === 'string')
-                setLog((current) => [...current, `Script · ${message}`])
-              return null
-            }),
-          ],
-          [
-            'script.create_draft@1',
-            executeOnlyAction(async (input) => {
-              const request = rpcObject(input)
-              const id = request?.['id']
-              const title = request?.['title']
-              if (typeof id !== 'string' || typeof title !== 'string')
-                throw new Error('Script draft requires bounded id and title fields.')
-              const document = (await normalizeStudioDocument({
-                schemaVersion: 1,
-                kind: 'analysis-script',
-                id,
-                title,
-                language: 'typescript',
-                source: `export async function main() { return {} }\nglobalThis.__scriptMain = main\n`,
-                manifest: {
-                  scriptApiVersion: 1,
-                  requestedCapabilities: [],
-                  pureJsImageCompatibility: '^4.0.0',
-                  workbenchCompatibility: '^0.0.0',
-                  entrypoint: 'main',
-                  deterministic: true,
-                },
-                tests: [],
-                integrity: { algorithm: 'sha256', digest: '0'.repeat(64) },
-              })) as AnalysisScriptDocumentV1
-              const record = {
-                schemaVersion: 1 as const,
-                id,
-                kind: 'analysis-script' as const,
-                document,
-                savedDocument: document,
-                editor: {
-                  schemaVersion: 1 as const,
-                  selectionAnchor: 0,
-                  selectionHead: 0,
-                  scrollTop: 0,
-                  activePanel: 'problems' as const,
-                },
-                testResults: [],
-              }
-              await scriptStore.put(record)
-              return { id, digest: document.integrity.digest }
-            }),
-          ],
-          [
-            'script.read@1',
-            fixtureAction(async (input) => {
-              const id = rpcObject(input)?.['id']
-              if (typeof id !== 'string') throw new Error('Script read requires an id.')
-              const record = await scriptStore.get(id)
-              if (record === undefined) throw new Error('Script or recipe was not found.')
-              return record as unknown as JsonValue
-            }),
-          ],
-          [
-            'script.apply_patch@1',
-            executeOnlyAction(async (input) => {
-              const request = rpcObject(input)
-              const id = request?.['id']
-              const expectedDigest = request?.['expectedDigest']
-              const source = request?.['source']
-              if (
-                typeof id !== 'string' ||
-                typeof expectedDigest !== 'string' ||
-                typeof source !== 'string'
-              )
-                throw new Error('Script patch requires id, expectedDigest, and source.')
-              const record = await scriptStore.get(id)
-              if (record?.document.kind !== 'analysis-script')
-                throw new Error('Only sandboxed script source can be patched by this action.')
-              if (record.document.integrity.digest !== expectedDigest)
-                throw new Error('Script changed since the requested patch was prepared.')
-              const document = (await normalizeStudioDocument({
-                ...record.document,
-                source,
-              })) as AnalysisScriptDocumentV1
-              await scriptStore.put({ ...record, document, testResults: [] })
-              return { id, digest: document.integrity.digest, status: 'draft-updated' }
-            }),
-          ],
-          [
-            'script.typecheck@1',
-            fixtureAction(async (input) => {
-              const request = rpcObject(input)
-              const id = request?.['id']
-              const expectedDigest = request?.['expectedDigest']
-              if (typeof id !== 'string' || typeof expectedDigest !== 'string')
-                throw new Error('Script typecheck requires id and expectedDigest.')
-              const record = await scriptStore.get(id)
-              if (record?.document.kind !== 'analysis-script')
-                throw new Error('Typecheck requires a sandboxed script.')
-              if (record.document.integrity.digest !== expectedDigest)
-                throw new Error('Script changed since typecheck was requested.')
-              const [{ ScriptLanguageClient }] = await Promise.all([
-                import('../features/scripts/language-client.js'),
-              ])
-              const client = new ScriptLanguageClient()
-              try {
-                const result = await client.check(
-                  record.document.source,
-                  record.document.language,
-                  generateScriptApi(workbenchActionRegistry.manifest()),
-                )
-                return {
-                  id,
-                  digest: record.document.integrity.digest,
-                  problems: result.problems,
-                } as unknown as JsonValue
-              } finally {
-                client.dispose()
-              }
-            }),
-          ],
-          [
-            'script.run_tests@1',
-            executeOnlyAction(async (input) => {
-              const request = rpcObject(input)
-              const id = request?.['id']
-              const expectedDigest = request?.['expectedDigest']
-              if (typeof id !== 'string' || typeof expectedDigest !== 'string')
-                throw new Error('Script tests require id and expectedDigest.')
-              const record = await scriptStore.get(id)
-              if (record === undefined) throw new Error('Script or recipe was not found.')
-              if (record.document.integrity.digest !== expectedDigest)
-                throw new Error('Script changed since tests were requested.')
-              const host = actionHostRef.current
-              if (host === undefined) throw new Error('Script action host is unavailable.')
-              const [studio, languageModule, scriptModule] = await Promise.all([
-                import('../features/scripts/studio-operations.js'),
-                import('../features/scripts/language-client.js'),
-                import('@pji-workbench/scripts/examples'),
-              ])
-              const languageClient = new languageModule.ScriptLanguageClient()
-              try {
-                const examples = await scriptModule.createBuiltInScriptStudioExamples()
-                const example = examples.find((candidate) => candidate.id === id)
-                const results = await studio.runDocumentTests({
-                  document: record.document,
-                  ...(example === undefined ? {} : { recipeTests: example.tests }),
-                  language: languageClient,
-                  api: generateScriptApi(workbenchActionRegistry.manifest()),
-                  invoker: {
-                    invoke: (actionId, version, actionInput, mode) =>
-                      mode === 'dry-run'
-                        ? host.dryRun(
-                            actionId,
-                            version,
-                            actionInput,
-                            { hasDataset: true },
-                            ACTIVE_ACTION_SIGNAL,
-                          )
-                        : host.execute(
-                            actionId,
-                            version,
-                            actionInput,
-                            { hasDataset: true },
-                            ACTIVE_ACTION_SIGNAL,
-                          ),
-                  },
-                })
-                await scriptStore.put({ ...record, testResults: results })
-                return {
-                  id,
-                  digest: record.document.integrity.digest,
-                  results,
-                  status: results.every(({ status }) => status === 'passed') ? 'passed' : 'failed',
-                } as unknown as JsonValue
-              } finally {
-                languageClient.dispose()
-              }
-            }),
-          ],
-          [
-            'script.diff@1',
-            fixtureAction(async (input) => {
-              const request = rpcObject(input)
-              const id = request?.['id']
-              const expectedDigest = request?.['expectedDigest']
-              if (typeof id !== 'string' || typeof expectedDigest !== 'string')
-                throw new Error('Script diff requires id and expectedDigest.')
-              const record = await scriptStore.get(id)
-              if (record === undefined) throw new Error('Script or recipe was not found.')
-              if (record.document.integrity.digest !== expectedDigest)
-                throw new Error('Script changed since diff was requested.')
-              const { boundedLineDiff, documentText } = await import(
-                '../features/scripts/studio-operations.js'
-              )
-              return {
-                id,
-                lines: boundedLineDiff(
-                  documentText(record.savedDocument),
-                  documentText(record.document),
-                ),
-              }
-            }),
-          ],
-          [
-            'script.request_install@1',
-            fixtureAction(async (input) => {
-              const request = rpcObject(input)
-              const id = request?.['id']
-              const expectedDigest = request?.['expectedDigest']
-              if (typeof id !== 'string' || typeof expectedDigest !== 'string')
-                throw new Error('Installation request requires id and expectedDigest.')
-              const record = await scriptStore.get(id)
-              if (record === undefined) throw new Error('Script or recipe was not found.')
-              if (record.document.integrity.digest !== expectedDigest)
-                throw new Error('Script changed since installation was requested.')
-              return {
-                id,
-                digest: record.document.integrity.digest,
-                status: 'requires-user-review',
-              }
-            }),
-          ],
-          [
-            'script.request_execute@1',
-            fixtureAction(async (input) => {
-              const request = rpcObject(input)
-              const id = request?.['id']
-              const expectedDigest = request?.['expectedDigest']
-              if (typeof id !== 'string' || typeof expectedDigest !== 'string')
-                throw new Error('Execution request requires id and expectedDigest.')
-              const record = await scriptStore.get(id)
-              if (record === undefined) throw new Error('Script or recipe was not found.')
-              if (record.document.integrity.digest !== expectedDigest)
-                throw new Error('Script changed since execution was requested.')
-              return {
-                id,
-                digest: record.document.integrity.digest,
-                status: 'requires-user-review',
-              }
-            }),
-          ],
-          ['workspace.new@1', commandAction(newProject)],
-          ['workspace.openProject@1', commandAction(openProjectDialog)],
-          ['workspace.save@1', commandAction(saveProject)],
-          ['workspace.export@1', commandAction(() => downloadProject(visibleWorkspace()))],
-          ['workspace.undo@1', commandAction(() => performHistory('undo'))],
-          ['workspace.redo@1', commandAction(() => performHistory('redo'))],
-          ['viewport.fit@1', commandAction(() => viewportApi.current?.fit())],
-          ['viewport.oneToOne@1', commandAction(() => viewportApi.current?.oneToOne())],
-          ['panel.agent@1', commandAction(() => setInspectorTab('agent'))],
-          ['analysis.threshold.preview@1', commandAction(() => setPreviewEnabled(true))],
-          ['analysis.threshold.commit@1', commandAction(applyThreshold)],
-          ['analysis.connected-components.plan@1', commandAction(planConnectedComponents)],
-          ['analysis.connected-components.execute@1', commandAction(runConnectedComponents)],
-          [
-            'theme.toggle@1',
-            commandAction(() =>
-              updatePreferences({ theme: preferences.theme === 'dark' ? 'light' : 'dark' }),
-            ),
-          ],
-          ['palette.open@1', commandAction(() => setPaletteOpen(true))],
-        ]),
+        {
+          openSample: async () => {
+            await openSample()
+          },
+          requestLocalFiles: () => fileInput.current?.click(),
+          requestRemoteUrl: openUrlDialog,
+          newProject,
+          openProjectBrowser: openProjectDialog,
+          saveProject,
+          exportProject: () => downloadProject(visibleWorkspace()),
+          undo: () => performHistory('undo'),
+          redo: () => performHistory('redo'),
+          fitViewport: () => viewportApi.current?.fit(),
+          oneToOneViewport: () => viewportApi.current?.oneToOne(),
+          openAgentPanel: () => setInspectorTab('agent'),
+          previewThreshold: () => setPreviewEnabled(true),
+          commitThreshold: applyThreshold,
+          planConnectedComponents,
+          runConnectedComponents,
+          toggleTheme: () =>
+            updatePreferences({ theme: preferences.theme === 'dark' ? 'light' : 'dark' }),
+          openPalette: () => setPaletteOpen(true),
+          cancelAnalysis: (reason) => activity.current.cancelAnalysis(reason),
+          currentWorkspace: () => workspace,
+          openedDataset: () => opened,
+          currentSelection: () => selection,
+          calibratedDataset: () => calibratedOpened,
+          particleOverlayView: () => particleSettings.overlayView,
+          analysisCatalog: () => analysisCatalog,
+          resolveCatalogOperation: catalogOperation,
+          executeAnalysisGraph,
+          wholePlaneRoi,
+          runToolboxOperation,
+        },
+        {
+          store: scriptStore,
+          registry: workbenchActionRegistry,
+          currentHost: () => actionHostRef.current,
+          appendScriptLog: (message) => setLog((current) => [...current, `Script · ${message}`]),
+        },
       ),
     [
       newProject,
@@ -3215,6 +2684,7 @@ function WorkbenchRuntime({
       executeAnalysisGraph,
       opened,
       openProjectDialog,
+      openUrlDialog,
       particleSettings.overlayView,
       planConnectedComponents,
       performHistory,
@@ -3238,7 +2708,7 @@ function WorkbenchRuntime({
           ? actionHost.dryRun(id, version, input, { hasDataset: true }, ACTIVE_ACTION_SIGNAL)
           : actionHost.execute(id, version, input, { hasDataset: true }, ACTIVE_ACTION_SIGNAL),
       cancel: () =>
-        analysisAbort.current?.abort(
+        activity.current.analysis?.abort(
           new DOMException('Cancelled with the active sandbox script.', 'AbortError'),
         ),
     }),
@@ -3335,8 +2805,7 @@ function WorkbenchRuntime({
     event.preventDefault()
     closeUrlDialog()
     void runOpen((nextGeneration, signal) => client.openRemote(remoteUrl, nextGeneration, signal), {
-      kind: 'remote',
-      url: remoteUrl,
+      ...remoteSourceLocator(remoteUrl),
     })
   }
 
@@ -3403,7 +2872,7 @@ function WorkbenchRuntime({
             setParticleMessage('Preview cancelled. The committed project is unchanged.')
           }}
           onCancelRun={() => {
-            analysisAbort.current?.abort(
+            activity.current.analysis?.abort(
               new DOMException('Particle analysis cancelled', 'AbortError'),
             )
             setParticleMessage('Particle analysis cancelled. The committed project is unchanged.')
@@ -3441,7 +2910,9 @@ function WorkbenchRuntime({
               setAdvancedMessage(`Cancelled batch item ${itemId}. Other items continue.`)
           }}
           onCancel={() => {
-            analysisAbort.current?.abort(new DOMException('Advanced work cancelled', 'AbortError'))
+            activity.current.analysis?.abort(
+              new DOMException('Advanced work cancelled', 'AbortError'),
+            )
             batchCancel.current?.()
             setAdvancedMessage('Advanced work cancelled. The committed project is unchanged.')
             setAnalysisState((current) => ({ ...current, busy: false }))
@@ -3565,7 +3036,7 @@ function WorkbenchRuntime({
               P
             </span>
             <div>
-              <h1>PureJsImage Lab</h1>
+              <h1>{ui.shellHeading}</h1>
               <input
                 aria-label="Project title"
                 className="project-title"
@@ -3575,7 +3046,7 @@ function WorkbenchRuntime({
                 onBlur={(event) => {
                   const title = event.target.value.trim()
                   if (title !== '' && title !== workspace.project.title) {
-                    applyProjectMutation({ kind: 'project.set-title', title })
+                    applyProjectMutation(setProjectTitleMutation(title))
                   }
                 }}
               />
@@ -3652,19 +3123,19 @@ function WorkbenchRuntime({
               <Icon name="redo" />
             </IconButton>
             <span aria-hidden="true" className="toolbar-divider" />
-            <Button onClick={() => fileInput.current?.click()} variant="primary">
+            <Button onClick={() => executeAction('source.open-local')} variant="primary">
               <Icon name="open" size={15} /> Open files
             </Button>
             <Button
               onClick={(event) => {
                 urlDialogReturnFocus.current = event.currentTarget
-                openUrlDialog()
+                executeAction('source.open-remote')
               }}
             >
               <Icon name="link" size={15} /> Open URL
             </Button>
             <input
-              accept={SUPPORTED_FILE_ACCEPT}
+              accept={fileAccept}
               aria-label="Choose local scientific files"
               className="visually-hidden"
               multiple
@@ -3848,10 +3319,9 @@ function WorkbenchRuntime({
                       selected={workspace.workflow.selectedLayerId === layer.id}
                       onSelect={() => {
                         setInspectorTab('display')
-                        applyProjectMutation({
-                          kind: 'project.set-workflow',
-                          workflow: { ...workspace.workflow, selectedLayerId: layer.id },
-                        })
+                        applyProjectMutation(
+                          selectWorkflowLayerMutation(workspace.workflow, layer.id),
+                        )
                       }}
                     />
                   ))
@@ -3887,10 +3357,9 @@ function WorkbenchRuntime({
                       selected={workspace.workflow.selectedResultId === result.id}
                       onSelect={() => {
                         setBottomTab('results')
-                        applyProjectMutation({
-                          kind: 'project.set-workflow',
-                          workflow: { ...workspace.workflow, selectedResultId: result.id },
-                        })
+                        applyProjectMutation(
+                          selectWorkflowResultMutation(workspace.workflow, result.id),
+                        )
                       }}
                     />
                   ))
@@ -3984,7 +3453,7 @@ function WorkbenchRuntime({
                     <span className="source-opening__bar" />
                     <strong>Opening source in the imaging Worker…</strong>
                     <span>The current workspace stays available until opening succeeds.</span>
-                    <Button onClick={() => openAbort.current?.abort()}>Cancel</Button>
+                    <Button onClick={() => activity.current.cancelOpen()}>Cancel</Button>
                   </div>
                 ) : hasDataset && opened !== undefined && selection !== undefined ? (
                   <ScientificViewport
@@ -4041,16 +3510,14 @@ function WorkbenchRuntime({
                 ) : (
                   <section className="empty-start" aria-labelledby="empty-start-title">
                     <Icon name="open" size={30} />
-                    <p className="panel-kicker">Local-first scientific imaging</p>
-                    <h2 id="empty-start-title">
-                      Start with an original file or a verified example
-                    </h2>
-                    <p>
-                      Inspect calibration, measure regions, and replay analysis without uploading
-                      local source pixels.
-                    </p>
+                    <p className="panel-kicker">{ui.emptyState.kicker}</p>
+                    <h2 id="empty-start-title">{ui.emptyState.heading}</h2>
+                    <p>{ui.emptyState.body}</p>
                     <div className="empty-start__actions">
-                      <Button onClick={() => fileInput.current?.click()} variant="primary">
+                      <Button
+                        onClick={() => executeAction(ui.emptyState.primaryActionId)}
+                        variant="primary"
+                      >
                         <Icon name="open" size={16} /> Open local file
                       </Button>
                       <Button
@@ -4064,7 +3531,7 @@ function WorkbenchRuntime({
                       <Button
                         onClick={(event) => {
                           urlDialogReturnFocus.current = event.currentTarget
-                          openUrlDialog()
+                          executeAction('source.open-remote')
                         }}
                       >
                         <Icon name="link" size={16} /> Open remote URL
@@ -4315,7 +3782,7 @@ function WorkbenchRuntime({
               </Button>
               <Button
                 onClick={() => {
-                  generation.current = identityMismatch.openedSource.generation
+                  activity.current.syncGeneration(identityMismatch.openedSource.generation)
                   applyRebind(
                     identityMismatch.sourceId,
                     identityMismatch.files,
@@ -4333,6 +3800,7 @@ function WorkbenchRuntime({
       )}
       {exampleGalleryOpen ? (
         <ExampleGallery
+          enabledScenarios={enabledExamples}
           onClose={() => setExampleGalleryOpen(false)}
           onInspectWorkflow={(workflow) => {
             setExampleGalleryOpen(false)

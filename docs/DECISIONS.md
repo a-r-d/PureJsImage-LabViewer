@@ -54,6 +54,8 @@ imaging Worker.
 
 See [`docs/adr/0001-shared-showcase-monorepo.md`](./adr/0001-shared-showcase-monorepo.md).
 `apps/workbench` remains the science application until a later, characterization-gated move.
+It is instantiated from the explicit `science` domain profile in `packages/workbench-core`.
+Shared React composition stays in the app; a `workbench-react` package is not required yet.
 
 ## Backend boundary without speculative backend code
 

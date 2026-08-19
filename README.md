@@ -11,9 +11,9 @@ later milestones described under [`prompts/`](prompts/). Notable product changes
 in [`CHANGELOG.md`](CHANGELOG.md).
 
 The repository is becoming a shared showcase monorepo: separately built gallery, science,
-and geo applications, with medical added later. Shared behavior will be a compile-time
-domain profile. The current `apps/workbench` science UI is unchanged until a later
-characterization-gated move. See [`docs/adr/0001-shared-showcase-monorepo.md`](docs/adr/0001-shared-showcase-monorepo.md).
+and geo applications, with medical added later. Shared behavior is a compile-time domain
+profile in `packages/workbench-core`. The current `apps/workbench` science app is composed
+from that profile. See [`docs/adr/0001-shared-showcase-monorepo.md`](docs/adr/0001-shared-showcase-monorepo.md).
 
 ## Prerequisites
 

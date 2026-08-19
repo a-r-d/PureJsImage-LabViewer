@@ -12,6 +12,7 @@
     { "path": "./packages/scripts" },
     { "path": "./packages/ui" },
     { "path": "./packages/test-corpus" },
+    { "path": "./packages/workbench-core" },
     { "path": "./apps/workbench/tsconfig.app.json" },
     { "path": "./apps/workbench/tsconfig.node.json" }
   ]

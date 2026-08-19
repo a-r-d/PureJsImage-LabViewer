@@ -181,9 +181,19 @@ describe('science workbench characterization', () => {
     expect(mainSource).toContain('<App environment={readPublicEnvironment(import.meta.env)} />')
     expect(providersSource).toContain('createImagingWorkerClient()')
     expect(workbenchSource).toContain('Choose local scientific files')
-    expect(workbenchSource).toContain("'workspace.openSample@1'")
-    expect(workbenchSource).toContain("'workspace.save@1'")
-    expect(workbenchSource).toContain("'analysis.catalog.read@1'")
+    expect(workbenchSource).toContain('createWorkbenchActionHost')
+    expect(workbenchSource).not.toContain("'workspace.openSample@1'")
+    expect(workbenchSource).not.toContain('enabledExampleScenarios')
+    const handlersSource = await readFile(
+      new URL('../../../packages/workbench-core/src/science/action-handlers.ts', import.meta.url),
+      'utf8',
+    )
+    expect(handlersSource).toContain("'workspace.openSample@1'")
+    expect(handlersSource).toContain("'workspace.save@1'")
+    expect(handlersSource).toContain("'analysis.catalog.read@1'")
+    expect(handlersSource).toContain("'source.open-local@1'")
+    const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
+    expect(appSource).toContain('profile={scienceDomainProfile}')
   })
 
   it('still exposes the current enabled science examples', () => {

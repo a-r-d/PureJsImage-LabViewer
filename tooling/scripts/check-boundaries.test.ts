@@ -32,6 +32,8 @@ describe('architecture boundary checker', () => {
 
   it.each([
     ['packages/workspace/src/index.ts', "import React from 'react'"],
+    ['packages/workbench-core/src/index.ts', "import React from 'react'"],
+    ['packages/workbench-core/src/index.ts', "import { decode } from 'purejsimage'"],
     ['packages/viewport/src/index.ts', "import { decode } from 'purejsimage'"],
     ['packages/workspace/src/index.ts', "import { validateGraph } from 'purejsimage/analysis'"],
     ['packages/imaging/src/index.ts', "import value from 'purejsimage/src/internal'"],

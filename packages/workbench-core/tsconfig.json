@@ -1,0 +1,18 @@
+{
+  "extends": "../../tooling/typescript/base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/workbench-core.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../actions" },
+    { "path": "../agent" },
+    { "path": "../contracts" },
+    { "path": "../imaging" },
+    { "path": "../test-corpus" },
+    { "path": "../workspace" }
+  ]
+}

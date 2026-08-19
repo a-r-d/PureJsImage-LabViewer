@@ -28,6 +28,7 @@
     "@pji-workbench/test-corpus": "workspace:*",
     "@pji-workbench/ui": "workspace:*",
     "@pji-workbench/viewport": "workspace:*",
+    "@pji-workbench/workbench-core": "workspace:*",
     "@pji-workbench/workspace": "workspace:*",
     "codemirror": "6.0.2",
     "react": "19.2.8",

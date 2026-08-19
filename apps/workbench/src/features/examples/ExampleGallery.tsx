@@ -1,7 +1,6 @@
 import {
   type ExampleScenarioV1,
   type ExampleWorkflowV1,
-  enabledExampleScenarios,
   researchExampleScenarios,
 } from '@pji-workbench/test-corpus'
 import { Button, Icon } from '@pji-workbench/ui'
@@ -120,12 +119,14 @@ interface Activity {
 }
 
 export function ExampleGallery({
+  enabledScenarios,
   onClose,
   onInspectWorkflow,
   onOpen,
   onRunWorkflow,
   returnFocusTo,
 }: {
+  readonly enabledScenarios: readonly ExampleScenarioV1[]
   readonly onClose: () => void
   readonly onInspectWorkflow: (workflow: ExampleWorkflowV1) => void
   readonly onOpen: (scenario: ExampleScenarioV1, signal: AbortSignal) => Promise<void>
@@ -136,7 +137,7 @@ export function ExampleGallery({
   ) => Promise<void>
   readonly returnFocusTo: HTMLElement | null
 }) {
-  const enabled = useMemo(() => enabledExampleScenarios(), [])
+  const enabled = enabledScenarios
   const research = useMemo(() => researchExampleScenarios(), [])
   const [view, setView] = useState<'examples' | 'research'>('examples')
   const [filters, setFilters] = useState<ExampleFilters>(EMPTY_FILTERS)

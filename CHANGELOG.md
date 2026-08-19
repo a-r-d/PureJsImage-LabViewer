@@ -12,6 +12,11 @@ The application is not yet versioned for release (`0.0.0`).
 - Architecture decision record for a shared showcase monorepo (gallery, science, and geo;
   medical later), compile-time domain profiles, separate deploys, and a characterization
   suite that locks current science workbench behavior without moving application code.
+- Headless `packages/workbench-core` runtime and an explicit science domain profile.
+  The current workbench is composed from that profile; reader, example, and action
+  catalogs are no longer defined inline in `WorkbenchApp`. No geo functionality is included.
+  The reviewed science gzip baseline records a ~2.7 KiB index-chunk increase from that
+  extraction; the 300 KiB route-chunk and 1,000 KiB language-Worker ceilings are unchanged.
 
 ### Changed
 

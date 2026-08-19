@@ -56,7 +56,8 @@ export function inspectSource(relativeFile, source) {
     if (
       (file.startsWith('packages/actions/') ||
         file.startsWith('packages/contracts/') ||
-        file.startsWith('packages/workspace/')) &&
+        file.startsWith('packages/workspace/') ||
+        file.startsWith('packages/workbench-core/')) &&
       (specifier === 'react' || specifier.startsWith('react/'))
     ) {
       violations.push(`${file}: React import in framework-neutral core '${specifier}'`)
