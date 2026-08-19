@@ -1,0 +1,82 @@
+apps/geo/src/styles.css
+  s_06ddef2cc80384::t_9cc520e1c1d6df 288,290,298-299,311-315
+  s_06ddef2cc80384::t_3416119eea9f94 122-144
+  s_06ddef2cc80384::t_d1010306c12ca0 265,269
+  s_06ddef2cc80384::t_61bb3e68613c52 266-268,278-279,284
+  s_06ddef2cc80384::t_7854f19069d60c 270-271,273-275
+playwright.config.ts
+  s_06ddef2cc80384::t_4e8cdbd52b7445 9
+packages/imaging/src/index.ts
+  s_06ddef2cc80384::t_fe44fc7b3bb350 10
+apps/science/src/app/WorkbenchApp.tsx
+  s_06ddef2cc80384::t_fe44fc7b3bb350 58,151
+apps/science/src/app/WorkbenchProviders.tsx
+  s_06ddef2cc80384::t_fe44fc7b3bb350 1
+apps/geo/src/GeoViewport.tsx
+  s_06ddef2cc80384::t_ef451fa60ef518 542
+packages/domain-geo/tests/profile.test.ts
+  s_06ddef2cc80384::t_25a5491d8a03f3 36
+tooling/scripts/run-e2e.test.ts
+  s_06ddef2cc80384::t_9df3d3c96e8dc1 97
+  s_06ddef2cc80384::t_9fa049fcd8eac5 81-83,85-87
+apps/geo/src/CatalogPanel.tsx
+  s_06ddef2cc80384::t_b00bcc65421346 161-183
+  s_06ddef2cc80384::t_1716b4bdfbc9b4 330,333
+  s_06ddef2cc80384::t_a8f61ed5789d14 311-312
+  s_06ddef2cc80384::t_1d6380ec8b500b 26,34
+  s_06ddef2cc80384::t_c22cf6a925c8e0 54
+  s_06ddef2cc80384::t_14320cbc091cff 299-303,310,313-329,331-332,334-335,337,342,344-345,352,383,390
+  s_06ddef2cc80384::t_b5a490a91816b1 123-125
+  s_06ddef2cc80384::t_cb92dc7e0202f4 336
+  s_06ddef2cc80384::t_402e2e4d8fe02c 184
+apps/geo/tests/geo-app.test.ts
+  s_06ddef2cc80384::t_3cadea4421305c 32-36
+packages/domain-geo/src/ui-contributions.ts
+  s_06ddef2cc80384::t_5004cca9af3553 7,9
+docs/QUALITY_GATES.md
+  s_06ddef2cc80384::t_d708bcfe3de585 251-252
+  s_06ddef2cc80384::t_364d854a6a8ecc 48-49
+apps-e2e/geo/tests/catalog.spec.ts
+  s_06ddef2cc80384::t_1231911d32104a 44
+  s_06ddef2cc80384::t_9991f3eb8a9516 61
+  s_06ddef2cc80384::t_81f4047b40ef2c 27-36,42
+  s_06ddef2cc80384::t_305a2fb770d22d 54-60
+  s_06ddef2cc80384::t_c13fd6046260fc 43
+  s_06ddef2cc80384::t_8efeb202daea39 26
+packages/imaging/tests/index.test.ts
+  s_06ddef2cc80384::t_fe44fc7b3bb350 12
+apps/geo/src/App.tsx
+  s_06ddef2cc80384::t_9ef046248d3452 514,518
+  s_06ddef2cc80384::t_54ded5409fcd83 557-561
+  s_06ddef2cc80384::t_adc86b451b1924 237-242
+  s_06ddef2cc80384::t_bc276067079f97 50
+  s_06ddef2cc80384::t_32adc12f9a3c6d 203-210,212,215
+  s_06ddef2cc80384::t_57e84413ce0cb7 75-76
+  s_06ddef2cc80384::t_73b84786b22d54 600
+  s_06ddef2cc80384::t_bde178e5069a97 635-641
+  s_06ddef2cc80384::t_d1d8e11bb6d89d 741-749
+  s_06ddef2cc80384::t_dbede5efcdf88b 457-493,496-502
+  s_06ddef2cc80384::t_950f78456a10c8 145,148
+  s_06ddef2cc80384::t_ddc699f745c097 84-85
+README.md
+  s_06ddef2cc80384::t_bf6c6dd2a7f3b6 44
+CHANGELOG.md
+  s_06ddef2cc80384::t_f58d7b46ffa6b1 80-81
+  s_06ddef2cc80384::t_b3821462d5adf5 10-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "1e3d86d56cf7f4e3013bf8ce7325a0ad9356bb57",
+  "prompts": {},
+  "sessions": {
+    "s_06ddef2cc80384": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e36f334e-3d5e-4df0-bddc-0e9ee634ee7d",
+        "model": "grok-4.6"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
