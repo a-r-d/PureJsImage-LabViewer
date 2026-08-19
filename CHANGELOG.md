@@ -182,6 +182,11 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Fixed
 
+- Playwright `--project` filters now apply to both science and geo suites. Independent
+  `test:e2e:science` and `test:e2e:geo` scripts replace the previous `&&` chain that dropped
+  extra arguments on the first command. Chromium CI installs and runs Chromium only; the
+  cross-browser job installs and runs Firefox and WebKit only. Failure artifacts use
+  `test-results/science` and `test-results/geo`.
 - Interior tiles and connected-components on scientific JPEG (and the other codec adapters)
   no longer fail after the first origin band.
 - Icon buttons blur after click so tooltip/focus rings do not linger on the app bar.

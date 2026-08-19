@@ -58,13 +58,32 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e --project=chromium
-      - name: Upload Chromium failure artifacts
+      - name: Science Playwright (Chromium)
+        env:
+          E2E_EXPECTED_PROJECTS: chromium
+        run: pnpm test:e2e:science --project=chromium
+      - name: Geo Playwright (Chromium)
+        if: ${{ !cancelled() }}
+        env:
+          E2E_EXPECTED_PROJECTS: chromium
+        run: pnpm test:e2e:geo --project=chromium
+      - name: Upload science Chromium failure artifacts
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: chromium-test-results
-          path: test-results/
+          name: chromium-science-test-results
+          path: |
+            test-results/science/
+            playwright-report/
+          retention-days: 7
+      - name: Upload geo Chromium failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: chromium-geo-test-results
+          path: |
+            test-results/geo/
+            playwright-report-geo/
           retention-days: 7
 
   browser-cross:
@@ -80,7 +99,33 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps firefox webkit
-      - run: pnpm test:e2e --project=firefox --project=webkit
+      - name: Science Playwright (Firefox, WebKit)
+        env:
+          E2E_EXPECTED_PROJECTS: firefox,webkit
+        run: pnpm test:e2e:science --project=firefox --project=webkit
+      - name: Geo Playwright (Firefox, WebKit)
+        if: ${{ !cancelled() }}
+        env:
+          E2E_EXPECTED_PROJECTS: firefox,webkit
+        run: pnpm test:e2e:geo --project=firefox --project=webkit
+      - name: Upload science Firefox/WebKit failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: firefox-webkit-science-test-results
+          path: |
+            test-results/science/
+            playwright-report/
+          retention-days: 7
+      - name: Upload geo Firefox/WebKit failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: firefox-webkit-geo-test-results
+          path: |
+            test-results/geo/
+            playwright-report-geo/
+          retention-days: 7
 
   security:
     runs-on: ubuntu-latest

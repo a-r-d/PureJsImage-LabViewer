@@ -7,14 +7,19 @@ export default defineConfig({
   updateSnapshots: 'none',
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 2 : 4,
+  outputDir: 'test-results/science',
   reporter: process.env.CI
     ? [
         ['list'],
-        ['html', { open: 'never' }],
-        ['json', { outputFile: 'test-results/results.json' }],
+        ['html', { open: 'never', outputFolder: 'playwright-report' }],
+        ['json', { outputFile: 'test-results/science/results.json' }],
         ['./apps-e2e/science/scenario-reporter.ts'],
       ]
-    : [['list'], ['html', { open: 'never' }], ['./apps-e2e/science/scenario-reporter.ts']],
+    : [
+        ['list'],
+        ['html', { open: 'never', outputFolder: 'playwright-report' }],
+        ['./apps-e2e/science/scenario-reporter.ts'],
+      ],
   expect: {
     toHaveScreenshot: {
       animations: 'disabled',

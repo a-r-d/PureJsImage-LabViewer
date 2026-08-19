@@ -46,7 +46,9 @@ pnpm install --frozen-lockfile
 | `pnpm format:check` | Check formatting without writing |
 | `pnpm test` | Run all Vitest projects |
 | `pnpm test:watch` | Run Vitest in watch mode |
-| `pnpm test:e2e` | Run Playwright science tests, then the geo Atlas suite |
+| `pnpm test:e2e` | Run all Playwright science and geo browser projects |
+| `pnpm test:e2e:science` | Run the science Playwright suite |
+| `pnpm test:e2e:geo` | Run the geo Atlas Playwright suite |
 | `pnpm test:a11y` | Run accessibility-tagged Chromium checks |
 | `pnpm test:visual` | Run deterministic visual-invariant checks for science and geo |
 | `pnpm test:corpus` | Validate the generated-corpus package skeleton |

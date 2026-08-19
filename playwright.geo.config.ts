@@ -7,8 +7,13 @@ export default defineConfig({
   updateSnapshots: 'none',
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : 2,
+  outputDir: 'test-results/geo',
   reporter: process.env.CI
-    ? [['list'], ['html', { open: 'never', outputFolder: 'playwright-report-geo' }]]
+    ? [
+        ['list'],
+        ['html', { open: 'never', outputFolder: 'playwright-report-geo' }],
+        ['json', { outputFile: 'test-results/geo/results.json' }],
+      ]
     : [['list'], ['html', { open: 'never', outputFolder: 'playwright-report-geo' }]],
   expect: {
     toHaveScreenshot: {
@@ -49,5 +54,9 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
     },
   ],
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], deviceScaleFactor: 1 } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], deviceScaleFactor: 1 } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'], deviceScaleFactor: 1 } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'], deviceScaleFactor: 1 } },
+  ],
 })

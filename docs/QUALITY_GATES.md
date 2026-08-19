@@ -12,6 +12,8 @@ pnpm lint
 pnpm format:check
 pnpm test
 pnpm test:e2e
+pnpm test:e2e:science
+pnpm test:e2e:geo
 pnpm test:a11y
 pnpm test:visual
 pnpm test:corpus
@@ -117,7 +119,7 @@ Every browser runs:
 The former monolithic smoke suite is split by stable semantic surface. Cross-file helpers perform
 only deterministic setup and common navigation; assertions remain in the focused specifications.
 Each executed `@scenario` case attaches a bounded evidence record. The custom reporter writes
-`test-results/scenario-report.json` and `scenario-report.md`, grouped by capability and scenario,
+`test-results/science/scenario-report.json` and `scenario-report.md`, grouped by capability and scenario,
 with status, browser, oracle/tolerance, resource budgets, source/tile timing measurements,
 project/invocation identities, and failure artifact paths. Measurements that the active source/runtime
 cannot expose are `null`, never guessed; scheduled range and large-data runs are responsible for
@@ -243,8 +245,8 @@ Suggested jobs:
 
 1. `quality`: format, lint, typecheck, unit tests, architecture boundaries.
 2. `build`: package builds, workbench build, bundle budgets, Cloudflare dry run.
-3. `browser-chromium`: complete browser workflow.
-4. `browser-cross`: Firefox and WebKit core suite.
+3. `browser-chromium`: science and geo Playwright with `--project=chromium`.
+4. `browser-cross`: science and geo Playwright with Firefox and WebKit.
 5. `accessibility-visual`: deterministic UI gates.
 6. `corpus-compact`: enabled Tier 1 subset with cache.
 7. `security`: audit, secret scan, CSP/static bundle checks.

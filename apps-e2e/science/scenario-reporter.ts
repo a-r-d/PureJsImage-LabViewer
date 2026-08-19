@@ -172,13 +172,17 @@ function parseEvidence(body: Buffer): ScenarioEvidenceV1 {
 
 export default class ScenarioReporter implements Reporter {
   private readonly runs: ScenarioRunReportV1[] = []
-  private outputDirectory = resolve('test-results')
+  private outputDirectory = resolve('test-results/science')
 
   onBegin(config: FullConfig): void {
-    this.outputDirectory = resolve(
-      dirname(config.configFile ?? resolve('playwright.config.ts')),
-      'test-results',
-    )
+    const projectOutput = config.projects[0]?.outputDir
+    this.outputDirectory =
+      typeof projectOutput === 'string' && projectOutput.length > 0
+        ? projectOutput
+        : resolve(
+            dirname(config.configFile ?? resolve('playwright.config.ts')),
+            'test-results/science',
+          )
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
