@@ -16,8 +16,11 @@
     "clean": "node ../../tooling/scripts/clean-package.mjs"
   },
   "dependencies": {
+    "@pji-workbench/contracts": "workspace:*",
     "@pji-workbench/domain-geo": "workspace:*",
+    "@pji-workbench/imaging": "workspace:*",
     "@pji-workbench/ui": "workspace:*",
+    "@pji-workbench/viewport": "workspace:*",
     "@pji-workbench/workbench-react": "workspace:*",
     "react": "19.2.8",
     "react-dom": "19.2.8"

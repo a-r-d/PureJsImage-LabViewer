@@ -37,6 +37,8 @@ export type {
   TileLayerPlanInput,
 } from './layer-tiles.js'
 export { planMultiLayerTiles, sourceTileCacheKey } from './layer-tiles.js'
+export type { OverviewLevelSize } from './overview.js'
+export { scaleAffineToOverview, selectOverviewLevel } from './overview.js'
 export { ViewportCameraSession } from './session.js'
 export { planVisibleTileRegions } from './tiles.js'
 export type {

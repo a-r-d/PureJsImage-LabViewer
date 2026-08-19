@@ -9,6 +9,19 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Added
 
+- PureJsImage Atlas MVP in `apps/geo`: open a local GeoTIFF/COG or a remote HTTPS URL, render it
+  in the source CRS, select overviews from viewport resolution, style grayscale/RGB bands with
+  min/max or percentile stretch, gamma, and nodata transparency, and inspect cursor pixel,
+  source, and WGS84 coordinates. The COG X-ray panel reports container layout, IFDs, overviews,
+  affine/CRS, range request count, bytes fetched, cache hits/misses, percent of source fetched,
+  and the active overview. Remote opens use HTTP Range only; tile requests cancel on camera
+  change and ignore stale generations. The imaging Worker classifies CORS, missing Range,
+  unsupported TIFF layout, unsupported compression, and malformed GeoTIFF metadata separately.
+  Percentile stretch is computed from the mapped tile, not a full-raster histogram. Nodata is
+  excluded from stretch statistics. Striped GeoTIFFs still open for inspection; X-ray reports they
+  are not Cloud Optimized. The imaging Worker still holds one source, so the layer panel styles that
+  raster (visibility, opacity, order, duplicate display layers) rather than compositing independent
+  files.
 - Geo domain model in `packages/domain-geo`: georeferenced raster sources, styled raster and
   derived layers, comparison state, map-coordinate ROIs, and provenance/recipe references.
   Proj4js lives only in domain-geo and currently transforms EPSG:4326 ↔ EPSG:3857; other
@@ -48,8 +61,9 @@ The application is not yet versioned for release (`0.0.0`).
   (was `@pji-workbench/app`). `pnpm dev:workbench` remains a compatibility alias.
   The reviewed science gzip baseline records a 762-byte index-chunk increase from
   that move; the 300 KiB route-chunk and 1,000 KiB language-Worker ceilings are
-  unchanged. Gallery stays under a 200 KiB gzip total; geo stays under 250 KiB
-  and neither ships imaging Workers.
+  unchanged.   Gallery stays under a 200 KiB gzip total and does not ship imaging Workers. Geo Atlas ships
+  the imaging Worker and is capped at 2 MiB gzip total; it still must not ship the script or
+  TypeScript language Workers.
 - The generated calibrated particle field is ten isolated disks on the sinusoidal
   SEM-style background, not 1-pixel modulo speckles. The gallery card and the
   default particle-count workflow now describe the same image.

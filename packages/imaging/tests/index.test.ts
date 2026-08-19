@@ -1282,6 +1282,8 @@ describe('PureJsImage Worker host', () => {
     const remoteDiagnostics = remoteHost.diagnostics()
     expect(remoteDiagnostics.source?.rangeRequests).toBeGreaterThan(0)
     expect(remoteDiagnostics.source?.rangeBytesFetched).toBeLessThan(bytes.byteLength)
+    expect(remoteDiagnostics.source?.rangeCacheHits).toBeGreaterThanOrEqual(0)
+    expect(remoteDiagnostics.source?.rangeCacheMisses).toBeGreaterThanOrEqual(0)
 
     const localHost = new ImagingWorkerHost()
     const file = new File([bytes.slice().buffer as ArrayBuffer], 'generated.gsf')
@@ -1395,8 +1397,27 @@ describe('PureJsImage Worker host', () => {
     )
     expect(result.response).toMatchObject({
       ok: false,
-      error: { code: 'CORS_OR_RANGE_UNAVAILABLE', guidance: expect.stringContaining('Range') },
+      error: { code: 'RANGE_UNSUPPORTED', guidance: expect.stringContaining('Range') },
     })
+  })
+
+  it('returns CORS guidance when the remote probe cannot be fetched', async () => {
+    const host = new ImagingWorkerHost({
+      fetch: async () => {
+        throw new TypeError('Failed to fetch')
+      },
+    })
+    const result = await host.handle(
+      rpcRequest('bad-cors', 'source.open-remote', {
+        generation: 1,
+        url: 'https://fixtures.invalid/blocked.tif',
+      }),
+    )
+    expect(result.response).toMatchObject({
+      ok: false,
+      error: { code: 'CORS_FAILED', guidance: expect.stringContaining('CORS') },
+    })
+    await host.dispose()
   })
 
   it('cancels an in-flight tile through its explicit request ID', async () => {

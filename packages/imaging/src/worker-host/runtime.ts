@@ -1,5 +1,6 @@
 import type {
   AnalysisResultHandleId,
+  CogInspectionReport,
   DatasetHandleId,
   DocumentId,
   PlaneSelection,
@@ -33,6 +34,7 @@ export interface SourceRecord {
   readonly url?: string
   readonly document: ScientificDocument
   readonly rangeSources: readonly HttpRangeSource[]
+  readonly cogInspection?: CogInspectionReport
   readonly datasets: Map<DatasetHandleId, DatasetRecord>
   closed: boolean
 }

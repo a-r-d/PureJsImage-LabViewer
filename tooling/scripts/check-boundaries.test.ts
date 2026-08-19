@@ -47,6 +47,10 @@ describe('architecture boundary checker', () => {
     ['apps/geo/src/App.tsx', "import { runBatchRecipe } from '@pji-workbench/materials-analysis'"],
     ['apps/science/src/App.tsx', "import { geoDomainProfile } from '@pji-workbench/domain-geo'"],
     [
+      'packages/domain-geo/src/index.ts',
+      "import { createImagingWorkerClient } from '@pji-workbench/imaging'",
+    ],
+    [
       'apps/gallery/src/App.tsx',
       "import { createImagingWorkerClient } from '@pji-workbench/imaging'",
     ],

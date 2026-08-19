@@ -42,12 +42,87 @@ export * from './spatial-reference.js'
 
 export type SourceKind = 'bundled' | 'local' | 'remote' | 'sample'
 export type TilePriority = 'visible' | 'near-visible' | 'background'
+export type DisplayStretch = 'minmax' | 'percentile'
+
+export type DisplayBandMapping = Readonly<{
+  gray?: number
+  red?: number
+  green?: number
+  blue?: number
+}>
+
 export type DisplayMapping = Readonly<{
   mode: 'linear'
   range: 'auto' | 'manual'
   minimum?: number
   maximum?: number
+  stretch?: DisplayStretch
+  percentileLow?: number
+  percentileHigh?: number
+  gamma?: number
+  nodata?: number
+  nodataTransparent?: boolean
+  bands?: DisplayBandMapping
 }>
+
+/** JSON-safe PureJsImage `inspectCog` report attached to opened TIFF/COG sources. */
+export const COG_INSPECTION_METADATA_KEY = 'purejsimage:cog'
+
+export type CogInspectionSeverity = 'warning' | 'error'
+
+export type CogInspectionIssueCode =
+  | 'STRIPED_IMAGE'
+  | 'MISSING_INTERNAL_OVERVIEWS'
+  | 'MULTIPLE_TOP_LEVEL_IMAGES'
+  | 'OVERVIEW_NOT_REDUCED'
+  | 'IFD_AFTER_IMAGE_DATA'
+  | 'MISSING_TILE_TABLE'
+  | 'INVALID_TILE_TABLE'
+  | 'NON_MONOTONIC_TILE_OFFSETS'
+  | 'UNSUPPORTED_COMPRESSION'
+
+export interface CogInspectionIssue {
+  readonly code: CogInspectionIssueCode
+  readonly severity: CogInspectionSeverity
+  readonly message: string
+  readonly directoryOffset?: number
+}
+
+export interface CogCompressionInspection {
+  readonly id: number
+  readonly name: string
+  readonly status: string
+}
+
+export interface CogDirectoryInspection {
+  readonly index: number
+  readonly path: string
+  readonly role: 'image' | 'overview'
+  readonly offset: number
+  readonly width: number
+  readonly height: number
+  readonly subIfdOffsets: readonly number[]
+  readonly tiled: boolean
+  readonly tileWidth?: number
+  readonly tileHeight?: number
+  readonly tileCount: number
+  readonly firstTileOffset?: number
+  readonly lastTileOffset?: number
+  readonly compression: CogCompressionInspection
+  readonly samplesPerPixel: number
+  readonly bitsPerSample: readonly number[]
+  readonly sampleFormats: readonly number[]
+  readonly planar: boolean
+}
+
+export interface CogInspectionReport {
+  readonly container: 'TIFF' | 'BigTIFF'
+  readonly byteOrder: 'little-endian' | 'big-endian'
+  readonly topLevelDirectoryCount: number
+  readonly directories: readonly CogDirectoryInspection[]
+  readonly issues: readonly CogInspectionIssue[]
+  readonly likelyCog: boolean
+}
 
 export interface AxisIndex {
   readonly axisId: string
@@ -176,6 +251,11 @@ export interface RenderTile {
   readonly rgba: Uint8ClampedArray
   /** Quantitative source values for this bounded tile, never display-mapped values. */
   readonly values: Float32Array
+  /**
+   * Raw samples for mapped display bands when more than the primary `values` channel is needed.
+   * Index 0 matches `values` (gray or red). Additional entries are green/blue in that order.
+   */
+  readonly bandValues?: readonly Float32Array[]
   readonly range: Readonly<{ minimum: number; maximum: number; automatic: boolean }>
   readonly histogram: readonly number[]
   readonly elapsedMilliseconds: number
@@ -198,6 +278,8 @@ export interface WorkerDiagnostics {
     rangeRequests: number
     rangeBytesFetched: number
     rangeCacheBytes: number
+    rangeCacheHits: number
+    rangeCacheMisses: number
   }>
   readonly openDatasets: number
   readonly pendingRequests: number
@@ -212,14 +294,19 @@ export interface WorkerDiagnostics {
 
 export type RpcErrorCode =
   | 'ABORTED'
+  | 'CORS_FAILED'
   | 'CORS_OR_RANGE_UNAVAILABLE'
   | 'INTERNAL_ERROR'
   | 'INVALID_MESSAGE'
   | 'INVALID_PAYLOAD'
   | 'LIMIT_EXCEEDED'
+  | 'MALFORMED_METADATA'
+  | 'RANGE_UNSUPPORTED'
   | 'SOURCE_OPEN_FAILED'
   | 'STALE_ID'
   | 'UNSUPPORTED'
+  | 'UNSUPPORTED_COMPRESSION'
+  | 'UNSUPPORTED_LAYOUT'
   | 'UNKNOWN_KIND'
   | 'WORKER_CRASHED'
 
@@ -410,6 +497,17 @@ interface PayloadCandidate extends Record<string, unknown> {
   readonly range?: unknown
   readonly minimum?: unknown
   readonly maximum?: unknown
+  readonly stretch?: unknown
+  readonly percentileLow?: unknown
+  readonly percentileHigh?: unknown
+  readonly gamma?: unknown
+  readonly nodata?: unknown
+  readonly nodataTransparent?: unknown
+  readonly bands?: unknown
+  readonly gray?: unknown
+  readonly red?: unknown
+  readonly green?: unknown
+  readonly blue?: unknown
   readonly x?: unknown
   readonly y?: unknown
   readonly width?: unknown
@@ -535,6 +633,73 @@ function assertTile(payload: PayloadCandidate): void {
     assertFinite(mapping.maximum, 'mapping maximum')
     if (mapping.maximum <= mapping.minimum) {
       throw new RpcValidationError('INVALID_PAYLOAD', 'mapping maximum must exceed its minimum')
+    }
+  }
+  if (
+    mapping.stretch !== undefined &&
+    mapping.stretch !== 'minmax' &&
+    mapping.stretch !== 'percentile'
+  ) {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'mapping stretch must be minmax or percentile')
+  }
+  if (mapping.percentileLow !== undefined) {
+    assertFinite(mapping.percentileLow, 'mapping percentileLow')
+    if (mapping.percentileLow < 0 || mapping.percentileLow > 100) {
+      throw new RpcValidationError(
+        'INVALID_PAYLOAD',
+        'mapping percentileLow must be between 0 and 100',
+      )
+    }
+  }
+  if (mapping.percentileHigh !== undefined) {
+    assertFinite(mapping.percentileHigh, 'mapping percentileHigh')
+    if (mapping.percentileHigh < 0 || mapping.percentileHigh > 100) {
+      throw new RpcValidationError(
+        'INVALID_PAYLOAD',
+        'mapping percentileHigh must be between 0 and 100',
+      )
+    }
+  }
+  if (
+    mapping.percentileLow !== undefined &&
+    mapping.percentileHigh !== undefined &&
+    mapping.percentileHigh <= mapping.percentileLow
+  ) {
+    throw new RpcValidationError(
+      'INVALID_PAYLOAD',
+      'mapping percentileHigh must exceed percentileLow',
+    )
+  }
+  if (mapping.gamma !== undefined) {
+    assertFinite(mapping.gamma, 'mapping gamma')
+    if (mapping.gamma <= 0) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'mapping gamma must be positive')
+    }
+  }
+  if (mapping.nodata !== undefined) assertFinite(mapping.nodata, 'mapping nodata')
+  if (mapping.nodataTransparent !== undefined && typeof mapping.nodataTransparent !== 'boolean') {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'mapping nodataTransparent must be a boolean')
+  }
+  if (mapping.bands !== undefined) {
+    if (!isRecord(mapping.bands)) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'mapping bands must be an object')
+    }
+    const bands = mapping.bands as PayloadCandidate
+    const gray = bands.gray
+    const red = bands.red
+    const green = bands.green
+    const blue = bands.blue
+    if (gray !== undefined) assertInteger(gray, 'mapping gray band')
+    if (red !== undefined) assertInteger(red, 'mapping red band')
+    if (green !== undefined) assertInteger(green, 'mapping green band')
+    if (blue !== undefined) assertInteger(blue, 'mapping blue band')
+    const hasGray = gray !== undefined
+    const hasRgb = red !== undefined || green !== undefined || blue !== undefined
+    if (hasGray && hasRgb) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'mapping bands cannot mix gray and RGB')
+    }
+    if (!hasGray && !hasRgb) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'mapping bands require gray or RGB channels')
     }
   }
   if (!isRecord(payload.region))

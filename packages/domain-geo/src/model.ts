@@ -40,11 +40,18 @@ export interface BandMapping {
   readonly alpha?: number
 }
 
+export type RasterStretch = 'minmax' | 'percentile'
+
 export interface RasterStyle {
   readonly mapping: BandMapping
   readonly palette?: string
   readonly minimum?: number
   readonly maximum?: number
+  readonly stretch?: RasterStretch
+  readonly percentileLow?: number
+  readonly percentileHigh?: number
+  readonly gamma?: number
+  readonly nodataTransparent?: boolean
   readonly resample?: 'nearest' | 'bilinear'
 }
 
@@ -394,11 +401,39 @@ function normalizeRasterStyle(style: RasterStyle): RasterStyle {
   if (minimum !== undefined && maximum !== undefined && minimum > maximum) {
     throw new GeoValidationError('INVALID_PROJECT', 'Style range is inverted')
   }
+  const stretch = style.stretch ?? 'minmax'
+  if (stretch !== 'minmax' && stretch !== 'percentile') {
+    throw new GeoValidationError('INVALID_PROJECT', 'Style stretch must be minmax or percentile')
+  }
+  const percentileLow =
+    style.percentileLow === undefined
+      ? undefined
+      : unitPercent(style.percentileLow, 'style percentileLow')
+  const percentileHigh =
+    style.percentileHigh === undefined
+      ? undefined
+      : unitPercent(style.percentileHigh, 'style percentileHigh')
+  if (
+    percentileLow !== undefined &&
+    percentileHigh !== undefined &&
+    percentileHigh <= percentileLow
+  ) {
+    throw new GeoValidationError('INVALID_PROJECT', 'Style percentiles are inverted')
+  }
+  const gamma = style.gamma === undefined ? undefined : finiteNumber(style.gamma, 'style gamma')
+  if (gamma !== undefined && gamma <= 0) {
+    throw new GeoValidationError('INVALID_PROJECT', 'Style gamma must be positive')
+  }
   return {
     mapping,
     ...(palette === undefined ? {} : { palette }),
     ...(minimum === undefined ? {} : { minimum }),
     ...(maximum === undefined ? {} : { maximum }),
+    stretch,
+    ...(percentileLow === undefined ? {} : { percentileLow }),
+    ...(percentileHigh === undefined ? {} : { percentileHigh }),
+    ...(gamma === undefined ? {} : { gamma }),
+    nodataTransparent: style.nodataTransparent ?? true,
     resample,
   }
 }
@@ -524,6 +559,14 @@ function unitInterval(value: number, label: string): number {
   const next = finiteNumber(value, label)
   if (next < 0 || next > 1) {
     throw new GeoValidationError('INVALID_PROJECT', `${label} must be between 0 and 1`)
+  }
+  return next
+}
+
+function unitPercent(value: number, label: string): number {
+  const next = finiteNumber(value, label)
+  if (next < 0 || next > 100) {
+    throw new GeoValidationError('INVALID_PROJECT', `${label} must be between 0 and 100`)
   }
   return next
 }

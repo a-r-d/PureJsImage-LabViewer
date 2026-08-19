@@ -88,12 +88,21 @@ importers:
 
   apps/geo:
     dependencies:
+      '@pji-workbench/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@pji-workbench/domain-geo':
         specifier: workspace:*
         version: link:../../packages/domain-geo
+      '@pji-workbench/imaging':
+        specifier: workspace:*
+        version: link:../../packages/imaging
       '@pji-workbench/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@pji-workbench/viewport':
+        specifier: workspace:*
+        version: link:../../packages/viewport
       '@pji-workbench/workbench-react':
         specifier: workspace:*
         version: link:../../packages/workbench-react

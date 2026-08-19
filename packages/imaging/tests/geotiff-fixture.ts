@@ -62,7 +62,7 @@ export function geoKeyEntries(
 
 export function geoTiffFixture(options: GeoTiffFixtureOptions): Uint8Array<ArrayBuffer> {
   const components = options.components ?? 1
-  const entries = [
+  const defaults = [
     { tag: 256, type: 4 as const, values: [options.width] },
     { tag: 257, type: 4 as const, values: [options.height] },
     { tag: 258, type: 3 as const, values: Array.from({ length: components }, () => 8) },
@@ -74,8 +74,12 @@ export function geoTiffFixture(options: GeoTiffFixtureOptions): Uint8Array<Array
     { tag: 279, type: 4 as const, values: [options.pixels.byteLength] },
     { tag: 284, type: 3 as const, values: [1] },
     { tag: 339, type: 3 as const, values: Array.from({ length: components }, () => 1) },
-    ...(options.extraEntries ?? []),
-  ].sort((left, right) => left.tag - right.tag)
+  ]
+  const extra = options.extraEntries ?? []
+  const overridden = new Set(extra.map((entry) => entry.tag))
+  const entries = [...defaults.filter((entry) => !overridden.has(entry.tag)), ...extra].sort(
+    (left, right) => left.tag - right.tag,
+  )
   const ifdBytes = 2 + entries.length * 12 + 4
   let cursor = 8 + ifdBytes
   const externalOffsets = new Map<GeoTiffEntry, number>()
@@ -137,6 +141,42 @@ export function northUpGeoTiffFixture(): Uint8Array<ArrayBuffer> {
       ...geoKeyEntries(1, { kind: 'geographic', code: 4_326, name: 'WGS 84' }),
       geoAsciiEntry(42_113, '-9999'),
     ],
+  })
+}
+
+export function rgbGeoTiffFixture(): Uint8Array<ArrayBuffer> {
+  return geoTiffFixture({
+    width: 2,
+    height: 1,
+    components: 3,
+    pixels: Uint8Array.of(10, 20, 30, 40, 50, 0),
+    extraEntries: [
+      { tag: 33_550, type: 12, values: [1, 1, 0] },
+      { tag: 33_922, type: 12, values: [0, 0, 0, 0, 1, 0] },
+      ...geoKeyEntries(1, { kind: 'geographic', code: 4_326, name: 'WGS 84' }),
+      geoAsciiEntry(42_113, '0'),
+    ],
+  })
+}
+
+export function missingStripTableTiffFixture(): Uint8Array<ArrayBuffer> {
+  return geoTiffFixture({
+    width: 2,
+    height: 1,
+    pixels: Uint8Array.of(1, 2),
+    extraEntries: [
+      { tag: 273, type: 4, values: [] },
+      { tag: 279, type: 4, values: [] },
+    ],
+  })
+}
+
+export function unsupportedCompressionTiffFixture(): Uint8Array<ArrayBuffer> {
+  return geoTiffFixture({
+    width: 2,
+    height: 1,
+    pixels: Uint8Array.of(1, 2),
+    extraEntries: [{ tag: 259, type: 3, values: [50_002] }],
   })
 }
 

@@ -1,24 +1,36 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
-import { createGeoDomainProfile, geoDomainProfile, geoUiContributions } from '../src/index.js'
+import {
+  createGeoDomainProfile,
+  GEO_FILE_ACCEPT,
+  GEO_READER_IDS,
+  geoDomainProfile,
+  geoUiContributions,
+} from '../src/index.js'
 
 describe('geo domain profile', () => {
-  it('boots an empty geo profile without science capabilities or terminology', () => {
+  it('enables local and remote GeoTIFF/COG inspection without science capabilities', () => {
     const profile = createGeoDomainProfile()
     expect(profile).toBe(geoDomainProfile)
     expect(profile.id).toBe('geo')
     expect(profile.deploymentHostname).toBe('geo.purejsimage.com')
-    expect(profile.readerIds).toEqual([])
-    expect(profile.actionDefinitions).toEqual([])
-    expect(profile.exampleScenarioIds).toEqual([])
+    expect(profile.readerIds).toEqual([...GEO_READER_IDS])
+    expect(profile.sourceAdapters).toEqual(['local', 'remote'])
+    expect(profile.capabilities.localFiles).toBe(true)
+    expect(profile.capabilities.remoteHttps).toBe(true)
     expect(profile.capabilities.particleAnalysis).toBe(false)
     expect(profile.capabilities.materialsToolbox).toBe(false)
     expect(profile.agentPolicy.enabled).toBe(false)
-    expect(geoUiContributions.panels).toEqual([])
-    expect(geoUiContributions.defaultLayout).toBeUndefined()
+    expect(GEO_FILE_ACCEPT).toContain('.tif')
+    expect(geoUiContributions.panels.map(({ id }) => id)).toEqual([
+      'geo-layers',
+      'geo-display',
+      'geo-xray',
+    ])
     const copy = `${profile.title} ${profile.description} ${geoUiContributions.emptyState.heading} ${geoUiContributions.emptyState.body}`
     expect(copy).not.toMatch(/microscopy|particle|scientific imaging|materials/i)
+    expect(copy).toMatch(/GeoTIFF|COG/i)
   })
 })
 

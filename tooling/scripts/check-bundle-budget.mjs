@@ -6,8 +6,10 @@ import { collectBundleInventory, compareBundleInventory } from './bundle-sizes.m
 
 const root = process.cwd()
 const HEAVY_RUNTIME_ASSETS = ['worker-entry.js', 'language.worker.js', 'sandbox.worker.js']
+const GALLERY_FORBIDDEN_RUNTIME = HEAVY_RUNTIME_ASSETS
+const GEO_FORBIDDEN_RUNTIME = ['language.worker.js', 'sandbox.worker.js']
 const GALLERY_TOTAL_GZIP_BYTES = 200 * 1024
-const GEO_TOTAL_GZIP_BYTES = 250 * 1024
+const GEO_TOTAL_GZIP_BYTES = 2 * 1024 * 1024
 
 function totalGzip(inventory) {
   return inventory.assets.reduce((sum, asset) => sum + asset.gzipBytes, 0)
@@ -20,17 +22,14 @@ function logInventory(label, inventory) {
   }
 }
 
-function heavyRuntimeFailures(application, inventory) {
+function heavyRuntimeFailures(application, inventory, forbidden = HEAVY_RUNTIME_ASSETS) {
   return inventory.assets
     .filter((asset) =>
-      HEAVY_RUNTIME_ASSETS.some(
+      forbidden.some(
         (name) => asset.logicalName === name || asset.logicalName.startsWith(`${name}#`),
       ),
     )
-    .map(
-      (asset) =>
-        `${application} must not ship imaging/script Workers; found ${asset.logicalName} (${asset.source})`,
-    )
+    .map((asset) => `${application} must not ship ${asset.logicalName} (${asset.source})`)
 }
 
 const scienceBuildRoot = path.join(root, 'apps/science/dist')
@@ -57,7 +56,7 @@ const failures = compareBundleInventory(
 
 const galleryInventory = await collectBundleInventory(path.join(root, 'apps/gallery/dist'))
 logInventory('Gallery', galleryInventory)
-failures.push(...heavyRuntimeFailures('gallery', galleryInventory))
+failures.push(...heavyRuntimeFailures('gallery', galleryInventory, GALLERY_FORBIDDEN_RUNTIME))
 const galleryGzip = totalGzip(galleryInventory)
 if (galleryGzip > GALLERY_TOTAL_GZIP_BYTES) {
   failures.push(
@@ -67,11 +66,11 @@ if (galleryGzip > GALLERY_TOTAL_GZIP_BYTES) {
 
 const geoInventory = await collectBundleInventory(path.join(root, 'apps/geo/dist'))
 logInventory('Geo', geoInventory)
-failures.push(...heavyRuntimeFailures('geo', geoInventory))
+failures.push(...heavyRuntimeFailures('geo', geoInventory, GEO_FORBIDDEN_RUNTIME))
 const geoGzip = totalGzip(geoInventory)
 if (geoGzip > GEO_TOTAL_GZIP_BYTES) {
   failures.push(
-    `geo total JS gzip is ${geoGzip} bytes and exceeds the ${GEO_TOTAL_GZIP_BYTES}-byte empty-shell ceiling`,
+    `geo total JS gzip is ${geoGzip} bytes and exceeds the ${GEO_TOTAL_GZIP_BYTES}-byte Atlas ceiling`,
   )
 }
 

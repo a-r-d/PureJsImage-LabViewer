@@ -1,45 +1,437 @@
-import { geoDomainProfile, geoUiContributions } from '@pji-workbench/domain-geo'
-import { EmptyState, ThemeRoot } from '@pji-workbench/ui'
+import type {
+  OpenedDatasetDescriptor,
+  OpenedSourceDescriptor,
+  WorkerDiagnostics,
+} from '@pji-workbench/contracts'
+import {
+  buildCogXrayReport,
+  classifyGeoOpenError,
+  createGeoRasterLayer,
+  createGeoRasterSource,
+  formatGeoCursorReadout,
+  GEO_FILE_ACCEPT,
+  type GeoOpenFailure,
+  type GeoRasterLayer,
+  geoUiContributions,
+} from '@pji-workbench/domain-geo'
+import { createImagingWorkerClient, ImagingRpcError } from '@pji-workbench/imaging'
+import { Button, EmptyState, ErrorState, Icon, ThemeRoot } from '@pji-workbench/ui'
 import { WorkbenchShell } from '@pji-workbench/workbench-react'
-import { useRef } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import type { PublicEnvironment } from './environment.js'
+import { GeoViewport, type GeoViewportPointer } from './GeoViewport.js'
+import { InspectorPanel, type InspectorTab } from './InspectorPanel.js'
+
+interface OpenedAtlas {
+  readonly source: OpenedSourceDescriptor
+  readonly dataset: OpenedDatasetDescriptor
+  readonly layers: readonly GeoRasterLayer[]
+}
 
 export function App({ environment }: { readonly environment: PublicEnvironment }) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const generationRef = useRef(0)
+  const openAbortRef = useRef<AbortController | null>(null)
+  const fileInputId = useId()
+  const [client, setClient] = useState<ReturnType<typeof createImagingWorkerClient> | null>(null)
+  const [ready, setReady] = useState(false)
+  const [opened, setOpened] = useState<OpenedAtlas | null>(null)
+  const [error, setError] = useState<GeoOpenFailure | null>(null)
+  const [url, setUrl] = useState('')
+  const [urlOpen, setUrlOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [tab, setTab] = useState<InspectorTab>('xray')
+  const [selectedLayerId, setSelectedLayerId] = useState<string | undefined>()
+  const [readout, setReadout] = useState('Move the pointer over the raster')
+  const [diagnostics, setDiagnostics] = useState<WorkerDiagnostics | null>(null)
+  const [overview, setOverview] = useState(0)
+  const [settled, setSettled] = useState(true)
+
+  useEffect(() => {
+    const next = createImagingWorkerClient()
+    setClient(next)
+    void next.initialize().then(() => setReady(true))
+    return () => {
+      openAbortRef.current?.abort()
+      next.dispose()
+      setClient(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (opened === null || client === null) return
+    let cancelled = false
+    const tick = (): void => {
+      void client.diagnostics().then((next) => {
+        if (!cancelled) setDiagnostics(next)
+      })
+    }
+    tick()
+    const timer = window.setInterval(tick, 750)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [client, opened])
+
+  const openFiles = useCallback(
+    async (files: readonly File[]) => {
+      const primary = files[0]
+      if (client === null || primary === undefined) return
+      const { generation, signal } = beginOpen(generationRef, openAbortRef)
+      setBusy(true)
+      setError(null)
+      let replaced = false
+      try {
+        const source = await client.openLocal(files, primary, generation, signal)
+        replaced = true
+        const summary = source.datasets[0]
+        if (summary === undefined) throw new Error('The GeoTIFF does not expose a raster dataset.')
+        const dataset = await client.openDataset(source.documentId, summary.id, generation, signal)
+        const nextDiagnostics = await client.diagnostics()
+        if (signal.aborted || generationRef.current !== generation) return
+        setDiagnostics(nextDiagnostics)
+        setOpened(atlasFromOpen(source, dataset, primary.name))
+        setSelectedLayerId(`${source.sourceId}-layer`)
+        setTab('xray')
+        setOverview(0)
+        setReadout('Move the pointer over the raster')
+      } catch (caught) {
+        if (signal.aborted || generationRef.current !== generation) return
+        setError(asOpenFailure(caught))
+        if (replaced) setOpened(null)
+      } finally {
+        if (generationRef.current === generation) setBusy(false)
+      }
+    },
+    [client],
+  )
+
+  const openRemote = useCallback(
+    async (remoteUrl: string) => {
+      if (client === null) return
+      const { generation, signal } = beginOpen(generationRef, openAbortRef)
+      setBusy(true)
+      setError(null)
+      let replaced = false
+      try {
+        const source = await client.openRemote(remoteUrl, generation, signal)
+        replaced = true
+        const summary = source.datasets[0]
+        if (summary === undefined) throw new Error('The GeoTIFF does not expose a raster dataset.')
+        const dataset = await client.openDataset(source.documentId, summary.id, generation, signal)
+        const nextDiagnostics = await client.diagnostics()
+        if (signal.aborted || generationRef.current !== generation) return
+        setDiagnostics(nextDiagnostics)
+        setUrlOpen(false)
+        setOpened(atlasFromOpen(source, dataset, source.source.name))
+        setSelectedLayerId(`${source.sourceId}-layer`)
+        setTab('xray')
+        setOverview(0)
+        setReadout('Move the pointer over the raster')
+      } catch (caught) {
+        if (signal.aborted || generationRef.current !== generation) return
+        setError(asOpenFailure(caught))
+        if (replaced) setOpened(null)
+      } finally {
+        if (generationRef.current === generation) setBusy(false)
+      }
+    },
+    [client],
+  )
+
+  const onPointer = useCallback(
+    (sample: GeoViewportPointer | undefined) => {
+      if (sample === undefined || opened === null) {
+        setReadout('Move the pointer over the raster')
+        return
+      }
+      setReadout(
+        formatGeoCursorReadout({
+          pixel: sample.pixel,
+          world: sample.world,
+          crs: opened.dataset.dataset.spatialReference?.crs ?? { kind: 'unknown' },
+          bands: sample.bands,
+        }),
+      )
+    },
+    [opened],
+  )
+
+  const xray =
+    opened === null || diagnostics === null
+      ? undefined
+      : buildCogXrayReport({
+          source: opened.source,
+          dataset: opened.dataset.dataset,
+          diagnostics,
+          activeOverview: overview,
+        })
+
   return (
     <ThemeRoot className="workbench-theme" theme="dark">
       <WorkbenchShell
-        analysisSettled
+        analysisSettled={!busy}
         environment={environment.appEnvironment}
         rootRef={rootRef}
         style={{}}
-        workbenchReady
+        workbenchReady={ready}
       >
         <header className="app-bar">
           <div className="app-identity">
             <span className="app-mark" aria-hidden="true">
-              G
+              A
             </span>
             <div>
               <h1>{geoUiContributions.shellHeading}</h1>
-              <span>{geoDomainProfile.title}</span>
+              <span>{geoUiContributions.emptyState.kicker}</span>
             </div>
           </div>
+          <div className="geo-toolbar">
+            <input
+              accept={GEO_FILE_ACCEPT}
+              className="visually-hidden"
+              id={fileInputId}
+              onChange={(event) => {
+                const files = [...(event.currentTarget.files ?? [])]
+                event.currentTarget.value = ''
+                void openFiles(files)
+              }}
+              ref={fileInputRef}
+              type="file"
+            />
+            <Button onClick={() => fileInputRef.current?.click()} variant="primary">
+              <Icon name="open" size={16} />
+              Open GeoTIFF
+            </Button>
+            <Button onClick={() => setUrlOpen((value) => !value)}>
+              <Icon name="link" size={16} />
+              Open URL
+            </Button>
+          </div>
+          {urlOpen ? (
+            <form
+              className="geo-url-bar"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void openRemote(url.trim())
+              }}
+            >
+              <label>
+                HTTPS COG URL
+                <input
+                  autoComplete="off"
+                  onChange={(event) => setUrl(event.currentTarget.value)}
+                  placeholder="https://example.com/scene.tif"
+                  spellCheck={false}
+                  type="url"
+                  value={url}
+                />
+              </label>
+              <Button type="submit" variant="primary">
+                Load
+              </Button>
+            </form>
+          ) : null}
         </header>
-        <main className="geo-main">
-          <EmptyState
-            description={geoUiContributions.emptyState.body}
-            title={geoUiContributions.emptyState.heading}
-          />
+        <main
+          className={opened === null ? 'geo-main' : 'geo-main geo-main--split'}
+          data-atlas-settled={opened !== null && settled && !busy ? 'true' : 'false'}
+        >
+          {opened === null || client === null ? (
+            <EmptyState
+              action={
+                <Button onClick={() => fileInputRef.current?.click()} variant="primary">
+                  Open a local GeoTIFF
+                </Button>
+              }
+              description={geoUiContributions.emptyState.body}
+              title={geoUiContributions.emptyState.heading}
+            />
+          ) : (
+            <>
+              <GeoViewport
+                key={opened.source.sourceId}
+                client={client}
+                layers={opened.layers}
+                onOverview={setOverview}
+                onPointer={onPointer}
+                onSettled={setSettled}
+                opened={opened.dataset}
+              />
+              <InspectorPanel
+                bandCount={opened.dataset.dataset.components.length}
+                layers={opened.layers}
+                onDuplicateLayer={() =>
+                  setOpened((current) => (current === null ? current : duplicateLayer(current)))
+                }
+                onLayerChange={(id, patch) =>
+                  setOpened((current) =>
+                    current === null ? current : patchLayer(current, id, patch),
+                  )
+                }
+                onMoveLayer={(id, direction) =>
+                  setOpened((current) =>
+                    current === null ? current : moveLayer(current, id, direction),
+                  )
+                }
+                onSelectLayer={setSelectedLayerId}
+                onTab={setTab}
+                selectedLayerId={selectedLayerId}
+                tab={tab}
+                xray={xray}
+              />
+            </>
+          )}
         </main>
+        {error !== null ? (
+          <div className="geo-error" data-testid="open-error">
+            <ErrorState
+              message={`${error.message}${error.guidance === undefined ? '' : ` ${error.guidance}`}`}
+              title={error.title}
+            />
+          </div>
+        ) : null}
         <footer className="status-bar">
           <span className="status-dot" aria-hidden="true" />
-          <span>{geoUiContributions.emptyState.kicker}</span>
+          <span data-testid="cursor-readout">{readout}</span>
           <span className="status-spacer" />
-          <span>{geoDomainProfile.deploymentHostname}</span>
+          <span>
+            {xray === undefined
+              ? geoUiContributions.emptyState.kicker
+              : `${xray.rangeRequests} ranges · ${xray.percentFetched?.toFixed(1) ?? '0'}% fetched`}
+          </span>
         </footer>
       </WorkbenchShell>
     </ThemeRoot>
+  )
+}
+
+function beginOpen(
+  generationRef: { current: number },
+  openAbortRef: { current: AbortController | null },
+): { generation: number; signal: AbortSignal } {
+  openAbortRef.current?.abort()
+  const controller = new AbortController()
+  openAbortRef.current = controller
+  generationRef.current += 1
+  return { generation: generationRef.current, signal: controller.signal }
+}
+
+function atlasFromOpen(
+  source: OpenedSourceDescriptor,
+  dataset: OpenedDatasetDescriptor,
+  label: string,
+): OpenedAtlas {
+  const spatial = dataset.dataset.spatialReference
+  if (spatial?.pixelToModel === undefined) {
+    throw Object.assign(new Error('This GeoTIFF has no pixel-to-model affine.'), {
+      code: 'MALFORMED_METADATA',
+      retryable: false,
+      guidance: 'Native-CRS rendering requires a six-parameter affine.',
+    })
+  }
+  const raster = createGeoRasterSource({
+    id: source.sourceId,
+    label,
+    width: dataset.dataset.axes.find((axis) => axis.id === 'x')?.length ?? 1,
+    height: dataset.dataset.axes.find((axis) => axis.id === 'y')?.length ?? 1,
+    componentCount: Math.max(1, dataset.dataset.components.length),
+    spatialReference: spatial,
+  })
+  const rgb = dataset.dataset.components.length >= 3
+  const layer = createGeoRasterLayer({
+    id: `${source.sourceId}-layer`,
+    sourceId: raster.id,
+    label,
+    zIndex: 0,
+    style: {
+      mapping: rgb ? { red: 0, green: 1, blue: 2 } : { gray: 0 },
+      stretch: 'minmax',
+      nodataTransparent: true,
+    },
+  })
+  return { source, dataset, layers: [layer] }
+}
+
+function patchLayer(opened: OpenedAtlas, id: string, patch: Partial<GeoRasterLayer>): OpenedAtlas {
+  return {
+    ...opened,
+    layers: opened.layers.map((layer) =>
+      layer.id === id
+        ? createGeoRasterLayer({
+            id: layer.id,
+            sourceId: layer.sourceId,
+            label: patch.label ?? layer.label,
+            visible: patch.visible ?? layer.visible,
+            opacity: patch.opacity ?? layer.opacity,
+            blendMode: patch.blendMode ?? layer.blendMode,
+            zIndex: patch.zIndex ?? layer.zIndex,
+            style: patch.style ?? layer.style,
+          })
+        : layer,
+    ),
+  }
+}
+
+function duplicateLayer(opened: OpenedAtlas): OpenedAtlas {
+  const last = opened.layers.at(-1)
+  if (last === undefined) return opened
+  const copy = createGeoRasterLayer({
+    id: `${last.id}-copy-${opened.layers.length}`,
+    sourceId: last.sourceId,
+    label: `${last.label} copy`,
+    zIndex: last.zIndex + 1,
+    opacity: last.opacity,
+    style: last.style,
+  })
+  return { ...opened, layers: [...opened.layers, copy] }
+}
+
+function moveLayer(opened: OpenedAtlas, id: string, direction: -1 | 1): OpenedAtlas {
+  const ordered = [...opened.layers].sort((left, right) => left.zIndex - right.zIndex)
+  const index = ordered.findIndex((layer) => layer.id === id)
+  const swap = ordered[index + direction]
+  const current = ordered[index]
+  if (current === undefined || swap === undefined) return opened
+  return {
+    ...opened,
+    layers: opened.layers.map((layer) => {
+      if (layer.id === current.id) return { ...layer, zIndex: swap.zIndex }
+      if (layer.id === swap.id) return { ...layer, zIndex: current.zIndex }
+      return layer
+    }),
+  }
+}
+
+function asOpenFailure(error: unknown): GeoOpenFailure {
+  if (error instanceof ImagingRpcError) return classifyGeoOpenError(error.detail)
+  if (error instanceof Error && hasMalformedMetadataCode(error)) {
+    return classifyGeoOpenError({
+      code: 'MALFORMED_METADATA',
+      message: error.message,
+      retryable: false,
+      ...(typeof error.guidance === 'string' ? { guidance: error.guidance } : {}),
+    })
+  }
+  return {
+    kind: 'other',
+    title: 'Could not open this source',
+    message: error instanceof Error ? error.message : 'Unknown error',
+  }
+}
+
+function hasMalformedMetadataCode(
+  error: Error,
+): error is Error & { readonly code: 'MALFORMED_METADATA'; readonly guidance?: string } {
+  const candidate: object = error
+  return (
+    'code' in candidate &&
+    candidate.code === 'MALFORMED_METADATA' &&
+    (!('guidance' in candidate) ||
+      candidate.guidance === undefined ||
+      typeof candidate.guidance === 'string')
   )
 }

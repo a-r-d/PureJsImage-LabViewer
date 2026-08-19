@@ -27,6 +27,32 @@ describe('imaging RPC validation', () => {
     expect(isRpcEnvelope(request)).toBe(true)
   })
 
+  it('accepts optional geo display-mapping fields on a tile request', () => {
+    const request = rpcRequest('tile-geo', 'tile.request', {
+      tileId: 'visible-0-0',
+      datasetHandleId: 'dataset-1' as never,
+      generation: 1,
+      displayAxes: ['x', 'y'],
+      fixedIndices: [],
+      resolutionLevel: 0,
+      component: 0,
+      mapping: {
+        mode: 'linear',
+        range: 'auto',
+        stretch: 'percentile',
+        percentileLow: 2,
+        percentileHigh: 98,
+        gamma: 1.2,
+        nodata: -9999,
+        nodataTransparent: true,
+        bands: { red: 0, green: 1, blue: 2 },
+      },
+      region: { x: 0, y: 0, width: 256, height: 256 },
+      priority: 'visible',
+    })
+    expect(validateWorkerRequest(request)).toEqual(request)
+  })
+
   it('rejects unknown versions, message kinds, oversized strings, and oversized tiles', () => {
     expect(
       isRpcEnvelope({

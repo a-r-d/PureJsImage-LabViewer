@@ -16,14 +16,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   override componentDidCatch(_error: Error, _errorInfo: ErrorInfo): void {
-    // Avoid logging raw errors or metadata from this empty geo shell.
+    // Avoid logging raw errors or source bytes from Atlas.
   }
 
   override render(): ReactNode {
     if (this.state.failed) {
       return (
         <main className="fatal-error" aria-labelledby="fatal-error-title">
-          <h1 id="fatal-error-title">Geo Workbench could not start</h1>
+          <h1 id="fatal-error-title">PureJsImage Atlas could not start</h1>
           <p>Reload the page to try again. No raster data was loaded.</p>
         </main>
       )

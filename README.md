@@ -5,10 +5,8 @@ electron microscopy and adjacent engineering imagery. It consumes `purejsimage@0
 through documented public package exports and keeps original files in the browser unless
 the user deliberately chooses a network action.
 
-This bootstrap provides the strict monorepo, package boundaries, tests, and accessible
-single-route application shell. Scientific file opening and analysis workflows are added in
-later milestones described under [`prompts/`](prompts/). Notable product changes are recorded
-in [`CHANGELOG.md`](CHANGELOG.md).
+The science workbench and PureJsImage Atlas are the current product surfaces. Notable product
+changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
 The repository is a shared showcase monorepo: separately built gallery, science, and geo
 applications, with medical added later. Shared behavior is a compile-time domain profile.
@@ -37,7 +35,7 @@ pnpm install --frozen-lockfile
 | `pnpm dev` / `pnpm dev:science` | Run the science Vite development server |
 | `pnpm dev:workbench` | Compatibility alias for `pnpm dev:science` |
 | `pnpm dev:gallery` | Run the gallery linker |
-| `pnpm dev:geo` | Run the geo shell |
+| `pnpm dev:geo` | Run PureJsImage Atlas |
 | `pnpm build` | Build every package and app, then enforce bundle budgets |
 | `pnpm build:science` / `build:gallery` / `build:geo` | Build one application |
 | `pnpm test:science` / `test:gallery` / `test:geo` | Run that app's Vitest project |
@@ -48,9 +46,9 @@ pnpm install --frozen-lockfile
 | `pnpm format:check` | Check formatting without writing |
 | `pnpm test` | Run all Vitest projects |
 | `pnpm test:watch` | Run Vitest in watch mode |
-| `pnpm test:e2e` | Run the Playwright science suite in all three browsers |
+| `pnpm test:e2e` | Run Playwright science tests, then the geo Atlas suite |
 | `pnpm test:a11y` | Run accessibility-tagged Chromium checks |
-| `pnpm test:visual` | Run deterministic visual-invariant checks |
+| `pnpm test:visual` | Run deterministic visual-invariant checks for science and geo |
 | `pnpm test:corpus` | Validate the generated-corpus package skeleton |
 | `pnpm test:performance` | Run the initial browser performance budget |
 | `pnpm deploy:dry-run` | Validate science, geo, and gallery Cloudflare uploads without deploying |
@@ -61,10 +59,11 @@ pnpm install --frozen-lockfile
 ```text
 apps/gallery               Lightweight linker (Science, Geo, planned Medical)
 apps/science               Materials workbench → lab.purejsimage.com
-apps/geo                   Empty geo shell → geo.purejsimage.com
+apps/geo                   PureJsImage Atlas → geo.purejsimage.com
 apps-e2e/science           Playwright product tests for the science app
+apps-e2e/geo               Playwright tests for Atlas remote COG open and X-ray
 packages/domain-science    Science catalogs, workflows, actions, and panels
-packages/domain-geo        Empty geo profile and terminology
+packages/domain-geo        Geo domain model, CRS helpers, Atlas copy, and COG X-ray reports
 packages/workbench-core    Headless shared runtime and profile types
 packages/workbench-react   Shared React workbench shell
 packages/contracts         JSON-safe cross-runtime contracts

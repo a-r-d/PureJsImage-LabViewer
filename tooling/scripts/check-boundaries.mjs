@@ -49,8 +49,12 @@ const CROSS_APP_RULES = [
   },
   {
     prefix: 'packages/domain-geo/',
-    forbidden: ['@pji-workbench/domain-science', '@pji-workbench/materials-analysis'],
-    message: 'geo domain import of science or materials-analysis',
+    forbidden: [
+      '@pji-workbench/domain-science',
+      '@pji-workbench/materials-analysis',
+      '@pji-workbench/imaging',
+    ],
+    message: 'geo domain import of science, materials-analysis, or imaging',
   },
   {
     prefix: 'packages/domain-science/',

@@ -12,7 +12,9 @@ import {
   planMultiLayerTiles,
   planVisibleTileRegions,
   sampleViewportPointer,
+  scaleAffineToOverview,
   screenToWorld,
+  selectOverviewLevel,
   ViewportCameraSession,
   ViewportTransformError,
   visibleWorldBounds,
@@ -233,5 +235,28 @@ describe('world-space affine adapter', () => {
         height: 2,
       }),
     ).toThrow(ViewportTransformError)
+  })
+})
+
+describe('overview selection', () => {
+  it('picks a coarse overview when the whole raster fits in the viewport', () => {
+    const worldBounds = { x: 0, y: 0, width: 10_000, height: 8_000 }
+    const camera = { center: { x: 5_000, y: 4_000 }, zoom: 800 / 10_000 }
+    expect(
+      selectOverviewLevel(
+        [
+          { level: 0, width: 10_000, height: 8_000 },
+          { level: 1, width: 2_500, height: 2_000 },
+          { level: 2, width: 625, height: 500 },
+        ],
+        camera,
+        { width: 800, height: 640 },
+        worldBounds,
+      ),
+    ).toBe(2)
+  })
+
+  it('scales a full-resolution affine onto an overview grid', () => {
+    expect(scaleAffineToOverview(NORTH_UP_AFFINE, 4, 2, 2, 1)).toEqual([20, 0, 100, 0, -40, 200])
   })
 })

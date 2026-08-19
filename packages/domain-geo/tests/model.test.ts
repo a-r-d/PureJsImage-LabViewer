@@ -163,3 +163,28 @@ describe('geo project model', () => {
     ).toThrow(GeoValidationError)
   })
 })
+
+describe('raster style and cursor readout', () => {
+  it('stores stretch, gamma, and nodata transparency on a layer', () => {
+    const layer = createGeoRasterLayer({
+      id: 'styled',
+      sourceId: source('west').id,
+      label: 'Styled',
+      style: {
+        mapping: { gray: 0 },
+        stretch: 'percentile',
+        percentileLow: 2,
+        percentileHigh: 98,
+        gamma: 1.4,
+        nodataTransparent: true,
+      },
+    })
+    expect(layer.style).toMatchObject({
+      stretch: 'percentile',
+      percentileLow: 2,
+      percentileHigh: 98,
+      gamma: 1.4,
+      nodataTransparent: true,
+    })
+  })
+})

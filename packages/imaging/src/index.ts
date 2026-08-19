@@ -13,3 +13,4 @@ export type PublicScientificBrowserApi = typeof import('purejsimage/scientific/b
 export type PublicAnalysisApi = typeof import('purejsimage/analysis')
 export type PublicAnalysisRuntimeApi = typeof import('purejsimage/analysis/runtime')
 export type PublicHttpRangeApi = typeof import('purejsimage/sources/http-range')
+export type PublicTiffApi = typeof import('purejsimage/tiff')

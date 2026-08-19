@@ -77,6 +77,8 @@ Vitest covers:
   must not depend on React or domain packages.
 - `packages/domain-science` unit tests for the science domain profile, reader/example
   registries, and science action handlers.
+- `packages/domain-geo` unit tests for the Atlas profile, CRS helpers, open-error copy, X-ray
+  reports, and cursor readout.
 
 Tests should assert cleanup and cancellation, not just output.
 
@@ -152,6 +154,7 @@ visible UUID/time formatting. Screenshots wait for loaded fonts and real applica
 data-workbench-ready="true"
 data-render-settled="true"
 data-analysis-settled="true"
+data-atlas-settled="true"
 ```
 
 The render signal is updated by completed viewport draws without routing camera or tile churn
@@ -167,8 +170,12 @@ Capture:
 - labels overlay;
 - object table;
 - agent proposal;
-- error state.
-- bounded UI-lab dark/light wide and dark narrow states.
+- error state;
+- Atlas inspector and rendered GeoTIFF.
+
+The geo Atlas visual lives in `playwright.geo.config.ts` and uses a local range-capable fixture
+server. It is not part of the science capability matrix. Bounded UI-lab dark/light wide and dark
+narrow states are science-owned.
 
 Mask genuinely unstable numeric timing text. Do not mask image content or controls to force passes.
 

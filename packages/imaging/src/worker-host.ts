@@ -1,5 +1,6 @@
 import {
   type AnalysisResultHandleId,
+  COG_INSPECTION_METADATA_KEY,
   type DatasetHandleId,
   type DocumentId,
   type OpenedDatasetDescriptor,
@@ -18,6 +19,7 @@ import {
   TOOLBOX_DOCUMENTATION,
   TOOLBOX_PRESETS,
 } from '@pji-workbench/materials-analysis'
+import type { ImageSource } from 'purejsimage'
 import {
   type AnalysisExecutionResult,
   createAnalysisController,
@@ -43,6 +45,7 @@ import {
   normalizeScientificRelativeName,
   resolveNumericTileSource,
   type ScientificCompanionResolver,
+  type ScientificDocument,
   supportsScientificPlaneRead,
 } from 'purejsimage/scientific'
 import { createScientificFileContext } from 'purejsimage/scientific/browser'
@@ -51,6 +54,13 @@ import { cacheCodecAdapterPlane, usesCodecAdapterReader } from './codec-plane-ca
 import { datasetDescriptor, defaultPlaneSelection, openedSourceDescriptor } from './descriptor.js'
 import { PUREJSIMAGE_PACKAGE_VERSION } from './package-version.js'
 import { createAnalysisBindings, isScientificDataset } from './worker-host/analysis-rpc.js'
+import {
+  blobSourceFromFile,
+  classifyTiffOpenFailure,
+  inspectReadableTiff,
+  looksLikeTiffName,
+  tryInspectTiffSource,
+} from './worker-host/cog-inspect.js'
 import {
   abortError,
   errorResult,
@@ -73,7 +83,7 @@ import {
   sampleValues,
   sourceName,
 } from './worker-host/source-rpc.js'
-import { mapTile, numericValue } from './worker-host/view-rpc.js'
+import { mappedTileTransfer, mapTile, numericValue } from './worker-host/view-rpc.js'
 import { loadReadersForSource, SUPPORTED_READERS } from './worker-readers.js'
 
 export type { WorkerHostResult } from './worker-host/protocol.js'
@@ -383,7 +393,7 @@ export class ImagingWorkerHost {
       await this.#activate(record)
       return success(request.requestId, 'source.opened', this.#describe(record))
     } catch (error) {
-      return errorResult(request.requestId, structuredError(error, 'SOURCE_OPEN_FAILED'))
+      return errorResult(request.requestId, this.#openFailure(error))
     }
   }
 
@@ -468,9 +478,28 @@ export class ImagingWorkerHost {
     signal: AbortSignal,
   ): Promise<SourceRecord> {
     const readers = await loadReadersForSource(primary.name)
-    const document = await createScientificLibrary({ readers }).open(
-      createScientificFileContext(primary, { companions: files, signal }),
-    )
+    let document: ScientificDocument
+    try {
+      document = await createScientificLibrary({ readers }).open(
+        createScientificFileContext(primary, { companions: files, signal }),
+      )
+    } catch (error) {
+      throw await this.#enrichTiffOpenFailure(
+        error,
+        blobSourceFromFile(primary),
+        primary.name,
+        signal,
+      )
+    }
+    let cogInspection: Awaited<ReturnType<typeof inspectReadableTiff>>
+    try {
+      cogInspection = looksLikeTiffName(primary.name)
+        ? await inspectReadableTiff(blobSourceFromFile(primary), signal)
+        : undefined
+    } catch (error) {
+      await document.close?.()
+      throw error
+    }
     return {
       id: this.#id('source') as SourceId,
       documentId: this.#id('document') as DocumentId,
@@ -480,6 +509,7 @@ export class ImagingWorkerHost {
       size: primary.size,
       document,
       rangeSources: [],
+      ...(cogInspection === undefined ? {} : { cogInspection }),
       datasets: new Map(),
       closed: false,
     }
@@ -526,11 +556,25 @@ export class ImagingWorkerHost {
       }
       const name = sourceName(url)
       const readers = await loadReadersForSource(name)
-      const document = await createScientificLibrary({ readers }).open({
-        primary: { id: 'remote-primary', name, source: primary },
-        companions: resolver,
-        signal,
-      })
+      let document: ScientificDocument
+      try {
+        document = await createScientificLibrary({ readers }).open({
+          primary: { id: 'remote-primary', name, source: primary },
+          companions: resolver,
+          signal,
+        })
+      } catch (error) {
+        throw await this.#enrichTiffOpenFailure(error, primary, name, signal)
+      }
+      let cogInspection: Awaited<ReturnType<typeof inspectReadableTiff>>
+      try {
+        cogInspection = looksLikeTiffName(name)
+          ? await inspectReadableTiff(primary, signal)
+          : undefined
+      } catch (error) {
+        await document.close?.()
+        throw error
+      }
       const record: SourceRecord = {
         id: this.#id('source') as SourceId,
         documentId: this.#id('document') as DocumentId,
@@ -541,13 +585,14 @@ export class ImagingWorkerHost {
         url: url.href,
         document,
         rangeSources: ranges,
+        ...(cogInspection === undefined ? {} : { cogInspection }),
         datasets: new Map(),
         closed: false,
       }
       await this.#activate(record)
       return success(request.requestId, 'source.opened', this.#describe(record))
     } catch (error) {
-      return errorResult(request.requestId, structuredError(error, 'SOURCE_OPEN_FAILED'))
+      return errorResult(request.requestId, this.#openFailure(error))
     }
   }
 
@@ -558,7 +603,7 @@ export class ImagingWorkerHost {
   }
 
   #describe(record: SourceRecord) {
-    return openedSourceDescriptor({
+    const base = openedSourceDescriptor({
       document: record.document,
       sourceId: record.id,
       documentId: record.documentId,
@@ -568,6 +613,14 @@ export class ImagingWorkerHost {
       size: record.size,
       ...(record.url === undefined ? {} : { url: record.url }),
     })
+    if (record.cogInspection === undefined) return base
+    return {
+      ...base,
+      metadata: {
+        ...base.metadata,
+        [COG_INSPECTION_METADATA_KEY]: record.cogInspection,
+      },
+    }
   }
 
   async #openDataset(
@@ -737,7 +790,7 @@ export class ImagingWorkerHost {
           elapsedMilliseconds: performance.now() - started,
         },
       }
-      return { response, transfer: [mapped.rgba.buffer, mapped.values.buffer] }
+      return { response, transfer: mappedTileTransfer(mapped) }
     } catch (error) {
       return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
     } finally {
@@ -1207,7 +1260,7 @@ export class ImagingWorkerHost {
           elapsedMilliseconds: performance.now() - started,
         },
       }
-      return { response, transfer: [mapped.rgba.buffer, mapped.values.buffer] }
+      return { response, transfer: mappedTileTransfer(mapped) }
     } catch (error) {
       return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
     }
@@ -1268,10 +1321,13 @@ export class ImagingWorkerHost {
         requests: totals.requests + source.stats.requests,
         bytesFetched: totals.bytesFetched + source.stats.bytesFetched,
         cacheBytes: totals.cacheBytes + source.stats.cacheBytes,
+        cacheHits: totals.cacheHits + source.stats.cacheHits,
       }),
-      { requests: 0, bytesFetched: 0, cacheBytes: 0 },
+      { requests: 0, bytesFetched: 0, cacheBytes: 0, cacheHits: 0 },
     )
     const runtime = active?.datasets.values().next().value as DatasetRecord | undefined
+    const rangeRequests = rangeStats?.requests ?? 0
+    const rangeCacheHits = rangeStats?.cacheHits ?? 0
     return {
       generation: active?.generation ?? 0,
       source:
@@ -1281,9 +1337,11 @@ export class ImagingWorkerHost {
               id: active.id,
               kind: active.kind,
               size: active.size,
-              rangeRequests: rangeStats?.requests ?? 0,
+              rangeRequests,
               rangeBytesFetched: rangeStats?.bytesFetched ?? 0,
               rangeCacheBytes: rangeStats?.cacheBytes ?? 0,
+              rangeCacheHits,
+              rangeCacheMisses: Math.max(0, rangeRequests - rangeCacheHits),
             },
       openDatasets: active?.datasets.size ?? 0,
       pendingRequests: this.#pending.size,
@@ -1298,6 +1356,26 @@ export class ImagingWorkerHost {
       throw this.#stale('source generation')
     }
     return active
+  }
+
+  #openFailure(error: unknown): StructuredRpcError {
+    return structuredError(error, 'SOURCE_OPEN_FAILED')
+  }
+
+  async #enrichTiffOpenFailure(
+    error: unknown,
+    source: ImageSource,
+    name: string,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    if (!looksLikeTiffName(name)) return error
+    const inspected = await tryInspectTiffSource(source, signal)
+    return (
+      classifyTiffOpenFailure(error, inspected.inspection) ??
+      (inspected.error === undefined
+        ? error
+        : (classifyTiffOpenFailure(inspected.error, undefined) ?? error))
+    )
   }
 
   #stale(label: string): StructuredRpcError & Error {

@@ -50,7 +50,8 @@ apps/science
   characterization suite. Deployed at lab.purejsimage.com.
 
 apps/geo
-  Empty geospatial profile on the shared workbench shell. Deployed at geo.purejsimage.com.
+  PureJsImage Atlas: open local or remote GeoTIFF/COG, native-CRS viewport, layer/display
+  controls, and COG X-ray. Deployed at geo.purejsimage.com.
 
 packages/actions
   JSON-safe semantic action descriptors, deterministic registry, availability, validation,
@@ -78,10 +79,11 @@ packages/domain-science
 
 packages/domain-geo
   Geo project model (sources, raster/derived layers, styles, comparison, map-coordinate
-  ROIs, provenance) and CRS helpers. Native source CRS display and same-CRS composition
-  live here. Proj4js may transform EPSG:4326 ↔ EPSG:3857; unsupported projections return
-  typed errors. Pixel reprojection and basemaps are out of scope. Must not import
-  domain-science, materials-analysis, or React.
+  ROIs, provenance), CRS helpers, Atlas copy, and JSON-safe COG X-ray reports. Native
+  source CRS display and same-CRS composition live here. Proj4js may transform EPSG:4326
+  ↔ EPSG:3857; unsupported projections return typed errors. Pixel reprojection and
+  basemaps are out of scope. Must not import domain-science, materials-analysis, React,
+  or PureJsImage.
 
 packages/imaging
   The only package that directly composes PureJsImage readers, scientific documents,
@@ -139,7 +141,7 @@ ui → React only and generic contracts
 Rules:
 
 - `apps/science` may import `domain-science`, `materials-analysis`, and shared packages. It must not import `domain-geo`.
-- `apps/geo` may import `domain-geo` and the shared shell. It must not import `domain-science` or `materials-analysis`.
+- `apps/geo` may import `domain-geo`, `imaging`, `viewport`, `contracts`, and the shared shell. It must not import `domain-science` or `materials-analysis`.
 - `apps/gallery` may import `packages/ui` only among workspace packages. It must not import the imaging runtime.
 - No package imports from `apps/*`.
 - `imaging` may import only documented PureJsImage package exports.
@@ -215,6 +217,10 @@ interface ViewportRenderer {
 ```
 
 Use transferable buffers or `ImageBitmap` only where ownership and measured performance justify them. Do not copy an entire plane to the main thread.
+
+Atlas currently composites native-CRS tiles with a Canvas 2D renderer. It still copies only
+bounded RGBA tiles onto the main thread; quantitative values stay on those same tile objects,
+not in React state.
 
 Keep an experimental OffscreenCanvas worker renderer possible, but do not make it a skeleton dependency because browser/debugging behavior varies and input latency must be measured.
 

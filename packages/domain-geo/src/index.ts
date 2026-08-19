@@ -14,6 +14,8 @@ export {
   sameCrs,
   transformMapPoint,
 } from './crs.js'
+export type { GeoOpenFailure, GeoOpenFailureKind } from './errors.js'
+export { classifyGeoOpenError, displayMappingFromStyle } from './errors.js'
 export type {
   BandMapping,
   CreateDerivedGeoRasterLayerInput,
@@ -40,6 +42,7 @@ export type {
   GeoRecipeReference,
   GeoRoiId,
   GeoSourceId,
+  RasterStretch,
   RasterStyle,
 } from './model.js'
 export {
@@ -55,8 +58,17 @@ export {
 export {
   createGeoDomainProfile,
   GEO_DOMAIN_ID,
+  GEO_FILE_ACCEPT,
+  GEO_READER_IDS,
   type GeoCommandContext,
   geoDomainProfile,
 } from './profile.js'
-export { formatMapPointerReadout } from './readout.js'
+export type { GeoCursorReadoutInput } from './readout.js'
+export { formatGeoCursorReadout, formatMapPointerReadout } from './readout.js'
 export { GEO_TERMINOLOGY, geoUiContributions } from './ui-contributions.js'
+export type { CogXrayReport } from './xray.js'
+export {
+  buildCogXrayReport,
+  cogInspectionFromSource,
+  scalarNodata,
+} from './xray.js'

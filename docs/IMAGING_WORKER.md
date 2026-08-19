@@ -119,8 +119,14 @@ The server must return `206`, a valid `Content-Range`, identity encoding, and st
 provided. It must also allow the workbench origin through CORS and expose `Content-Range` to the
 browser.
 
-Request `diagnostics.get` to inspect `rangeRequests`, `rangeBytesFetched`, `rangeCacheBytes`, tile
-runtime memory, time to first completed tile, and release counters. In tests, compare
-`rangeBytesFetched` with `source.size`; opening and a small first tile must remain below the complete
-file size. A `200` response to a Range request is treated as a range-unavailable error rather than
-silently downloading the complete object.
+Request `diagnostics.get` to inspect `rangeRequests`, `rangeBytesFetched`, `rangeCacheBytes`,
+`rangeCacheHits`, `rangeCacheMisses`, tile runtime memory, time to first completed tile, and
+release counters. In tests, compare `rangeBytesFetched` with `source.size`; opening and a small
+first tile must remain below the complete file size. A `200` response to a Range request is
+`RANGE_UNSUPPORTED`. A CORS/`Failed to fetch` probe is `CORS_FAILED`. TIFF layout and
+compression failures are classified separately from truncated or malformed GeoTIFF metadata.
+
+GeoTIFF/COG opens attach a JSON-safe `inspectCog` report under `purejsimage:cog` on source
+metadata. Atlas X-ray copy is derived from that report plus Worker range diagnostics. The Worker
+still holds one active source; display layers style that raster rather than compositing separate
+files.

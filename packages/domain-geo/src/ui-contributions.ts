@@ -1,12 +1,12 @@
 import type { DomainUiContributions } from '@pji-workbench/workbench-core'
 
 export const GEO_TERMINOLOGY = Object.freeze({
-  applicationTitle: 'Geo Workbench',
-  shellHeading: 'PureJsImage Geo',
-  emptyKicker: 'Local-first geospatial rasters',
-  emptyHeading: 'Geospatial workflows will land here',
+  applicationTitle: 'PureJsImage Atlas',
+  shellHeading: 'PureJsImage Atlas',
+  emptyKicker: 'Local-first Cloud Optimized GeoTIFF',
+  emptyHeading: 'Open a GeoTIFF or COG',
   emptyBody:
-    'This showcase uses the shared workbench shell. Geospatial readers, tiles, and analysis are not included yet.',
+    'Open a local GeoTIFF or a remote HTTPS Cloud Optimized GeoTIFF. The viewport stays in the source CRS and fetches only the ranges needed for the current view.',
 })
 
 export const geoUiContributions: DomainUiContributions = Object.freeze({
@@ -17,13 +17,17 @@ export const geoUiContributions: DomainUiContributions = Object.freeze({
     heading: GEO_TERMINOLOGY.emptyHeading,
     body: GEO_TERMINOLOGY.emptyBody,
   }),
-  panels: Object.freeze([]),
+  panels: Object.freeze([
+    Object.freeze({ id: 'geo-layers', title: 'Layers', surface: 'inspector' as const }),
+    Object.freeze({ id: 'geo-display', title: 'Display', surface: 'inspector' as const }),
+    Object.freeze({ id: 'geo-xray', title: 'COG X-ray', surface: 'inspector' as const }),
+  ]),
   routes: Object.freeze([
     Object.freeze({
       path: '/',
       id: 'geo-workbench',
       component: 'GeoApp',
-      title: 'Geo Workbench',
+      title: 'PureJsImage Atlas',
       readyAttribute: 'data-workbench-ready',
     }),
   ]),

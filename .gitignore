@@ -266,6 +266,7 @@ benchmark/aws-lambda/.asset-location.json
 benchmark/results/artifacts/
 artifacts/fuzz-crashes/
 playwright-report/
+playwright-report-geo/
 test-results/
 .turbo/
 .wrangler/
