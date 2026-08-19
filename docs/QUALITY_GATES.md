@@ -45,6 +45,8 @@ No untyped `postMessage`, storage JSON, agent tool payload, plugin manifest, or 
 
 Biome owns formatting and linting. Do not run ESLint and Prettier in parallel unless a specific rule unavailable in Biome is proven necessary.
 
+`pnpm format:check` is `biome format` only. `pnpm lint` is what CI runs after it: `biome check .` plus architecture-boundary and static-security scripts. `biome check` is a different tool than `biome format` — it fails on unused suppressions, React hook dependencies, `import type`, import organization, and other lint rules that format-check never sees. Passing `pnpm format:check` locally is not enough before push; run `pnpm lint` or `pnpm check`.
+
 Enforce:
 
 - no unused imports/variables;
@@ -246,7 +248,8 @@ Suggested jobs:
 1. `quality`: format, lint, typecheck, unit tests, architecture boundaries.
 2. `build`: package builds, workbench build, bundle budgets, Cloudflare dry run.
 3. `browser`: science and geo Playwright in the version-matched Playwright image, one job per
-   Chromium/Firefox/WebKit matrix cell, four workers, no `playwright install --with-deps`.
+   Chromium/Firefox/WebKit matrix cell. Science uses two workers so visual and analysis specs
+   stay stable; geo uses four. Jobs skip `playwright install --with-deps`.
 4. `accessibility-visual`: deterministic UI gates.
 5. `corpus-compact`: enabled Tier 1 subset with cache.
 6. `security`: audit, secret scan, CSP/static bundle checks.

@@ -6,7 +6,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   updateSnapshots: 'none',
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 4 : '50%',
+  workers: process.env.CI ? 2 : '50%',
   outputDir: 'test-results/science',
   reporter: process.env.CI
     ? [

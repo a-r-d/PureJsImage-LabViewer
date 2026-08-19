@@ -9,7 +9,7 @@ import type {
   SourceId,
   WorkerResponse,
 } from '@pji-workbench/contracts'
-import { rpcRequest, RPC_SCHEMA_VERSION } from '@pji-workbench/contracts'
+import { RPC_SCHEMA_VERSION, rpcRequest } from '@pji-workbench/contracts'
 import { MATERIALS_OPERATION_IDS } from '@pji-workbench/materials-analysis'
 import {
   independentSampleValue,

@@ -539,8 +539,7 @@ export function GeoViewport({
       renderer.dispose()
       cancelAnimationFrame(frameRequest)
     }
-    // biome-ignore lint/correctness/useExhaustiveDependencies: rastersIdentity is the source/handle refetch key; live rasters/layers are read from refs.
-  }, [client, rastersIdentity, onOverview, onPointer, onSettled])
+  }, [client, rasters, onOverview, onPointer, onSettled])
 
   return (
     <div className="geo-viewport">

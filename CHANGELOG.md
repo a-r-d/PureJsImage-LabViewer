@@ -7,6 +7,13 @@ The application is not yet versioned for release (`0.0.0`).
 
 ## [Unreleased]
 
+### Fixed
+
+- Atlas catalog tiles open the preferred Cloud Optimized GeoTIFF on click. The empty-state Search
+  button runs a catalog search instead of only switching the already-open Catalog tab. The map
+  shows an opening state with Cancel while HTTP Range fetches are in flight, instead of staying on
+  the empty placeholder with no network activity.
+
 ### Added
 
 - Bounded multi-source imaging Worker: one Worker owns a map of source records keyed by stable
@@ -70,7 +77,8 @@ The application is not yet versioned for release (`0.0.0`).
   the probe and `lifetimeSignal` for subsequent reads; aborting the per-source lifetime controller
   releases in-flight range work. The imaging RPC schema version is 2.
 - Browser CI runs science and geo Playwright in `mcr.microsoft.com/playwright:v1.62.1-noble` with a
-  Chromium/Firefox/WebKit matrix and four workers. Jobs skip `playwright install --with-deps`.
+  Chromium/Firefox/WebKit matrix. Science uses two workers; geo uses four. Jobs skip
+  `playwright install --with-deps`.
 - `pnpm build` bundle check enforces gzip ceilings (300 KiB science route chunks, 1,000 KiB
   language Worker, 200 KiB gallery total, 2 MiB geo total) and that science still ships its
   index and Worker chunks. It no longer goldens every hashed asset name and exact gzip byte

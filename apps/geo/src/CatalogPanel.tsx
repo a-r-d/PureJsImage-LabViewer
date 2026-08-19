@@ -23,6 +23,7 @@ export function CatalogPanel({
   stories,
   viewBbox,
   busy,
+  searchNonce = 0,
   onOpen,
 }: {
   readonly client: StacClient
@@ -30,6 +31,7 @@ export function CatalogPanel({
   readonly stories: readonly CatalogStory[]
   readonly viewBbox?: StacBbox
   readonly busy: boolean
+  readonly searchNonce?: number
   readonly onOpen: (candidate: CatalogSourceCandidate, inspect: boolean) => void
 }) {
   const [catalogId, setCatalogId] = useState(catalogs[0]?.id ?? '')
@@ -49,6 +51,7 @@ export function CatalogPanel({
   const [storyStyle, setStoryStyle] = useState<RasterStyle | undefined>()
   const requestRef = useRef<AbortController | null>(null)
   const requestGenRef = useRef(0)
+  const lastSearchNonceRef = useRef(0)
 
   const catalogStories = stories.filter((story) => story.catalogId === catalog?.id)
 
@@ -117,7 +120,9 @@ export function CatalogPanel({
         if (requestGenRef.current !== generation) return
         setItems(page.items)
         setNextHref(page.nextHref)
-        setSelectedItemId(page.items[0]?.id)
+        setSelectedItemId((current) =>
+          page.items.some((item) => item.id === current) ? current : undefined,
+        )
         setAssetKey(undefined)
         setStatus(
           page.numberMatched === undefined
@@ -152,6 +157,30 @@ export function CatalogPanel({
       if (requestGenRef.current === generation) setLoading(false)
     }
   }, [beginRequest, client, nextHref])
+
+  const openItem = useCallback(
+    (item: StacItem, inspect: boolean, nextAssetKey?: string) => {
+      if (catalog === undefined) return
+      const nextCandidates =
+        storyStyle === undefined
+          ? candidatesFromItem(catalog, item)
+          : candidatesFromItem(catalog, item, { style: storyStyle })
+      const next = preferredCandidate(nextCandidates, item, nextAssetKey)
+      setSelectedItemId(item.id)
+      setAssetKey(nextAssetKey ?? next?.assetKey)
+      if (next === undefined) return
+      onOpen(next, inspect)
+    },
+    [catalog, onOpen, storyStyle],
+  )
+
+  useEffect(() => {
+    if (searchNonce === lastSearchNonceRef.current) return
+    lastSearchNonceRef.current = searchNonce
+    if (searchNonce < 1) return
+    setStoryStyle(undefined)
+    void search()
+  }, [search, searchNonce])
 
   const selected = items.find((item) => item.id === selectedItemId)
   const candidates =
@@ -267,27 +296,60 @@ export function CatalogPanel({
         </Button>
       </div>
       <p data-testid="catalog-status">{loading ? 'Loading…' : status}</p>
+      <p className="geo-catalog-hint">
+        {items.length === 0
+          ? 'Search a collection or pick a story, then click a tile to open it.'
+          : 'Click a tile to open it in the map. Atlas fetches only the HTTP ranges for the current view.'}
+      </p>
       {error !== null ? (
         <ErrorState
           message={`${error.message}${error.guidance === undefined ? '' : ` ${error.guidance}`}`}
           title={error.title}
         />
       ) : null}
+      {catalogStories.length > 0 ? (
+        <fieldset className="geo-story-chips">
+          <legend>Stories</legend>
+          {catalogStories.map((story) => (
+            <button
+              key={story.id}
+              onClick={() => {
+                if (catalog === undefined) return
+                const ids = collectionIdsForStory(catalog, story)
+                if (story.bbox !== undefined) setBboxText(formatBbox(story.bbox))
+                if (story.datetime !== undefined) setDatetime(story.datetime)
+                setCollectionId(ids[0] ?? '')
+                setPreferInspect(story.inspect === true)
+                setStoryStyle(story.style)
+                void search({
+                  ...(ids.length === 0 ? {} : { collections: ids }),
+                  ...(story.bbox === undefined ? {} : { bbox: story.bbox }),
+                  ...(story.datetime === undefined ? {} : { datetime: story.datetime }),
+                })
+              }}
+              title={story.summary}
+              type="button"
+            >
+              {story.title}
+            </button>
+          ))}
+        </fieldset>
+      ) : null}
       <ol className="geo-catalog-results">
         {items.map((item) => (
           <li key={item.id}>
             <button
+              aria-label={`Open ${item.id}`}
               aria-pressed={item.id === selectedItemId}
-              onClick={() => {
-                setSelectedItemId(item.id)
-                setAssetKey(undefined)
-              }}
+              disabled={busy && item.id === selectedItemId}
+              onClick={() => openItem(item, preferInspect)}
               type="button"
             >
               <strong>{item.id}</strong>
               <span>
                 {item.collection ?? 'item'}
                 {item.datetime === undefined ? '' : ` · ${item.datetime.slice(0, 10)}`}
+                {` · ${busy && item.id === selectedItemId ? 'Opening…' : 'Click to open'}`}
               </span>
             </button>
           </li>
@@ -318,14 +380,14 @@ export function CatalogPanel({
           <div className="geo-inspector-toolbar">
             <Button
               disabled={busy}
-              onClick={() => onOpen(active, false)}
+              onClick={() => openItem(selected, false, active.assetKey)}
               variant={preferInspect ? 'secondary' : 'primary'}
             >
               Open as layer
             </Button>
             <Button
               disabled={busy}
-              onClick={() => onOpen(active, true)}
+              onClick={() => openItem(selected, true, active.assetKey)}
               variant={preferInspect ? 'primary' : 'secondary'}
             >
               Inspect asset
@@ -333,35 +395,6 @@ export function CatalogPanel({
           </div>
         </div>
       )}
-      {catalogStories.length > 0 ? (
-        <details className="geo-story-list" open>
-          <summary>Stories</summary>
-          {catalogStories.map((story) => (
-            <button
-              key={story.id}
-              onClick={() => {
-                if (catalog === undefined) return
-                const ids = collectionIdsForStory(catalog, story)
-                if (story.bbox !== undefined) setBboxText(formatBbox(story.bbox))
-                if (story.datetime !== undefined) setDatetime(story.datetime)
-                setCollectionId(ids[0] ?? '')
-                setPreferInspect(story.inspect === true)
-                setStoryStyle(story.style)
-                void search({
-                  ...(ids.length === 0 ? {} : { collections: ids }),
-                  ...(story.bbox === undefined ? {} : { bbox: story.bbox }),
-                  ...(story.datetime === undefined ? {} : { datetime: story.datetime }),
-                })
-              }}
-              type="button"
-            >
-              <strong>{story.title}</strong>
-              <span>{story.summary}</span>
-              {story.note === undefined ? null : <em>{story.note}</em>}
-            </button>
-          ))}
-        </details>
-      ) : null}
     </div>
   )
 }

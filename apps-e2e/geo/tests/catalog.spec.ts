@@ -23,13 +23,25 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('searches a mocked Kentucky collection and opens a COG asset as a layer', async ({ page }) => {
+  test.setTimeout(60_000)
+  let delayedFirstRange = false
+  await page.route('http://127.0.0.1:4175/north-up.tif', async (route) => {
+    if (!delayedFirstRange) {
+      delayedFirstRange = true
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600)
+      })
+    }
+    await route.continue()
+  })
   await expect(page.getByTestId('catalog-panel')).toBeVisible()
   await page.getByRole('button', { name: 'Kentucky Through Time' }).click()
   await expect(page.getByTestId('catalog-status')).toHaveText(/^\d+ of \d+ items$/u, {
     timeout: 15_000,
   })
-  await page.getByRole('button', { name: /N082E280_2019_6IN_cog/u }).click()
-  await page.getByRole('button', { name: 'Open as layer' }).click()
+  await expect(page.getByText('Click a tile to open it in the map')).toBeVisible()
+  await page.getByRole('button', { name: /Open N082E280_2019_6IN_cog/u }).click({ timeout: 15_000 })
+  await expect(page.getByTestId('geo-opening')).toBeVisible()
   await expect(page.getByRole('img', { name: /Geo raster viewport/u })).toBeVisible({
     timeout: 30_000,
   })
@@ -37,6 +49,14 @@ test('searches a mocked Kentucky collection and opens a COG asset as a layer', a
   await expect(page.getByTestId('catalog-provenance')).toContainText('orthos-phase2')
   await expect(page.getByTestId('catalog-provenance')).toContainText('CC-BY-4.0')
   await expect(page.getByTestId('catalog-provenance')).not.toContainText('X-Amz-Signature')
+})
+
+test('empty-state Search runs a catalog search', async ({ page }) => {
+  await page.getByRole('button', { name: 'Search Kentucky From Above' }).click()
+  await expect(page.getByTestId('catalog-status')).toHaveText(/^\d+ of \d+ items$/u, {
+    timeout: 15_000,
+  })
+  await expect(page.getByRole('button', { name: /Open N082E280_2019_6IN_cog/u })).toBeVisible()
 })
 
 test('opens a catalog asset from a shareable deep link', async ({ page }) => {

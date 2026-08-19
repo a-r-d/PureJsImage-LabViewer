@@ -47,6 +47,7 @@ import { createLocalStacCache } from './stac-storage.js'
 interface OpenedRaster {
   readonly source: OpenedSourceDescriptor
   readonly dataset: OpenedDatasetDescriptor
+  readonly href?: string
 }
 
 interface OpenedAtlas {
@@ -71,6 +72,8 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [url, setUrl] = useState('')
   const [urlOpen, setUrlOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [openingLabel, setOpeningLabel] = useState<string | undefined>()
+  const [searchNonce, setSearchNonce] = useState(0)
   const [tab, setTab] = useState<InspectorTab>('catalog')
   const [selectedLayerId, setSelectedLayerId] = useState<string | undefined>()
   const [readout, setReadout] = useState('Move the pointer over the raster')
@@ -78,6 +81,8 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [overview, setOverview] = useState(0)
   const [settled, setSettled] = useState(true)
   const [viewBbox, setViewBbox] = useState<StacBbox | undefined>()
+  const openedRef = useRef(opened)
+  openedRef.current = opened
   const stacRef = useRef(
     createStacClient({
       fetch,
@@ -137,8 +142,10 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       const primary = files[0]
       if (client === null || primary === undefined) return
       const { generation, signal } = beginOpen(generationRef, openAbortRef)
+      setOpeningLabel(primary.name)
       setBusy(true)
       setError(null)
+      setReadout(`Opening ${primary.name}…`)
       let openedSource: OpenedSourceDescriptor | undefined
       let committed = false
       try {
@@ -193,10 +200,19 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         readonly label?: string
       },
     ) => {
-      if (client === null) return
+      if (client === null || remoteUrl.length === 0) return
+      const existing = openedRef.current?.rasters.find((raster) => raster.href === remoteUrl)
+      if (existing !== undefined) {
+        setError(null)
+        setSelectedLayerId(`${existing.source.sourceId}-layer`)
+        setTab(options?.inspect === true ? 'xray' : 'layers')
+        return
+      }
       const { generation, signal } = beginOpen(generationRef, openAbortRef)
+      setOpeningLabel(options?.label ?? remoteFileName(remoteUrl))
       setBusy(true)
       setError(null)
+      setReadout(`Opening ${options?.label ?? remoteFileName(remoteUrl)}…`)
       let openedSource: OpenedSourceDescriptor | undefined
       let committed = false
       try {
@@ -218,12 +234,12 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         }
         setDiagnostics(nextDiagnostics)
         setUrlOpen(false)
-        const openedAtlas = atlasFromOpen(
-          source,
-          dataset,
-          options?.label ?? source.source.name,
-          options,
-        )
+        const openedAtlas = atlasFromOpen(source, dataset, options?.label ?? source.source.name, {
+          href: remoteUrl,
+          ...(options?.catalog === undefined ? {} : { catalog: options.catalog }),
+          ...(options?.style === undefined ? {} : { style: options.style }),
+          ...(options?.presets === undefined ? {} : { presets: options.presets }),
+        })
         setOpened((current) => appendAtlas(current, openedAtlas))
         committed = true
         setSelectedLayerId(`${source.sourceId}-layer`)
@@ -438,36 +454,68 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           className="geo-main geo-main--split"
           data-atlas-settled={opened !== null && settled && !busy ? 'true' : 'false'}
         >
-          {opened === null || client === null ? (
+          {client === null || !ready ? (
+            <EmptyState
+              description="The catalog stays available. You can search while the Worker starts."
+              title="Starting imaging Worker…"
+            />
+          ) : opened !== null ? (
+            <div className="geo-viewport-stack">
+              {busy ? (
+                <div className="geo-opening-banner" data-testid="geo-opening" role="status">
+                  <span>{`Opening ${openingLabel ?? 'Cloud Optimized GeoTIFF'}… Range-only fetch.`}</span>
+                  <Button onClick={() => openAbortRef.current?.abort()}>Cancel</Button>
+                </div>
+              ) : null}
+              <GeoViewport
+                key={opened.rasters.map((raster) => raster.source.sourceId).join('|')}
+                client={client}
+                layers={opened.layers}
+                onOverview={setOverview}
+                onPointer={onPointer}
+                onSettled={setSettled}
+                onViewBbox={setViewBbox}
+                rasters={viewportRasters}
+              />
+            </div>
+          ) : busy ? (
+            <div className="geo-opening" data-testid="geo-opening" role="status">
+              <EmptyState
+                action={
+                  <Button onClick={() => openAbortRef.current?.abort()} variant="primary">
+                    Cancel
+                  </Button>
+                }
+                description="Fetching only the HTTP ranges needed for this view. Tiles appear as soon as the first overview is ready."
+                title={`Opening ${openingLabel ?? 'Cloud Optimized GeoTIFF'}…`}
+              />
+            </div>
+          ) : (
             <EmptyState
               action={
-                <Button onClick={() => setTab('catalog')} variant="primary">
+                <Button
+                  onClick={() => {
+                    setTab('catalog')
+                    setSearchNonce((value) => value + 1)
+                  }}
+                  variant="primary"
+                >
                   Search {CATALOG_REGISTRY[0]?.title ?? 'the catalog'}
                 </Button>
               }
               description={geoUiContributions.emptyState.body}
               title={geoUiContributions.emptyState.heading}
             />
-          ) : (
-            <GeoViewport
-              key={opened.rasters.map((raster) => raster.source.sourceId).join('|')}
-              client={client}
-              layers={opened.layers}
-              onOverview={setOverview}
-              onPointer={onPointer}
-              onSettled={setSettled}
-              onViewBbox={setViewBbox}
-              rasters={viewportRasters}
-            />
           )}
           <InspectorPanel
             bandCount={inspected?.dataset.dataset.components.length ?? 0}
             catalog={
               <CatalogPanel
-                busy={busy}
+                busy={busy || !ready}
                 catalogs={CATALOG_REGISTRY}
                 client={stacRef.current}
                 onOpen={openCatalogAsset}
+                searchNonce={searchNonce}
                 stories={CATALOG_STORIES}
                 {...(viewBbox === undefined ? {} : { viewBbox })}
               />
@@ -506,9 +554,11 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           <span data-testid="cursor-readout">{readout}</span>
           <span className="status-spacer" />
           <span>
-            {xray === undefined
-              ? geoUiContributions.emptyState.kicker
-              : `${xray.rangeRequests} ranges · ${xray.percentFetched?.toFixed(1) ?? '0'}% fetched`}
+            {busy
+              ? `Opening ${openingLabel ?? 'GeoTIFF'}…`
+              : xray === undefined
+                ? geoUiContributions.emptyState.kicker
+                : `${xray.rangeRequests} ranges · ${xray.percentFetched?.toFixed(1) ?? '0'}% fetched`}
           </span>
         </footer>
       </WorkbenchShell>
@@ -547,6 +597,7 @@ function atlasFromOpen(
     readonly catalog?: GeoCatalogReference
     readonly style?: CatalogSourceCandidate['style']
     readonly presets?: readonly CatalogStoryPreset[]
+    readonly href?: string
   },
 ): OpenedAtlas {
   const spatial = dataset.dataset.spatialReference
@@ -581,7 +632,13 @@ function atlasFromOpen(
   return {
     source,
     dataset,
-    rasters: [{ source, dataset }],
+    rasters: [
+      {
+        source,
+        dataset,
+        ...(options?.href === undefined ? {} : { href: options.href }),
+      },
+    ],
     layers: [layer],
     ...(options?.catalog === undefined ? {} : { catalog: options.catalog }),
     ...(options?.presets === undefined ? {} : { presets: options.presets }),
@@ -678,6 +735,15 @@ function moveLayer(opened: OpenedAtlas, id: string, direction: -1 | 1): OpenedAt
       if (layer.id === swap.id) return { ...layer, zIndex: current.zIndex }
       return layer
     }),
+  }
+}
+
+function remoteFileName(remoteUrl: string): string {
+  try {
+    const name = new URL(remoteUrl).pathname.split('/').filter(Boolean).at(-1)
+    return name === undefined || name.length === 0 ? remoteUrl : decodeURIComponent(name)
+  } catch {
+    return remoteUrl
   }
 }
 

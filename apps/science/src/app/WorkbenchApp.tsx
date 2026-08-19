@@ -55,7 +55,7 @@ import {
   workbenchActionRegistry,
   workbenchCommands,
 } from '@pji-workbench/domain-science'
-import { type ImagingWorkerClient } from '@pji-workbench/imaging'
+import type { ImagingWorkerClient } from '@pji-workbench/imaging'
 import { type BatchRecipeRow, runBatchRecipe } from '@pji-workbench/materials-analysis'
 import {
   type RecipeDocumentV1,
@@ -125,7 +125,6 @@ import {
   useState,
 } from 'react'
 import type { PublicEnvironment } from '../environment.js'
-import { createScienceImagingWorkerClient } from '../imaging-client.js'
 import { ExampleGallery } from '../features/examples/ExampleGallery.js'
 import {
   InspectorContent,
@@ -149,6 +148,7 @@ import {
   readRecentSources,
   sourceLocatorDetail,
 } from '../features/source/source-model.js'
+import { createScienceImagingWorkerClient } from '../imaging-client.js'
 import { PREFERENCE_BOUNDS } from '../preferences.js'
 import {
   type AnalysisDatasetSelection,

@@ -1,4 +1,4 @@
-import { type ImagingWorkerClient } from '@pji-workbench/imaging'
+import type { ImagingWorkerClient } from '@pji-workbench/imaging'
 import {
   IndexedDbProjectStore,
   type WorkspaceRuntimeReconciler,

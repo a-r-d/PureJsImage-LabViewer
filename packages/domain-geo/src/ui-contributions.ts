@@ -4,9 +4,9 @@ export const GEO_TERMINOLOGY = Object.freeze({
   applicationTitle: 'PureJsImage Atlas',
   shellHeading: 'PureJsImage Atlas',
   emptyKicker: 'Kentucky From Above and local COGs',
-  emptyHeading: 'Open a GeoTIFF or search a catalog',
+  emptyHeading: 'Search a catalog, then click a tile to open it',
   emptyBody:
-    'Search the Kentucky From Above STAC catalog, or open a local/remote Cloud Optimized GeoTIFF. The viewport stays in the source CRS and fetches only the ranges needed for the current view.',
+    'Click a tile name after search. Atlas stays in the source CRS and fetches only the HTTP ranges needed for the current view. You can also open a local GeoTIFF or paste a Cloud Optimized GeoTIFF URL.',
 })
 
 export const geoUiContributions: DomainUiContributions = Object.freeze({

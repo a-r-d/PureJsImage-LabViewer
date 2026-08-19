@@ -41,7 +41,7 @@ pnpm install --frozen-lockfile
 | `pnpm test:science` / `test:gallery` / `test:geo` | Run that app's Vitest project |
 | `pnpm check` | Run the deterministic normal-CI merge gate |
 | `pnpm typecheck` | Type-check every workspace project |
-| `pnpm lint` | Run Biome, architecture boundaries, and static security checks |
+| `pnpm lint` | Run `biome check`, architecture boundaries, and static security checks. This is not `format:check`. |
 | `pnpm format` | Format the repository with Biome |
 | `pnpm format:check` | Check formatting without writing |
 | `pnpm test` | Run all Vitest projects |

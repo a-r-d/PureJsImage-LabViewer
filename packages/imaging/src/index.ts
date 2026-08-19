@@ -6,8 +6,8 @@ export {
   type ImagingWorkerClientOptions,
 } from './worker-client.js'
 export {
-  ImagingWorkerHost,
   type ImagingAnalysisCatalogExtras,
+  ImagingWorkerHost,
   type ImagingWorkerHostOptions,
 } from './worker-host.js'
 export { SUPPORTED_FILE_ACCEPT, SUPPORTED_READERS } from './worker-readers.js'
