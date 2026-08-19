@@ -1,0 +1,15 @@
+{
+  "type": "FeatureCollection",
+  "numberReturned": 1,
+  "numberMatched": 2,
+  "features": [],
+  "links": [
+    { "rel": "self", "href": "https://stac.example.test/search?collections=orthos-phase2&limit=1" },
+    {
+      "rel": "next",
+      "type": "application/geo+json",
+      "method": "GET",
+      "href": "https://stac.example.test/search?collections=orthos-phase2&limit=1&token=next"
+    }
+  ]
+}

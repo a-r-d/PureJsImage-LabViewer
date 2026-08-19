@@ -66,8 +66,9 @@ Domain workflows, product composition, UI, persistence, sandbox hosting, and mat
 - `packages/workbench-core` owns the headless workbench runtime, compile-time domain profile types, and identifiable source/project/activity controllers. It must not import React, PureJsImage, or domain packages.
 - `packages/workbench-react` owns the shared React workbench shell. It must not import imaging, domain-science, domain-geo, or materials-analysis.
 - `packages/domain-science` owns science/materials example IDs, workflows, actions, panels, terminology, and empty states. It depends on `packages/materials-analysis`.
-- `packages/domain-geo` owns geo project model, CRS helpers, Atlas terminology, and COG inspector
-  reports. It must not import domain-science or materials-analysis.
+- `packages/domain-geo` owns geo project model, CRS helpers, Atlas terminology, COG inspector
+  reports, a generic STAC client, and the catalog registry. Collection IDs stay in registry
+  entries. It must not import domain-science or materials-analysis.
 - `packages/imaging` owns live source/dataset/analysis Worker orchestration.
 - `packages/workspace` owns immutable revisioned semantic state, not tiles, Workers, credentials, or React components.
 - `packages/viewport` owns rendering/view interaction, not file readers or analysis execution.

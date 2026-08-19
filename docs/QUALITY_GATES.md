@@ -78,7 +78,9 @@ Vitest covers:
 - `packages/domain-science` unit tests for the science domain profile, reader/example
   registries, and science action handlers.
 - `packages/domain-geo` unit tests for the Atlas profile, CRS helpers, open-error copy, X-ray
-  reports, and cursor readout.
+  reports, cursor readout, STAC parsing/client, catalog registry, deep links, and provenance
+  session round-trips. STAC fixtures are checked-in JSON. Live Kentucky STAC smoke is opt-in
+  via `ATLAS_LIVE_STAC=1` and is not part of normal CI.
 
 Tests should assert cleanup and cancellation, not just output.
 
@@ -174,7 +176,10 @@ Capture:
 - Atlas inspector and rendered GeoTIFF.
 
 The geo Atlas visual lives in `playwright.geo.config.ts` and uses a local range-capable fixture
-server. It is not part of the science capability matrix. Bounded UI-lab dark/light wide and dark
+server. STAC catalog E2E intercepts the live Kentucky From Above API with recorded JSON fixtures and
+rewrites COG hrefs to that local range server. Normal geo Playwright never contacts kyfromabove.ky.gov
+or the public STAC host. Live STAC smoke is `ATLAS_LIVE_STAC=1` in `packages/domain-geo`. It is not
+part of the science capability matrix. Bounded UI-lab dark/light wide and dark
 narrow states are science-owned.
 
 Mask genuinely unstable numeric timing text. Do not mask image content or controls to force passes.

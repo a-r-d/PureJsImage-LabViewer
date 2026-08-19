@@ -1,0 +1,33 @@
+{
+  "type": "Feature",
+  "id": "N082E280_DEM.tif",
+  "collection": "dem-phase2",
+  "bbox": [-84.867323, 38.167686, -84.849764, 38.181547],
+  "stac_version": "1.1.0",
+  "stac_extensions": ["https://stac-extensions.github.io/projection/v1.1.0/schema.json"],
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [[-84.867, 38.168], [-84.85, 38.168], [-84.85, 38.181], [-84.867, 38.181], [-84.867, 38.168]]
+    ]
+  },
+  "properties": {
+    "datetime": "2021-03-01T00:00:00Z",
+    "proj:epsg": 3089,
+    "proj:shape": [2500, 2500]
+  },
+  "assets": {
+    "data": {
+      "href": "https://kyfromabove.s3.us-west-2.amazonaws.com/elevation/DEM/Phase2/N082E280_DEM.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "roles": ["data"],
+      "raster:bands": [{ "data_type": "float32", "nodata": -9999, "sampling": "area" }]
+    }
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "https://stac.example.test/collections/dem-phase2/items/N082E280_DEM.tif"
+    }
+  ]
+}

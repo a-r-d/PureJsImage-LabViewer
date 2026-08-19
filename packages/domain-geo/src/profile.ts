@@ -27,7 +27,7 @@ const GEO_CAPABILITIES = Object.freeze({
 export const geoDomainProfile: HeadlessDomainProfile<GeoCommandContext> = Object.freeze({
   id: GEO_DOMAIN_ID,
   title: 'PureJsImage Atlas',
-  description: 'Open a local or remote Cloud Optimized GeoTIFF and inspect it in its native CRS.',
+  description: 'Search STAC catalogs and inspect Cloud Optimized GeoTIFFs in their native CRS.',
   deploymentHostname: 'geo.purejsimage.com',
   readerIds: GEO_READER_IDS,
   sourceAdapters: Object.freeze(['local', 'remote'] as readonly SourceAdapterKind[]),

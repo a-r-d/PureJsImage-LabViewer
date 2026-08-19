@@ -8,12 +8,21 @@ describe('geo application', () => {
     expect(appSource).toContain('WorkbenchShell')
     expect(appSource).toContain('geoUiContributions')
     expect(appSource).toContain('createImagingWorkerClient')
-    expect(appSource).toContain('GeoViewport')
+    expect(appSource).toContain('CatalogPanel')
+    expect(appSource).not.toContain('orthos-phase2')
+    expect(appSource).not.toContain('dem-phase2')
+    const catalogSource = await readFile(
+      new URL('../src/CatalogPanel.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(catalogSource).not.toContain('orthos-phase')
+    expect(catalogSource).not.toContain('dem-phase')
     expect(appSource).not.toContain('domain-science')
     expect(appSource).not.toContain('ParticleAnalysis')
     expect(appSource).not.toContain('Choose local scientific files')
     expect(geoDomainProfile.id).toBe('geo')
     expect(geoDomainProfile.capabilities.localFiles).toBe(true)
+    expect(geoUiContributions.panels.map(({ id }) => id)).toContain('geo-catalog')
     expect(geoUiContributions.panels.map(({ id }) => id)).toContain('geo-xray')
   })
 

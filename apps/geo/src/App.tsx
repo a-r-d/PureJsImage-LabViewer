@@ -3,30 +3,53 @@ import type {
   OpenedSourceDescriptor,
   WorkerDiagnostics,
 } from '@pji-workbench/contracts'
+import type {
+  BandMapping,
+  CatalogSourceCandidate,
+  CatalogStoryPreset,
+  GeoCatalogReference,
+  GeoOpenFailure,
+  GeoRasterLayer,
+  StacBbox,
+} from '@pji-workbench/domain-geo'
 import {
   buildCogXrayReport,
+  CATALOG_REGISTRY,
+  CATALOG_STORIES,
+  candidatesFromItem,
+  catalogById,
   classifyGeoOpenError,
+  classifyStacClientError,
   createGeoRasterLayer,
   createGeoRasterSource,
+  createStacClient,
   formatGeoCursorReadout,
   GEO_FILE_ACCEPT,
-  type GeoOpenFailure,
-  type GeoRasterLayer,
   geoUiContributions,
+  parseAtlasDeepLink,
+  preferredCandidate,
+  registerCrsDefinition,
+  StacClientError,
+  serializeAtlasDeepLink,
+  storiesForCatalog,
 } from '@pji-workbench/domain-geo'
 import { createImagingWorkerClient, ImagingRpcError } from '@pji-workbench/imaging'
 import { Button, EmptyState, ErrorState, Icon, ThemeRoot } from '@pji-workbench/ui'
 import { WorkbenchShell } from '@pji-workbench/workbench-react'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
+import { CatalogPanel } from './CatalogPanel.js'
 import type { PublicEnvironment } from './environment.js'
 import { GeoViewport, type GeoViewportPointer } from './GeoViewport.js'
 import { InspectorPanel, type InspectorTab } from './InspectorPanel.js'
+import { createLocalStacCache } from './stac-storage.js'
 
 interface OpenedAtlas {
   readonly source: OpenedSourceDescriptor
   readonly dataset: OpenedDatasetDescriptor
   readonly layers: readonly GeoRasterLayer[]
+  readonly catalog?: GeoCatalogReference
+  readonly presets?: readonly CatalogStoryPreset[]
 }
 
 export function App({ environment }: { readonly environment: PublicEnvironment }) {
@@ -42,12 +65,20 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [url, setUrl] = useState('')
   const [urlOpen, setUrlOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [tab, setTab] = useState<InspectorTab>('xray')
+  const [tab, setTab] = useState<InspectorTab>('catalog')
   const [selectedLayerId, setSelectedLayerId] = useState<string | undefined>()
   const [readout, setReadout] = useState('Move the pointer over the raster')
   const [diagnostics, setDiagnostics] = useState<WorkerDiagnostics | null>(null)
   const [overview, setOverview] = useState(0)
   const [settled, setSettled] = useState(true)
+  const [viewBbox, setViewBbox] = useState<StacBbox | undefined>()
+  const stacRef = useRef(
+    createStacClient({
+      fetch,
+      cache: createLocalStacCache(),
+      cacheVersion: CATALOG_REGISTRY.map((entry) => `${entry.id}:${entry.cacheVersion}`).join('|'),
+    }),
+  )
 
   useEffect(() => {
     const next = createImagingWorkerClient()
@@ -57,6 +88,14 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       openAbortRef.current?.abort()
       next.dispose()
       setClient(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    for (const entry of CATALOG_REGISTRY) {
+      for (const definition of entry.crsDefinitions ?? []) {
+        registerCrsDefinition(definition.key, definition.proj4)
+      }
     }
   }, [])
 
@@ -98,6 +137,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         setTab('xray')
         setOverview(0)
         setReadout('Move the pointer over the raster')
+        clearCatalogHash()
       } catch (caught) {
         if (signal.aborted || generationRef.current !== generation) return
         setError(asOpenFailure(caught))
@@ -110,7 +150,16 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   )
 
   const openRemote = useCallback(
-    async (remoteUrl: string) => {
+    async (
+      remoteUrl: string,
+      options?: {
+        readonly catalog?: GeoCatalogReference
+        readonly inspect?: boolean
+        readonly style?: CatalogSourceCandidate['style']
+        readonly presets?: readonly CatalogStoryPreset[]
+        readonly label?: string
+      },
+    ) => {
       if (client === null) return
       const { generation, signal } = beginOpen(generationRef, openAbortRef)
       setBusy(true)
@@ -126,11 +175,32 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         if (signal.aborted || generationRef.current !== generation) return
         setDiagnostics(nextDiagnostics)
         setUrlOpen(false)
-        setOpened(atlasFromOpen(source, dataset, source.source.name))
+        const openedAtlas = atlasFromOpen(
+          source,
+          dataset,
+          options?.label ?? source.source.name,
+          options,
+        )
+        setOpened(openedAtlas)
         setSelectedLayerId(`${source.sourceId}-layer`)
-        setTab('xray')
+        setTab(options?.inspect === true || options?.catalog === undefined ? 'xray' : 'layers')
         setOverview(0)
         setReadout('Move the pointer over the raster')
+        if (options?.catalog !== undefined) {
+          window.history.replaceState(
+            null,
+            '',
+            `${window.location.pathname}${serializeAtlasDeepLink({
+              catalogId: options.catalog.catalogId,
+              collectionId: options.catalog.collectionId,
+              itemId: options.catalog.itemId,
+              assetKey: options.catalog.assetKey,
+              ...(options.inspect === true ? { inspect: true } : {}),
+            })}`,
+          )
+        } else {
+          clearCatalogHash()
+        }
       } catch (caught) {
         if (signal.aborted || generationRef.current !== generation) return
         setError(asOpenFailure(caught))
@@ -141,6 +211,62 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     },
     [client],
   )
+
+  const openCatalogAsset = useCallback(
+    (candidate: CatalogSourceCandidate, inspect: boolean) => {
+      const presets = storiesForCatalog(candidate.catalogId)
+        .flatMap((story) => story.presets ?? [])
+        .filter((preset) => {
+          const required = maxBandIndex(preset.style.mapping)
+          return candidate.bandCount === undefined ? required === 0 : required < candidate.bandCount
+        })
+      void openRemote(candidate.href, {
+        catalog: candidate,
+        inspect,
+        ...(candidate.style === undefined ? {} : { style: candidate.style }),
+        ...(presets.length === 0 ? {} : { presets }),
+        label: candidate.label,
+      })
+    },
+    [openRemote],
+  )
+
+  useEffect(() => {
+    if (!ready || client === null) return
+    let cancelled = false
+    let hashAbort: AbortController | null = null
+    const openFromHash = (): void => {
+      const link = parseAtlasDeepLink(window.location.hash)
+      if (link === undefined) return
+      const entry = catalogById(link.catalogId)
+      if (entry === undefined) return
+      hashAbort?.abort()
+      const controller = new AbortController()
+      hashAbort = controller
+      void (async () => {
+        try {
+          const itemHref = new URL(
+            `collections/${link.collectionId}/items/${encodeURIComponent(link.itemId)}`,
+            entry.href.endsWith('/') ? entry.href : `${entry.href}/`,
+          ).toString()
+          const item = await stacRef.current.getItem(itemHref, controller.signal)
+          const candidates = candidatesFromItem(entry, item)
+          const candidate = preferredCandidate(candidates, item, link.assetKey)
+          if (cancelled || controller.signal.aborted || candidate === undefined) return
+          openCatalogAsset(candidate, link.inspect === true)
+        } catch (caught) {
+          if (!cancelled && !controller.signal.aborted) setError(asOpenFailure(caught))
+        }
+      })()
+    }
+    openFromHash()
+    window.addEventListener('hashchange', openFromHash)
+    return () => {
+      cancelled = true
+      hashAbort?.abort()
+      window.removeEventListener('hashchange', openFromHash)
+    }
+  }, [client, openCatalogAsset, ready])
 
   const onPointer = useCallback(
     (sample: GeoViewportPointer | undefined) => {
@@ -210,6 +336,23 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               <Icon name="link" size={16} />
               Open URL
             </Button>
+            <Button
+              disabled={opened?.catalog === undefined}
+              onClick={() => {
+                if (opened?.catalog === undefined) return
+                const hash = serializeAtlasDeepLink(opened.catalog)
+                void navigator.clipboard.writeText(
+                  `${window.location.origin}${window.location.pathname}${hash}`,
+                )
+              }}
+            >
+              <Icon name="link" size={16} />
+              Copy catalog link
+            </Button>
+            <Button onClick={() => setTab('catalog')}>
+              <Icon name="search" size={16} />
+              Catalog
+            </Button>
           </div>
           {urlOpen ? (
             <form
@@ -237,54 +380,63 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           ) : null}
         </header>
         <main
-          className={opened === null ? 'geo-main' : 'geo-main geo-main--split'}
+          className="geo-main geo-main--split"
           data-atlas-settled={opened !== null && settled && !busy ? 'true' : 'false'}
         >
           {opened === null || client === null ? (
             <EmptyState
               action={
-                <Button onClick={() => fileInputRef.current?.click()} variant="primary">
-                  Open a local GeoTIFF
+                <Button onClick={() => setTab('catalog')} variant="primary">
+                  Search {CATALOG_REGISTRY[0]?.title ?? 'the catalog'}
                 </Button>
               }
               description={geoUiContributions.emptyState.body}
               title={geoUiContributions.emptyState.heading}
             />
           ) : (
-            <>
-              <GeoViewport
-                key={opened.source.sourceId}
-                client={client}
-                layers={opened.layers}
-                onOverview={setOverview}
-                onPointer={onPointer}
-                onSettled={setSettled}
-                opened={opened.dataset}
-              />
-              <InspectorPanel
-                bandCount={opened.dataset.dataset.components.length}
-                layers={opened.layers}
-                onDuplicateLayer={() =>
-                  setOpened((current) => (current === null ? current : duplicateLayer(current)))
-                }
-                onLayerChange={(id, patch) =>
-                  setOpened((current) =>
-                    current === null ? current : patchLayer(current, id, patch),
-                  )
-                }
-                onMoveLayer={(id, direction) =>
-                  setOpened((current) =>
-                    current === null ? current : moveLayer(current, id, direction),
-                  )
-                }
-                onSelectLayer={setSelectedLayerId}
-                onTab={setTab}
-                selectedLayerId={selectedLayerId}
-                tab={tab}
-                xray={xray}
-              />
-            </>
+            <GeoViewport
+              key={opened.source.sourceId}
+              client={client}
+              layers={opened.layers}
+              onOverview={setOverview}
+              onPointer={onPointer}
+              onSettled={setSettled}
+              onViewBbox={setViewBbox}
+              opened={opened.dataset}
+            />
           )}
+          <InspectorPanel
+            bandCount={opened?.dataset.dataset.components.length ?? 0}
+            catalog={
+              <CatalogPanel
+                busy={busy}
+                catalogs={CATALOG_REGISTRY}
+                client={stacRef.current}
+                onOpen={openCatalogAsset}
+                stories={CATALOG_STORIES}
+                {...(viewBbox === undefined ? {} : { viewBbox })}
+              />
+            }
+            layers={opened?.layers ?? []}
+            onDuplicateLayer={() =>
+              setOpened((current) => (current === null ? current : duplicateLayer(current)))
+            }
+            onLayerChange={(id, patch) =>
+              setOpened((current) => (current === null ? current : patchLayer(current, id, patch)))
+            }
+            onMoveLayer={(id, direction) =>
+              setOpened((current) =>
+                current === null ? current : moveLayer(current, id, direction),
+              )
+            }
+            onSelectLayer={setSelectedLayerId}
+            onTab={setTab}
+            {...(opened?.presets === undefined ? {} : { presets: opened.presets })}
+            {...(opened?.catalog === undefined ? {} : { provenance: opened.catalog })}
+            selectedLayerId={selectedLayerId}
+            tab={tab}
+            xray={xray}
+          />
         </main>
         {error !== null ? (
           <div className="geo-error" data-testid="open-error">
@@ -309,6 +461,18 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   )
 }
 
+function clearCatalogHash(): void {
+  if (parseAtlasDeepLink(window.location.hash) === undefined) return
+  window.history.replaceState(null, '', window.location.pathname)
+}
+
+function maxBandIndex(mapping: BandMapping): number {
+  const values = [mapping.gray, mapping.red, mapping.green, mapping.blue].filter(
+    (value): value is number => typeof value === 'number',
+  )
+  return values.length === 0 ? 0 : Math.max(...values)
+}
+
 function beginOpen(
   generationRef: { current: number },
   openAbortRef: { current: AbortController | null },
@@ -324,6 +488,11 @@ function atlasFromOpen(
   source: OpenedSourceDescriptor,
   dataset: OpenedDatasetDescriptor,
   label: string,
+  options?: {
+    readonly catalog?: GeoCatalogReference
+    readonly style?: CatalogSourceCandidate['style']
+    readonly presets?: readonly CatalogStoryPreset[]
+  },
 ): OpenedAtlas {
   const spatial = dataset.dataset.spatialReference
   if (spatial?.pixelToModel === undefined) {
@@ -340,6 +509,7 @@ function atlasFromOpen(
     height: dataset.dataset.axes.find((axis) => axis.id === 'y')?.length ?? 1,
     componentCount: Math.max(1, dataset.dataset.components.length),
     spatialReference: spatial,
+    ...(options?.catalog === undefined ? {} : { catalog: options.catalog }),
   })
   const rgb = dataset.dataset.components.length >= 3
   const layer = createGeoRasterLayer({
@@ -347,13 +517,19 @@ function atlasFromOpen(
     sourceId: raster.id,
     label,
     zIndex: 0,
-    style: {
+    style: options?.style ?? {
       mapping: rgb ? { red: 0, green: 1, blue: 2 } : { gray: 0 },
       stretch: 'minmax',
       nodataTransparent: true,
     },
   })
-  return { source, dataset, layers: [layer] }
+  return {
+    source,
+    dataset,
+    layers: [layer],
+    ...(options?.catalog === undefined ? {} : { catalog: options.catalog }),
+    ...(options?.presets === undefined ? {} : { presets: options.presets }),
+  }
 }
 
 function patchLayer(opened: OpenedAtlas, id: string, patch: Partial<GeoRasterLayer>): OpenedAtlas {
@@ -407,6 +583,7 @@ function moveLayer(opened: OpenedAtlas, id: string, direction: -1 | 1): OpenedAt
 }
 
 function asOpenFailure(error: unknown): GeoOpenFailure {
+  if (error instanceof StacClientError) return classifyStacClientError(error)
   if (error instanceof ImagingRpcError) return classifyGeoOpenError(error.detail)
   if (error instanceof Error && hasMalformedMetadataCode(error)) {
     return classifyGeoOpenError({

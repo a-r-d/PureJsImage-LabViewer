@@ -55,6 +55,19 @@ export interface RasterStyle {
   readonly resample?: 'nearest' | 'bilinear'
 }
 
+export interface GeoCatalogReference {
+  readonly catalogId: string
+  readonly catalogTitle: string
+  readonly collectionId: string
+  readonly itemId: string
+  readonly assetKey: string
+  readonly href: string
+  readonly provider?: string
+  readonly license?: string
+  readonly attribution?: string
+  readonly sourceUrl?: string
+}
+
 export interface GeoRasterSource {
   readonly id: GeoSourceId
   readonly label: string
@@ -63,6 +76,7 @@ export interface GeoRasterSource {
   readonly componentCount: number
   readonly spatialReference: SpatialReference
   readonly pixelInterpretation: PixelInterpretation
+  readonly catalog?: GeoCatalogReference
 }
 
 export interface GeoRasterLayer {
@@ -164,6 +178,7 @@ export interface CreateGeoRasterSourceInput {
   readonly height: number
   readonly componentCount: number
   readonly spatialReference: SpatialReference
+  readonly catalog?: GeoCatalogReference
 }
 
 export interface CreateGeoRasterLayerInput {
@@ -226,6 +241,7 @@ export function createGeoRasterSource(input: CreateGeoRasterSourceInput): GeoRas
     componentCount: positiveInteger(input.componentCount, 'component count'),
     spatialReference,
     pixelInterpretation: spatialReference.pixelInterpretation,
+    ...(input.catalog === undefined ? {} : { catalog: normalizeCatalogReference(input.catalog) }),
   }
 }
 
@@ -280,7 +296,17 @@ export function createGeoMapRoi(input: CreateGeoMapRoiInput): GeoMapRoi {
 }
 
 export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
-  const sources = input.sources ?? []
+  const sources = (input.sources ?? []).map((source) =>
+    createGeoRasterSource({
+      id: source.id,
+      label: source.label,
+      width: source.width,
+      height: source.height,
+      componentCount: source.componentCount,
+      spatialReference: source.spatialReference,
+      ...(source.catalog === undefined ? {} : { catalog: source.catalog }),
+    }),
+  )
   const layers = input.layers ?? []
   const rois = input.rois ?? []
   const provenance = input.provenance ?? []
@@ -459,6 +485,44 @@ function normalizeBandMapping(mapping: BandMapping): BandMapping {
     ...(blue === undefined ? {} : { blue }),
     ...(alpha === undefined ? {} : { alpha }),
   }
+}
+
+function normalizeCatalogReference(value: GeoCatalogReference): GeoCatalogReference {
+  const href = boundedString(value.href, 'catalog href')
+  if (isUnsafeCatalogUrl(href)) {
+    throw new GeoValidationError(
+      'INVALID_PROJECT',
+      'Catalog provenance cannot store signed or data URLs',
+    )
+  }
+  const sourceUrl =
+    value.sourceUrl === undefined ? undefined : boundedString(value.sourceUrl, 'source URL')
+  if (sourceUrl !== undefined && isUnsafeCatalogUrl(sourceUrl)) {
+    throw new GeoValidationError(
+      'INVALID_PROJECT',
+      'Catalog provenance cannot store signed or data URLs',
+    )
+  }
+  return {
+    catalogId: boundedId(value.catalogId, 'catalog id'),
+    catalogTitle: boundedString(value.catalogTitle, 'catalog title'),
+    collectionId: boundedId(value.collectionId, 'collection id'),
+    itemId: boundedString(value.itemId, 'item id'),
+    assetKey: boundedString(value.assetKey, 'asset key'),
+    href,
+    ...(value.provider === undefined
+      ? {}
+      : { provider: boundedString(value.provider, 'provider') }),
+    ...(value.license === undefined ? {} : { license: boundedString(value.license, 'license') }),
+    ...(value.attribution === undefined
+      ? {}
+      : { attribution: boundedString(value.attribution, 'attribution') }),
+    ...(sourceUrl === undefined ? {} : { sourceUrl }),
+  }
+}
+
+function isUnsafeCatalogUrl(href: string): boolean {
+  return href.startsWith('data:') || href.includes('X-Amz-Signature') || href.includes('token=')
 }
 
 function normalizeProvenance(value: GeoProvenanceReference): GeoProvenanceReference {

@@ -1,0 +1,82 @@
+{
+  "type": "Feature",
+  "id": "N082E280_2019_6IN_cog.tif",
+  "collection": "orthos-phase2",
+  "bbox": [-84.867323, 38.167686, -84.849764, 38.181547],
+  "stac_version": "1.1.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/projection/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/raster/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/eo/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json"
+  ],
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [-84.867323, 38.167817],
+        [-84.849932, 38.167686],
+        [-84.849764, 38.181416],
+        [-84.867159, 38.181547],
+        [-84.867323, 38.167817]
+      ]
+    ]
+  },
+  "properties": {
+    "datetime": "2019-02-25T00:00:00Z",
+    "start_datetime": "2019-02-25T00:00:00Z",
+    "end_datetime": "2019-04-16T00:00:00Z",
+    "proj:epsg": 3089,
+    "proj:shape": [10000, 10000],
+    "eo:bands": [
+      { "name": "b1", "description": "red" },
+      { "name": "b2", "description": "green" },
+      { "name": "b3", "description": "blue" },
+      { "name": "b4", "description": "infrared" }
+    ]
+  },
+  "assets": {
+    "data": {
+      "href": "https://kyfromabove.s3.us-west-2.amazonaws.com/imagery/orthos/Phase2/KY_KYAPED_2019_6IN/N082E280_2019_6IN_cog.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "roles": ["data", "visual"],
+      "eo:bands": [
+        { "name": "b1", "description": "red" },
+        { "name": "b2", "description": "green" },
+        { "name": "b3", "description": "blue" },
+        { "name": "b4", "description": "infrared" }
+      ],
+      "raster:bands": [
+        { "data_type": "uint8", "scale": 1, "offset": 0, "sampling": "area" },
+        { "data_type": "uint8" },
+        { "data_type": "uint8" },
+        { "data_type": "uint8" }
+      ],
+      "file:size": 48219328,
+      "file:header_size": 16384,
+      "file:checksum": "md5:fixturechecksum00000000000000"
+    },
+    "metadata": {
+      "href": "https://kyfromabove.s3.us-west-2.amazonaws.com/imagery/orthos/Phase2/example.tfw",
+      "type": "text/plain",
+      "roles": ["metadata"],
+      "title": "world file"
+    },
+    "thumbnail": {
+      "href": "https://kyfromabove-stac.s3.us-west-2.amazonaws.com/items/thumbnails/example.png",
+      "type": "image/png",
+      "roles": ["thumbnail"]
+    }
+  },
+  "links": [
+    {
+      "rel": "self",
+      "type": "application/geo+json",
+      "href": "https://stac.example.test/collections/orthos-phase2/items/N082E280_2019_6IN_cog.tif"
+    },
+    {
+      "rel": "collection",
+      "href": "https://stac.example.test/collections/orthos-phase2"
+    }
+  ]
+}

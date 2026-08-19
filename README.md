@@ -61,9 +61,9 @@ apps/gallery               Lightweight linker (Science, Geo, planned Medical)
 apps/science               Materials workbench → lab.purejsimage.com
 apps/geo                   PureJsImage Atlas → geo.purejsimage.com
 apps-e2e/science           Playwright product tests for the science app
-apps-e2e/geo               Playwright tests for Atlas remote COG open and X-ray
+apps-e2e/geo               Playwright tests for Atlas catalog, remote COG, and X-ray
 packages/domain-science    Science catalogs, workflows, actions, and panels
-packages/domain-geo        Geo domain model, CRS helpers, Atlas copy, and COG X-ray reports
+packages/domain-geo        Geo domain model, CRS helpers, STAC client, catalog registry, Atlas copy
 packages/workbench-core    Headless shared runtime and profile types
 packages/workbench-react   Shared React workbench shell
 packages/contracts         JSON-safe cross-runtime contracts

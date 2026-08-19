@@ -1,6 +1,6 @@
 import type { DisplayMapping, StructuredRpcError } from '@pji-workbench/contracts'
-
 import type { RasterStyle } from './model.js'
+import type { StacClientError } from './stac/types.js'
 
 export type GeoOpenFailureKind =
   | 'cors'
@@ -11,6 +11,8 @@ export type GeoOpenFailureKind =
   | 'unsupported'
   | 'source-open-failed'
   | 'aborted'
+  | 'catalog-unavailable'
+  | 'expired-url'
   | 'other'
 
 export interface GeoOpenFailure {
@@ -18,6 +20,47 @@ export interface GeoOpenFailure {
   readonly title: string
   readonly message: string
   readonly guidance?: string
+}
+
+export function classifyStacClientError(error: StacClientError): GeoOpenFailure {
+  switch (error.code) {
+    case 'UNAVAILABLE':
+      return {
+        kind: 'catalog-unavailable',
+        title: 'Catalog unavailable',
+        message: error.message,
+        guidance:
+          error.guidance ??
+          'The catalog may be offline or blocked by CORS. Cached metadata can still be used until you refresh.',
+      }
+    case 'NOT_FOUND':
+      return {
+        kind: 'catalog-unavailable',
+        title: 'Catalog item not found',
+        message: error.message,
+        guidance: 'The collection or item may have been removed. Search again from the catalog.',
+      }
+    case 'INVALID_DOCUMENT':
+      return {
+        kind: 'malformed-metadata',
+        title: 'Invalid STAC document',
+        message: error.message,
+      }
+    case 'ABORTED':
+      return {
+        kind: 'aborted',
+        title: 'Catalog request cancelled',
+        message: error.message,
+      }
+    default: {
+      const unexpected: never = error.code
+      return {
+        kind: 'other',
+        title: 'Catalog request failed',
+        message: String(unexpected),
+      }
+    }
+  }
 }
 
 export function classifyGeoOpenError(error: StructuredRpcError): GeoOpenFailure {
@@ -75,15 +118,32 @@ export function classifyGeoOpenError(error: StructuredRpcError): GeoOpenFailure 
         message: error.message,
       }
     case 'SOURCE_OPEN_FAILED':
+      if (looksLikeExpiredUrl(error.message)) {
+        return {
+          kind: 'expired-url',
+          title: 'Catalog asset URL expired',
+          message: error.message,
+          guidance:
+            error.guidance ??
+            'Search the catalog again. Shareable links store catalog/item/asset identity, not signed URLs.',
+        }
+      }
+      return {
+        kind: 'source-open-failed',
+        title: 'Could not open this source',
+        message: error.message,
+        guidance:
+          error.guidance ??
+          'If this came from a catalog, refresh the item. Asset URLs can expire or lose Range/CORS support.',
+      }
     case 'CORS_OR_RANGE_UNAVAILABLE':
       return {
-        kind: error.code === 'CORS_OR_RANGE_UNAVAILABLE' ? 'range' : 'source-open-failed',
-        title:
-          error.code === 'CORS_OR_RANGE_UNAVAILABLE'
-            ? 'Remote source is unavailable'
-            : 'Could not open this source',
+        kind: 'range',
+        title: 'Remote source is unavailable',
         message: error.message,
-        ...(error.guidance === undefined ? {} : { guidance: error.guidance }),
+        guidance:
+          error.guidance ??
+          'If this came from a catalog, refresh the item. Asset URLs can expire or lose Range/CORS support.',
       }
     default:
       return {
@@ -118,4 +178,8 @@ export function displayMappingFromStyle(
     },
   }
   return mapping
+}
+
+function looksLikeExpiredUrl(message: string): boolean {
+  return /403|expired|AccessDenied|Request has expired|X-Amz-Expires/iu.test(message)
 }

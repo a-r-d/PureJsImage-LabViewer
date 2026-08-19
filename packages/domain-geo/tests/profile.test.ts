@@ -19,11 +19,13 @@ describe('geo domain profile', () => {
     expect(profile.sourceAdapters).toEqual(['local', 'remote'])
     expect(profile.capabilities.localFiles).toBe(true)
     expect(profile.capabilities.remoteHttps).toBe(true)
+    expect(profile.capabilities.projectPersistence).toBe(false)
     expect(profile.capabilities.particleAnalysis).toBe(false)
     expect(profile.capabilities.materialsToolbox).toBe(false)
     expect(profile.agentPolicy.enabled).toBe(false)
     expect(GEO_FILE_ACCEPT).toContain('.tif')
     expect(geoUiContributions.panels.map(({ id }) => id)).toEqual([
+      'geo-catalog',
       'geo-layers',
       'geo-display',
       'geo-xray',

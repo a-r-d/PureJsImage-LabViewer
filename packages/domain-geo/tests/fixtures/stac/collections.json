@@ -1,0 +1,74 @@
+{
+  "collections": [
+    {
+      "id": "orthos-phase1",
+      "type": "Collection",
+      "title": "Aerial Orthoimagery Phase 1",
+      "license": "CC-BY-4.0",
+      "description": "Fixture leaf-off ortho phase 1.",
+      "stac_version": "1.0.0",
+      "extent": {
+        "spatial": { "bbox": [[-89.8, 36.4, -81.7, 39.6]] },
+        "temporal": { "interval": [["2012-10-12T00:00:00Z", "2014-04-19T00:00:00Z"]] }
+      },
+      "providers": [
+        {
+          "name": "KyFromAbove",
+          "url": "https://kyfromabove.ky.gov/",
+          "roles": ["producer", "host"]
+        }
+      ],
+      "links": [
+        { "rel": "self", "href": "https://stac.example.test/collections/orthos-phase1" },
+        { "rel": "items", "href": "https://stac.example.test/collections/orthos-phase1/items" }
+      ]
+    },
+    {
+      "id": "orthos-phase2",
+      "type": "Collection",
+      "title": "Aerial Orthoimagery Phase 2",
+      "license": "CC-BY-4.0",
+      "description": "Fixture 4-band leaf-off ortho phase 2.",
+      "stac_version": "1.0.0",
+      "extent": {
+        "spatial": { "bbox": [[-89.8, 36.4, -81.7, 39.6]] },
+        "temporal": { "interval": [["2019-02-25T00:00:00Z", "2023-04-01T00:00:00Z"]] }
+      },
+      "providers": [
+        {
+          "name": "KyFromAbove",
+          "url": "https://kyfromabove.ky.gov/",
+          "roles": ["producer", "host"]
+        }
+      ],
+      "links": [
+        { "rel": "self", "href": "https://stac.example.test/collections/orthos-phase2" },
+        { "rel": "items", "href": "https://stac.example.test/collections/orthos-phase2/items" }
+      ]
+    },
+    {
+      "id": "dem-phase2",
+      "type": "Collection",
+      "title": "Digital Elevation Model Phase 2",
+      "license": "CC-BY-4.0",
+      "description": "Fixture LiDAR-derived DEM (bare-earth DTM).",
+      "stac_version": "1.0.0",
+      "extent": {
+        "spatial": { "bbox": [[-89.7, 36.4, -81.8, 39.1]] },
+        "temporal": { "interval": [["2019-02-19T00:00:00Z", "2024-02-05T00:00:00Z"]] }
+      },
+      "providers": [
+        {
+          "name": "KyFromAbove",
+          "url": "https://kyfromabove.ky.gov/",
+          "roles": ["producer", "host"]
+        }
+      ],
+      "links": [
+        { "rel": "self", "href": "https://stac.example.test/collections/dem-phase2" },
+        { "rel": "items", "href": "https://stac.example.test/collections/dem-phase2/items" }
+      ]
+    }
+  ],
+  "links": [{ "rel": "self", "href": "https://stac.example.test/collections" }]
+}

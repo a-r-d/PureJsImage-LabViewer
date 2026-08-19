@@ -50,8 +50,8 @@ apps/science
   characterization suite. Deployed at lab.purejsimage.com.
 
 apps/geo
-  PureJsImage Atlas: open local or remote GeoTIFF/COG, native-CRS viewport, layer/display
-  controls, and COG X-ray. Deployed at geo.purejsimage.com.
+  Geo Atlas: STAC catalog discovery (generic client + registry; Kentucky From Above is the first
+  entry), native-CRS viewport, layer/display controls, and COG X-ray. Deployed at geo.purejsimage.com.
 
 packages/actions
   JSON-safe semantic action descriptors, deterministic registry, availability, validation,
@@ -78,12 +78,12 @@ packages/domain-science
   empty states. Depends on packages/materials-analysis.
 
 packages/domain-geo
-  Geo project model (sources, raster/derived layers, styles, comparison, map-coordinate
-  ROIs, provenance), CRS helpers, Atlas copy, and JSON-safe COG X-ray reports. Native
-  source CRS display and same-CRS composition live here. Proj4js may transform EPSG:4326
-  ↔ EPSG:3857; unsupported projections return typed errors. Pixel reprojection and
-  basemaps are out of scope. Must not import domain-science, materials-analysis, React,
-  or PureJsImage.
+  Geo project model, CRS helpers, Atlas copy, JSON-safe COG X-ray reports, a generic STAC
+  client, and the catalog registry. Collection IDs belong in registry entries, not generic UI.
+  Proj4js may transform EPSG:4326 ↔ EPSG:3857 plus CRS definitions registered by a catalog
+  (EPSG:3089 for Kentucky From Above). Unsupported projections return typed errors. Pixel
+  reprojection and basemaps are out of scope. Must not import domain-science,
+  materials-analysis, React, or PureJsImage.
 
 packages/imaging
   The only package that directly composes PureJsImage readers, scientific documents,

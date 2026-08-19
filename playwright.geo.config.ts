@@ -28,6 +28,7 @@ export default defineConfig({
     viewport: { width: 1440, height: 900 },
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    serviceWorkers: 'block',
   },
   webServer: [
     {

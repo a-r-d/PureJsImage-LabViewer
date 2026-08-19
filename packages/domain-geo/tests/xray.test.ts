@@ -75,6 +75,13 @@ describe('geo open errors', () => {
         retryable: false,
       }).kind,
     ).toBe('malformed-metadata')
+    expect(
+      classifyGeoOpenError({
+        code: 'SOURCE_OPEN_FAILED',
+        message: 'HTTP 403 Request has expired',
+        retryable: true,
+      }).kind,
+    ).toBe('expired-url')
   })
 })
 

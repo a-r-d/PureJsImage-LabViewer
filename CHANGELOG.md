@@ -21,7 +21,13 @@ The application is not yet versioned for release (`0.0.0`).
   excluded from stretch statistics. Striped GeoTIFFs still open for inspection; X-ray reports they
   are not Cloud Optimized. The imaging Worker still holds one source, so the layer panel styles that
   raster (visibility, opacity, order, duplicate display layers) rather than compositing independent
-  files.
+  files. Atlas also browses STAC catalogs through a generic client and a registry; Kentucky From
+  Above is the first entry. Collection IDs stay in registry/story configuration. Catalog provenance
+  (provider, collection, item, asset, license, attribution, item URL) is stored on the geo source
+  and in shareable deep links that never include signed query strings. Curated stories are data:
+  Kentucky Through Time, Natural Color / CIR display presets, Terrain Lab (DEM/DTM; no DSM
+  collection is published yet), and COG Anatomy. Normal CI uses recorded STAC JSON fixtures and a
+  local COG; live KyFromAbove smoke is opt-in (`ATLAS_LIVE_STAC=1`).
 - Geo domain model in `packages/domain-geo`: georeferenced raster sources, styled raster and
   derived layers, comparison state, map-coordinate ROIs, and provenance/recipe references.
   Proj4js lives only in domain-geo and currently transforms EPSG:4326 ↔ EPSG:3857; other

@@ -1,12 +1,15 @@
 import type {
   BandMapping,
+  CatalogStoryPreset,
   CogXrayReport,
+  GeoCatalogReference,
   GeoRasterLayer,
   RasterStyle,
 } from '@pji-workbench/domain-geo'
 import { Button, Panel, Tabs } from '@pji-workbench/ui'
+import type { ReactNode } from 'react'
 
-export type InspectorTab = 'layers' | 'display' | 'xray'
+export type InspectorTab = 'catalog' | 'layers' | 'display' | 'xray'
 
 export function InspectorPanel({
   tab,
@@ -19,6 +22,9 @@ export function InspectorPanel({
   onMoveLayer,
   bandCount,
   xray,
+  catalog,
+  provenance,
+  presets,
 }: {
   readonly tab: InspectorTab
   readonly onTab: (tab: InspectorTab) => void
@@ -33,12 +39,16 @@ export function InspectorPanel({
   readonly onMoveLayer: (id: string, direction: -1 | 1) => void
   readonly bandCount: number
   readonly xray: CogXrayReport | undefined
+  readonly catalog: ReactNode
+  readonly provenance?: GeoCatalogReference
+  readonly presets?: readonly CatalogStoryPreset[]
 }) {
   const selected = layers.find((layer) => layer.id === selectedLayerId) ?? layers[0]
   return (
     <Panel className="geo-inspector" label="Inspector">
       <Tabs
         items={[
+          { id: 'catalog', label: 'Catalog' },
           { id: 'layers', label: 'Layers' },
           { id: 'display', label: 'Display' },
           { id: 'xray', label: 'COG X-ray' },
@@ -47,6 +57,7 @@ export function InspectorPanel({
         onSelect={onTab}
         selectedId={tab}
       />
+      {tab === 'catalog' ? catalog : null}
       {tab === 'layers' ? (
         <div className="geo-inspector-body" data-testid="layer-panel">
           <div className="geo-inspector-toolbar">
@@ -106,6 +117,7 @@ export function InspectorPanel({
                 </li>
               ))}
           </ol>
+          {provenance === undefined ? null : <ProvenanceFacts provenance={provenance} />}
         </div>
       ) : null}
       {tab === 'display' && selected !== undefined ? (
@@ -113,6 +125,7 @@ export function InspectorPanel({
           bandCount={bandCount}
           layer={selected}
           onChange={(style) => onLayerChange(selected.id, { style })}
+          {...(presets === undefined ? {} : { presets })}
         />
       ) : null}
       {tab === 'xray' ? <XrayPanel report={xray} /> : null}
@@ -124,15 +137,26 @@ function DisplayControls({
   layer,
   bandCount,
   onChange,
+  presets,
 }: {
   readonly layer: GeoRasterLayer
   readonly bandCount: number
   readonly onChange: (style: RasterStyle) => void
+  readonly presets?: readonly CatalogStoryPreset[]
 }) {
   const rgb = layer.style.mapping.red !== undefined
   const bands = Array.from({ length: bandCount }, (_, index) => index)
   return (
     <form className="geo-inspector-body" data-testid="display-panel">
+      {presets === undefined || presets.length === 0 ? null : (
+        <div className="geo-inspector-toolbar">
+          {presets.map((preset) => (
+            <Button key={preset.id} onClick={() => onChange(preset.style)} type="button">
+              {preset.label}
+            </Button>
+          ))}
+        </div>
+      )}
       <fieldset>
         <legend>Band mapping</legend>
         <label>
@@ -451,6 +475,21 @@ function XrayPanel({ report }: { readonly report: CogXrayReport | undefined }) {
       />
       <Fact label="Active overview" value={`L${report.activeOverview}`} />
       <Fact label="Likely COG" value={report.likelyCog ? 'yes' : 'no'} />
+    </dl>
+  )
+}
+
+function ProvenanceFacts({ provenance }: { readonly provenance: GeoCatalogReference }) {
+  return (
+    <dl className="geo-xray" data-testid="catalog-provenance">
+      <Fact label="Catalog" value={provenance.catalogTitle} />
+      <Fact label="Collection" value={provenance.collectionId} />
+      <Fact label="Item" value={provenance.itemId} />
+      <Fact label="Asset" value={provenance.assetKey} />
+      <Fact label="Provider" value={provenance.provider ?? '—'} />
+      <Fact label="License" value={provenance.license ?? '—'} />
+      <Fact label="Attribution" value={provenance.attribution ?? '—'} />
+      <Fact label="Source" value={provenance.sourceUrl ?? provenance.href} />
     </dl>
   )
 }

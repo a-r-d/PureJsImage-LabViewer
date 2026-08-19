@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 
+import { mockKentuckyStac } from '../support/stac-mock.js'
+
 const fixtureUrl = 'http://127.0.0.1:4175/north-up.tif'
 
 test.beforeEach(async ({ page }) => {
@@ -10,6 +12,7 @@ test.beforeEach(async ({ page }) => {
       window.sessionStorage.setItem(storageResetKey, 'true')
     }
   })
+  await mockKentuckyStac(page)
   await page.goto('/')
   await expect(page.locator('[data-workbench-ready]')).toHaveAttribute(
     'data-workbench-ready',

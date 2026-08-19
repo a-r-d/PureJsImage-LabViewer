@@ -1,0 +1,35 @@
+{
+  "type": "Catalog",
+  "id": "stac-fastapi",
+  "title": "Kentucky From Above SpatioTemporal Asset Catalog",
+  "description": "Fixture catalog for Atlas tests. Not the live KyFromAbove service.",
+  "stac_version": "1.0.0",
+  "conformsTo": [
+    "https://api.stacspec.org/v1.0.0/core",
+    "https://api.stacspec.org/v1.0.0/collections",
+    "https://api.stacspec.org/v1.0.0/item-search"
+  ],
+  "links": [
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://stac.example.test/"
+    },
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://stac.example.test/"
+    },
+    {
+      "rel": "data",
+      "type": "application/json",
+      "href": "https://stac.example.test/collections"
+    },
+    {
+      "rel": "search",
+      "type": "application/geo+json",
+      "href": "https://stac.example.test/search",
+      "method": "GET"
+    }
+  ]
+}

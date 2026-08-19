@@ -22,7 +22,7 @@ export class CrsTransformError extends Error {
 
 const EPSG_4326 = 'EPSG:4326'
 const EPSG_3857 = 'EPSG:3857'
-const SUPPORTED_TRANSFORM_KEYS = new Set([EPSG_4326, EPSG_3857])
+const registeredTransforms = new Set([EPSG_4326, EPSG_3857])
 
 export const CRS_EPSG_4326: CrsReference = Object.freeze({
   kind: 'geographic',
@@ -64,8 +64,8 @@ export function canTransformCrs(from: CrsReference, to: CrsReference): boolean {
   return (
     fromKey !== undefined &&
     toKey !== undefined &&
-    SUPPORTED_TRANSFORM_KEYS.has(fromKey) &&
-    SUPPORTED_TRANSFORM_KEYS.has(toKey)
+    registeredTransforms.has(fromKey) &&
+    registeredTransforms.has(toKey)
   )
 }
 
@@ -80,7 +80,7 @@ export function transformMapPoint(
   if (sameCrs(from, to)) return { x: point.x, y: point.y }
   const fromKey = requireSupportedKey(from, to)
   const toKey = requireSupportedKey(to, from)
-  if (!SUPPORTED_TRANSFORM_KEYS.has(fromKey) || !SUPPORTED_TRANSFORM_KEYS.has(toKey)) {
+  if (!registeredTransforms.has(fromKey) || !registeredTransforms.has(toKey)) {
     throw new CrsTransformError(
       'UNSUPPORTED_CRS',
       `No transform is available for ${fromKey} to ${toKey}`,
@@ -119,6 +119,18 @@ function requireSupportedKey(crs: CrsReference, other: CrsReference): string {
     )
   }
   return key
+}
+
+export function registerCrsDefinition(key: string, definition: string): void {
+  if (key.length === 0 || definition.length === 0) {
+    throw new CrsTransformError(
+      'UNSUPPORTED_CRS',
+      'A CRS definition requires a key and proj4 string',
+    )
+  }
+  ensureProjectedDefinitions()
+  proj4.defs(key, definition)
+  registeredTransforms.add(key)
 }
 
 function ensureProjectedDefinitions(): void {

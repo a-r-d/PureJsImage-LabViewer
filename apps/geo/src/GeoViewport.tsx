@@ -4,8 +4,14 @@ import type {
   RenderTile,
   SpatialReference,
 } from '@pji-workbench/contracts'
-import type { GeoRasterLayer } from '@pji-workbench/domain-geo'
-import { displayMappingFromStyle, scalarNodata } from '@pji-workbench/domain-geo'
+import {
+  CRS_EPSG_4326,
+  canTransformCrs,
+  displayMappingFromStyle,
+  type GeoRasterLayer,
+  scalarNodata,
+  transformMapPoint,
+} from '@pji-workbench/domain-geo'
 import type { ImagingWorkerClient } from '@pji-workbench/imaging'
 import {
   type Camera,
@@ -41,6 +47,7 @@ export interface GeoViewportProps {
   readonly onPointer: (sample: GeoViewportPointer | undefined) => void
   readonly onOverview: (level: number) => void
   readonly onSettled: (settled: boolean) => void
+  readonly onViewBbox?: (bbox: readonly [number, number, number, number] | undefined) => void
 }
 
 interface CachedTile {
@@ -185,10 +192,13 @@ export function GeoViewport({
   onPointer,
   onOverview,
   onSettled,
+  onViewBbox,
 }: GeoViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const layersRef = useRef(layers)
   layersRef.current = layers
+  const onViewBboxRef = useRef(onViewBbox)
+  onViewBboxRef.current = onViewBbox
   const scheduleRef = useRef<() => void>(() => undefined)
   const layersKey = layers
     .map((layer) => `${layer.id}:${layer.visible}:${layer.opacity}:${JSON.stringify(layer.style)}`)
@@ -307,7 +317,33 @@ export function GeoViewport({
       renderer.retain(required)
       draw()
       if (required.size === 0) onSettled(true)
+      emitViewBbox()
     }
+
+    const emitViewBbox = (): void => {
+      const reportBbox = onViewBboxRef.current
+      if (reportBbox === undefined) return
+      const crs = spatial.crs
+      if (crs === undefined || !canTransformCrs(crs, CRS_EPSG_4326)) {
+        reportBbox(undefined)
+        return
+      }
+      const visible = visibleWorldBounds(camera, viewport, fullAdapter)
+      try {
+        const corners = [
+          { x: visible.x, y: visible.y },
+          { x: visible.x + visible.width, y: visible.y },
+          { x: visible.x + visible.width, y: visible.y + visible.height },
+          { x: visible.x, y: visible.y + visible.height },
+        ].map((point) => transformMapPoint(point, crs, CRS_EPSG_4326))
+        const xs = corners.map((corner) => corner.x)
+        const ys = corners.map((corner) => corner.y)
+        reportBbox([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)])
+      } catch {
+        reportBbox(undefined)
+      }
+    }
+
     scheduleRef.current = scheduleTiles
 
     const resizeObserver = new ResizeObserver(([entry]) => {
