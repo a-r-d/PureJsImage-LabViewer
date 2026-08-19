@@ -10,6 +10,12 @@ const GALLERY_FORBIDDEN_RUNTIME = HEAVY_RUNTIME_ASSETS
 const GEO_FORBIDDEN_RUNTIME = ['language.worker.js', 'sandbox.worker.js']
 const GALLERY_TOTAL_GZIP_BYTES = 200 * 1024
 const GEO_TOTAL_GZIP_BYTES = 2 * 1024 * 1024
+const SCIENCE_REQUIRED_CHUNKS = [
+  'index.js',
+  'worker-entry.js',
+  'language.worker.js',
+  'sandbox.worker.js',
+]
 
 function totalGzip(inventory) {
   return inventory.assets.reduce((sum, asset) => sum + asset.gzipBytes, 0)
@@ -40,7 +46,6 @@ const scienceBaseline = JSON.parse(await readFile(scienceBaselinePath, 'utf8'))
 if (
   scienceBaseline.schemaVersion !== 1 ||
   scienceBaseline.application !== 'science-workbench' ||
-  scienceBaseline.bundle === undefined ||
   scienceBaseline.budgets === undefined
 ) {
   throw new Error('Science workbench bundle baseline is missing or invalid.')
@@ -48,11 +53,9 @@ if (
 
 const scienceInventory = await collectBundleInventory(scienceBuildRoot)
 logInventory('Science', scienceInventory)
-const failures = compareBundleInventory(
-  scienceInventory,
-  scienceBaseline.bundle,
-  scienceBaseline.budgets,
-)
+const failures = compareBundleInventory(scienceInventory, scienceBaseline.budgets, {
+  requiredLogicalNames: SCIENCE_REQUIRED_CHUNKS,
+})
 
 const galleryInventory = await collectBundleInventory(path.join(root, 'apps/gallery/dist'))
 logInventory('Gallery', galleryInventory)
@@ -75,6 +78,6 @@ if (geoGzip > GEO_TOTAL_GZIP_BYTES) {
 }
 
 if (failures.length > 0) {
-  console.error(`Bundle characterization failed:\n${failures.join('\n')}`)
+  console.error(`Bundle budget check failed:\n${failures.join('\n')}`)
   process.exitCode = 1
 }

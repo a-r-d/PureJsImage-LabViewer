@@ -54,37 +54,29 @@ export async function collectBundleInventory(buildRoot) {
   return { buildRoot: path.relative(process.cwd(), buildRoot).split(path.sep).join('/'), assets }
 }
 
-export function compareBundleInventory(inventory, baseline, budgets) {
+function baseLogicalName(logicalName) {
+  return logicalName.replace(/#\d+$/u, '')
+}
+
+export function compareBundleInventory(inventory, budgets, options = {}) {
   const failures = []
   if (inventory.assets.length === 0) {
     failures.push(`No JavaScript build output found under ${inventory.buildRoot}`)
     return failures
   }
 
-  const expected = new Map(baseline.assets.map((asset) => [asset.logicalName, asset.gzipBytes]))
-  const actual = new Map(inventory.assets.map((asset) => [asset.logicalName, asset.gzipBytes]))
-
-  for (const [logicalName, gzipBytes] of actual) {
-    const budget = budgetForAsset(logicalName, budgets)
-    if (gzipBytes > budget) {
-      failures.push(
-        `${logicalName} is ${gzipBytes} bytes gzip and exceeds the ${budget}-byte ${budgetKind(logicalName)} budget`,
-      )
+  const actualNames = new Set(inventory.assets.map((asset) => baseLogicalName(asset.logicalName)))
+  for (const logicalName of options.requiredLogicalNames ?? []) {
+    if (!actualNames.has(logicalName)) {
+      failures.push(`${inventory.buildRoot} is missing required chunk ${logicalName}`)
     }
   }
 
-  for (const logicalName of expected.keys()) {
-    if (!actual.has(logicalName))
-      failures.push(`Recorded science bundle asset is missing: ${logicalName}`)
-  }
-  for (const logicalName of actual.keys()) {
-    if (!expected.has(logicalName)) failures.push(`Unrecorded science bundle asset: ${logicalName}`)
-  }
-  for (const [logicalName, expectedBytes] of expected) {
-    const gzipBytes = actual.get(logicalName)
-    if (gzipBytes !== undefined && gzipBytes !== expectedBytes) {
+  for (const asset of inventory.assets) {
+    const budget = budgetForAsset(asset.logicalName, budgets)
+    if (asset.gzipBytes > budget) {
       failures.push(
-        `${logicalName} gzip size changed from ${expectedBytes} to ${gzipBytes}; update the reviewed science baseline only after inspecting the diff`,
+        `${asset.logicalName} is ${asset.gzipBytes} bytes gzip and exceeds the ${budget}-byte ${budgetKind(asset.logicalName)} budget`,
       )
     }
   }

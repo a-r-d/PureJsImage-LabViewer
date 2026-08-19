@@ -71,7 +71,7 @@ Vitest covers:
 - archive traversal, encoded traversal, symlink, duplicate, file-count, expansion, and ratio refusal;
 - PureJsImage integration through only public exports;
 - science-workbench characterization fixtures for the action catalog, reader registry,
-  analysis identities, routes, project save/load, and recorded bundle/performance baselines.
+  analysis identities, routes, project save/load, and recorded performance budgets.
   Normal CI must not regenerate those fixtures on failure.
 - `packages/workbench-core` unit tests for source/project/activity controllers. The package
   must not depend on React or domain packages.
@@ -197,8 +197,11 @@ Track distributions, not one anecdotal number:
 
 Fail on meaningful regressions against checked budgets. Record the test machine/browser details.
 The reviewed science-workbench baseline in `tooling/baselines/science-workbench.json` records
-current gzip asset sizes and the performance budgets enforced by the bundle and Playwright
-checks. Update it only after inspecting an intentional size or budget change.
+the gzip ceilings and Playwright performance budgets. `pnpm build` enforces those ceilings
+and required science chunks (`index.js`, imaging/language/sandbox workers). It does not
+golden Vite's hashed chunk list or exact per-asset gzip bytes; reader splits and 1-byte
+minifier drift must not fail deploy. Raise a ceiling only after inspecting an intentional
+budget change.
 
 ## Security checks
 
@@ -247,7 +250,9 @@ Use concurrency cancellation for superseded pull-request runs.
 The normal route/editor/script chunks retain the 300 KiB gzip per-chunk ceiling. The dedicated
 TypeScript language Worker has a separate 1,000 KiB gzip ceiling because it contains the compiler;
 browser coverage proves that this Worker is not requested on normal startup and is requested only
-after a language action. Both ceilings are enforced by `tooling/scripts/check-bundle-budget.mjs`.
+after a language action. Gallery stays under 200 KiB gzip total and must not ship imaging or
+script Workers. Geo Atlas stays under 2 MiB gzip total and must not ship the script or
+TypeScript language Workers. Those ceilings are enforced by `tooling/scripts/check-bundle-budget.mjs`.
 
 ## Definition of done for a feature
 

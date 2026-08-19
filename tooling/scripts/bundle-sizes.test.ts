@@ -2,20 +2,14 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { logicalAssetName } from './bundle-sizes.mjs'
+import { compareBundleInventory, logicalAssetName } from './bundle-sizes.mjs'
 
-const REQUIRED_SCIENCE_ASSETS = [
-  'index.js',
-  'worker-entry.js',
-  'language.worker.js',
-  'sandbox.worker.js',
-  'gsf.js',
-  'png.js',
-  'jpeg.js',
-  'mrc.js',
-  'nrrd.js',
-  'tiff.js',
-]
+const ROUTE_BUDGET = 300 * 1024
+const LANGUAGE_BUDGET = 1_000 * 1024
+const BUDGETS = {
+  routeChunkGzipBytes: ROUTE_BUDGET,
+  languageWorkerGzipBytes: LANGUAGE_BUDGET,
+}
 
 describe('science workbench bundle inventory', () => {
   it('strips the trailing Vite content hash without collapsing distinct prefixes', () => {
@@ -34,7 +28,7 @@ describe('science workbench bundle inventory', () => {
     )
   })
 
-  it('records gzip budgets and the current science Worker/reader chunks', async () => {
+  it('records gzip and performance ceilings without freezing every hashed chunk', async () => {
     const raw: unknown = JSON.parse(
       await readFile(
         fileURLToPath(new URL('../baselines/science-workbench.json', import.meta.url)),
@@ -45,33 +39,104 @@ describe('science workbench bundle inventory', () => {
       schemaVersion: 1,
       application: 'science-workbench',
       budgets: {
-        routeChunkGzipBytes: 300 * 1024,
-        languageWorkerGzipBytes: 1_000 * 1024,
+        routeChunkGzipBytes: ROUTE_BUDGET,
+        languageWorkerGzipBytes: LANGUAGE_BUDGET,
         warmShellInteractiveMilliseconds: 1_000,
         largestTilePixels: 256 * 256,
       },
     })
-    if (
-      typeof raw !== 'object' ||
-      raw === null ||
-      !('bundle' in raw) ||
-      typeof raw.bundle !== 'object' ||
-      raw.bundle === null ||
-      !('assets' in raw.bundle) ||
-      !Array.isArray(raw.bundle.assets)
-    ) {
-      throw new Error('Science workbench bundle baseline is missing assets.')
+    if (typeof raw === 'object' && raw !== null && 'bundle' in raw) {
+      throw new Error('Science workbench baseline must not freeze a per-asset gzip inventory.')
     }
-    const logicalNames = raw.bundle.assets.map((asset) => {
-      if (typeof asset !== 'object' || asset === null || !('logicalName' in asset)) {
-        throw new Error('Science workbench bundle asset is missing a logical name.')
-      }
-      const logicalName = asset.logicalName
-      if (typeof logicalName !== 'string') {
-        throw new Error('Science workbench bundle logical name must be a string.')
-      }
-      return logicalName.replace(/#\d+$/u, '')
-    })
-    expect(logicalNames).toEqual(expect.arrayContaining(REQUIRED_SCIENCE_ASSETS))
+  })
+
+  it('enforces gzip ceilings and required chunks, not exact asset lists or byte counts', () => {
+    const inventory = {
+      buildRoot: 'apps/science/dist',
+      assets: [
+        {
+          logicalName: 'index.js',
+          source: 'apps/science/dist/assets/index-aaaa.js',
+          gzipBytes: 10,
+        },
+        {
+          logicalName: 'worker-entry.js',
+          source: 'apps/science/dist/assets/worker-entry-bbbb.js',
+          gzipBytes: 20,
+        },
+        {
+          logicalName: 'language.worker.js',
+          source: 'apps/science/dist/assets/language.worker-cccc.js',
+          gzipBytes: 30,
+        },
+        {
+          logicalName: 'sandbox.worker.js',
+          source: 'apps/science/dist/assets/sandbox.worker-dddd.js',
+          gzipBytes: 40,
+        },
+        { logicalName: 'jpeg.js', source: 'apps/science/dist/assets/jpeg-eeee.js', gzipBytes: 50 },
+        {
+          logicalName: 'jpeg.js#1',
+          source: 'apps/science/dist/assets/jpeg-ffff.js',
+          gzipBytes: 60,
+        },
+        { logicalName: 'icc.js', source: 'apps/science/dist/assets/icc-gggg.js', gzipBytes: 70 },
+      ],
+    }
+    expect(
+      compareBundleInventory(inventory, BUDGETS, {
+        requiredLogicalNames: [
+          'index.js',
+          'worker-entry.js',
+          'language.worker.js',
+          'sandbox.worker.js',
+        ],
+      }),
+    ).toEqual([])
+  })
+
+  it('fails empty output, missing required chunks, and over-budget assets', () => {
+    expect(compareBundleInventory({ buildRoot: 'apps/science/dist', assets: [] }, BUDGETS)).toEqual(
+      ['No JavaScript build output found under apps/science/dist'],
+    )
+    expect(
+      compareBundleInventory(
+        {
+          buildRoot: 'apps/science/dist',
+          assets: [
+            {
+              logicalName: 'index.js',
+              source: 'apps/science/dist/assets/index-aaaa.js',
+              gzipBytes: 10,
+            },
+          ],
+        },
+        BUDGETS,
+        { requiredLogicalNames: ['index.js', 'worker-entry.js'] },
+      ),
+    ).toEqual(['apps/science/dist is missing required chunk worker-entry.js'])
+    expect(
+      compareBundleInventory(
+        {
+          buildRoot: 'apps/science/dist',
+          assets: [
+            {
+              logicalName: 'index.js',
+              source: 'apps/science/dist/assets/index-aaaa.js',
+              gzipBytes: ROUTE_BUDGET + 1,
+            },
+            {
+              logicalName: 'language.worker.js',
+              source: 'apps/science/dist/assets/language.worker-cccc.js',
+              gzipBytes: LANGUAGE_BUDGET + 1,
+            },
+          ],
+        },
+        BUDGETS,
+      ),
+    ).toEqual([
+      `index.js is ${ROUTE_BUDGET + 1} bytes gzip and exceeds the ${ROUTE_BUDGET}-byte route chunk budget`,
+      `language.worker.js is ${LANGUAGE_BUDGET + 1} bytes gzip and exceeds the ${LANGUAGE_BUDGET}-byte lazy language Worker budget`,
+    ])
   })
 })

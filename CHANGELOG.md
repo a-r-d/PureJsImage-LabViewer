@@ -46,6 +46,10 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Changed
 
+- `pnpm build` bundle check enforces gzip ceilings (300 KiB science route chunks, 1,000 KiB
+  language Worker, 200 KiB gallery total, 2 MiB geo total) and that science still ships its
+  index and Worker chunks. It no longer goldens every hashed asset name and exact gzip byte
+  count, so Vite reader splits and 1-byte minifier drift do not fail deploy.
 - The workbench consumes `purejsimage@0.12.0`. The reviewed science reader-registry
   characterization fixture records the package version bump only. Science datasets without a
   spatial reference are unchanged. The Worker still wires the same 31 readers; dicom and
