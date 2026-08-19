@@ -15,8 +15,11 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
           run_install: false
@@ -32,8 +35,11 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
           run_install: false
@@ -45,10 +51,24 @@ jobs:
       - run: pnpm build
       - run: pnpm deploy:dry-run
 
-  browser-chromium:
+  browser:
+    name: Browser ${{ matrix.browser }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      options: --user 1001 --ipc=host
+    strategy:
+      fail-fast: false
+      matrix:
+        browser:
+          - chromium
+          - firefox
+          - webkit
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
           run_install: false
@@ -56,72 +76,33 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - name: Science Playwright (Chromium)
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
         env:
-          E2E_EXPECTED_PROJECTS: chromium
-        run: pnpm test:e2e:science --project=chromium
-      - name: Geo Playwright (Chromium)
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Science Playwright
+        env:
+          E2E_EXPECTED_PROJECTS: ${{ matrix.browser }}
+        run: pnpm test:e2e:science --project=${{ matrix.browser }}
+      - name: Geo Playwright
         if: ${{ !cancelled() }}
         env:
-          E2E_EXPECTED_PROJECTS: chromium
-        run: pnpm test:e2e:geo --project=chromium
-      - name: Upload science Chromium failure artifacts
+          E2E_EXPECTED_PROJECTS: ${{ matrix.browser }}
+        run: pnpm test:e2e:geo --project=${{ matrix.browser }}
+      - name: Upload science failure artifacts
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: chromium-science-test-results
+          name: ${{ matrix.browser }}-science-test-results
           path: |
             test-results/science/
             playwright-report/
           retention-days: 7
-      - name: Upload geo Chromium failure artifacts
+      - name: Upload geo failure artifacts
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: chromium-geo-test-results
-          path: |
-            test-results/geo/
-            playwright-report-geo/
-          retention-days: 7
-
-  browser-cross:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-        with:
-          run_install: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps firefox webkit
-      - name: Science Playwright (Firefox, WebKit)
-        env:
-          E2E_EXPECTED_PROJECTS: firefox,webkit
-        run: pnpm test:e2e:science --project=firefox --project=webkit
-      - name: Geo Playwright (Firefox, WebKit)
-        if: ${{ !cancelled() }}
-        env:
-          E2E_EXPECTED_PROJECTS: firefox,webkit
-        run: pnpm test:e2e:geo --project=firefox --project=webkit
-      - name: Upload science Firefox/WebKit failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: firefox-webkit-science-test-results
-          path: |
-            test-results/science/
-            playwright-report/
-          retention-days: 7
-      - name: Upload geo Firefox/WebKit failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: firefox-webkit-geo-test-results
+          name: ${{ matrix.browser }}-geo-test-results
           path: |
             test-results/geo/
             playwright-report-geo/
@@ -129,8 +110,11 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
           run_install: false

@@ -245,12 +245,12 @@ Suggested jobs:
 
 1. `quality`: format, lint, typecheck, unit tests, architecture boundaries.
 2. `build`: package builds, workbench build, bundle budgets, Cloudflare dry run.
-3. `browser-chromium`: science and geo Playwright with `--project=chromium`.
-4. `browser-cross`: science and geo Playwright with Firefox and WebKit.
-5. `accessibility-visual`: deterministic UI gates.
-6. `corpus-compact`: enabled Tier 1 subset with cache.
-7. `security`: audit, secret scan, CSP/static bundle checks.
-8. scheduled `corpus-medium-performance`: main/nightly/scheduled datasets and Range budgets.
+3. `browser`: science and geo Playwright in the version-matched Playwright image, one job per
+   Chromium/Firefox/WebKit matrix cell, four workers, no `playwright install --with-deps`.
+4. `accessibility-visual`: deterministic UI gates.
+5. `corpus-compact`: enabled Tier 1 subset with cache.
+6. `security`: audit, secret scan, CSP/static bundle checks.
+7. scheduled `corpus-medium-performance`: main/nightly/scheduled datasets and Range budgets.
 
 Use concurrency cancellation for superseded pull-request runs.
 

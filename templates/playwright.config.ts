@@ -6,7 +6,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   updateSnapshots: 'none',
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  workers: process.env.CI ? 4 : '50%',
   reporter: process.env.CI
     ? [['list'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/results.json' }]]
     : [['list'], ['html', { open: 'never' }]],

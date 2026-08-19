@@ -69,6 +69,8 @@ The application is not yet versioned for release (`0.0.0`).
 - The workbench consumes `purejsimage@0.13.0`. Remote `HttpRangeSource.open` uses `openSignal` for
   the probe and `lifetimeSignal` for subsequent reads; aborting the per-source lifetime controller
   releases in-flight range work. The imaging RPC schema version is 2.
+- Browser CI runs science and geo Playwright in `mcr.microsoft.com/playwright:v1.62.1-noble` with a
+  Chromium/Firefox/WebKit matrix and four workers. Jobs skip `playwright install --with-deps`.
 - `pnpm build` bundle check enforces gzip ceilings (300 KiB science route chunks, 1,000 KiB
   language Worker, 200 KiB gallery total, 2 MiB geo total) and that science still ships its
   index and Worker chunks. It no longer goldens every hashed asset name and exact gzip byte

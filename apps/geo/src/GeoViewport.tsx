@@ -204,7 +204,9 @@ export function GeoViewport({
   const onViewBboxRef = useRef(onViewBbox)
   onViewBboxRef.current = onViewBbox
   const scheduleRef = useRef<() => void>(() => undefined)
-  const rastersIdentity = rasters.map((raster) => `${raster.handleId}:${raster.generation}`).join('|')
+  const rastersIdentity = rasters
+    .map((raster) => `${raster.handleId}:${raster.generation}`)
+    .join('|')
   const layersKey = [
     rastersIdentity,
     ...layers.map(

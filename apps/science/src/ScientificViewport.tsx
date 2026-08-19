@@ -672,7 +672,11 @@ export function ScientificViewport({
                 error instanceof ImagingRpcError &&
                 (error.detail.code === 'ABORTED' || error.detail.code === 'LIMIT_EXCEEDED')
               if (retryableFailure) retryWhenIdle = true
-              if (!controller.signal.aborted && !retryableFailure && tileStatusRef.current !== null) {
+              if (
+                !controller.signal.aborted &&
+                !retryableFailure &&
+                tileStatusRef.current !== null
+              ) {
                 tileStatusRef.current.textContent =
                   error instanceof Error ? error.message : `Tile ${requestId} failed`
               }
