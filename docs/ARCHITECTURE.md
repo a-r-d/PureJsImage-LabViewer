@@ -16,20 +16,41 @@ The concrete scientific source, Worker RPC, and renderer tile lifecycle is docum
 ## Showcase applications
 
 The repository is a shared showcase monorepo. Science, geo, and a lightweight gallery are
-the initial applications; medical is added later. Each domain app is a separate build and
-deploy. Shared behavior is selected by a compile-time domain profile. This is not a runtime
-third-party plugin ecosystem, and PureJsImage stays a separate core-library repository.
+the initial applications; medical is added later and has no package until that domain is
+implemented. Each domain app is a separate build and deploy. Shared behavior is selected
+by a compile-time domain profile. This is not a runtime third-party plugin ecosystem, and
+PureJsImage stays a separate core-library repository.
 
-`apps/workbench` is still the science workbench. Do not move application code until the
-science characterization suite stays green. See
-[`adr/0001-shared-showcase-monorepo.md`](./adr/0001-shared-showcase-monorepo.md).
+This repository hosts UI apps on Cloudflare subdomains. It does not publish the
+PureJsImage library homepage at `purejsimage.com` (that site is GitHub Pages from the
+core-library repository).
+
+| Application | Package | Intended host | Cloudflare worker name |
+| --- | --- | --- | --- |
+| Science | `@pji-workbench/science` | `lab.purejsimage.com` | `purejsimage-materials-workbench` |
+| Geo | `@pji-workbench/geo` | `geo.purejsimage.com` | `purejsimage-geo` |
+| Gallery | `@pji-workbench/gallery` | linker only; not bound to apex `purejsimage.com` | `purejsimage-gallery` |
+
+Cloudflare Git deploy for lab (was `@pji-workbench/app`):
+
+```text
+pnpm --filter @pji-workbench/science exec wrangler deploy
+```
+
+See [`adr/0001-shared-showcase-monorepo.md`](./adr/0001-shared-showcase-monorepo.md).
 
 ## Monorepo
 
 ```text
-apps/workbench
-  Browser app, Cloudflare entry, composition root, routes, feature controllers, and panels.
-  This is the science showcase until a later characterization-gated move.
+apps/gallery
+  Lightweight linker to separately deployed domain apps. No imaging Worker.
+
+apps/science
+  Electron microscopy / materials workbench, Cloudflare composition root, and science
+  characterization suite. Deployed at lab.purejsimage.com.
+
+apps/geo
+  Empty geospatial profile on the shared workbench shell. Deployed at geo.purejsimage.com.
 
 packages/actions
   JSON-safe semantic action descriptors, deterministic registry, availability, validation,
@@ -44,11 +65,20 @@ packages/workspace
   user-visible activity/history, selection, and orchestration state.
 
 packages/workbench-core
-  Headless shared workbench runtime and compile-time domain profiles. Owns science
-  action descriptors, reader/example registries, source/project/activity controllers,
-  and domain-level agent policy. No React and no PureJsImage runtime imports.
-  UI contributions (panels, routes, empty state, default layout) are a sibling
-  compile-time object, not part of the headless profile.
+  Headless shared workbench runtime and compile-time domain profile types. Owns generic
+  source/project/activity controllers and reader/example registry helpers. No React,
+  no PureJsImage runtime imports, and no domain-science or domain-geo imports.
+
+packages/workbench-react
+  Shared React workbench shell. No imaging or domain packages.
+
+packages/domain-science
+  Science/materials example IDs, workflows, semantic actions, panels, terminology, and
+  empty states. Depends on packages/materials-analysis.
+
+packages/domain-geo
+  Empty geo profile and geospatial terminology. Must not import domain-science or
+  materials-analysis.
 
 packages/imaging
   The only package that directly composes PureJsImage readers, scientific documents,
@@ -72,7 +102,7 @@ packages/scripts
   deterministic fixtures and built-ins, quotas, cancellation/termination, and sandbox conformance
   tests. Application policy stays in the composition root.
 
-apps/workbench/features/scripts
+apps/science/features/scripts
   Lazy CodeMirror Studio UI, versioned IndexedDB repository implementation, and dedicated lazy
   TypeScript language Worker. It composes package contracts but owns no scientific algorithm.
 
@@ -103,7 +133,9 @@ ui → React only and generic contracts
 
 Rules:
 
-- `apps/workbench` may import all public workspace packages.
+- `apps/science` may import `domain-science`, `materials-analysis`, and shared packages. It must not import `domain-geo`.
+- `apps/geo` may import `domain-geo` and the shared shell. It must not import `domain-science` or `materials-analysis`.
+- `apps/gallery` may import `packages/ui` only among workspace packages. It must not import the imaging runtime.
 - No package imports from `apps/*`.
 - `imaging` may import only documented PureJsImage package exports.
 - `viewport` receives tile/render descriptors; it does not open files or execute analysis.
@@ -112,13 +144,13 @@ Rules:
 - `workspace` stores semantic references and project state, not live `ScientificDataset` objects or typed pixel buffers.
 
 Add an automated dependency-boundary test. Turborepo ordering alone does not enforce architecture.
-The boundary gate also rejects import cycles between `apps/workbench/src/features/*` roots.
+The boundary gate also rejects import cycles between `apps/science/src/features/*` roots.
 
 ## Workbench composition
 
-`apps/workbench/src/App.tsx` is only the route selector. `app/WorkbenchProviders.tsx` constructs
+`apps/science/src/App.tsx` is only the route selector. `app/WorkbenchProviders.tsx` constructs
 the preference, persistence, imaging, runtime, and reconciliation services, while
-`app/WorkbenchShell.tsx` owns the top-level shell and readiness contract. Feature folders own
+`packages/workbench-react` owns the top-level shell and readiness contract. Feature folders own
 bounded view models and callbacks for source, project, inspector, pipeline, layout, and examples.
 High-frequency camera, pointer, and render-settled updates remain outside broad React state.
 
@@ -341,7 +373,8 @@ A Dockerized open-source service and a hosted implementation can both satisfy th
 
 ## Build outputs
 
-`apps/workbench` produces a browser bundle and Cloudflare static deployment output.
+Each of `apps/gallery`, `apps/science`, and `apps/geo` produces its own browser bundle and
+Cloudflare static deployment output.
 
 Workspace libraries produce ESM declarations/build artifacts for boundary verification, but are not published.
 

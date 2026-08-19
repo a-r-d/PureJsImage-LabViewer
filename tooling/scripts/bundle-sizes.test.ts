@@ -19,17 +19,17 @@ const REQUIRED_SCIENCE_ASSETS = [
 
 describe('science workbench bundle inventory', () => {
   it('strips the trailing Vite content hash without collapsing distinct prefixes', () => {
-    expect(logicalAssetName('apps/workbench/dist/assets/index-BsChTh28.js')).toBe('index.js')
-    expect(logicalAssetName('apps/workbench/dist/assets/worker-entry-BwzWo_f2.js')).toBe(
+    expect(logicalAssetName('apps/science/dist/assets/index-BsChTh28.js')).toBe('index.js')
+    expect(logicalAssetName('apps/science/dist/assets/worker-entry-BwzWo_f2.js')).toBe(
       'worker-entry.js',
     )
-    expect(logicalAssetName('apps/workbench/dist/assets/language.worker-_TFzLBn-.js')).toBe(
+    expect(logicalAssetName('apps/science/dist/assets/language.worker-_TFzLBn-.js')).toBe(
       'language.worker.js',
     )
-    expect(logicalAssetName('apps/workbench/dist/assets/sandbox.worker-D-A7JJMB.js')).toBe(
+    expect(logicalAssetName('apps/science/dist/assets/sandbox.worker-D-A7JJMB.js')).toBe(
       'sandbox.worker.js',
     )
-    expect(logicalAssetName('apps/workbench/dist/assets/module-6F3E5H7Y-Bk_Kqtn5.js')).toBe(
+    expect(logicalAssetName('apps/science/dist/assets/module-6F3E5H7Y-Bk_Kqtn5.js')).toBe(
       'module-6F3E5H7Y.js',
     )
   })

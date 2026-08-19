@@ -40,6 +40,7 @@ export interface HeadlessDomainProfile<Context> {
   readonly id: DomainId
   readonly title: string
   readonly description: string
+  readonly deploymentHostname: string | null
   readonly readerIds: readonly string[]
   readonly sourceAdapters: readonly SourceAdapterKind[]
   readonly exampleScenarioIds: readonly string[]
@@ -67,8 +68,8 @@ export interface DomainEmptyState {
   readonly kicker: string
   readonly heading: string
   readonly body: string
-  readonly primaryActionId: 'source.open-local'
-  readonly secondaryAction: 'browse-examples' | 'source.open-remote' | 'workspace.openProject'
+  readonly primaryActionId?: string
+  readonly secondaryAction?: string
 }
 
 export interface DomainDefaultLayout {
@@ -80,7 +81,7 @@ export interface DomainUiContributions {
   readonly applicationTitle: string
   readonly shellHeading: string
   readonly emptyState: DomainEmptyState
-  readonly defaultLayout: DomainDefaultLayout
+  readonly defaultLayout?: DomainDefaultLayout
   readonly panels: readonly DomainPanelContribution[]
   readonly routes: readonly DomainRouteContribution[]
 }

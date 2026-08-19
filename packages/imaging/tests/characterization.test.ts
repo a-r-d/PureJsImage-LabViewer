@@ -200,7 +200,7 @@ describe('science imaging characterization', () => {
     expect(resolution.locator.kind).toBe('bundled')
     if (resolution.locator.kind !== 'bundled') return
     const bytes = await readFile(
-      new URL(`../../../apps/workbench/public/${resolution.locator.path}`, import.meta.url),
+      new URL(`../../../apps/science/public/${resolution.locator.path}`, import.meta.url),
     )
     const host = new ImagingWorkerHost({
       baseUrl: 'https://workbench.invalid/',

@@ -15,7 +15,7 @@ import {
 } from '@pji-workbench/workspace'
 
 export const LAST_PROJECT_KEY = 'pji-workbench.last-project-id.v1'
-export const DEFAULT_SCIENCE_PROJECT_TITLE = 'Untitled microscopy project'
+export const DEFAULT_PROJECT_TITLE = 'Untitled project'
 export const WORKBENCH_APP_VERSION = '0.0.0'
 
 const EMPTY_ANALYSIS_GRAPH = {
@@ -26,7 +26,7 @@ const EMPTY_ANALYSIS_GRAPH = {
 }
 
 export function createProject(
-  title = DEFAULT_SCIENCE_PROJECT_TITLE,
+  title = DEFAULT_PROJECT_TITLE,
   options: { readonly projectId?: ProjectId; readonly now?: string } = {},
 ): WorkspaceSnapshot {
   return createEmptyWorkspace(title, {

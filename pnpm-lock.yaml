@@ -28,9 +28,9 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
-  apps-e2e/workbench:
+  apps-e2e/science:
     dependencies:
       '@pji-workbench/test-corpus':
         specifier: workspace:*
@@ -46,7 +46,93 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
-  apps/workbench:
+  apps/gallery:
+    dependencies:
+      '@pji-workbench/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@cloudflare/vite-plugin':
+        specifier: 1.52.1
+        version: 1.52.1(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))(wrangler@4.123.0)
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.4
+        version: 19.2.4(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 6.0.5
+        version: 6.0.5(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vite:
+        specifier: 8.2.1
+        version: 8.2.1(@types/node@24.13.3)(esbuild@0.28.1)
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
+      wrangler:
+        specifier: 4.123.0
+        version: 4.123.0
+
+  apps/geo:
+    dependencies:
+      '@pji-workbench/domain-geo':
+        specifier: workspace:*
+        version: link:../../packages/domain-geo
+      '@pji-workbench/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@pji-workbench/workbench-react':
+        specifier: workspace:*
+        version: link:../../packages/workbench-react
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@cloudflare/vite-plugin':
+        specifier: 1.52.1
+        version: 1.52.1(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))(wrangler@4.123.0)
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.4
+        version: 19.2.4(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 6.0.5
+        version: 6.0.5(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vite:
+        specifier: 8.2.1
+        version: 8.2.1(@types/node@24.13.3)(esbuild@0.28.1)
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
+      wrangler:
+        specifier: 4.123.0
+        version: 4.123.0
+
+  apps/science:
     dependencies:
       '@codemirror/autocomplete':
         specifier: 6.20.3
@@ -63,6 +149,9 @@ importers:
       '@pji-workbench/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@pji-workbench/domain-science':
+        specifier: workspace:*
+        version: link:../../packages/domain-science
       '@pji-workbench/imaging':
         specifier: workspace:*
         version: link:../../packages/imaging
@@ -87,6 +176,9 @@ importers:
       '@pji-workbench/workbench-core':
         specifier: workspace:*
         version: link:../../packages/workbench-core
+      '@pji-workbench/workbench-react':
+        specifier: workspace:*
+        version: link:../../packages/workbench-react
       '@pji-workbench/workspace':
         specifier: workspace:*
         version: link:../../packages/workspace
@@ -126,7 +218,7 @@ importers:
         version: 8.2.1(@types/node@24.13.3)(esbuild@0.28.1)
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
       wrangler:
         specifier: 4.123.0
         version: 4.123.0
@@ -138,7 +230,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/agent:
     dependencies:
@@ -151,7 +243,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/contracts:
     devDependencies:
@@ -160,7 +252,63 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
+
+  packages/domain-geo:
+    dependencies:
+      '@pji-workbench/workbench-core':
+        specifier: workspace:*
+        version: link:../workbench-core
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
+
+  packages/domain-science:
+    dependencies:
+      '@pji-workbench/actions':
+        specifier: workspace:*
+        version: link:../actions
+      '@pji-workbench/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@pji-workbench/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@pji-workbench/materials-analysis':
+        specifier: workspace:*
+        version: link:../materials-analysis
+      '@pji-workbench/ui':
+        specifier: workspace:*
+        version: link:../ui
+      '@pji-workbench/workbench-core':
+        specifier: workspace:*
+        version: link:../workbench-core
+      '@pji-workbench/workspace':
+        specifier: workspace:*
+        version: link:../workspace
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+    devDependencies:
+      '@pji-workbench/imaging':
+        specifier: workspace:*
+        version: link:../imaging
+      '@pji-workbench/test-corpus':
+        specifier: workspace:*
+        version: link:../test-corpus
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/imaging:
     dependencies:
@@ -182,7 +330,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/materials-analysis:
     dependencies:
@@ -195,7 +343,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/plugin-sdk:
     dependencies:
@@ -208,7 +356,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/scripts:
     dependencies:
@@ -233,7 +381,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/test-corpus:
     dependencies:
@@ -246,7 +394,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/ui:
     dependencies:
@@ -265,7 +413,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/viewport:
     dependencies:
@@ -278,7 +426,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/workbench-core:
     dependencies:
@@ -306,7 +454,23 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
+
+  packages/workbench-react:
+    dependencies:
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+    devDependencies:
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
   packages/workspace:
     dependencies:
@@ -322,7 +486,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)
+        version: 4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))
 
 packages:
 
@@ -1505,6 +1669,7 @@ packages:
       '@vitest/ui': 4.1.10
       happy-dom: '*'
       jsdom: '*'
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -2470,7 +2635,7 @@ snapshots:
       esbuild: 0.28.1
       fsevents: 2.3.3
 
-  vitest@4.1.10(@types/node@24.13.3)(esbuild@0.28.1):
+  vitest@4.1.10(@types/node@24.13.3)(esbuild@0.28.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)):
     dependencies:
       '@vitest/expect': 4.1.10
       '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1))

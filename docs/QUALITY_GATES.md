@@ -73,8 +73,10 @@ Vitest covers:
 - science-workbench characterization fixtures for the action catalog, reader registry,
   analysis identities, routes, project save/load, and recorded bundle/performance baselines.
   Normal CI must not regenerate those fixtures on failure.
-- `packages/workbench-core` unit tests for the science domain profile, reader/example
-  registries, and source/project/activity controllers. The package must not depend on React.
+- `packages/workbench-core` unit tests for source/project/activity controllers. The package
+  must not depend on React or domain packages.
+- `packages/domain-science` unit tests for the science domain profile, reader/example
+  registries, and science action handlers.
 
 Tests should assert cleanup and cancellation, not just output.
 

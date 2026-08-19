@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
-  testDir: './apps-e2e/workbench/tests',
+  testDir: './apps-e2e/science/tests',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   updateSnapshots: 'none',
@@ -12,9 +12,9 @@ export default defineConfig({
         ['list'],
         ['html', { open: 'never' }],
         ['json', { outputFile: 'test-results/results.json' }],
-        ['./apps-e2e/workbench/scenario-reporter.ts'],
+        ['./apps-e2e/science/scenario-reporter.ts'],
       ]
-    : [['list'], ['html', { open: 'never' }], ['./apps-e2e/workbench/scenario-reporter.ts']],
+    : [['list'], ['html', { open: 'never' }], ['./apps-e2e/science/scenario-reporter.ts']],
   expect: {
     toHaveScreenshot: {
       animations: 'disabled',
@@ -36,7 +36,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      'corepack pnpm --filter @pji-workbench/app build && corepack pnpm --filter @pji-workbench/app preview --host 127.0.0.1 --port 4173',
+      'corepack pnpm --filter @pji-workbench/science build && corepack pnpm --filter @pji-workbench/science preview --host 127.0.0.1 --port 4173',
     env: {
       MINIFLARE_REGISTRY_PATH: '.wrangler/playwright-registry',
       VITE_APP_ENV: 'test',

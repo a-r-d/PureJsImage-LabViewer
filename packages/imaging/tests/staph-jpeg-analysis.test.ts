@@ -8,7 +8,7 @@ import { ImagingWorkerHost } from '../src/index.js'
 describe('bundled JPEG analysis', () => {
   it('runs connected-components on the original CDC S. aureus JPEG', async () => {
     const bytes = await readFile(
-      new URL('../../../apps/workbench/public/examples/real/staph-aureus-sem.jpg', import.meta.url),
+      new URL('../../../apps/science/public/examples/real/staph-aureus-sem.jpg', import.meta.url),
     )
     const host = new ImagingWorkerHost()
     const file = new File([bytes.slice().buffer as ArrayBuffer], 'staph-aureus-sem.jpg', {

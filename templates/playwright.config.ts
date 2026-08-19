@@ -24,7 +24,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    command: 'pnpm --filter @pji-workbench/app preview --host 127.0.0.1 --port 4173',
+    command: 'pnpm --filter @pji-workbench/science preview --host 127.0.0.1 --port 4173',
     env: {
       MINIFLARE_REGISTRY_PATH: '.wrangler/playwright-registry',
       VITE_APP_ENV: 'test',

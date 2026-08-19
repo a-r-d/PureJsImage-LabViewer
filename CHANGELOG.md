@@ -12,14 +12,24 @@ The application is not yet versioned for release (`0.0.0`).
 - Architecture decision record for a shared showcase monorepo (gallery, science, and geo;
   medical later), compile-time domain profiles, separate deploys, and a characterization
   suite that locks current science workbench behavior without moving application code.
-- Headless `packages/workbench-core` runtime and an explicit science domain profile.
-  The current workbench is composed from that profile; reader, example, and action
-  catalogs are no longer defined inline in `WorkbenchApp`. No geo functionality is included.
-  The reviewed science gzip baseline records a ~2.7 KiB index-chunk increase from that
-  extraction; the 300 KiB route-chunk and 1,000 KiB language-Worker ceilings are unchanged.
+- Headless `packages/workbench-core` runtime and compile-time domain profile types.
+  Science-specific catalogs, workflows, actions, panels, and terminology live in
+  `packages/domain-science`.
+- Separately built `apps/gallery`, `apps/science`, and `apps/geo` applications with
+  independent Vite/Wrangler configs. Medical is documented as planned and has no
+  application package. Gallery does not load the imaging runtime.
 
 ### Changed
 
+- The science workbench moved from `apps/workbench` to `apps/science`
+  (`@pji-workbench/science`). Cloudflare worker name and `lab.purejsimage.com`
+  route are unchanged. Deploy with
+  `pnpm --filter @pji-workbench/science exec wrangler deploy`
+  (was `@pji-workbench/app`). `pnpm dev:workbench` remains a compatibility alias.
+  The reviewed science gzip baseline records a 762-byte index-chunk increase from
+  that move; the 300 KiB route-chunk and 1,000 KiB language-Worker ceilings are
+  unchanged. Gallery stays under a 200 KiB gzip total; geo stays under 250 KiB
+  and neither ships imaging Workers.
 - The generated calibrated particle field is ten isolated disks on the sinusoidal
   SEM-style background, not 1-pixel modulo speckles. The gallery card and the
   default particle-count workflow now describe the same image.

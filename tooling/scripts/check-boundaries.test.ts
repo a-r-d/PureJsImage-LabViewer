@@ -6,7 +6,7 @@ describe('architecture boundary checker', () => {
   it('accepts public package composition', () => {
     expect(
       inspectSource(
-        'apps/workbench/src/app.tsx',
+        'apps/science/src/app.tsx',
         "import { schemaVersion } from '@pji-workbench/contracts'",
       ),
     ).toEqual([])
@@ -38,8 +38,18 @@ describe('architecture boundary checker', () => {
     ['packages/workspace/src/index.ts', "import { validateGraph } from 'purejsimage/analysis'"],
     ['packages/imaging/src/index.ts', "import value from 'purejsimage/src/internal'"],
     ['packages/imaging/src/worker.ts', "const privateModule = import('purejsimage/src/reader')"],
-    ['packages/contracts/src/index.ts', "import app from '../../../apps/workbench/src/app'"],
-    ['apps/workbench/src/app.tsx', "import value from '@pji-workbench/contracts/src/private'"],
+    ['packages/contracts/src/index.ts', "import app from '../../../apps/science/src/app'"],
+    ['apps/science/src/app.tsx', "import value from '@pji-workbench/contracts/src/private'"],
+    [
+      'apps/geo/src/App.tsx',
+      "import { scienceDomainProfile } from '@pji-workbench/domain-science'",
+    ],
+    ['apps/geo/src/App.tsx', "import { runBatchRecipe } from '@pji-workbench/materials-analysis'"],
+    ['apps/science/src/App.tsx', "import { geoDomainProfile } from '@pji-workbench/domain-geo'"],
+    [
+      'apps/gallery/src/App.tsx',
+      "import { createImagingWorkerClient } from '@pji-workbench/imaging'",
+    ],
   ])('rejects %s crossing a protected boundary', (file, source) => {
     expect(inspectSource(file, source)).toHaveLength(1)
   })
@@ -47,8 +57,8 @@ describe('architecture boundary checker', () => {
   it('detects cycles between application feature boundaries', () => {
     expect(
       findFeatureCycles([
-        { file: 'apps/workbench/src/features/source/a.ts', source: "import '../analysis/b.js'" },
-        { file: 'apps/workbench/src/features/analysis/b.ts', source: "import '../source/a.js'" },
+        { file: 'apps/science/src/features/source/a.ts', source: "import '../analysis/b.js'" },
+        { file: 'apps/science/src/features/analysis/b.ts', source: "import '../source/a.js'" },
       ]),
     ).toEqual(['analysis -> source -> analysis'])
   })

@@ -1,0 +1,36 @@
+{
+  "name": "@pji-workbench/geo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build",
+    "lint": "biome check src tests vite.config.ts",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit --composite false --incremental false -p tsconfig.app.json && tsc --noEmit --composite false --incremental false -p tsconfig.node.json",
+    "test": "vitest run --root ../.. apps/geo",
+    "deploy:production": "vite build && WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler deploy",
+    "deploy:dry-run": "vite build && WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler deploy --dry-run",
+    "clean": "node ../../tooling/scripts/clean-package.mjs"
+  },
+  "dependencies": {
+    "@pji-workbench/domain-geo": "workspace:*",
+    "@pji-workbench/ui": "workspace:*",
+    "@pji-workbench/workbench-react": "workspace:*",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.52.1",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "typescript": "7.0.2",
+    "vite": "8.2.1",
+    "vitest": "4.1.10",
+    "wrangler": "4.123.0"
+  }
+}

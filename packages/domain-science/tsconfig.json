@@ -1,0 +1,18 @@
+{
+  "extends": "../../tooling/typescript/browser.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/domain-science.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "references": [
+    { "path": "../actions" },
+    { "path": "../agent" },
+    { "path": "../contracts" },
+    { "path": "../materials-analysis" },
+    { "path": "../ui" },
+    { "path": "../workbench-core" },
+    { "path": "../workspace" }
+  ]
+}

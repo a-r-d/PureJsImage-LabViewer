@@ -8,6 +8,7 @@ const FORBIDDEN_CODE = [
   { label: 'dangerous HTML insertion', pattern: /dangerouslySetInnerHTML/ },
 ]
 const FORBIDDEN_BUNDLE_CODE = FORBIDDEN_CODE.slice(0, 2)
+const SCIENCE_APP = 'science'
 
 async function collectFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true })
@@ -21,7 +22,12 @@ async function collectFiles(directory) {
 }
 
 const root = process.cwd()
-const sourceDirectories = [path.join(root, 'apps/workbench/src')]
+const sourceDirectories = []
+for (const appEntry of await readdir(path.join(root, 'apps'), { withFileTypes: true })) {
+  if (appEntry.isDirectory()) {
+    sourceDirectories.push(path.join(root, 'apps', appEntry.name, 'src'))
+  }
+}
 for (const packageEntry of await readdir(path.join(root, 'packages'), { withFileTypes: true })) {
   if (packageEntry.isDirectory()) {
     sourceDirectories.push(path.join(root, 'packages', packageEntry.name, 'src'))
@@ -39,32 +45,34 @@ for (const file of files) {
   }
 }
 
-try {
-  const bundleFiles = await collectFiles(path.join(root, 'apps/workbench/dist'))
-  for (const file of bundleFiles) {
-    const source = await readFile(file, 'utf8')
-    for (const rule of FORBIDDEN_BUNDLE_CODE) {
-      if (rule.pattern.test(source)) {
-        violations.push(`${path.relative(root, file)}: production bundle ${rule.label}`)
+for (const appEntry of await readdir(path.join(root, 'apps'), { withFileTypes: true })) {
+  if (!appEntry.isDirectory()) continue
+  try {
+    const bundleFiles = await collectFiles(path.join(root, 'apps', appEntry.name, 'dist'))
+    for (const file of bundleFiles) {
+      const source = await readFile(file, 'utf8')
+      for (const rule of FORBIDDEN_BUNDLE_CODE) {
+        if (rule.pattern.test(source)) {
+          violations.push(`${path.relative(root, file)}: production bundle ${rule.label}`)
+        }
       }
     }
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error
   }
-} catch (error) {
-  if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error
-}
 
-const headersPath = path.join(root, 'apps/workbench/public/_headers')
-const headers = await readFile(headersPath, 'utf8')
-if (!headers.includes('Content-Security-Policy:')) {
-  violations.push('apps/workbench/public/_headers: missing Content-Security-Policy')
-}
-if (headers.includes("'unsafe-eval'")) {
-  violations.push("apps/workbench/public/_headers: CSP permits 'unsafe-eval'")
-}
-if (!headers.includes("script-src 'self' 'wasm-unsafe-eval'")) {
-  violations.push(
-    "apps/workbench/public/_headers: QuickJS requires narrowly scoped 'wasm-unsafe-eval'",
-  )
+  const headersPath = path.join(root, 'apps', appEntry.name, 'public/_headers')
+  const headers = await readFile(headersPath, 'utf8')
+  const relativeHeaders = `apps/${appEntry.name}/public/_headers`
+  if (!headers.includes('Content-Security-Policy:')) {
+    violations.push(`${relativeHeaders}: missing Content-Security-Policy`)
+  }
+  if (headers.includes("'unsafe-eval'")) {
+    violations.push(`${relativeHeaders}: CSP permits 'unsafe-eval'`)
+  }
+  if (appEntry.name === SCIENCE_APP && !headers.includes("script-src 'self' 'wasm-unsafe-eval'")) {
+    violations.push(`${relativeHeaders}: QuickJS requires narrowly scoped 'wasm-unsafe-eval'`)
+  }
 }
 
 if (violations.length > 0) {

@@ -6,6 +6,64 @@ const SOURCE_EXTENSIONS = new Set(['.cjs', '.js', '.jsx', '.mjs', '.ts', '.tsx']
 const IMPORT_PATTERN =
   /(?:import\s+(?:type\s+)?(?:[^'";]+?\s+from\s+)?|export\s+(?:type\s+)?[^'";]*?\s+from\s+|import\s*\()\s*['"]([^'"]+)['"]/g
 
+const APPLICATION_PACKAGE_NAMES = [
+  '@pji-workbench/app',
+  '@pji-workbench/science',
+  '@pji-workbench/gallery',
+  '@pji-workbench/geo',
+]
+
+const CROSS_APP_RULES = [
+  {
+    prefix: 'apps/science/',
+    forbidden: ['@pji-workbench/domain-geo', '@pji-workbench/gallery', '@pji-workbench/geo'],
+    message: 'science app import of geo or gallery',
+  },
+  {
+    prefix: 'apps/geo/',
+    forbidden: [
+      '@pji-workbench/domain-science',
+      '@pji-workbench/materials-analysis',
+      '@pji-workbench/science',
+      '@pji-workbench/gallery',
+    ],
+    message: 'geo app import of science or materials-analysis',
+  },
+  {
+    prefix: 'apps/gallery/',
+    forbidden: [
+      '@pji-workbench/imaging',
+      '@pji-workbench/materials-analysis',
+      '@pji-workbench/domain-science',
+      '@pji-workbench/domain-geo',
+      '@pji-workbench/scripts',
+      '@pji-workbench/workbench-core',
+      '@pji-workbench/workbench-react',
+      '@pji-workbench/viewport',
+      '@pji-workbench/agent',
+      '@pji-workbench/workspace',
+      '@pji-workbench/science',
+      '@pji-workbench/geo',
+    ],
+    message: 'gallery import of imaging runtime or domain packages',
+  },
+  {
+    prefix: 'packages/domain-geo/',
+    forbidden: ['@pji-workbench/domain-science', '@pji-workbench/materials-analysis'],
+    message: 'geo domain import of science or materials-analysis',
+  },
+  {
+    prefix: 'packages/domain-science/',
+    forbidden: ['@pji-workbench/domain-geo'],
+    message: 'science domain import of geo',
+  },
+  {
+    prefix: 'packages/workbench-core/',
+    forbidden: ['@pji-workbench/domain-science', '@pji-workbench/domain-geo'],
+    message: 'shared runtime import of a domain package',
+  },
+]
+
 function normalized(value) {
   return value.split(path.sep).join('/')
 }
@@ -13,6 +71,10 @@ function normalized(value) {
 function resolveRepositoryImport(file, specifier) {
   if (!specifier.startsWith('.')) return undefined
   return normalized(path.normalize(path.join(path.dirname(file), specifier)))
+}
+
+function specifierMatches(specifier, forbidden) {
+  return specifier === forbidden || specifier.startsWith(`${forbidden}/`)
 }
 
 export function inspectSource(relativeFile, source) {
@@ -44,8 +106,7 @@ export function inspectSource(relativeFile, source) {
 
     if (file.startsWith('packages/')) {
       const importsApp =
-        specifier === '@pji-workbench/app' ||
-        specifier.startsWith('@pji-workbench/app/') ||
+        APPLICATION_PACKAGE_NAMES.some((name) => specifierMatches(specifier, name)) ||
         specifier.startsWith('apps/') ||
         resolved?.startsWith('apps/') === true
       if (importsApp) {
@@ -57,7 +118,8 @@ export function inspectSource(relativeFile, source) {
       (file.startsWith('packages/actions/') ||
         file.startsWith('packages/contracts/') ||
         file.startsWith('packages/workspace/') ||
-        file.startsWith('packages/workbench-core/')) &&
+        file.startsWith('packages/workbench-core/') ||
+        file.startsWith('packages/domain-geo/')) &&
       (specifier === 'react' || specifier.startsWith('react/'))
     ) {
       violations.push(`${file}: React import in framework-neutral core '${specifier}'`)
@@ -68,6 +130,13 @@ export function inspectSource(relativeFile, source) {
       (specifier === 'purejsimage' || specifier.startsWith('purejsimage/'))
     ) {
       violations.push(`${file}: PureJsImage import in semantic action contracts '${specifier}'`)
+    }
+
+    for (const rule of CROSS_APP_RULES) {
+      if (!file.startsWith(rule.prefix)) continue
+      if (rule.forbidden.some((forbidden) => specifierMatches(specifier, forbidden))) {
+        violations.push(`${file}: ${rule.message} '${specifier}'`)
+      }
     }
 
     if (file.startsWith('apps/')) {
@@ -83,7 +152,7 @@ export function inspectSource(relativeFile, source) {
 }
 
 function featureName(file) {
-  return normalized(file).match(/^apps\/workbench\/src\/features\/([^/]+)\//)?.[1]
+  return normalized(file).match(/^apps\/science\/src\/features\/([^/]+)\//)?.[1]
 }
 
 export function findFeatureCycles(sources) {
@@ -156,7 +225,7 @@ export async function findBoundaryViolations(root) {
 
   violations.push(
     ...findFeatureCycles(sources).map(
-      (cycle) => `apps/workbench/src/features: feature cycle '${cycle}'`,
+      (cycle) => `apps/science/src/features: feature cycle '${cycle}'`,
     ),
   )
 

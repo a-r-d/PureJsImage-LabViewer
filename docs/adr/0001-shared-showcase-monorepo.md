@@ -7,10 +7,8 @@
 
 ## Context
 
-This repository currently hosts one scientific workbench (`apps/workbench`) that
-composes shared packages, a Worker-backed PureJsImage runtime, a versioned
-semantic action registry, and a Cloudflare static deployment at
-`lab.purejsimage.com`.
+This repository currently hosts separately built showcase applications. Science deploys
+at `lab.purejsimage.com`. PureJsImage itself is a separate core-library repository.
 
 PureJsImage itself is a separate core-library repository. This application
 repository exists to turn that library into end-user workflows. Additional
@@ -84,14 +82,15 @@ Separate builds plus a compile-time profile keep sharing without a super app.
 
 ## Package and application boundaries
 
-Current layout is unchanged in this change. The target layout is:
+Current layout:
 
 ```text
 apps/gallery                 Lightweight links to deployed domain apps
 apps/science                 Electron microscopy / materials workbench
-                             (today: apps/workbench; renamed when moved)
-apps/geo                     Geospatial raster showcase (future app)
-apps/medical                 Medical imaging showcase (later; not created now)
+                             (lab.purejsimage.com)
+apps/geo                     Empty geospatial profile on the shared shell
+                             (geo.purejsimage.com)
+apps/medical                 Not created until that domain is implemented
 
 packages/actions             Shared semantic action descriptors and host
 packages/contracts           JSON-safe Worker/RPC/persistence contracts
@@ -103,6 +102,10 @@ packages/plugin-sdk          Script/recipe contracts, not a store
 packages/scripts             Isolated QuickJS script Worker
 packages/agent               Agent policy; invokes the same action host
 packages/test-corpus         Licensed scenario manifests
+packages/workbench-core      Headless shared runtime and profile types
+packages/workbench-react     Shared React workbench shell
+packages/domain-science      Science catalogs, workflows, actions, panels
+packages/domain-geo          Empty geo profile and terminology
 packages/materials-analysis  Trusted science/materials extension bundle
 packages/<domain>-analysis   Future trusted domain extension bundles
 ```
@@ -150,11 +153,11 @@ does not open scientific documents.
 
 Each application produces its own Vite client bundle and Cloudflare assets.
 
-| Application | Current deploy | Target deploy |
+| Application | Deploy | Notes |
 | --- | --- | --- |
-| Science workbench | `apps/workbench` → `lab.purejsimage.com` | remains the science origin until an explicit cutover |
-| Gallery | none | a separate hostname that only links out |
-| Geo | none | a separate hostname and Worker |
+| Science workbench | `apps/science` → `lab.purejsimage.com` | Cloudflare worker `purejsimage-materials-workbench` |
+| Gallery | separately built; no apex custom domain | This repo does not deploy `purejsimage.com` |
+| Geo | `apps/geo` → `geo.purejsimage.com` | Cloudflare worker `purejsimage-geo` |
 | Medical | none | created with its first implementation |
 
 Cutover rules:
@@ -191,22 +194,17 @@ route components.
 
 ## Migration sequence
 
-This ADR does not move application code. Later work must keep the science
-characterization suite green.
+Steps 1–5 are implemented. Medical remains later.
 
-1. **Record** (this change): architecture decision, action/reader/route
-   snapshots, Worker characterization of open/analyze/save, and recorded
-   science bundle/performance baselines. No visible UI change.
-2. **Profile the current app in place:** introduce a science domain profile
-   that describes today’s workbench and is the only profile compiled into
-   `apps/workbench`. Behavior stays identical.
-3. **Add `apps/gallery`:** a separately built linker with no imaging Worker
-   and no science catalog. Deploy independently.
-4. **Move science without behavior change:** relocate `apps/workbench` to
-   `apps/science` (or equivalent) only after characterization tests pass on
-   the profiled app. Update deploy metadata in the same change.
-5. **Add `apps/geo`:** new application, geo profile, geo-trusted extensions as
-   needed. Do not load geo code into the science build.
+1. **Record:** architecture decision, action/reader/route snapshots, Worker
+   characterization of open/analyze/save, and recorded science bundle/performance
+   baselines.
+2. **Profile the science app:** explicit science domain profile.
+3. **Add `apps/gallery`:** separately built linker with no imaging Worker.
+4. **Move science:** `apps/workbench` → `apps/science` without changing
+   `lab.purejsimage.com` or the Cloudflare worker name.
+5. **Add `apps/geo`:** empty geo profile and shared shell. Do not load geo code
+   into the science build.
 6. **Add medical later:** create `apps/medical` when that domain is actually
    implemented, not as an empty placeholder runtime.
 
@@ -226,11 +224,12 @@ analysis execution, project save/load, and the current routes including
 - Characterization fixtures are reviewed locks. Normal CI must not regenerate
   them on failure.
 
-## Out of scope for this change
+## Out of scope for the original ADR commit
 
-- Moving `apps/workbench` or adding `apps/gallery` / `apps/geo`.
+The first ADR commit recorded the decision without moving apps. Later work added
+gallery, moved science, and added geo. Still out of scope:
+
 - Introducing a new state library.
-- Changing visible UI, routes, or science catalogs.
 - Publishing workspace packages.
 - A runtime plugin marketplace.
 - Implementing medical imaging.

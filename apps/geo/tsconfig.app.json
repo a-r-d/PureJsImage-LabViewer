@@ -1,0 +1,14 @@
+{
+  "extends": "../../tooling/typescript/browser.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.app.tsbuildinfo",
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "references": [
+    { "path": "../../packages/domain-geo" },
+    { "path": "../../packages/ui" },
+    { "path": "../../packages/workbench-react" }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "name": "@pji-workbench/domain-science",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "check": "corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build",
+    "lint": "biome check src tests",
+    "typecheck": "tsc --noEmit --composite false --incremental false -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/domain-science",
+    "clean": "node ../../tooling/scripts/clean-package.mjs"
+  },
+  "dependencies": {
+    "@pji-workbench/actions": "workspace:*",
+    "@pji-workbench/agent": "workspace:*",
+    "@pji-workbench/contracts": "workspace:*",
+    "@pji-workbench/materials-analysis": "workspace:*",
+    "@pji-workbench/ui": "workspace:*",
+    "@pji-workbench/workbench-core": "workspace:*",
+    "@pji-workbench/workspace": "workspace:*",
+    "react": "19.2.8"
+  },
+  "devDependencies": {
+    "@pji-workbench/imaging": "workspace:*",
+    "@pji-workbench/test-corpus": "workspace:*",
+    "@types/react": "19.2.18",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "peerDependencies": {
+    "react": "19.2.8"
+  }
+}

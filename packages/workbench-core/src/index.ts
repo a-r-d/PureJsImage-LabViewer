@@ -23,7 +23,7 @@ export {
 } from './domain-profile.js'
 export {
   createProject,
-  DEFAULT_SCIENCE_PROJECT_TITLE,
+  DEFAULT_PROJECT_TITLE,
   duplicateProjectSnapshot,
   LAST_PROJECT_KEY,
   mutationsToReplaceOpenSource,
@@ -41,31 +41,6 @@ export {
   readersForProfile,
   researchExampleScenariosForProfile,
 } from './registries.js'
-export {
-  createScienceActionHandlers,
-  type ScienceActionPorts,
-} from './science/action-handlers.js'
-export {
-  type CommandContext,
-  type CommandId,
-  getCommandAvailability,
-  isEditableTarget,
-  resolveShortcut,
-  type ShortcutEvent,
-  type WorkbenchActionId,
-  type WorkbenchCommand,
-  workbenchActionRegistry,
-  workbenchCommands,
-} from './science/actions.js'
-export {
-  createScienceDomainProfile,
-  SCIENCE_DOMAIN_ID,
-  SCIENCE_EXAMPLE_SCENARIO_IDS,
-  SCIENCE_READER_IDS,
-  scienceDomainProfile,
-} from './science/profile.js'
-export { scienceUiContributions } from './science/ui-contributions.js'
-export { SCIENCE_WORKFLOW_RECIPES, scienceAgentPolicy } from './science/workflows.js'
 export {
   commitOpenedSource,
   datasetSelectMutation,

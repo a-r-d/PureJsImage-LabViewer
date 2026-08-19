@@ -13,7 +13,14 @@
     { "path": "./packages/ui" },
     { "path": "./packages/test-corpus" },
     { "path": "./packages/workbench-core" },
-    { "path": "./apps/workbench/tsconfig.app.json" },
-    { "path": "./apps/workbench/tsconfig.node.json" }
+    { "path": "./packages/workbench-react" },
+    { "path": "./packages/domain-science" },
+    { "path": "./packages/domain-geo" },
+    { "path": "./apps/science/tsconfig.app.json" },
+    { "path": "./apps/science/tsconfig.node.json" },
+    { "path": "./apps/gallery/tsconfig.app.json" },
+    { "path": "./apps/gallery/tsconfig.node.json" },
+    { "path": "./apps/geo/tsconfig.app.json" },
+    { "path": "./apps/geo/tsconfig.node.json" }
   ]
 }

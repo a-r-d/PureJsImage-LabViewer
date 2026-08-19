@@ -175,7 +175,7 @@ describe('generated corpus foundation', () => {
     for (const scenario of bundled)
       for (const file of scenario.source.files) {
         const bytes = await readFile(
-          new URL(`../../../apps/workbench/public/${file.path}`, import.meta.url),
+          new URL(`../../../apps/science/public/${file.path}`, import.meta.url),
         )
         expect(bytes.byteLength, `${scenario.id}/${file.path}`).toBe(file.sizeBytes)
         expect(

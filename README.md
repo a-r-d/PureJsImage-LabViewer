@@ -10,10 +10,13 @@ single-route application shell. Scientific file opening and analysis workflows a
 later milestones described under [`prompts/`](prompts/). Notable product changes are recorded
 in [`CHANGELOG.md`](CHANGELOG.md).
 
-The repository is becoming a shared showcase monorepo: separately built gallery, science,
-and geo applications, with medical added later. Shared behavior is a compile-time domain
-profile in `packages/workbench-core`. The current `apps/workbench` science app is composed
-from that profile. See [`docs/adr/0001-shared-showcase-monorepo.md`](docs/adr/0001-shared-showcase-monorepo.md).
+The repository is a shared showcase monorepo: separately built gallery, science, and geo
+applications, with medical added later. Shared behavior is a compile-time domain profile.
+Science lives in `apps/science` (`packages/domain-science`). This repository deploys UI
+apps on Cloudflare subdomains; it does not publish the library homepage at
+`purejsimage.com` (GitHub Pages from the core-library repo).
+
+See [`docs/adr/0001-shared-showcase-monorepo.md`](docs/adr/0001-shared-showcase-monorepo.md).
 
 ## Prerequisites
 
@@ -31,8 +34,13 @@ pnpm install --frozen-lockfile
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm dev` | Run the workbench Vite development server |
-| `pnpm build` | Build packages and the app, then enforce the bundle budget |
+| `pnpm dev` / `pnpm dev:science` | Run the science Vite development server |
+| `pnpm dev:workbench` | Compatibility alias for `pnpm dev:science` |
+| `pnpm dev:gallery` | Run the gallery linker |
+| `pnpm dev:geo` | Run the geo shell |
+| `pnpm build` | Build every package and app, then enforce bundle budgets |
+| `pnpm build:science` / `build:gallery` / `build:geo` | Build one application |
+| `pnpm test:science` / `test:gallery` / `test:geo` | Run that app's Vitest project |
 | `pnpm check` | Run the deterministic normal-CI merge gate |
 | `pnpm typecheck` | Type-check every workspace project |
 | `pnpm lint` | Run Biome, architecture boundaries, and static security checks |
@@ -40,19 +48,25 @@ pnpm install --frozen-lockfile
 | `pnpm format:check` | Check formatting without writing |
 | `pnpm test` | Run all Vitest projects |
 | `pnpm test:watch` | Run Vitest in watch mode |
-| `pnpm test:e2e` | Run the Playwright smoke suite in all three browsers |
+| `pnpm test:e2e` | Run the Playwright science suite in all three browsers |
 | `pnpm test:a11y` | Run accessibility-tagged Chromium checks |
 | `pnpm test:visual` | Run deterministic visual-invariant checks |
 | `pnpm test:corpus` | Validate the generated-corpus package skeleton |
 | `pnpm test:performance` | Run the initial browser performance budget |
-| `pnpm deploy:dry-run` | Build and validate the Cloudflare upload without deploying |
+| `pnpm deploy:dry-run` | Validate science, geo, and gallery Cloudflare uploads without deploying |
 | `pnpm clean` | Remove generated workspace output |
 
 ## Repository map
 
 ```text
-apps/workbench             React 19 SPA and Cloudflare composition root
-apps-e2e/workbench         Playwright product smoke tests
+apps/gallery               Lightweight linker (Science, Geo, planned Medical)
+apps/science               Materials workbench → lab.purejsimage.com
+apps/geo                   Empty geo shell → geo.purejsimage.com
+apps-e2e/science           Playwright product tests for the science app
+packages/domain-science    Science catalogs, workflows, actions, and panels
+packages/domain-geo        Empty geo profile and terminology
+packages/workbench-core    Headless shared runtime and profile types
+packages/workbench-react   Shared React workbench shell
 packages/contracts         JSON-safe cross-runtime contracts
 packages/workspace         Immutable semantic workspace foundations
 packages/imaging           Sole PureJsImage runtime integration boundary
@@ -61,6 +75,7 @@ packages/agent             Agent policy and deterministic tool-host foundations
 packages/plugin-sdk        Declarative plugin and recipe contracts
 packages/ui                Generic accessible React UI primitives
 packages/test-corpus       Scientific corpus manifest foundations
+packages/materials-analysis  Trusted science/materials algorithm package
 tooling/typescript         Shared strict TypeScript configuration
 tooling/vitest             Shared unit-test configuration
 tooling/playwright         Shared browser-test documentation
@@ -85,14 +100,39 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-The one client route is served by Vite. The application validates its small public build-time
-environment contract; secrets must not use the `VITE_` prefix.
+The science app is served by Vite (`pnpm dev`). Gallery and geo have their own
+dev servers. Secrets must not use the `VITE_` prefix.
+
+## Hosts and Cloudflare deploy
+
+| Host | What | This repo? |
+| --- | --- | --- |
+| `purejsimage.com` | PureJsImage library site | No. GitHub Pages from the core-library repository. |
+| `lab.purejsimage.com` | Science workbench | Yes. Worker `purejsimage-materials-workbench`. |
+| `geo.purejsimage.com` | Geo showcase | Yes. Worker `purejsimage-geo`. |
+
+Gallery is separately built (`@pji-workbench/gallery`) and is **not** bound to apex
+`purejsimage.com`.
+
+Cloudflare Git integration for **lab.purejsimage.com** should use:
+
+```text
+pnpm --filter @pji-workbench/science exec wrangler deploy
+```
+
+That replaces `pnpm --filter @pji-workbench/app exec wrangler deploy`. The Wrangler
+`name` (`purejsimage-materials-workbench`) and custom domain are unchanged.
+
+Geo:
+
+```text
+pnpm --filter @pji-workbench/geo exec wrangler deploy
+```
 
 ## Cloudflare dry run
 
-The official Cloudflare Vite plugin produces the static client output. SPA fallback is declared
-in `apps/workbench/wrangler.jsonc`. Validate the generated worker and asset manifest without
-creating remote resources:
+Each app has its own `wrangler.jsonc`. Validate generated workers and asset manifests
+without creating remote resources:
 
 ```sh
 pnpm deploy:dry-run

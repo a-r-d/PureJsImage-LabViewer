@@ -63,7 +63,10 @@ Domain workflows, product composition, UI, persistence, sandbox hosting, and mat
 - `apps/*` compose packages; packages never import apps.
 - `packages/contracts` contains bounded JSON-safe cross-runtime contracts.
 - `packages/actions` owns semantic action descriptors, schemas, policy metadata, and registry composition—not React or live datasets.
-- `packages/workbench-core` owns the headless workbench runtime, compile-time domain profiles, and identifiable source/project/activity/action controllers. It must not import React or PureJsImage.
+- `packages/workbench-core` owns the headless workbench runtime, compile-time domain profile types, and identifiable source/project/activity controllers. It must not import React, PureJsImage, or domain packages.
+- `packages/workbench-react` owns the shared React workbench shell. It must not import imaging, domain-science, domain-geo, or materials-analysis.
+- `packages/domain-science` owns science/materials example IDs, workflows, actions, panels, terminology, and empty states. It depends on `packages/materials-analysis`.
+- `packages/domain-geo` owns the empty geo profile and terminology. It must not import domain-science or materials-analysis.
 - `packages/imaging` owns live source/dataset/analysis Worker orchestration.
 - `packages/workspace` owns immutable revisioned semantic state, not tiles, Workers, credentials, or React components.
 - `packages/viewport` owns rendering/view interaction, not file readers or analysis execution.
