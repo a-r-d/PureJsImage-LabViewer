@@ -1,0 +1,47 @@
+package.json
+  s_06ddef2cc80384::t_8a85fbfc889549 31-33
+playwright.geo.config.ts
+  s_06ddef2cc80384::t_d30987d31b1361 10,12-16
+  s_06ddef2cc80384::t_a012ab12d919d9 57-61
+docs/QUALITY_GATES.md
+  s_06ddef2cc80384::t_7e27d2f4474be2 15-16
+  s_06ddef2cc80384::t_de10b84d80c910 122
+  s_06ddef2cc80384::t_9439b6aec498c8 248-249
+CHANGELOG.md
+  s_06ddef2cc80384::t_32a10c8ca9d1f9 185-189
+README.md
+  s_06ddef2cc80384::t_263d2991fa7c13 49-51
+playwright.config.ts
+  s_06ddef2cc80384::t_7cf2d6fa52987d 10,14-15,18-22
+tooling/scripts/clean-root.mjs
+  s_06ddef2cc80384::t_2174c0680f2d9b 3-10
+tooling/scripts/run-e2e.test.ts
+  s_06ddef2cc80384::t_f5864db358fd92 48-50,52-53
+  s_06ddef2cc80384::t_c7047dfd763d4d 1-47,51,54-108
+apps-e2e/science/scenario-reporter.ts
+  s_06ddef2cc80384::t_f1dbbfdf0888d6 182-185
+  s_06ddef2cc80384::t_f727a07bc82521 175,178-181
+tooling/scripts/run-e2e.mjs
+  s_06ddef2cc80384::t_148321b1649a3b 127
+  s_06ddef2cc80384::t_d1e716b20fc8f2 126
+  s_06ddef2cc80384::t_82894e786edcf1 1-125,128-151
+.github/workflows/ci.yml
+  s_06ddef2cc80384::t_178fee63ea794a 102-128
+  s_06ddef2cc80384::t_29babef6721348 61-70,74-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "fbfd5a1d521a0609f5e367d46739093410ca85ce",
+  "prompts": {},
+  "sessions": {
+    "s_06ddef2cc80384": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e36f334e-3d5e-4df0-bddc-0e9ee634ee7d",
+        "model": "grok-4.6"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
