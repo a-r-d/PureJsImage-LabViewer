@@ -1,7 +1,21 @@
 import { KY_FROM_ABOVE_CATALOG, KY_FROM_ABOVE_DEFAULT_BBOX } from './ky-from-above.js'
+import {
+  NOAA_DIGITAL_COAST_CATALOG,
+  NOAA_PALM_COAST_BBOX,
+  NOAA_PUERTO_RICO_BBOX,
+} from './noaa-digital-coast.js'
 import type { CatalogRegistryEntry, CatalogStory } from './types.js'
+import { USGS_3DEP_CATALOG, USGS_3DEP_CINCINNATI_BBOX } from './usgs-3dep.js'
+import {
+  USGS_LANDSAT_CATALOG,
+  USGS_LANDSAT_DEFAULT_BBOX,
+  USGS_LANDSAT_DEFAULT_DATETIME,
+} from './usgs-landsat.js'
 
 export const CATALOG_REGISTRY: readonly CatalogRegistryEntry[] = Object.freeze([
+  NOAA_DIGITAL_COAST_CATALOG,
+  USGS_3DEP_CATALOG,
+  USGS_LANDSAT_CATALOG,
   KY_FROM_ABOVE_CATALOG,
 ])
 
@@ -10,6 +24,63 @@ export function catalogById(id: string): CatalogRegistryEntry | undefined {
 }
 
 export const CATALOG_STORIES: readonly CatalogStory[] = Object.freeze([
+  Object.freeze({
+    id: 'noaa-puerto-rico-terrain',
+    title: 'NOAA Puerto Rico Terrain',
+    summary:
+      'Open a NOAA CUDEM 1/3 arc-second topobathy tile over eastern Puerto Rico and inspect it as grayscale with a 2–98 percentile stretch.',
+    catalogId: NOAA_DIGITAL_COAST_CATALOG.id,
+    collectionGroup: 'puerto-rico-terrain',
+    bbox: NOAA_PUERTO_RICO_BBOX,
+    inspect: true,
+    style: {
+      mapping: { gray: 0 },
+      stretch: 'percentile' as const,
+      percentileLow: 2,
+      percentileHigh: 98,
+    },
+  }),
+  Object.freeze({
+    id: 'noaa-palm-coast-color',
+    title: 'Palm Coast 4-band',
+    summary:
+      'Open NOAA NGS Palm Coast 4-band imagery as natural color (STAC eo:bands red/green/blue). CIR is not offered: live metadata labels band 4 gray, not NIR.',
+    catalogId: NOAA_DIGITAL_COAST_CATALOG.id,
+    collectionGroup: 'palm-coast-imagery',
+    bbox: NOAA_PALM_COAST_BBOX,
+    style: { mapping: { red: 0, green: 1, blue: 2 }, stretch: 'minmax' as const },
+  }),
+  Object.freeze({
+    id: 'usgs-national-terrain',
+    title: 'USGS National Terrain',
+    summary:
+      'Search USGS 3DEP 1/3 arc-second DEM GeoTIFFs over Cincinnati through TNMAccess. Atlas does not hard-code a product URL.',
+    catalogId: USGS_3DEP_CATALOG.id,
+    collectionGroup: 'ned-13',
+    bbox: USGS_3DEP_CINCINNATI_BBOX,
+    style: {
+      mapping: { gray: 0 },
+      stretch: 'percentile' as const,
+      percentileLow: 2,
+      percentileHigh: 98,
+    },
+  }),
+  Object.freeze({
+    id: 'usgs-landsat-cincinnati',
+    title: 'USGS Landsat Cincinnati',
+    summary:
+      'Search Landsat Collection 2 surface reflectance over Cincinnati, prefer low cloud cover, and open the HTTPS red (SR_B4) Cloud Optimized GeoTIFF.',
+    catalogId: USGS_LANDSAT_CATALOG.id,
+    collectionGroup: 'surface-reflectance',
+    bbox: USGS_LANDSAT_DEFAULT_BBOX,
+    datetime: USGS_LANDSAT_DEFAULT_DATETIME,
+    style: {
+      mapping: { gray: 0 },
+      stretch: 'percentile' as const,
+      percentileLow: 2,
+      percentileHigh: 98,
+    },
+  }),
   Object.freeze({
     id: 'kentucky-through-time',
     title: 'Kentucky Through Time',

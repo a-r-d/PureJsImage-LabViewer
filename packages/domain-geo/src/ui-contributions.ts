@@ -3,10 +3,10 @@ import type { DomainUiContributions } from '@pji-workbench/workbench-core'
 export const GEO_TERMINOLOGY = Object.freeze({
   applicationTitle: 'PureJsImage Atlas',
   shellHeading: 'PureJsImage Atlas',
-  emptyKicker: 'Kentucky From Above and local COGs',
-  emptyHeading: 'Search a catalog, then click a tile to open it',
+  emptyKicker: 'Public government catalogs and local COGs',
+  emptyHeading: 'Search a catalog, then click a Ready tile to open it',
   emptyBody:
-    'Click a tile name after search. Atlas stays in the source CRS and fetches only the HTTP ranges needed for the current view. You can also open a local GeoTIFF or paste a Cloud Optimized GeoTIFF URL.',
+    'Browse NOAA Digital Coast, USGS 3DEP, USGS Landsat, or Kentucky From Above. Click a tile after preflight marks it Ready. Atlas stays in the source CRS and fetches only the HTTP ranges needed for the current view. You can also open a local GeoTIFF or paste a Cloud Optimized GeoTIFF URL.',
 })
 
 export const geoUiContributions: DomainUiContributions = Object.freeze({

@@ -103,6 +103,63 @@ describe('STAC client', () => {
       code: 'UNAVAILABLE',
     })
   })
+
+  it('resolves relative link hrefs against the document URL', async () => {
+    const client = createStacClient({
+      fetch: async () =>
+        jsonResponse({
+          type: 'Catalog',
+          id: 'relative',
+          links: [{ rel: 'self', href: './catalog.json' }],
+        }),
+      cacheVersion: '1',
+    })
+    const catalog = await client.getCatalog('https://static.example.test/stac/catalog.json')
+    expect(catalog.links[0]?.href).toBe('https://static.example.test/stac/catalog.json')
+  })
+
+  it('rejects oversized JSON bodies', async () => {
+    const client = createStacClient({
+      fetch: async () =>
+        new Response('{"type":"Catalog","id":"x","links":[]}', {
+          status: 200,
+          headers: { 'content-length': String(9 * 1024 * 1024) },
+        }),
+      cacheVersion: '1',
+      maxJsonBytes: 1024,
+    })
+    await expect(client.getCatalog('https://stac.example.test/')).rejects.toMatchObject({
+      code: 'TOO_LARGE',
+    })
+  })
+
+  it('refuses a cross-origin POST search', async () => {
+    const client = createStacClient({
+      fetch: async (input) => {
+        if (String(input).endsWith('/')) {
+          return jsonResponse({
+            type: 'Catalog',
+            id: 'x',
+            links: [
+              { rel: 'self', href: 'https://stac.example.test/' },
+              {
+                rel: 'search',
+                href: 'https://evil.example.test/search',
+                method: 'POST',
+              },
+            ],
+          })
+        }
+        throw new Error('should not POST')
+      },
+      cacheVersion: '1',
+      catalogRootHref: 'https://stac.example.test/',
+    })
+    const catalog = await client.getCatalog('https://stac.example.test/')
+    await expect(client.search(catalog, { limit: 1 })).rejects.toMatchObject({
+      code: 'UNAVAILABLE',
+    })
+  })
 })
 
 function jsonResponse(body: unknown): Response {

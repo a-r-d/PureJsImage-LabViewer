@@ -6,6 +6,8 @@ export interface StacLink {
   readonly type?: string
   readonly title?: string
   readonly method?: string
+  readonly body?: Readonly<Record<string, unknown>>
+  readonly merge?: boolean
 }
 
 export interface StacProvider {
@@ -28,6 +30,11 @@ export interface StacRasterBand {
   readonly sampling?: string
 }
 
+export interface StacAssetAlternate {
+  readonly key: string
+  readonly href: string
+}
+
 export interface StacAsset {
   readonly key: string
   readonly href: string
@@ -36,6 +43,7 @@ export interface StacAsset {
   readonly roles: readonly string[]
   readonly eoBands: readonly StacEoBand[]
   readonly rasterBands: readonly StacRasterBand[]
+  readonly alternate: readonly StacAssetAlternate[]
   readonly fileSize?: number
   readonly fileHeaderSize?: number
   readonly fileChecksum?: string
@@ -86,9 +94,15 @@ export interface StacItemCollection {
   readonly numberMatched?: number
   readonly numberReturned?: number
   readonly nextHref?: string
+  readonly next?: StacLink
 }
 
-export type StacClientErrorCode = 'UNAVAILABLE' | 'NOT_FOUND' | 'INVALID_DOCUMENT' | 'ABORTED'
+export type StacClientErrorCode =
+  | 'UNAVAILABLE'
+  | 'NOT_FOUND'
+  | 'INVALID_DOCUMENT'
+  | 'ABORTED'
+  | 'TOO_LARGE'
 
 export class StacClientError extends Error {
   constructor(
@@ -106,4 +120,5 @@ export interface StacSearchQuery {
   readonly datetime?: string
   readonly collections?: readonly string[]
   readonly limit?: number
+  readonly sortby?: string
 }

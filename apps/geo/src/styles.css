@@ -160,6 +160,13 @@ body,
   padding: 12px;
   font-size: 12px;
 }
+.geo-inspector-body.geo-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  min-height: 0;
+}
 .geo-inspector-toolbar {
   margin-bottom: 8px;
 }
@@ -295,7 +302,9 @@ body,
   list-style: none;
   display: grid;
   gap: 6px;
-  max-height: min(40vh, 22rem);
+  flex: 0 0 auto;
+  min-height: 4.5rem;
+  max-height: min(28vh, 16rem);
   overflow: auto;
 }
 .geo-catalog-results button {
@@ -309,13 +318,22 @@ body,
   color: inherit;
   text-align: left;
   cursor: pointer;
+  scroll-margin-bottom: 36px;
 }
 .geo-catalog-results button:disabled {
   cursor: progress;
   opacity: 0.85;
 }
-.geo-catalog-results button[aria-pressed="true"] {
-  border-color: var(--wb-accent);
+.geo-catalog-results button span {
+  display: block;
+}
+.geo-catalog-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  font-size: 11px;
 }
 .geo-asset-picker {
   display: grid;

@@ -1,0 +1,14 @@
+{
+  "total": 1,
+  "errors": [],
+  "messages": [],
+  "items": [
+    {
+      "title": "IMG only product",
+      "sourceId": "img-1",
+      "format": "IMG",
+      "downloadURL": "https://prd-tnm.example.test/elevation.img",
+      "files": [{ "url": "https://prd-tnm.example.test/readme.txt", "format": "Text" }]
+    }
+  ]
+}

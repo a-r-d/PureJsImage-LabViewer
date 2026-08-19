@@ -82,9 +82,11 @@ Vitest covers:
 - `packages/domain-science` unit tests for the science domain profile, reader/example
   registries, and science action handlers.
 - `packages/domain-geo` unit tests for the Atlas profile, CRS helpers, open-error copy, X-ray
-  reports, cursor readout, STAC parsing/client, catalog registry, deep links, and provenance
-  session round-trips. STAC fixtures are checked-in JSON. Live Kentucky STAC smoke is opt-in
-  via `ATLAS_LIVE_STAC=1` and is not part of normal CI.
+  reports, cursor readout, STAC parsing/client, catalog adapters (STAC API GET/POST, static STAC
+  filter/too-large, TNMAccess GeoTIFF-only), catalog registry, deep links, and provenance
+  session round-trips. STAC/TNM fixtures are checked-in JSON. Live Kentucky STAC smoke is opt-in
+  via `ATLAS_LIVE_STAC=1`. Live browser CORS probes are `PJI_GEO_LIVE=1` and are not part of
+  normal CI.
 
 Tests should assert cleanup and cancellation, not just output.
 
@@ -180,11 +182,12 @@ Capture:
 - Atlas inspector and rendered GeoTIFF.
 
 The geo Atlas visual lives in `playwright.geo.config.ts` and uses a local range-capable fixture
-server. STAC catalog E2E intercepts the live Kentucky From Above API with recorded JSON fixtures and
-rewrites COG hrefs to that local range server. Normal geo Playwright never contacts kyfromabove.ky.gov
-or the public STAC host. Live STAC smoke is `ATLAS_LIVE_STAC=1` in `packages/domain-geo`. It is not
-part of the science capability matrix. Bounded UI-lab dark/light wide and dark
-narrow states are science-owned.
+server. Catalog E2E intercepts Kentucky From Above, NOAA static STAC, LandsatLook, and TNMAccess
+with recorded JSON fixtures and rewrites raster hrefs to that local range server. Normal geo
+Playwright never contacts live government hosts. Live STAC smoke is `ATLAS_LIVE_STAC=1` in
+`packages/domain-geo`. Browser CORS/Range probes are `PJI_GEO_LIVE=1 pnpm test:e2e:geo:live`.
+The Atlas visual is not part of the science capability matrix. Bounded UI-lab dark/light wide
+and dark narrow states are science-owned.
 
 Mask genuinely unstable numeric timing text. Do not mask image content or controls to force passes.
 

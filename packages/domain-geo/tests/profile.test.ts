@@ -33,7 +33,7 @@ describe('geo domain profile', () => {
     const copy = `${profile.title} ${profile.description} ${geoUiContributions.emptyState.heading} ${geoUiContributions.emptyState.body}`
     expect(copy).not.toMatch(/microscopy|particle|scientific imaging|materials/i)
     expect(copy).toMatch(/GeoTIFF|COG/i)
-    expect(geoUiContributions.emptyState.heading).toMatch(/click a tile/i)
+    expect(geoUiContributions.emptyState.heading).toMatch(/click a Ready tile/i)
   })
 })
 

@@ -12,6 +12,10 @@ export type GeoOpenFailureKind =
   | 'source-open-failed'
   | 'aborted'
   | 'catalog-unavailable'
+  | 'catalog-too-large'
+  | 'browser-network-blocked'
+  | 'unsupported-scheme'
+  | 'metadata-only'
   | 'expired-url'
   | 'other'
 
@@ -51,6 +55,15 @@ export function classifyStacClientError(error: StacClientError): GeoOpenFailure 
         kind: 'aborted',
         title: 'Catalog request cancelled',
         message: error.message,
+      }
+    case 'TOO_LARGE':
+      return {
+        kind: 'catalog-too-large',
+        title: 'Catalog is too large to browse',
+        message: error.message,
+        guidance:
+          error.guidance ??
+          'This static STAC item collection is too large to browse directly in the browser.',
       }
     default: {
       const unexpected: never = error.code

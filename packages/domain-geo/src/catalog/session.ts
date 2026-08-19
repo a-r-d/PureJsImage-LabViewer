@@ -48,6 +48,7 @@ export function parseProvenance(value: unknown): CatalogAssetProvenance | undefi
   const license = requiredString(record['license'])
   const attribution = requiredString(record['attribution'])
   const sourceUrl = requiredString(record['sourceUrl'])
+  const protocol = requiredString(record['protocol'])
   return {
     catalogId,
     catalogTitle,
@@ -59,6 +60,7 @@ export function parseProvenance(value: unknown): CatalogAssetProvenance | undefi
     ...(license === undefined ? {} : { license }),
     ...(attribution === undefined ? {} : { attribution }),
     ...(sourceUrl === undefined ? {} : { sourceUrl }),
+    ...(protocol === undefined ? {} : { protocol }),
   }
 }
 

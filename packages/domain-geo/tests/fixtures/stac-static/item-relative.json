@@ -1,0 +1,13 @@
+{
+  "type": "Feature",
+  "id": "ncei13_n17x75_w065x75_2022v1",
+  "bbox": [-65.75, 17.5, -65.5, 17.75],
+  "properties": { "datetime": "2022-06-01T00:00:00Z", "license": "NLPL" },
+  "assets": {
+    "ncei13_n17x75_w065x75_2022v1": {
+      "href": "../ncei13_n17x75_w065x75_2022v1.tif",
+      "type": "image/tiff"
+    }
+  },
+  "links": [{ "rel": "self", "href": "./ncei13_n17x75_w065x75_2022v1.json" }]
+}

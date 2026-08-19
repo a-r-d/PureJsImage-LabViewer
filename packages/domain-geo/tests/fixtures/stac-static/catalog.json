@@ -1,0 +1,15 @@
+{
+  "type": "Catalog",
+  "id": "static-root",
+  "stac_version": "1.0.0",
+  "description": "Fixture static STAC catalog",
+  "links": [
+    { "rel": "root", "href": "./catalog.json", "type": "application/json" },
+    {
+      "rel": "self",
+      "href": "https://static.example.test/stac/catalog.json",
+      "type": "application/json"
+    },
+    { "rel": "child", "href": "./collection.json" }
+  ]
+}

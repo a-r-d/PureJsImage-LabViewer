@@ -1,4 +1,8 @@
-export { candidatesFromItem, preferredCandidate } from './catalog/candidates.js'
+export {
+  candidatesFromItem,
+  preferredCandidate,
+  preferredSearchCandidate,
+} from './catalog/candidates.js'
 export { parseAtlasDeepLink, serializeAtlasDeepLink } from './catalog/deep-link.js'
 export {
   KY_FROM_ABOVE_CATALOG,
@@ -6,24 +10,67 @@ export {
   KY_FROM_ABOVE_DEFAULT_BBOX,
 } from './catalog/ky-from-above.js'
 export {
+  NOAA_DIGITAL_COAST_CATALOG,
+  NOAA_DIGITAL_COAST_CATALOG_ID,
+  NOAA_PALM_COAST_BBOX,
+  NOAA_PALM_COAST_COLLECTION_ID,
+  NOAA_PUERTO_RICO_BBOX,
+  NOAA_PUERTO_RICO_COLLECTION_ID,
+  NOAA_WI_NAIP_COLLECTION_ID,
+  NOAA_WISCONSIN_BBOX,
+} from './catalog/noaa-digital-coast.js'
+export {
   CATALOG_REGISTRY,
   CATALOG_STORIES,
   catalogById,
   storiesForCatalog,
 } from './catalog/registry.js'
+export type { CatalogService, CatalogServiceOptions } from './catalog/service.js'
+export { createCatalogService } from './catalog/service.js'
 export { parseAtlasCatalogSession, serializeAtlasCatalogSession } from './catalog/session.js'
 export type {
   AtlasCatalogSession,
   AtlasDeepLink,
   CatalogAssetIdentity,
   CatalogAssetProvenance,
+  CatalogCollectionSummary,
   CatalogCrsDefinition,
+  CatalogCursor,
+  CatalogEndpoint,
+  CatalogProtocol,
   CatalogRegistryEntry,
+  CatalogSearchItem,
+  CatalogSearchPage,
+  CatalogSearchRequest,
   CatalogSourceCandidate,
   CatalogStory,
   CatalogStoryPreset,
+  StaticStacCollectionConfig,
 } from './catalog/types.js'
-export { collectionIdsForStory } from './catalog/types.js'
+export {
+  catalogProtocolHint,
+  catalogRootHref,
+  collectionIdsForStory,
+} from './catalog/types.js'
+export {
+  USGS_3DEP_CATALOG,
+  USGS_3DEP_CATALOG_ID,
+  USGS_3DEP_CINCINNATI_BBOX,
+  USGS_3DEP_DEM_1M,
+  USGS_3DEP_NED_1,
+  USGS_3DEP_NED_13,
+  USGS_3DEP_SEAMLESS_1M,
+} from './catalog/usgs-3dep.js'
+export {
+  LANDSAT_SR_OFFSET,
+  LANDSAT_SR_SCALE,
+  USGS_LANDSAT_CATALOG,
+  USGS_LANDSAT_CATALOG_ID,
+  USGS_LANDSAT_DEFAULT_BBOX,
+  USGS_LANDSAT_DEFAULT_DATETIME,
+  USGS_LANDSAT_SR_COLLECTION_ID,
+  USGS_LANDSAT_ST_COLLECTION_ID,
+} from './catalog/usgs-landsat.js'
 export {
   assertSameCrsComposition,
   orderedGeoLayers,

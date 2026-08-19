@@ -16,24 +16,22 @@ import {
   buildCogXrayReport,
   CATALOG_REGISTRY,
   CATALOG_STORIES,
-  candidatesFromItem,
   catalogById,
   classifyGeoOpenError,
   classifyStacClientError,
+  createCatalogService,
   createGeoRasterLayer,
   createGeoRasterSource,
-  createStacClient,
   formatGeoCursorReadout,
   GEO_FILE_ACCEPT,
   geoUiContributions,
   parseAtlasDeepLink,
-  preferredCandidate,
   registerCrsDefinition,
   StacClientError,
   serializeAtlasDeepLink,
   storiesForCatalog,
 } from '@pji-workbench/domain-geo'
-import { ImagingRpcError } from '@pji-workbench/imaging'
+import { ImagingRpcError, preflightRasterAsset } from '@pji-workbench/imaging'
 import { Button, EmptyState, ErrorState, Icon, ThemeRoot } from '@pji-workbench/ui'
 import { WorkbenchShell } from '@pji-workbench/workbench-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
@@ -82,13 +80,30 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [overview, setOverview] = useState(0)
   const [settled, setSettled] = useState(true)
   const [viewBbox, setViewBbox] = useState<StacBbox | undefined>()
+  const onViewBbox = useCallback((next: StacBbox | undefined) => {
+    setViewBbox((current) => {
+      if (current === next) return current
+      if (current === undefined || next === undefined) return next
+      if (
+        current[0] === next[0] &&
+        current[1] === next[1] &&
+        current[2] === next[2] &&
+        current[3] === next[3]
+      ) {
+        return current
+      }
+      return next
+    })
+  }, [])
   const openedRef = useRef(opened)
   openedRef.current = opened
-  const stacRef = useRef(
-    createStacClient({
+  const catalogServiceRef = useRef(
+    createCatalogService({
       fetch,
       cache: createLocalStacCache(),
-      cacheVersion: CATALOG_REGISTRY.map((entry) => `${entry.id}:${entry.cacheVersion}`).join('|'),
+      cacheVersion: CATALOG_REGISTRY.map(
+        (entry) => `${entry.id}:${entry.protocol}:${entry.cacheVersion}`,
+      ).join('|'),
     }),
   )
 
@@ -289,13 +304,36 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           const required = maxBandIndex(preset.style.mapping)
           return candidate.bandCount === undefined ? required === 0 : required < candidate.bandCount
         })
-      void openRemote(candidate.href, {
-        catalog: candidate,
-        inspect,
-        ...(candidate.style === undefined ? {} : { style: candidate.style }),
-        ...(presets.length === 0 ? {} : { presets }),
-        label: candidate.label,
-      })
+      void (async () => {
+        const probe = await preflightRasterAsset(candidate.href)
+        if (probe.compatibility !== 'ready') {
+          setError({
+            kind:
+              probe.compatibility === 'metadata-only'
+                ? 'metadata-only'
+                : probe.compatibility === 'unsupported-scheme'
+                  ? 'unsupported-scheme'
+                  : probe.compatibility === 'browser-network-blocked'
+                    ? 'browser-network-blocked'
+                    : probe.compatibility === 'cors'
+                      ? 'cors'
+                      : probe.compatibility === 'no-range'
+                        ? 'range'
+                        : 'unsupported',
+            title: probe.title,
+            message: probe.message,
+            ...(probe.guidance === undefined ? {} : { guidance: probe.guidance }),
+          })
+          return
+        }
+        openRemote(candidate.href, {
+          catalog: candidate,
+          inspect,
+          ...(candidate.style === undefined ? {} : { style: candidate.style }),
+          ...(presets.length === 0 ? {} : { presets }),
+          label: candidate.label,
+        })
+      })()
     },
     [openRemote],
   )
@@ -314,13 +352,11 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       hashAbort = controller
       void (async () => {
         try {
-          const itemHref = new URL(
-            `collections/${link.collectionId}/items/${encodeURIComponent(link.itemId)}`,
-            entry.href.endsWith('/') ? entry.href : `${entry.href}/`,
-          ).toString()
-          const item = await stacRef.current.getItem(itemHref, controller.signal)
-          const candidates = candidatesFromItem(entry, item)
-          const candidate = preferredCandidate(candidates, item, link.assetKey)
+          const candidate = await catalogServiceRef.current.resolveDeepLink(
+            entry,
+            link,
+            controller.signal,
+          )
           if (cancelled || controller.signal.aborted || candidate === undefined) return
           openCatalogAsset(candidate, link.inspect === true)
         } catch (caught) {
@@ -479,7 +515,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                 onOverview={setOverview}
                 onPointer={onPointer}
                 onSettled={setSettled}
-                onViewBbox={setViewBbox}
+                onViewBbox={onViewBbox}
                 rasters={viewportRasters}
               />
             </div>
@@ -518,9 +554,10 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               <CatalogPanel
                 busy={busy || !ready}
                 catalogs={CATALOG_REGISTRY}
-                client={stacRef.current}
                 onOpen={openCatalogAsset}
+                onPreflight={(href, signal) => preflightRasterAsset(href, { fetch, signal })}
                 searchNonce={searchNonce}
+                service={catalogServiceRef.current}
                 stories={CATALOG_STORIES}
                 {...(viewBbox === undefined ? {} : { viewBbox })}
               />

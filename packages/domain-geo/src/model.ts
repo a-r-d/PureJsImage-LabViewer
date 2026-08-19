@@ -62,6 +62,7 @@ export interface GeoCatalogReference {
   readonly itemId: string
   readonly assetKey: string
   readonly href: string
+  readonly protocol?: string
   readonly provider?: string
   readonly license?: string
   readonly attribution?: string
@@ -517,6 +518,9 @@ function normalizeCatalogReference(value: GeoCatalogReference): GeoCatalogRefere
     ...(value.attribution === undefined
       ? {}
       : { attribution: boundedString(value.attribution, 'attribution') }),
+    ...(value.protocol === undefined
+      ? {}
+      : { protocol: boundedString(value.protocol, 'protocol') }),
     ...(sourceUrl === undefined ? {} : { sourceUrl }),
   }
 }

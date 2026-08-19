@@ -1,5 +1,6 @@
 import type {
   StacAsset,
+  StacAssetAlternate,
   StacBbox,
   StacCatalog,
   StacCollection,
@@ -12,14 +13,18 @@ import type {
 } from './types.js'
 import { StacClientError } from './types.js'
 
-export function parseStacCatalog(value: unknown): StacCatalog {
+export interface StacParseOptions {
+  readonly baseHref?: string
+}
+
+export function parseStacCatalog(value: unknown, options?: StacParseOptions): StacCatalog {
   const record = asRecord(value, 'STAC catalog')
   const type = optionalString(record['type'])
   if (type !== undefined && type !== 'Catalog' && type !== 'Collection') {
     throw new StacClientError('INVALID_DOCUMENT', 'The STAC root is not a Catalog or Collection.')
   }
   const id = requiredString(record['id'], 'STAC catalog id')
-  const links = parseLinks(record['links'])
+  const links = parseLinks(record['links'], options?.baseHref)
   const conformsTo = parseStringArray(record['conformsTo'])
   const title = optionalString(record['title'])
   const description = optionalString(record['description'])
@@ -38,8 +43,8 @@ export function parseStacCatalog(value: unknown): StacCatalog {
   }
 }
 
-export function parseStacCollection(value: unknown): StacCollection {
-  const catalog = parseStacCatalog(value)
+export function parseStacCollection(value: unknown, options?: StacParseOptions): StacCollection {
+  const catalog = parseStacCatalog(value, options)
   const record = asRecord(value, 'STAC collection')
   const extent = isRecord(record['extent']) ? record['extent'] : undefined
   const spatial =
@@ -56,7 +61,10 @@ export function parseStacCollection(value: unknown): StacCollection {
   }
 }
 
-export function parseStacCollections(value: unknown): readonly StacCollection[] {
+export function parseStacCollections(
+  value: unknown,
+  options?: StacParseOptions,
+): readonly StacCollection[] {
   const record = asRecord(value, 'STAC collections')
   const collections = record['collections']
   if (!Array.isArray(collections)) {
@@ -65,10 +73,10 @@ export function parseStacCollections(value: unknown): readonly StacCollection[] 
       'The collections document is missing collections.',
     )
   }
-  return collections.map(parseStacCollection)
+  return collections.map((collection) => parseStacCollection(collection, options))
 }
 
-export function parseStacItem(value: unknown): StacItem {
+export function parseStacItem(value: unknown, options?: StacParseOptions): StacItem {
   const record = asRecord(value, 'STAC item')
   if (record['type'] !== 'Feature') {
     throw new StacClientError('INVALID_DOCUMENT', 'A STAC item must be a GeoJSON Feature.')
@@ -76,9 +84,11 @@ export function parseStacItem(value: unknown): StacItem {
   const id = requiredString(record['id'], 'STAC item id')
   const properties = isRecord(record['properties']) ? record['properties'] : {}
   const assetsRecord = isRecord(record['assets']) ? record['assets'] : {}
-  const assets = Object.entries(assetsRecord).map(([key, asset]) => parseAsset(key, asset))
-  const links = parseLinks(record['links'])
-  const bbox = parseBbox(record['bbox']) ?? parseBbox(properties['proj:bbox'])
+  const assets = Object.entries(assetsRecord).map(([key, asset]) =>
+    parseAsset(key, asset, options?.baseHref),
+  )
+  const links = parseLinks(record['links'], options?.baseHref)
+  const bbox = parseStacBbox(record['bbox']) ?? parseStacBbox(properties['proj:bbox'])
   const datetime = optionalString(properties['datetime'])
   const startDatetime = optionalString(properties['start_datetime'])
   const endDatetime = optionalString(properties['end_datetime'])
@@ -110,7 +120,10 @@ export function parseStacItem(value: unknown): StacItem {
   }
 }
 
-export function parseStacItemCollection(value: unknown): StacItemCollection {
+export function parseStacItemCollection(
+  value: unknown,
+  options?: StacParseOptions,
+): StacItemCollection {
   const record = asRecord(value, 'STAC item collection')
   if (record['type'] !== 'FeatureCollection') {
     throw new StacClientError('INVALID_DOCUMENT', 'STAC search must return a FeatureCollection.')
@@ -119,17 +132,26 @@ export function parseStacItemCollection(value: unknown): StacItemCollection {
   if (!Array.isArray(features)) {
     throw new StacClientError('INVALID_DOCUMENT', 'The FeatureCollection is missing features.')
   }
-  const links = parseLinks(record['links'])
+  const links = parseLinks(record['links'], options?.baseHref)
   const next = links.find((link) => link.rel === 'next')
   const numberMatched = optionalFinite(record['numberMatched'])
   const numberReturned = optionalFinite(record['numberReturned'])
   return {
     type: 'FeatureCollection',
-    items: features.map(parseStacItem),
+    items: features.map((feature) => parseStacItem(feature, options)),
     links,
     ...(numberMatched === undefined ? {} : { numberMatched }),
     ...(numberReturned === undefined ? {} : { numberReturned }),
-    ...(next === undefined ? {} : { nextHref: next.href }),
+    ...(next === undefined ? {} : { nextHref: next.href, next }),
+  }
+}
+
+export function resolveStacHref(href: string, baseHref: string | undefined): string {
+  if (baseHref === undefined || baseHref.length === 0) return href
+  try {
+    return new URL(href, baseHref).toString()
+  } catch {
+    return href
   }
 }
 
@@ -137,15 +159,16 @@ export function linkHref(links: readonly StacLink[], rel: string): string | unde
   return links.find((link) => link.rel === rel)?.href
 }
 
-function parseAsset(key: string, value: unknown): StacAsset {
+function parseAsset(key: string, value: unknown, baseHref: string | undefined): StacAsset {
   const record = asRecord(value, `STAC asset ${key}`)
-  const href = requiredString(record['href'], `STAC asset ${key} href`)
+  const href = resolveStacHref(requiredString(record['href'], `STAC asset ${key} href`), baseHref)
   const roles = parseStringArray(record['roles'])
   const title = optionalString(record['title'])
   const type = optionalString(record['type'])
   const fileSize = optionalFinite(record['file:size'])
   const fileHeaderSize = optionalFinite(record['file:header_size'])
   const fileChecksum = optionalString(record['file:checksum'])
+  const alternate = parseAlternate(record['alternate'], baseHref)
   return {
     key,
     href,
@@ -154,13 +177,29 @@ function parseAsset(key: string, value: unknown): StacAsset {
     roles,
     eoBands: parseEoBands(record['eo:bands']),
     rasterBands: parseRasterBands(record['raster:bands']),
+    alternate,
     ...(fileSize === undefined ? {} : { fileSize }),
     ...(fileHeaderSize === undefined ? {} : { fileHeaderSize }),
     ...(fileChecksum === undefined ? {} : { fileChecksum }),
   }
 }
 
-function parseLinks(value: unknown): readonly StacLink[] {
+function parseAlternate(
+  value: unknown,
+  baseHref: string | undefined,
+): readonly StacAssetAlternate[] {
+  if (!isRecord(value)) return []
+  const alternate: StacAssetAlternate[] = []
+  for (const [key, entry] of Object.entries(value)) {
+    if (!isRecord(entry)) continue
+    const href = optionalString(entry['href'])
+    if (href === undefined) continue
+    alternate.push({ key, href: resolveStacHref(href, baseHref) })
+  }
+  return alternate
+}
+
+function parseLinks(value: unknown, baseHref: string | undefined): readonly StacLink[] {
   if (value === undefined) return []
   if (!Array.isArray(value)) {
     throw new StacClientError('INVALID_DOCUMENT', 'STAC links must be an array.')
@@ -170,12 +209,16 @@ function parseLinks(value: unknown): readonly StacLink[] {
     const type = optionalString(record['type'])
     const title = optionalString(record['title'])
     const method = optionalString(record['method'])
+    const body = isRecord(record['body']) ? record['body'] : undefined
+    const merge = record['merge'] === true ? true : undefined
     return {
       rel: requiredString(record['rel'], `STAC link ${index} rel`),
-      href: requiredString(record['href'], `STAC link ${index} href`),
+      href: resolveStacHref(requiredString(record['href'], `STAC link ${index} href`), baseHref),
       ...(type === undefined ? {} : { type }),
       ...(title === undefined ? {} : { title }),
       ...(method === undefined ? {} : { method }),
+      ...(body === undefined ? {} : { body }),
+      ...(merge === undefined ? {} : { merge }),
     }
   })
 }
@@ -236,7 +279,7 @@ function parseRasterBands(value: unknown): readonly StacRasterBand[] {
   return bands
 }
 
-function parseBbox(value: unknown): StacBbox | undefined {
+export function parseStacBbox(value: unknown): StacBbox | undefined {
   if (!Array.isArray(value) || value.length < 4) return undefined
   const west = value[0]
   const south = value[1]
@@ -259,7 +302,7 @@ function parseBbox(value: unknown): StacBbox | undefined {
 
 function firstBbox(value: unknown): StacBbox | undefined {
   if (!Array.isArray(value) || value.length === 0) return undefined
-  return parseBbox(value[0])
+  return parseStacBbox(value[0])
 }
 
 function firstInterval(value: unknown): readonly [string | null, string | null] | undefined {

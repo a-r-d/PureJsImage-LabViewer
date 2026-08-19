@@ -7,6 +7,7 @@ import {
   CRS_EPSG_4326,
   candidatesFromItem,
   catalogById,
+  catalogRootHref,
   collectionIdsForStory,
   createGeoProject,
   createGeoRasterSource,
@@ -31,8 +32,14 @@ const wgs84 = {
 
 describe('catalog registry', () => {
   it('keeps Kentucky collection IDs in the registry, not in story React surfaces', () => {
-    expect(CATALOG_REGISTRY.map((entry) => entry.id)).toEqual(['ky-from-above'])
-    expect(KY_FROM_ABOVE_CATALOG.href).toContain('execute-api')
+    expect(CATALOG_REGISTRY.map((entry) => entry.id)).toEqual([
+      'noaa-digital-coast',
+      'usgs-3dep',
+      'usgs-landsat',
+      'ky-from-above',
+    ])
+    expect(catalogRootHref(KY_FROM_ABOVE_CATALOG)).toContain('execute-api')
+    expect(KY_FROM_ABOVE_CATALOG.protocol).toBe('stac-api')
     const stories = storiesForCatalog('ky-from-above')
     expect(stories.map((story) => story.id)).toEqual([
       'kentucky-through-time',
@@ -42,6 +49,7 @@ describe('catalog registry', () => {
     ])
     for (const story of CATALOG_STORIES) {
       expect(story).not.toHaveProperty('collectionIds')
+      if (story.catalogId !== KY_FROM_ABOVE_CATALOG.id) continue
       const ids = collectionIdsForStory(KY_FROM_ABOVE_CATALOG, story)
       if (story.id === 'terrain-lab') {
         expect(ids.some((id) => id.startsWith('dem-'))).toBe(true)

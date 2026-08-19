@@ -1,0 +1,23 @@
+{
+  "stac_version": "1.1.0",
+  "type": "Catalog",
+  "id": "landsat-fixture",
+  "title": "Landsat fixture",
+  "links": [
+    { "rel": "self", "href": "./", "type": "application/json" },
+    { "rel": "root", "href": "./", "type": "application/json" },
+    { "rel": "data", "href": "./collections" },
+    {
+      "rel": "search",
+      "type": "application/geo+json",
+      "href": "./search",
+      "method": "GET"
+    },
+    {
+      "rel": "search",
+      "type": "application/geo+json",
+      "href": "./search",
+      "method": "POST"
+    }
+  ]
+}

@@ -263,7 +263,6 @@ export function GeoViewport({
     }
 
     const scheduleTiles = (): void => {
-      onSettled(false)
       const nextOverview = selectOverviewLevel(
         overviewSizes(primary.dataset, full),
         camera,
@@ -328,6 +327,7 @@ export function GeoViewport({
         contexts.set(layer.id, { raster, overview: layerOverview, mapping, adapter: layerAdapter })
       }
       const plan = planMultiLayerTiles(planInputs, visible, TILE_SIZE, PREFETCH_TILES)
+      let issued = 0
       for (const layerPlan of plan.layers) {
         const context = contexts.get(layerPlan.layerId)
         if (context === undefined) continue
@@ -337,6 +337,7 @@ export function GeoViewport({
           const tileId = `${context.raster.handleId}:${layerPlan.layerId}:${context.overview}:${mappingKey}:${candidate.column}:${candidate.row}`
           required.add(tileId)
           if (renderer.has(tileId) || pending.has(tileId)) continue
+          issued += 1
           const controller = new AbortController()
           pending.set(tileId, controller)
           const currentGeneration = requestGeneration
@@ -387,7 +388,8 @@ export function GeoViewport({
       }
       renderer.retain(required)
       draw()
-      if (required.size === 0) onSettled(true)
+      if (issued > 0) onSettled(false)
+      else if (pending.size === 0) onSettled(true)
       emitViewBbox()
     }
 

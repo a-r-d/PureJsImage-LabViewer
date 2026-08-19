@@ -31,6 +31,8 @@
     "test:e2e": "node tooling/scripts/run-e2e.mjs",
     "test:e2e:science": "node tooling/scripts/run-e2e.mjs --suite=science",
     "test:e2e:geo": "node tooling/scripts/run-e2e.mjs --suite=geo",
+    "test:e2e:geo:live": "PJI_GEO_LIVE=1 node tooling/scripts/run-e2e.mjs --suite=geo --grep catalog-live",
+    "geo:probe-catalogs": "node tooling/scripts/probe-geo-catalogs.mjs",
     "test:a11y": "playwright test --grep @a11y --project=chromium",
     "test:visual": "playwright test --grep @visual --project=chromium && playwright test -c playwright.geo.config.ts --grep @visual --project=chromium",
     "test:corpus": "corepack pnpm --filter @pji-workbench/test-corpus test",

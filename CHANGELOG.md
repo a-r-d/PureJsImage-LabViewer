@@ -7,6 +7,15 @@ The application is not yet versioned for release (`0.0.0`).
 
 ## [Unreleased]
 
+### Added
+
+- Atlas catalog adapters for STAC API, static STAC, and USGS TNMAccess. The registry lists NOAA
+  Digital Coast, USGS 3DEP, USGS Landsat, and Kentucky From Above. CatalogPanel talks only to
+  `CatalogService`. Imaging raster preflight (HTTPS Range + TIFF inspect) must report Ready before
+  Atlas opens a catalog URL. `s3://` assets stay metadata-only. Opt-in diagnostics:
+  `pnpm geo:probe-catalogs` and `PJI_GEO_LIVE=1 pnpm test:e2e:geo:live`. See
+  `docs/GOVERNMENT_GEO_SOURCES.md`.
+
 ### Fixed
 
 - Atlas catalog tiles open the preferred Cloud Optimized GeoTIFF on click. The empty-state Search

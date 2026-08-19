@@ -1,47 +1,55 @@
 import {
+  type CatalogCollectionSummary,
+  type CatalogCursor,
   type CatalogRegistryEntry,
+  type CatalogSearchItem,
+  type CatalogService,
   type CatalogSourceCandidate,
   type CatalogStory,
-  candidatesFromItem,
+  catalogProtocolHint,
   classifyStacClientError,
   collectionIdsForStory,
   type GeoOpenFailure,
-  preferredCandidate,
+  preferredSearchCandidate,
   type RasterStyle,
   type StacBbox,
-  type StacClient,
   StacClientError,
-  type StacCollection,
-  type StacItem,
 } from '@pji-workbench/domain-geo'
+import {
+  preflightBadgeLabel,
+  type RasterAssetPreflight,
+  type RasterPreflightCompatibility,
+} from '@pji-workbench/imaging'
 import { Button, ErrorState } from '@pji-workbench/ui'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export function CatalogPanel({
-  client,
+  service,
   catalogs,
   stories,
   viewBbox,
   busy,
   searchNonce = 0,
   onOpen,
+  onPreflight,
 }: {
-  readonly client: StacClient
+  readonly service: CatalogService
   readonly catalogs: readonly CatalogRegistryEntry[]
   readonly stories: readonly CatalogStory[]
   readonly viewBbox?: StacBbox
   readonly busy: boolean
   readonly searchNonce?: number
   readonly onOpen: (candidate: CatalogSourceCandidate, inspect: boolean) => void
+  readonly onPreflight: (href: string, signal: AbortSignal) => Promise<RasterAssetPreflight>
 }) {
   const [catalogId, setCatalogId] = useState(catalogs[0]?.id ?? '')
   const catalog = catalogs.find((entry) => entry.id === catalogId) ?? catalogs[0]
-  const [collections, setCollections] = useState<readonly StacCollection[]>([])
+  const [collections, setCollections] = useState<readonly CatalogCollectionSummary[]>([])
   const [collectionId, setCollectionId] = useState('')
-  const [datetime, setDatetime] = useState('')
+  const [datetime, setDatetime] = useState(catalog?.defaultDatetime ?? '')
   const [bboxText, setBboxText] = useState(formatBbox(catalog?.defaultBbox))
-  const [items, setItems] = useState<readonly StacItem[]>([])
-  const [nextHref, setNextHref] = useState<string | undefined>()
+  const [items, setItems] = useState<readonly CatalogSearchItem[]>([])
+  const [next, setNext] = useState<CatalogCursor | undefined>()
   const [selectedItemId, setSelectedItemId] = useState<string | undefined>()
   const [assetKey, setAssetKey] = useState<string | undefined>()
   const [error, setError] = useState<GeoOpenFailure | null>(null)
@@ -49,9 +57,11 @@ export function CatalogPanel({
   const [status, setStatus] = useState('Search a collection to list Cloud Optimized GeoTIFF tiles.')
   const [preferInspect, setPreferInspect] = useState(false)
   const [storyStyle, setStoryStyle] = useState<RasterStyle | undefined>()
+  const [preflight, setPreflight] = useState<Readonly<Record<string, RasterAssetPreflight>>>({})
   const requestRef = useRef<AbortController | null>(null)
   const requestGenRef = useRef(0)
   const lastSearchNonceRef = useRef(0)
+  const preflightRef = useRef<AbortController | null>(null)
 
   const catalogStories = stories.filter((story) => story.catalogId === catalog?.id)
 
@@ -69,11 +79,15 @@ export function CatalogPanel({
     setLoading(true)
     setError(null)
     try {
-      const root = await client.getCatalog(catalog.href, signal)
-      const next = await client.listCollections(root, signal)
+      const nextCollections = await service.listCollections(catalog, signal)
       if (requestGenRef.current !== generation) return
-      setCollections(next)
-      setStatus(`${next.length} collections`)
+      setCollections(nextCollections)
+      setCollectionId((current) =>
+        nextCollections.some((collection) => collection.id === current)
+          ? current
+          : (nextCollections[0]?.id ?? ''),
+      )
+      setStatus(`${nextCollections.length} collections`)
     } catch (caught) {
       if (signal.aborted || requestGenRef.current !== generation) return
       setCollections([])
@@ -81,14 +95,44 @@ export function CatalogPanel({
     } finally {
       if (requestGenRef.current === generation) setLoading(false)
     }
-  }, [beginRequest, catalog, client])
+  }, [beginRequest, catalog, service])
 
   useEffect(() => {
     void loadCollections()
     return () => {
       requestRef.current?.abort()
+      preflightRef.current?.abort()
     }
   }, [loadCollections])
+
+  const runPreflight = useCallback(
+    async (pageItems: readonly CatalogSearchItem[], signal: AbortSignal) => {
+      preflightRef.current?.abort()
+      const controller = new AbortController()
+      preflightRef.current = controller
+      const combined = AbortSignal.any([signal, controller.signal])
+      const updates: Record<string, RasterAssetPreflight> = {}
+      for (const item of pageItems) {
+        const candidate = preferredSearchCandidate(item, undefined, catalog?.preferredAssetKeys)
+        if (candidate === undefined) continue
+        try {
+          updates[candidate.href] = await onPreflight(candidate.href, combined)
+        } catch {
+          if (combined.aborted) return
+          updates[candidate.href] = {
+            href: candidate.href,
+            compatibility: 'unknown',
+            title: 'Preflight failed',
+            message: 'Could not probe this raster.',
+            transport: { href: candidate.href, scheme: '', bytesRead: 0 },
+          }
+        }
+        if (combined.aborted) return
+        setPreflight((current) => ({ ...current, ...updates }))
+      }
+    },
+    [catalog?.preferredAssetKeys, onPreflight],
+  )
 
   const search = useCallback(
     async (overrides?: {
@@ -100,13 +144,13 @@ export function CatalogPanel({
       const { generation, signal } = beginRequest()
       setLoading(true)
       setError(null)
+      setPreflight({})
       try {
-        const root = await client.getCatalog(catalog.href, signal)
         const bbox = overrides?.bbox ?? parseBbox(bboxText) ?? catalog.defaultBbox
         const collectionsFilter =
           overrides?.collections ?? (collectionId.length > 0 ? [collectionId] : undefined)
-        const page = await client.search(
-          root,
+        const page = await service.search(
+          catalog,
           {
             ...(bbox === undefined ? {} : { bbox }),
             ...((overrides?.datetime ?? datetime).length > 0
@@ -119,7 +163,7 @@ export function CatalogPanel({
         )
         if (requestGenRef.current !== generation) return
         setItems(page.items)
-        setNextHref(page.nextHref)
+        setNext(page.next)
         setSelectedItemId((current) =>
           page.items.some((item) => item.id === current) ? current : undefined,
         )
@@ -129,49 +173,60 @@ export function CatalogPanel({
             ? `${page.items.length} items`
             : `${page.items.length} of ${page.numberMatched} items`,
         )
+        void runPreflight(page.items, signal)
       } catch (caught) {
         if (signal.aborted || requestGenRef.current !== generation) return
         setItems([])
-        setNextHref(undefined)
+        setNext(undefined)
         setError(asCatalogFailure(caught))
       } finally {
         if (requestGenRef.current === generation) setLoading(false)
       }
     },
-    [beginRequest, bboxText, catalog, client, collectionId, datetime],
+    [beginRequest, bboxText, catalog, collectionId, datetime, runPreflight, service],
   )
 
   const loadMore = useCallback(async () => {
-    if (nextHref === undefined) return
+    if (catalog === undefined || next === undefined) return
     const { generation, signal } = beginRequest()
     setLoading(true)
     try {
-      const page = await client.follow(nextHref, signal)
+      const page = await service.follow(catalog, next, signal)
       if (requestGenRef.current !== generation) return
-      setItems((current) => [...current, ...page.items])
-      setNextHref(page.nextHref)
+      setItems((current) => {
+        const merged = [...current, ...page.items]
+        void runPreflight(page.items, signal)
+        return merged
+      })
+      setNext(page.next)
     } catch (caught) {
       if (signal.aborted || requestGenRef.current !== generation) return
       setError(asCatalogFailure(caught))
     } finally {
       if (requestGenRef.current === generation) setLoading(false)
     }
-  }, [beginRequest, client, nextHref])
+  }, [beginRequest, catalog, next, runPreflight, service])
 
   const openItem = useCallback(
-    (item: StacItem, inspect: boolean, nextAssetKey?: string) => {
+    (item: CatalogSearchItem, inspect: boolean, nextAssetKey?: string) => {
       if (catalog === undefined) return
-      const nextCandidates =
+      const styled =
         storyStyle === undefined
-          ? candidatesFromItem(catalog, item)
-          : candidatesFromItem(catalog, item, { style: storyStyle })
-      const next = preferredCandidate(nextCandidates, item, nextAssetKey)
+          ? item.candidates
+          : item.candidates.map((candidate) => ({ ...candidate, style: storyStyle }))
+      const nextCandidate = preferredSearchCandidate(
+        { ...item, candidates: styled },
+        nextAssetKey,
+        catalog.preferredAssetKeys,
+      )
       setSelectedItemId(item.id)
-      setAssetKey(nextAssetKey ?? next?.assetKey)
-      if (next === undefined) return
-      onOpen(next, inspect)
+      setAssetKey(nextAssetKey ?? nextCandidate?.assetKey)
+      if (nextCandidate === undefined) return
+      const probe = preflight[nextCandidate.href]
+      if (probe?.compatibility !== 'ready') return
+      onOpen(nextCandidate, inspect)
     },
-    [catalog, onOpen, storyStyle],
+    [catalog, onOpen, preflight, storyStyle],
   )
 
   useEffect(() => {
@@ -184,13 +239,17 @@ export function CatalogPanel({
 
   const selected = items.find((item) => item.id === selectedItemId)
   const candidates =
-    catalog === undefined || selected === undefined
+    selected === undefined
       ? []
       : storyStyle === undefined
-        ? candidatesFromItem(catalog, selected)
-        : candidatesFromItem(catalog, selected, { style: storyStyle })
+        ? selected.candidates
+        : selected.candidates.map((candidate) => ({ ...candidate, style: storyStyle }))
   const active =
-    selected === undefined ? undefined : preferredCandidate(candidates, selected, assetKey)
+    selected === undefined
+      ? undefined
+      : preferredSearchCandidate({ ...selected, candidates }, assetKey, catalog?.preferredAssetKeys)
+  const activeProbe = active === undefined ? undefined : preflight[active.href]
+  const canOpen = activeProbe?.compatibility === 'ready'
 
   return (
     <div className="geo-inspector-body geo-catalog" data-testid="catalog-panel">
@@ -205,8 +264,10 @@ export function CatalogPanel({
             setItems([])
             setPreferInspect(false)
             setStoryStyle(undefined)
-            const next = catalogs.find((entry) => entry.id === nextId)
-            setBboxText(formatBbox(next?.defaultBbox))
+            setPreflight({})
+            const nextCatalog = catalogs.find((entry) => entry.id === nextId)
+            setBboxText(formatBbox(nextCatalog?.defaultBbox))
+            setDatetime(nextCatalog?.defaultDatetime ?? '')
           }}
           value={catalog?.id ?? ''}
         >
@@ -224,6 +285,9 @@ export function CatalogPanel({
           </a>
           {` · ${catalog.license} · ${catalog.attribution}`}
         </p>
+      )}
+      {catalog === undefined ? null : (
+        <p className="geo-catalog-hint">{catalogProtocolHint(catalog)}</p>
       )}
       <label>
         Collection
@@ -287,7 +351,7 @@ export function CatalogPanel({
         <Button
           onClick={() => {
             void (async () => {
-              await client.invalidate()
+              await service.invalidate()
               await loadCollections()
             })()
           }}
@@ -299,7 +363,7 @@ export function CatalogPanel({
       <p className="geo-catalog-hint">
         {items.length === 0
           ? 'Search a collection or pick a story, then click a tile to open it.'
-          : 'Click a tile to open it in the map. Atlas fetches only the HTTP ranges for the current view.'}
+          : 'Click a Ready tile to open it in the map. Atlas fetches only the HTTP ranges for the current view.'}
       </p>
       {error !== null ? (
         <ErrorState
@@ -307,6 +371,33 @@ export function CatalogPanel({
           title={error.title}
         />
       ) : null}
+      <ol className="geo-catalog-results">
+        {items.map((item) => {
+          const candidate = preferredSearchCandidate(item, undefined, catalog?.preferredAssetKeys)
+          const probe = candidate === undefined ? undefined : preflight[candidate.href]
+          const compatibility: RasterPreflightCompatibility = probe?.compatibility ?? 'checking'
+          const opening = busy && item.id === selectedItemId
+          return (
+            <li key={`${item.collectionId}:${item.id}`}>
+              <button
+                aria-label={`Open ${item.id}`}
+                aria-pressed={item.id === selectedItemId}
+                disabled={opening || probe?.compatibility !== 'ready'}
+                onClick={() => openItem(item, preferInspect)}
+                type="button"
+              >
+                <strong>{item.id}</strong>
+                <span>
+                  {item.collectionId}
+                  {item.datetime === undefined ? '' : ` · ${item.datetime.slice(0, 10)}`}
+                  {` · ${opening ? 'Opening…' : preflightBadgeLabel(compatibility)}`}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+      {next === undefined ? null : <Button onClick={() => void loadMore()}>More items</Button>}
       {catalogStories.length > 0 ? (
         <fieldset className="geo-story-chips">
           <legend>Stories</legend>
@@ -335,27 +426,6 @@ export function CatalogPanel({
           ))}
         </fieldset>
       ) : null}
-      <ol className="geo-catalog-results">
-        {items.map((item) => (
-          <li key={item.id}>
-            <button
-              aria-label={`Open ${item.id}`}
-              aria-pressed={item.id === selectedItemId}
-              disabled={busy && item.id === selectedItemId}
-              onClick={() => openItem(item, preferInspect)}
-              type="button"
-            >
-              <strong>{item.id}</strong>
-              <span>
-                {item.collection ?? 'item'}
-                {item.datetime === undefined ? '' : ` · ${item.datetime.slice(0, 10)}`}
-                {` · ${busy && item.id === selectedItemId ? 'Opening…' : 'Click to open'}`}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ol>
-      {nextHref === undefined ? null : <Button onClick={() => void loadMore()}>More items</Button>}
       {selected === undefined || active === undefined ? null : (
         <div className="geo-asset-picker">
           {candidates.length > 1 ? (
@@ -377,16 +447,21 @@ export function CatalogPanel({
           ) : (
             <p>{`Asset ${active.assetKey}`}</p>
           )}
+          <p className="geo-catalog-hint" data-testid="catalog-preflight">
+            {activeProbe === undefined
+              ? 'Checking…'
+              : `${preflightBadgeLabel(activeProbe.compatibility)}. ${activeProbe.message}`}
+          </p>
           <div className="geo-inspector-toolbar">
             <Button
-              disabled={busy}
+              disabled={busy || !canOpen}
               onClick={() => openItem(selected, false, active.assetKey)}
               variant={preferInspect ? 'secondary' : 'primary'}
             >
               Open as layer
             </Button>
             <Button
-              disabled={busy}
+              disabled={busy || !canOpen}
               onClick={() => openItem(selected, true, active.assetKey)}
               variant={preferInspect ? 'primary' : 'secondary'}
             >

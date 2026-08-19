@@ -1,0 +1,50 @@
+{
+  "type": "FeatureCollection",
+  "numberMatched": 2,
+  "numberReturned": 1,
+  "features": [
+    {
+      "type": "Feature",
+      "id": "LC08_L2SP_019033_20250909_02_T1_SR",
+      "collection": "landsat-c2l2-sr",
+      "bbox": [-84.3, 37.8, -81.7, 39.9],
+      "properties": {
+        "datetime": "2025-09-09T16:11:17Z",
+        "eo:cloud_cover": 0.01,
+        "proj:epsg": 32617
+      },
+      "assets": {
+        "red": {
+          "title": "Red Band (B4)",
+          "type": "image/vnd.stac.geotiff; cloud-optimized=true",
+          "roles": ["data"],
+          "eo:bands": [{ "name": "B4", "common_name": "red" }],
+          "href": "https://landsatlook.example.test/SR_B4.TIF",
+          "alternate": {
+            "s3": { "href": "s3://usgs-landsat/SR_B4.TIF" }
+          }
+        },
+        "nir08": {
+          "title": "NIR (B5)",
+          "type": "image/vnd.stac.geotiff; cloud-optimized=true",
+          "roles": ["data"],
+          "eo:bands": [{ "name": "B5", "common_name": "nir08" }],
+          "href": "https://landsatlook.example.test/SR_B5.TIF"
+        }
+      },
+      "links": [
+        {
+          "rel": "self",
+          "href": "https://landsat.example.test/collections/landsat-c2l2-sr/items/LC08_L2SP_019033_20250909_02_T1_SR"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "rel": "next",
+      "method": "GET",
+      "href": "https://landsat.example.test/search?token=next"
+    }
+  ]
+}

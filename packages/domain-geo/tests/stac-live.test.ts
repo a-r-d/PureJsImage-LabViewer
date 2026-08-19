@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { KY_FROM_ABOVE_CATALOG } from '../src/catalog/ky-from-above.js'
+import { catalogRootHref } from '../src/catalog/types.js'
 import { createStacClient } from '../src/stac/client.js'
 
 const live = process.env['ATLAS_LIVE_STAC'] === '1'
@@ -7,7 +8,7 @@ const live = process.env['ATLAS_LIVE_STAC'] === '1'
 describe.skipIf(!live)('live Kentucky From Above STAC smoke', () => {
   it('lists collections and searches a Frankfort bbox', async () => {
     const client = createStacClient({ fetch, cacheVersion: 'live' })
-    const catalog = await client.getCatalog(KY_FROM_ABOVE_CATALOG.href)
+    const catalog = await client.getCatalog(catalogRootHref(KY_FROM_ABOVE_CATALOG))
     const collections = await client.listCollections(catalog)
     expect(collections.length).toBeGreaterThan(0)
     const page = await client.search(catalog, {

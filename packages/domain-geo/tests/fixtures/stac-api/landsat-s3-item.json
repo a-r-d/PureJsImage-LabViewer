@@ -1,0 +1,15 @@
+{
+  "type": "Feature",
+  "id": "s3-only-scene",
+  "collection": "landsat-c2l2-sr",
+  "bbox": [-84.3, 37.8, -81.7, 39.9],
+  "properties": { "datetime": "2025-07-01T00:00:00Z" },
+  "assets": {
+    "red": {
+      "type": "image/vnd.stac.geotiff; cloud-optimized=true",
+      "roles": ["data"],
+      "href": "s3://usgs-landsat/SR_B4.TIF"
+    }
+  },
+  "links": []
+}

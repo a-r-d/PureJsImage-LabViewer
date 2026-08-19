@@ -1,4 +1,15 @@
 export { PUREJSIMAGE_PACKAGE_VERSION } from './package-version.js'
+export type {
+  RasterAssetPreflight,
+  RasterPreflightCompatibility,
+  RasterPreflightOptions,
+  RasterTransportProbe,
+} from './raster-preflight.js'
+export {
+  preflightBadgeLabel,
+  preflightRasterAsset,
+  RASTER_PREFLIGHT_RANGE_END,
+} from './raster-preflight.js'
 export {
   createImagingWorkerClient,
   ImagingRpcError,

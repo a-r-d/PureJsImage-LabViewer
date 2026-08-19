@@ -11,7 +11,11 @@ export const KY_FROM_ABOVE_CATALOG: CatalogRegistryEntry = Object.freeze({
   title: 'Kentucky From Above',
   description:
     'Leaf-off aerial orthos and LiDAR-derived elevation for Kentucky. Rasters are Cloud Optimized GeoTIFFs in EPSG:3089 (Kentucky Single Zone, US feet). CC-BY-4.0 from the Kentucky Division of Geographic Information.',
-  href: 'https://spved5ihrl.execute-api.us-west-2.amazonaws.com/',
+  protocol: 'stac-api',
+  endpoint: Object.freeze({
+    kind: 'stac-api',
+    rootHref: 'https://spved5ihrl.execute-api.us-west-2.amazonaws.com/',
+  }),
   homepage: 'https://kyfromabove.ky.gov/',
   attribution: 'Kentucky Division of Geographic Information, KyFromAbove',
   license: 'CC-BY-4.0',

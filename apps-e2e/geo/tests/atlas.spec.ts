@@ -28,10 +28,11 @@ async function openRemoteFixture(page: Page) {
   await expect(page.getByRole('img', { name: /Geo raster viewport/u })).toBeVisible({
     timeout: 30_000,
   })
-  await expect(page.locator('[data-atlas-settled="true"]')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-atlas-settled="true"]')).toBeVisible({ timeout: 45_000 })
 }
 
 test('opens a remote COG from a local range-capable fixture server', async ({ page }) => {
+  test.setTimeout(60_000)
   await openRemoteFixture(page)
   const xray = page.getByTestId('cog-xray')
   await expect(xray).toBeVisible()
@@ -52,6 +53,7 @@ test('opens a remote COG from a local range-capable fixture server', async ({ pa
 
 test('@visual atlas inspector and rendered raster', async ({ browserName, page }) => {
   test.skip(browserName !== 'chromium', 'Chromium owns the deterministic visual baselines.')
+  test.setTimeout(60_000)
   await page.setViewportSize({ width: 1440, height: 900 })
   await openRemoteFixture(page)
   await page.evaluate(() => document.fonts.ready)

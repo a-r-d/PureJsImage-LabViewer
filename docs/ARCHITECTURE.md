@@ -50,9 +50,11 @@ apps/science
   characterization suite. Deployed at lab.purejsimage.com.
 
 apps/geo
-  Geo Atlas: STAC catalog discovery (generic client + registry; Kentucky From Above is the first
-  entry), native-CRS viewport, independent COG sources with per-handle tiles, layer/display
-  controls, and COG X-ray. Deployed at geo.purejsimage.com.
+  Geo Atlas: multi-provider catalog discovery (generic CatalogService + registry;
+  STAC API, static STAC, and TNMAccess adapters; NOAA Digital Coast, USGS 3DEP, USGS Landsat,
+  and Kentucky From Above), native-CRS viewport, independent COG sources with per-handle tiles,
+  layer/display controls, and COG X-ray. Raster preflight (HTTPS Range + TIFF inspect) runs in
+  `packages/imaging` before a catalog URL is opened. Deployed at geo.purejsimage.com.
 
 packages/actions
   JSON-safe semantic action descriptors, deterministic registry, availability, validation,
@@ -80,7 +82,8 @@ packages/domain-science
 
 packages/domain-geo
   Geo project model, CRS helpers, Atlas copy, JSON-safe COG X-ray reports, a generic STAC
-  client, and the catalog registry. Collection IDs belong in registry entries, not generic UI.
+  client, catalog adapters (STAC API, static STAC, TNMAccess), and the catalog registry.
+  Collection IDs belong in registry entries, not generic UI.
   Proj4js may transform EPSG:4326 ↔ EPSG:3857 plus CRS definitions registered by a catalog
   (EPSG:3089 for Kentucky From Above). Unsupported projections return typed errors. Pixel
   reprojection and basemaps are out of scope. Must not import domain-science,
@@ -89,7 +92,9 @@ packages/domain-geo
 packages/imaging
   The only package that directly composes PureJsImage readers, scientific documents,
   analysis controller/runtime, and worker-side lifecycles. One Worker owns a bounded map of
-  independent sources; analysis extensions are injected by the app, not hardcoded.
+  independent sources; analysis extensions are injected by the app, not hardcoded. Raster
+  preflight (tiny HTTPS Range GET plus TIFF inspect) lives here so domain-geo never imports
+  PureJsImage; Atlas only opens catalog URLs that report Ready.
 
 packages/viewport
   Camera math, coordinate-space adapters (image space and world-space affine), visible
