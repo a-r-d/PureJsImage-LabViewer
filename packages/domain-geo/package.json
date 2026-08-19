@@ -20,7 +20,9 @@
     "clean": "node ../../tooling/scripts/clean-package.mjs"
   },
   "dependencies": {
-    "@pji-workbench/workbench-core": "workspace:*"
+    "@pji-workbench/contracts": "workspace:*",
+    "@pji-workbench/workbench-core": "workspace:*",
+    "proj4": "2.19.10"
   },
   "devDependencies": {
     "typescript": "7.0.2",

@@ -14,15 +14,18 @@ import {
   type Bounds,
   type Camera,
   calculateScaleBar,
+  createImageSpaceAdapter,
   fitCameraToBounds,
   type Point,
   panCamera,
   planVisibleTileRegions,
   resizeCamera,
   type Size,
+  sampleViewportPointer,
   screenToWorld,
   type ViewportRenderer,
   type ViewportRenderFrame,
+  visibleWorldBounds,
   worldToScreen,
   zoomCameraAtScreenPoint,
 } from '@pji-workbench/viewport'
@@ -440,17 +443,6 @@ function roiOverlay(roi: ViewportRoi, selected: boolean) {
   return { id: roi.id, kind, points: roiPoints(roi), selected, label: roi.name ?? roi.id }
 }
 
-function visibleWorldBounds(camera: Camera, viewport: Size): Bounds {
-  const topLeft = screenToWorld({ x: 0, y: 0 }, camera, viewport)
-  const bottomRight = screenToWorld({ x: viewport.width, y: viewport.height }, camera, viewport)
-  return {
-    x: topLeft.x,
-    y: topLeft.y,
-    width: bottomRight.x - topLeft.x,
-    height: bottomRight.y - topLeft.y,
-  }
-}
-
 export function ScientificViewport({
   client,
   opened,
@@ -506,6 +498,7 @@ export function ScientificViewport({
       ),
     }
     const bounds = imageBounds(renderedOpened, renderedSelection)
+    const adapter = createImageSpaceAdapter(bounds)
     const horizontalAxis = renderedOpened.dataset.axes.find(
       ({ id }) => id === renderedSelection.displayAxes[0],
     )
@@ -597,8 +590,13 @@ export function ScientificViewport({
     const scheduleTiles = (): void => {
       onRenderSettled?.(false)
       const currentMapping = mappingRef.current
-      const visible = visibleWorldBounds(camera, viewport)
-      const candidates = planVisibleTileRegions(bounds, visible, TILE_SIZE, PREFETCH_TILES)
+      const visible = visibleWorldBounds(camera, viewport, adapter)
+      const candidates = planVisibleTileRegions(
+        adapter.pixelBounds(),
+        visible,
+        TILE_SIZE,
+        PREFETCH_TILES,
+      )
       const scheduledCandidates =
         currentMapping.range === 'auto' &&
         (currentMapping.minimum === undefined || currentMapping.maximum === undefined)
@@ -794,7 +792,7 @@ export function ScientificViewport({
     }
     const handlePointerMove = (event: PointerEvent): void => {
       const point = pointerPosition(event)
-      const world = screenToWorld(point, camera, viewport)
+      const { world } = sampleViewportPointer(point, camera, viewport, adapter)
       if (coordinateRef.current !== null) {
         const value = renderer.valueAt(world)
         const physicalX =

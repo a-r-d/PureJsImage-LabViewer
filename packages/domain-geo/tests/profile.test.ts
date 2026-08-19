@@ -30,9 +30,18 @@ describe('geo domain package boundary', () => {
       readonly dependencies?: Readonly<Record<string, string>>
     }
     const names = Object.keys(manifest.dependencies ?? {})
-    expect(names).toEqual(['@pji-workbench/workbench-core'])
+    expect(names).toEqual(
+      expect.arrayContaining([
+        '@pji-workbench/workbench-core',
+        '@pji-workbench/contracts',
+        'proj4',
+      ]),
+    )
+    expect(names).toHaveLength(3)
     expect(names).not.toContain('@pji-workbench/domain-science')
     expect(names).not.toContain('@pji-workbench/materials-analysis')
+    expect(names).not.toContain('@pji-workbench/imaging')
     expect(names).not.toContain('react')
+    expect(names).not.toContain('purejsimage')
   })
 })

@@ -77,16 +77,21 @@ packages/domain-science
   empty states. Depends on packages/materials-analysis.
 
 packages/domain-geo
-  Empty geo profile and geospatial terminology. Must not import domain-science or
-  materials-analysis.
+  Geo project model (sources, raster/derived layers, styles, comparison, map-coordinate
+  ROIs, provenance) and CRS helpers. Native source CRS display and same-CRS composition
+  live here. Proj4js may transform EPSG:4326 ↔ EPSG:3857; unsupported projections return
+  typed errors. Pixel reprojection and basemaps are out of scope. Must not import
+  domain-science, materials-analysis, or React.
 
 packages/imaging
   The only package that directly composes PureJsImage readers, scientific documents,
   analysis controller/runtime, and worker-side lifecycles.
 
 packages/viewport
-  Camera math, visible tile selection, render model, overlay geometry, hit testing,
-  and renderer interfaces. Core is framework-neutral.
+  Camera math, coordinate-space adapters (image space and world-space affine), visible
+  tile selection including shared multi-layer source tiles, render model, overlay
+  geometry, hit testing, and renderer interfaces. Core is framework-neutral. Camera
+  state is not owned by React panels.
 
 packages/agent
   OpenRouter client, tool definitions, tool loop, approval policy, message history,
@@ -139,6 +144,8 @@ Rules:
 - No package imports from `apps/*`.
 - `imaging` may import only documented PureJsImage package exports.
 - `viewport` receives tile/render descriptors; it does not open files or execute analysis.
+  Science uses the image-space adapter; geo uses a world-space affine adapter. Generic UI
+  must not branch on geo vs science.
 - `agent` invokes a narrow application tool host, never PureJsImage internals directly.
 - `actions` owns semantic descriptors and policy metadata, never live datasets or UI components.
 - `workspace` stores semantic references and project state, not live `ScientificDataset` objects or typed pixel buffers.

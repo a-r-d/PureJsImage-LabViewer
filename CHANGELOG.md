@@ -9,6 +9,14 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Added
 
+- Geo domain model in `packages/domain-geo`: georeferenced raster sources, styled raster and
+  derived layers, comparison state, map-coordinate ROIs, and provenance/recipe references.
+  Proj4js lives only in domain-geo and currently transforms EPSG:4326 ↔ EPSG:3857; other
+  projections return typed errors. Same-CRS layer composition does not warp pixels.
+- Viewport coordinate-space adapters: science keeps image space (pixel = world); geo uses a
+  world-space affine adapter with pixel↔world mapping, rotated/sheared envelopes from
+  transformed corners, map-coordinate pointer samples, fit-layer/fit-bounds, and multi-layer
+  tile selection that shares cached source tiles. Camera state stays outside React panels.
 - JSON-safe spatial references on dataset descriptors: CRS authority/code/name/citation, full
   six-parameter pixel-to-model and model-to-pixel affines, model bounds, raster type, and
   nodata. The imaging Worker copies PureJsImage 0.12.0 values across the RPC boundary; project

@@ -7,5 +7,5 @@
     "tsBuildInfoFile": "./dist/domain-geo.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../workbench-core" }]
+  "references": [{ "path": "../workbench-core" }, { "path": "../contracts" }]
 }
