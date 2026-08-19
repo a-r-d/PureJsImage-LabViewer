@@ -45,9 +45,22 @@ type ResponseKind = SuccessfulResponse['kind']
 type ResponsePayload<Kind extends ResponseKind> =
   Extract<SuccessfulResponse, { kind: Kind }> extends { payload: infer Payload } ? Payload : never
 
+export interface ImagingWorkerClientOptions {
+  readonly workerFactory?: () => Worker
+  /** Science keeps one live source. Atlas retains independent sources. */
+  readonly sourcePolicy?: 'replace-one' | 'retain'
+}
+
 export class ImagingWorkerClient {
   #worker: Worker
   readonly #workerFactory: () => Worker
+  readonly #sourcePolicy: 'replace-one' | 'retain'
+  #retained:
+    | {
+        readonly sourceId: SourceId
+        readonly generation: number
+      }
+    | undefined
   #pending = new Map<
     string,
     {
@@ -58,9 +71,14 @@ export class ImagingWorkerClient {
   #nextRequest = 1
   #crashListeners = new Set<CrashListener>()
 
-  constructor(workerFactory: () => Worker = ImagingWorkerClient.createWorker) {
-    this.#workerFactory = workerFactory
-    this.#worker = workerFactory()
+  constructor(workerFactoryOrOptions: (() => Worker) | ImagingWorkerClientOptions = {}) {
+    const options =
+      typeof workerFactoryOrOptions === 'function'
+        ? { workerFactory: workerFactoryOrOptions }
+        : workerFactoryOrOptions
+    this.#workerFactory = options.workerFactory ?? ImagingWorkerClient.createWorker
+    this.#sourcePolicy = options.sourcePolicy ?? 'retain'
+    this.#worker = this.#workerFactory()
     this.#bindWorker()
   }
 
@@ -76,8 +94,10 @@ export class ImagingWorkerClient {
     return () => this.#crashListeners.delete(listener)
   }
 
-  async initialize(): Promise<Extract<WorkerResponse, { kind: 'worker.initialize' }>['payload']> {
-    return this.#payload(await this.#call('worker.initialize', null), 'worker.initialize')
+  async initialize(
+    payload: Extract<WorkerRequest, { kind: 'worker.initialize' }>['payload'] = null,
+  ): Promise<Extract<WorkerResponse, { kind: 'worker.initialize' }>['payload']> {
+    return this.#payload(await this.#call('worker.initialize', payload), 'worker.initialize')
   }
 
   async openSample(
@@ -85,9 +105,11 @@ export class ImagingWorkerClient {
     signal?: AbortSignal,
     sampleId = 'generated.calibrated-particles',
   ): Promise<OpenedSourceDescriptor> {
-    return this.#payload(
-      await this.#call('source.open-sample', { generation, sampleId }, signal),
-      'source.opened',
+    return this.#opened(
+      this.#payload(
+        await this.#call('source.open-sample', { generation, sampleId }, signal),
+        'source.opened',
+      ),
     )
   }
 
@@ -107,13 +129,15 @@ export class ImagingWorkerClient {
     }))
     const index = files.indexOf(primary)
     if (index < 0) throw new Error('The primary file must be present in the file list')
-    return this.#payload(
-      await this.#call(
-        'source.open-local',
-        { generation, primaryId: `file-${index}`, files: attachments },
-        signal,
+    return this.#opened(
+      this.#payload(
+        await this.#call(
+          'source.open-local',
+          { generation, primaryId: `file-${index}`, files: attachments },
+          signal,
+        ),
+        'source.opened',
       ),
-      'source.opened',
     )
   }
 
@@ -128,10 +152,12 @@ export class ImagingWorkerClient {
     generation: number,
     signal?: AbortSignal,
   ): Promise<Readonly<{ source: OpenedSourceDescriptor; dataset: OpenedDatasetDescriptor }>> {
-    return this.#payload(
+    const opened = this.#payload(
       await this.#call('source.open-bundled', { generation, ...locator }, signal),
       'source-bundled.opened',
     )
+    await this.#replacePreviousSource(opened.source)
+    return opened
   }
 
   async openRemote(
@@ -139,14 +165,19 @@ export class ImagingWorkerClient {
     generation: number,
     signal?: AbortSignal,
   ): Promise<OpenedSourceDescriptor> {
-    return this.#payload(
-      await this.#call('source.open-remote', { generation, url }, signal),
-      'source.opened',
+    return this.#opened(
+      this.#payload(
+        await this.#call('source.open-remote', { generation, url }, signal),
+        'source.opened',
+      ),
     )
   }
 
   async closeSource(sourceId: SourceId, generation: number): Promise<void> {
     await this.#call('source.close', { sourceId, generation })
+    if (this.#retained?.sourceId === sourceId && this.#retained.generation === generation) {
+      this.#retained = undefined
+    }
   }
 
   async openDataset(
@@ -154,9 +185,19 @@ export class ImagingWorkerClient {
     datasetId: string,
     generation: number,
     signal?: AbortSignal,
+    sourceId?: SourceId,
   ): Promise<OpenedDatasetDescriptor> {
     return this.#payload(
-      await this.#call('dataset.open', { documentId, datasetId, generation }, signal),
+      await this.#call(
+        'dataset.open',
+        {
+          documentId,
+          datasetId,
+          generation,
+          ...(sourceId === undefined ? {} : { sourceId }),
+        },
+        signal,
+      ),
       'dataset.opened',
     )
   }
@@ -264,8 +305,11 @@ export class ImagingWorkerClient {
     await this.#call('analysis.release', request)
   }
 
-  async diagnostics(): Promise<WorkerDiagnostics> {
-    return this.#payload(await this.#call('diagnostics.get', null), 'diagnostics')
+  async diagnostics(sourceId?: SourceId): Promise<WorkerDiagnostics> {
+    return this.#payload(
+      await this.#call('diagnostics.get', sourceId === undefined ? null : { sourceId }),
+      'diagnostics',
+    )
   }
 
   async crashForTest(): Promise<void> {
@@ -276,6 +320,7 @@ export class ImagingWorkerClient {
     const error = new Error(
       'Imaging Worker restarted; reopen the source to restore runtime handles.',
     )
+    this.#retained = undefined
     this.#worker.terminate()
     this.#rejectPending(error)
     this.#worker = this.#workerFactory()
@@ -321,6 +366,22 @@ export class ImagingWorkerClient {
     }
   }
 
+  async #opened(source: OpenedSourceDescriptor): Promise<OpenedSourceDescriptor> {
+    await this.#replacePreviousSource(source)
+    return source
+  }
+
+  async #replacePreviousSource(source: OpenedSourceDescriptor): Promise<void> {
+    if (this.#sourcePolicy !== 'replace-one') return
+    const previous = this.#retained
+    this.#retained = { sourceId: source.sourceId, generation: source.generation }
+    if (previous === undefined) return
+    await this.#call('source.close', {
+      sourceId: previous.sourceId,
+      generation: previous.generation,
+    })
+  }
+
   #payload<Kind extends ResponseKind>(response: WorkerResponse, kind: Kind): ResponsePayload<Kind> {
     if (!response.ok) throw new ImagingRpcError(response.error)
     if (response.kind !== kind) throw new Error(`Expected ${kind}, received ${response.kind}`)
@@ -349,6 +410,8 @@ export class ImagingWorkerClient {
   }
 }
 
-export function createImagingWorkerClient(): ImagingWorkerClient {
-  return new ImagingWorkerClient()
+export function createImagingWorkerClient(
+  options: ImagingWorkerClientOptions = {},
+): ImagingWorkerClient {
+  return new ImagingWorkerClient(options)
 }

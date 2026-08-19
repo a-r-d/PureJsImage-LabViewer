@@ -133,21 +133,38 @@ describe('COG X-ray and readout', () => {
       },
     } satisfies DatasetDescriptor
     const diagnostics: WorkerDiagnostics = {
-      generation: 1,
-      source: {
-        id: source.sourceId,
-        kind: 'remote',
-        size: 1_000,
-        rangeRequests: 4,
-        rangeBytesFetched: 120,
+      epoch: 1,
+      sources: [
+        {
+          id: source.sourceId,
+          kind: 'remote',
+          size: 1_000,
+          revision: 1,
+          rangeRequests: 4,
+          rangeBytesFetched: 120,
+          rangeCacheBytes: 64,
+          rangeCacheHits: 2,
+          rangeCacheMisses: 2,
+          openDatasets: 1,
+        },
+      ],
+      aggregate: {
+        openSources: 1,
+        openDatasets: 1,
+        pendingRequests: 0,
         rangeCacheBytes: 64,
-        rangeCacheHits: 2,
-        rangeCacheMisses: 2,
+        tileRuntimeBytes: 0,
       },
-      openDatasets: 1,
       pendingRequests: 0,
       tileRuntime: null,
       releases: { documents: 0, datasets: 0, tiles: 1, runtimes: 0 },
+      limits: {
+        maxOpenSources: 8,
+        maxDatasetsPerSource: 8,
+        maxRangeCacheBytes: 32 * 1_024 * 1_024,
+        maxTileRuntimeBytes: 192 * 1_024 * 1_024,
+        maxInFlightRequests: 32,
+      },
     }
     const report = buildCogXrayReport({
       source,

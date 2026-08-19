@@ -179,7 +179,7 @@ describe('science workbench characterization', () => {
     expect(readPublicEnvironment({})).toEqual({ appEnvironment: 'production' })
     expect(mainSource).toContain('createRoot(rootElement).render')
     expect(mainSource).toContain('<App environment={readPublicEnvironment(import.meta.env)} />')
-    expect(providersSource).toContain('createImagingWorkerClient()')
+    expect(providersSource).toContain('createScienceImagingWorkerClient()')
     expect(workbenchSource).toContain('Choose local scientific files')
     expect(workbenchSource).toContain('createWorkbenchActionHost')
     expect(workbenchSource).not.toContain("'workspace.openSample@1'")

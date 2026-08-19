@@ -9,7 +9,7 @@ import type {
   SourceId,
   WorkerResponse,
 } from '@pji-workbench/contracts'
-import { rpcRequest } from '@pji-workbench/contracts'
+import { rpcRequest, RPC_SCHEMA_VERSION } from '@pji-workbench/contracts'
 import { MATERIALS_OPERATION_IDS } from '@pji-workbench/materials-analysis'
 import {
   independentSampleValue,
@@ -38,6 +38,7 @@ import {
   SUPPORTED_READERS,
 } from '../src/index.js'
 import { generatedSampleDefinition, sampleValues } from '../src/worker-host/source-rpc.js'
+import { createScienceImagingWorkerHost } from './science-host.js'
 
 class FakeWorker extends EventTarget {
   terminated = false
@@ -57,11 +58,11 @@ class FakeWorker extends EventTarget {
         this.dispatchEvent(
           new MessageEvent('message', {
             data: {
-              schemaVersion: 1,
+              schemaVersion: RPC_SCHEMA_VERSION,
               requestId: message.requestId,
               ok: true,
               kind: 'worker.initialize',
-              payload: { readers: SUPPORTED_READERS },
+              payload: { readers: SUPPORTED_READERS, epoch: 1, limits: { maxOpenSources: 8 } },
             },
           }),
         ),
@@ -308,7 +309,7 @@ function rangeFetch(bytes: Uint8Array): typeof fetch {
 
 describe('PureJsImage Worker host', () => {
   it('composes the trusted materials catalog and renders a bounded derived preview tile', async () => {
-    const host = new ImagingWorkerHost()
+    const host = createScienceImagingWorkerHost()
     const dataset = await openGeneratedValues(host, 3, 2, Float32Array.from([1, 2, 3, 4, 5, 6]))
     const catalogResult = await host.handle(
       rpcRequest('materials-catalog', 'analysis.catalog', {
@@ -425,7 +426,7 @@ describe('PureJsImage Worker host', () => {
   })
 
   it('executes and releases a bounded threshold-to-object-table workflow through public APIs', async () => {
-    const host = new ImagingWorkerHost()
+    const host = createScienceImagingWorkerHost()
     const values = new Float32Array(8 * 8)
     for (const [x, y] of [
       [0, 0],
@@ -550,7 +551,7 @@ describe('PureJsImage Worker host', () => {
   })
 
   it('runs the guided particle graph with calibrated measurements and tile-invariant linked overlays', async () => {
-    const host = new ImagingWorkerHost()
+    const host = createScienceImagingWorkerHost()
     const width = 32
     const height = 24
     const values = Float32Array.from(
@@ -701,7 +702,7 @@ describe('PureJsImage Worker host', () => {
   })
 
   it('normalizes ROI measurements and returns exact bounded statistics and line-profile summaries', async () => {
-    const host = new ImagingWorkerHost()
+    const host = createScienceImagingWorkerHost()
     const dataset = await openGeneratedValues(
       host,
       4,
@@ -850,7 +851,7 @@ describe('PureJsImage Worker host', () => {
   })
 
   it('distinguishes diagonal particles under exact 4/8 connectivity semantics', async () => {
-    const host = new ImagingWorkerHost()
+    const host = createScienceImagingWorkerHost()
     const values = new Float32Array(3 * 3)
     values[0] = 10
     values[4] = 10
@@ -889,7 +890,7 @@ describe('PureJsImage Worker host', () => {
   })
 
   it('keeps missing calibration explicit and returns pixel-only object measurements', async () => {
-    const host = new ImagingWorkerHost()
+    const host = createScienceImagingWorkerHost()
     const dataset = await openGeneratedValues(host, 2, 2, Float32Array.of(10, 0, 0, 0), false)
     const executed = await host.handle(
       rpcRequest('uncalibrated-execution', 'analysis.execute', {
@@ -916,7 +917,7 @@ describe('PureJsImage Worker host', () => {
   })
 
   it('accepts the persisted analysis slice through the public PureJsImage project validator', async () => {
-    const host = new ImagingWorkerHost()
+    const host = createScienceImagingWorkerHost()
     const { source, dataset } = await openGenerated(host)
     const graph = { schemaVersion: 1 as const, inputs: [], nodes: [], outputs: [] }
     const bindings = []
@@ -949,7 +950,7 @@ describe('PureJsImage Worker host', () => {
   })
 
   it('pins the package and exposes the thirty-one explicit reader descriptors', async () => {
-    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.12.0')
+    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.13.0')
     expect(SUPPORTED_READERS.map(({ id }) => id)).toEqual([
       'purejsimage/png',
       'purejsimage/jpeg',
@@ -1280,10 +1281,10 @@ describe('PureJsImage Worker host', () => {
     ) as OpenedDatasetDescriptor
     const remoteTile = await requestTile(remoteHost, remoteDataset)
     const remoteDiagnostics = remoteHost.diagnostics()
-    expect(remoteDiagnostics.source?.rangeRequests).toBeGreaterThan(0)
-    expect(remoteDiagnostics.source?.rangeBytesFetched).toBeLessThan(bytes.byteLength)
-    expect(remoteDiagnostics.source?.rangeCacheHits).toBeGreaterThanOrEqual(0)
-    expect(remoteDiagnostics.source?.rangeCacheMisses).toBeGreaterThanOrEqual(0)
+    expect(remoteDiagnostics.sources[0]?.rangeRequests).toBeGreaterThan(0)
+    expect(remoteDiagnostics.sources[0]?.rangeBytesFetched).toBeLessThan(bytes.byteLength)
+    expect(remoteDiagnostics.sources[0]?.rangeCacheHits).toBeGreaterThanOrEqual(0)
+    expect(remoteDiagnostics.sources[0]?.rangeCacheMisses).toBeGreaterThanOrEqual(0)
 
     const localHost = new ImagingWorkerHost()
     const file = new File([bytes.slice().buffer as ArrayBuffer], 'generated.gsf')
@@ -1499,7 +1500,7 @@ describe('PureJsImage Worker host', () => {
     const values = Float32Array.from({ length: width * height }, (_value, index) =>
       Math.cos((2 * Math.PI * 4 * (index % width)) / width),
     )
-    const host = new ImagingWorkerHost()
+    const host = createScienceImagingWorkerHost()
     const dataset = await openGeneratedValues(host, width, height, values)
     const roi = {
       schemaVersion: 1,

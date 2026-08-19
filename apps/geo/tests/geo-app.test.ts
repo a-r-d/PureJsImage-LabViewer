@@ -9,6 +9,18 @@ describe('geo application', () => {
     expect(appSource).toContain('geoUiContributions')
     expect(appSource).toContain('createImagingWorkerClient')
     expect(appSource).toContain('CatalogPanel')
+    expect(appSource).toContain('appendAtlas')
+    expect(appSource).toContain('viewportRasters')
+    expect(appSource).toContain('opened?.rasters.map((raster) => raster.dataset)')
+    expect(appSource).not.toContain('if (replaced) setOpened(null)')
+    expect(appSource).not.toContain('opened={opened.dataset}')
+    const viewportSource = await readFile(
+      new URL('../src/GeoViewport.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(viewportSource).toContain('datasetHandleId: context.raster.handleId')
+    expect(viewportSource).toContain('rasters: readonly OpenedDatasetDescriptor[]')
+    expect(viewportSource).not.toContain('opened.handleId')
     expect(appSource).not.toContain('orthos-phase2')
     expect(appSource).not.toContain('dem-phase2')
     const catalogSource = await readFile(

@@ -184,8 +184,8 @@ describe('imaging Worker spatial references', () => {
     expect(jsonClone(local.dataset.spatialReference)).toEqual(
       jsonClone(remote.dataset.spatialReference),
     )
-    expect(remoteHost.diagnostics().source?.rangeRequests).toBeGreaterThan(0)
-    expect(remoteHost.diagnostics().source?.kind).toBe('remote')
+    expect(remoteHost.diagnostics().sources[0]?.rangeRequests).toBeGreaterThan(0)
+    expect(remoteHost.diagnostics().sources[0]?.kind).toBe('remote')
     await localHost.dispose()
     await remoteHost.dispose()
   })

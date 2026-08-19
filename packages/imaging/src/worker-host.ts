@@ -3,22 +3,20 @@ import {
   COG_INSPECTION_METADATA_KEY,
   type DatasetHandleId,
   type DocumentId,
+  type ImagingResourceLimits,
   type OpenedDatasetDescriptor,
   RPC_LIMITS,
   RPC_SCHEMA_VERSION,
+  type RpcJsonObject,
   RpcValidationError,
   type SourceId,
+  type SourceRangeDiagnostics,
   type StructuredRpcError,
   validateWorkerRequest,
   type WorkerDiagnostics,
   type WorkerRequest,
   type WorkerResponse,
 } from '@pji-workbench/contracts'
-import {
-  createMaterialsAnalysisExtension,
-  TOOLBOX_DOCUMENTATION,
-  TOOLBOX_PRESETS,
-} from '@pji-workbench/materials-analysis'
 import type { ImageSource } from 'purejsimage'
 import {
   type AnalysisExecutionResult,
@@ -38,7 +36,7 @@ import {
   createTileRuntime,
   numericTileSourceToTileSource,
 } from 'purejsimage/analysis/runtime'
-import { createExtensionHost } from 'purejsimage/extensions'
+import { createExtensionHost, type PureJsImageExtension } from 'purejsimage/extensions'
 import {
   createScientificLibrary,
   type NumericTile,
@@ -68,6 +66,10 @@ import {
   success,
   type WorkerHostResult,
 } from './worker-host/protocol.js'
+import {
+  mergeImagingResourceLimits,
+  resolveImagingResourceLimits,
+} from './worker-host/resources.js'
 import { tablePage } from './worker-host/result-rpc.js'
 import type {
   AnalysisExecutionRecord,
@@ -168,12 +170,23 @@ function overlayAnnotations(
   return annotations
 }
 
+export interface ImagingAnalysisCatalogExtras {
+  readonly documentation: readonly RpcJsonObject[]
+  readonly presets: readonly RpcJsonObject[]
+}
+
 export interface ImagingWorkerHostOptions {
   readonly fetch?: typeof fetch
   readonly baseUrl?: string
+  readonly analysisExtensions?: readonly PureJsImageExtension[]
+  readonly analysisCatalog?: ImagingAnalysisCatalogExtras
+  readonly limits?: Partial<ImagingResourceLimits>
 }
 
 const MiB = 1_024 * 1_024
+const PREFERRED_RANGE_CACHE_BYTES = 512 * 1_024
+const MINIMUM_RANGE_CACHE_BYTES = 64 * 1_024
+const RANGE_BLOCK_BYTES = 64 * 1_024
 
 async function readExactResponse(
   response: Response,
@@ -217,12 +230,17 @@ async function readExactResponse(
 }
 
 export class ImagingWorkerHost {
-  #active: SourceRecord | undefined
+  readonly #sources = new Map<SourceId, SourceRecord>()
+  readonly #datasets = new Map<DatasetHandleId, { sourceId: SourceId; record: DatasetRecord }>()
   #pending = new Map<string, PendingRequest>()
   #nextId = 1
+  #epoch = 1
+  #limits: ImagingResourceLimits
   #releases = { documents: 0, datasets: 0, tiles: 0, runtimes: 0 }
   readonly #fetch: typeof fetch | undefined
   readonly #baseUrl: string | undefined
+  readonly #analysisExtensions: readonly PureJsImageExtension[]
+  readonly #catalogExtras: ImagingAnalysisCatalogExtras
 
   constructor(options: Readonly<ImagingWorkerHostOptions> = {}) {
     this.#fetch = options.fetch
@@ -231,6 +249,9 @@ export class ImagingWorkerHost {
       (typeof globalThis.location === 'undefined'
         ? undefined
         : new URL('/', globalThis.location.href).href)
+    this.#analysisExtensions = options.analysisExtensions ?? []
+    this.#catalogExtras = options.analysisCatalog ?? { documentation: [], presets: [] }
+    this.#limits = resolveImagingResourceLimits(options.limits)
   }
 
   async handle(input: unknown): Promise<WorkerHostResult> {
@@ -240,14 +261,32 @@ export class ImagingWorkerHost {
       requestId = request.requestId
       if (request.kind === 'request.cancel') return this.#cancel(request)
       if (request.kind === 'worker.test-crash') throw new Error('Intentional worker crash test')
+      if (
+        this.#isBudgetedKind(request.kind) &&
+        this.#pending.size >= this.#limits.maxInFlightRequests
+      ) {
+        return errorResult(requestId, {
+          code: 'LIMIT_EXCEEDED',
+          message: `In-flight request limit of ${this.#limits.maxInFlightRequests} reached.`,
+          retryable: true,
+        })
+      }
       const controller = new AbortController()
       const datasetHandleId =
         request.payload !== null && 'datasetHandleId' in request.payload
           ? request.payload.datasetHandleId
           : undefined
+      const payloadSourceId =
+        request.payload !== null && 'sourceId' in request.payload
+          ? request.payload.sourceId
+          : undefined
+      const sourceId =
+        payloadSourceId ??
+        (datasetHandleId === undefined ? undefined : this.#datasets.get(datasetHandleId)?.sourceId)
       this.#pending.set(request.requestId, {
         controller,
         ...(datasetHandleId === undefined ? {} : { datasetHandleId }),
+        ...(sourceId === undefined ? {} : { sourceId }),
       })
       try {
         return await this.#dispatch(request, controller.signal)
@@ -264,13 +303,21 @@ export class ImagingWorkerHost {
     for (const { controller } of this.#pending.values())
       controller.abort(abortError('Worker disposed'))
     this.#pending.clear()
-    await this.#releaseActive()
+    await this.#releaseAllSources()
+    this.#epoch += 1
   }
 
   async #dispatch(request: WorkerRequest, signal: AbortSignal): Promise<WorkerHostResult> {
     switch (request.kind) {
       case 'worker.initialize':
-        return success(request.requestId, 'worker.initialize', { readers: SUPPORTED_READERS })
+        if (request.payload?.limits !== undefined) {
+          this.#limits = mergeImagingResourceLimits(this.#limits, request.payload.limits)
+        }
+        return success(request.requestId, 'worker.initialize', {
+          readers: SUPPORTED_READERS,
+          epoch: this.#epoch,
+          limits: this.#limits,
+        })
       case 'source.open-sample':
         return this.#openSample(request, signal)
       case 'source.open-local':
@@ -310,7 +357,11 @@ export class ImagingWorkerHost {
       case 'analysis.release':
         return this.#releaseAnalysisRequest(request)
       case 'diagnostics.get':
-        return success(request.requestId, 'diagnostics', this.diagnostics())
+        return success(
+          request.requestId,
+          'diagnostics',
+          this.diagnostics(request.payload?.sourceId),
+        )
       case 'request.cancel':
         return this.#cancel(request)
       case 'worker.test-crash':
@@ -358,7 +409,7 @@ export class ImagingWorkerHost {
         'sample',
         signal,
       )
-      await this.#activate(record)
+      await this.#commitSource(record)
       return success(request.requestId, 'source.opened', this.#describe(record))
     } catch (error) {
       return errorResult(request.requestId, structuredError(error, 'SOURCE_OPEN_FAILED'))
@@ -390,7 +441,7 @@ export class ImagingWorkerHost {
         'local',
         signal,
       )
-      await this.#activate(record)
+      await this.#commitSource(record)
       return success(request.requestId, 'source.opened', this.#describe(record))
     } catch (error) {
       return errorResult(request.requestId, this.#openFailure(error))
@@ -440,7 +491,7 @@ export class ImagingWorkerHost {
         'bundled',
         signal,
       )
-      await this.#activate(record)
+      await this.#commitSource(record)
       const source = this.#describe(record)
       const summary = source.datasets[0]
       if (summary === undefined)
@@ -454,11 +505,15 @@ export class ImagingWorkerHost {
             documentId: source.documentId,
             datasetId: summary.id,
             generation: request.payload.generation,
+            sourceId: record.id,
           },
         },
         signal,
       )
-      if (!datasetResult.response.ok) return datasetResult
+      if (!datasetResult.response.ok) {
+        await this.#releaseSource(record)
+        return datasetResult
+      }
       if (datasetResult.response.kind !== 'dataset.opened')
         throw new Error('Bundled dataset open returned an unexpected response')
       return success(request.requestId, 'source-bundled.opened', {
@@ -477,41 +532,51 @@ export class ImagingWorkerHost {
     kind: 'bundled' | 'local' | 'sample',
     signal: AbortSignal,
   ): Promise<SourceRecord> {
-    const readers = await loadReadersForSource(primary.name)
-    let document: ScientificDocument
+    const lifetime = new AbortController()
+    let document: ScientificDocument | undefined
     try {
-      document = await createScientificLibrary({ readers }).open(
-        createScientificFileContext(primary, { companions: files, signal }),
-      )
+      const readers = await loadReadersForSource(primary.name)
+      try {
+        document = await createScientificLibrary({ readers }).open(
+          createScientificFileContext(primary, { companions: files, signal }),
+        )
+      } catch (error) {
+        throw await this.#enrichTiffOpenFailure(
+          error,
+          blobSourceFromFile(primary),
+          primary.name,
+          signal,
+        )
+      }
+      let cogInspection: Awaited<ReturnType<typeof inspectReadableTiff>>
+      try {
+        cogInspection = looksLikeTiffName(primary.name)
+          ? await inspectReadableTiff(blobSourceFromFile(primary), signal)
+          : undefined
+      } catch (error) {
+        await document.close?.()
+        document = undefined
+        throw error
+      }
+      return {
+        id: this.#id('source') as SourceId,
+        documentId: this.#id('document') as DocumentId,
+        generation,
+        kind,
+        name: primary.name,
+        size: primary.size,
+        document,
+        rangeSources: [],
+        lifetime,
+        lastUsedAt: this.#now(),
+        ...(cogInspection === undefined ? {} : { cogInspection }),
+        datasets: new Map(),
+        closed: false,
+      }
     } catch (error) {
-      throw await this.#enrichTiffOpenFailure(
-        error,
-        blobSourceFromFile(primary),
-        primary.name,
-        signal,
-      )
-    }
-    let cogInspection: Awaited<ReturnType<typeof inspectReadableTiff>>
-    try {
-      cogInspection = looksLikeTiffName(primary.name)
-        ? await inspectReadableTiff(blobSourceFromFile(primary), signal)
-        : undefined
-    } catch (error) {
-      await document.close?.()
+      lifetime.abort(abortError('Source open failed'))
+      if (document !== undefined) await document.close?.()
       throw error
-    }
-    return {
-      id: this.#id('source') as SourceId,
-      documentId: this.#id('document') as DocumentId,
-      generation,
-      kind,
-      name: primary.name,
-      size: primary.size,
-      document,
-      rangeSources: [],
-      ...(cogInspection === undefined ? {} : { cogInspection }),
-      datasets: new Map(),
-      closed: false,
     }
   }
 
@@ -519,14 +584,19 @@ export class ImagingWorkerHost {
     request: Extract<WorkerRequest, { kind: 'source.open-remote' }>,
     signal: AbortSignal,
   ): Promise<WorkerHostResult> {
+    const lifetime = new AbortController()
+    let document: ScientificDocument | undefined
     try {
       const url = assertRemoteUrl(request.payload.url)
-      const primary = await HttpRangeSource.open(url, {
-        blockBytes: 64 * 1_024,
-        maxCacheBytes: 512 * 1_024,
-        signal,
+      const maxCacheBytes = this.#rangeCacheBudgetForNewSource()
+      const rangeOptions = {
+        blockBytes: RANGE_BLOCK_BYTES,
+        maxCacheBytes,
+        openSignal: signal,
+        lifetimeSignal: lifetime.signal,
         ...(this.#fetch === undefined ? {} : { fetch: this.#fetch }),
-      })
+      }
+      const primary = await HttpRangeSource.open(url, rangeOptions)
       const ranges = [primary]
       const companions = new Map<string, HttpRangeSource>()
       const resolver: ScientificCompanionResolver = {
@@ -543,10 +613,8 @@ export class ImagingWorkerHost {
           let source = companions.get(relativeName)
           if (source === undefined) {
             source = await HttpRangeSource.open(companionUrl, {
-              blockBytes: 64 * 1_024,
-              maxCacheBytes: 512 * 1_024,
-              ...(options?.signal === undefined ? {} : { signal: options.signal }),
-              ...(this.#fetch === undefined ? {} : { fetch: this.#fetch }),
+              ...rangeOptions,
+              ...(options?.signal === undefined ? {} : { openSignal: options.signal }),
             })
             companions.set(relativeName, source)
             ranges.push(source)
@@ -556,7 +624,6 @@ export class ImagingWorkerHost {
       }
       const name = sourceName(url)
       const readers = await loadReadersForSource(name)
-      let document: ScientificDocument
       try {
         document = await createScientificLibrary({ readers }).open({
           primary: { id: 'remote-primary', name, source: primary },
@@ -573,6 +640,7 @@ export class ImagingWorkerHost {
           : undefined
       } catch (error) {
         await document.close?.()
+        document = undefined
         throw error
       }
       const record: SourceRecord = {
@@ -585,21 +653,29 @@ export class ImagingWorkerHost {
         url: url.href,
         document,
         rangeSources: ranges,
+        lifetime,
+        lastUsedAt: this.#now(),
         ...(cogInspection === undefined ? {} : { cogInspection }),
         datasets: new Map(),
         closed: false,
       }
-      await this.#activate(record)
+      await this.#commitSource(record)
       return success(request.requestId, 'source.opened', this.#describe(record))
     } catch (error) {
+      lifetime.abort(abortError('Source open failed'))
+      if (document !== undefined) await document.close?.()
       return errorResult(request.requestId, this.#openFailure(error))
     }
   }
 
-  async #activate(record: SourceRecord): Promise<void> {
-    const previous = this.#active
-    this.#active = record
-    if (previous !== undefined) await this.#releaseSource(previous)
+  async #commitSource(record: SourceRecord): Promise<void> {
+    if (this.#sources.size >= this.#limits.maxOpenSources) {
+      record.lifetime.abort(abortError('Open source limit reached'))
+      await record.document.close?.()
+      throw this.#limitError(`Open source limit of ${this.#limits.maxOpenSources} reached.`)
+    }
+    this.#sources.set(record.id, record)
+    this.#touch(record)
   }
 
   #describe(record: SourceRecord) {
@@ -628,70 +704,100 @@ export class ImagingWorkerHost {
     signal: AbortSignal,
   ): Promise<WorkerHostResult> {
     try {
-      const active = this.#assertActive(request.payload.generation)
-      if (active.documentId !== request.payload.documentId) throw this.#stale('document')
-      const summary = active.document.datasets.find(({ id }) => id === request.payload.datasetId)
+      const source = this.#sourceForDocument(
+        request.payload.documentId,
+        request.payload.generation,
+        request.payload.sourceId,
+      )
+      if (source.datasets.size >= this.#limits.maxDatasetsPerSource) {
+        throw this.#limitError(
+          `Dataset limit of ${this.#limits.maxDatasetsPerSource} reached for this source.`,
+        )
+      }
+      const summary = source.document.datasets.find(({ id }) => id === request.payload.datasetId)
       if (summary === undefined) throw this.#stale('dataset summary')
-      const dataset = await active.document.openDataset(summary.id, { signal })
+      const remainingTileBytes = this.#remainingTileRuntimeBytes()
+      if (remainingTileBytes < 8 * MiB) {
+        throw this.#limitError('Tile-runtime memory budget is exhausted.')
+      }
+      const managedBytes = Math.min(96 * MiB, Math.max(8 * MiB, remainingTileBytes))
+      const dataset = await source.document.openDataset(summary.id, { signal })
       const runtime = createTileRuntime({
         limits: {
-          maxCacheBytes: 48 * MiB,
+          maxCacheBytes: Math.min(48 * MiB, managedBytes),
           maxTileBytes: 8 * MiB,
-          maxInFlightBytes: 32 * MiB,
-          maxTotalManagedBytes: 96 * MiB,
+          maxInFlightBytes: Math.min(32 * MiB, managedBytes),
+          maxTotalManagedBytes: managedBytes,
           maxConcurrency: 3,
           maxTilePixels: 512 * 512,
         },
         metrics: true,
       })
-      const bundle = createBuiltInAnalysisBundle({ descriptor: dataset.descriptor, runtime })
-      const extensions = createExtensionHost({
-        extensions: [createMaterialsAnalysisExtension()],
-        operations: bundle.operations.definitions(),
-        valueTypes: bundle.valueTypes.definitions(),
-        providers: bundle.providers,
-      })
-      const analysis = createAnalysisController({
-        operations: extensions.operations,
-        valueTypes: extensions.valueTypes,
-        providers: extensions.providers,
-        roi: { descriptor: dataset.descriptor },
-        library: {
-          version: PUREJSIMAGE_PACKAGE_VERSION,
-          buildFingerprint: 'pji-workbench-worker-v1',
-        },
-      })
-      const handleId = this.#id('dataset') as DatasetHandleId
-      const record: DatasetRecord = {
-        handleId,
-        summary,
-        dataset,
-        readerId: active.document.reader.id,
-        runtime,
-        tileSource: numericTileSourceToTileSource(
-          wrapNumericSource(
-            resolveNumericTileSource(dataset, { targetSampleType: 'float32' }),
-            active.document.reader.id,
-          ),
-        ),
-        tileIdentity: createTileDatasetIdentityForScientificDataset(dataset, {
-          sessionId: handleId,
-          generation: active.generation,
-          unidentifiedDatasetId: summary.id,
-        }),
-        analysis,
-        results: new Map(),
-        selection: defaultPlaneSelection(datasetDescriptor(summary)),
-        closed: false,
+      try {
+        const bundle = createBuiltInAnalysisBundle({ descriptor: dataset.descriptor, runtime })
+        const extensionHost = createExtensionHost({
+          extensions: [...this.#analysisExtensions],
+          operations: bundle.operations.definitions(),
+          valueTypes: bundle.valueTypes.definitions(),
+          providers: bundle.providers,
+        })
+        const prepared = await extensionHost.prepare(signal)
+        try {
+          const analysis = createAnalysisController({
+            operations: prepared.operations,
+            valueTypes: prepared.valueTypes,
+            providers: extensionHost.providers,
+            migrations: prepared.analysisMigrations,
+            roi: { descriptor: dataset.descriptor },
+            library: {
+              version: PUREJSIMAGE_PACKAGE_VERSION,
+              buildFingerprint: 'pji-workbench-worker-v1',
+            },
+          })
+          const handleId = this.#id('dataset') as DatasetHandleId
+          const record: DatasetRecord = {
+            handleId,
+            sourceId: source.id,
+            summary,
+            dataset,
+            readerId: source.document.reader.id,
+            runtime,
+            tileSource: numericTileSourceToTileSource(
+              wrapNumericSource(
+                resolveNumericTileSource(dataset, { targetSampleType: 'float32' }),
+                source.document.reader.id,
+              ),
+            ),
+            tileIdentity: createTileDatasetIdentityForScientificDataset(dataset, {
+              sessionId: handleId,
+              generation: source.generation,
+              unidentifiedDatasetId: summary.id,
+            }),
+            analysis,
+            disposeExtensions: () => prepared.dispose(),
+            results: new Map(),
+            selection: defaultPlaneSelection(datasetDescriptor(summary)),
+            closed: false,
+          }
+          source.datasets.set(handleId, record)
+          this.#datasets.set(handleId, { sourceId: source.id, record })
+          this.#touch(source)
+          const payload: OpenedDatasetDescriptor = {
+            handleId,
+            sourceId: source.id,
+            generation: source.generation,
+            dataset: datasetDescriptor(summary),
+            selection: record.selection,
+          }
+          return success(request.requestId, 'dataset.opened', payload)
+        } catch (error) {
+          await prepared.dispose()
+          throw error
+        }
+      } catch (error) {
+        await runtime.dispose()
+        throw error
       }
-      active.datasets.set(handleId, record)
-      const payload: OpenedDatasetDescriptor = {
-        handleId,
-        generation: active.generation,
-        dataset: datasetDescriptor(summary),
-        selection: record.selection,
-      }
-      return success(request.requestId, 'dataset.opened', payload)
     } catch (error) {
       return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
     }
@@ -701,9 +807,8 @@ export class ImagingWorkerHost {
     request: Extract<WorkerRequest, { kind: 'source.close' }>,
   ): Promise<WorkerHostResult> {
     try {
-      const active = this.#assertActive(request.payload.generation)
-      if (active.id !== request.payload.sourceId) throw this.#stale('source')
-      await this.#releaseActive()
+      const source = this.#sourceById(request.payload.sourceId, request.payload.generation)
+      await this.#releaseSource(source)
       return success(request.requestId, 'source.closed', { sourceId: request.payload.sourceId })
     } catch (error) {
       return errorResult(request.requestId, structuredError(error, 'STALE_ID'))
@@ -714,10 +819,11 @@ export class ImagingWorkerHost {
     request: Extract<WorkerRequest, { kind: 'dataset.close' }>,
   ): Promise<WorkerHostResult> {
     try {
-      const active = this.#assertActive(request.payload.generation)
-      const record = active.datasets.get(request.payload.handleId)
-      if (record === undefined) throw this.#stale('dataset handle')
-      await this.#releaseDataset(active, record)
+      const { source, record } = this.#datasetByHandle(
+        request.payload.handleId,
+        request.payload.generation,
+      )
+      await this.#releaseDataset(source, record)
       return success(request.requestId, 'dataset.closed', { handleId: request.payload.handleId })
     } catch (error) {
       return errorResult(request.requestId, structuredError(error, 'STALE_ID'))
@@ -726,9 +832,10 @@ export class ImagingWorkerHost {
 
   #setPlane(request: Extract<WorkerRequest, { kind: 'plane.set' }>): WorkerHostResult {
     try {
-      const active = this.#assertActive(request.payload.generation)
-      const record = active.datasets.get(request.payload.handleId)
-      if (record === undefined) throw this.#stale('dataset handle')
+      const { source, record } = this.#datasetByHandle(
+        request.payload.handleId,
+        request.payload.generation,
+      )
       const selection = request.payload.selection
       if (!supportsScientificPlaneRead(record.dataset.descriptor, selection.displayAxes)) {
         throw new RpcValidationError(
@@ -737,7 +844,8 @@ export class ImagingWorkerHost {
         )
       }
       record.selection = selection
-      record.runtime.invalidate({ generation: active.generation, cancelInFlight: true })
+      record.runtime.invalidate({ generation: source.generation, cancelInFlight: true })
+      this.#touch(source)
       return success(request.requestId, 'plane.selected', {
         handleId: record.handleId,
         selection,
@@ -754,9 +862,11 @@ export class ImagingWorkerHost {
     const started = performance.now()
     let tile: NumericTile | undefined
     try {
-      const active = this.#assertActive(request.payload.generation)
-      const record = active.datasets.get(request.payload.datasetHandleId)
-      if (record === undefined) throw this.#stale('dataset handle')
+      const { source, record } = this.#datasetByHandle(
+        request.payload.datasetHandleId,
+        request.payload.generation,
+      )
+      this.#touch(source)
       tile = await record.runtime.request(record.tileSource, {
         address: {
           cacheClass: 'source',
@@ -805,9 +915,8 @@ export class ImagingWorkerHost {
     readonly datasetHandleId: DatasetHandleId
     readonly generation: number
   }) {
-    const active = this.#assertActive(payload.generation)
-    const record = active.datasets.get(payload.datasetHandleId)
-    if (record === undefined) throw this.#stale('dataset handle')
+    const { source, record } = this.#datasetByHandle(payload.datasetHandleId, payload.generation)
+    this.#touch(source)
     return record
   }
 
@@ -818,8 +927,8 @@ export class ImagingWorkerHost {
       const record = this.#analysisRecord(request.payload)
       return success(request.requestId, 'analysis.catalog', {
         capabilities: record.analysis.capabilities,
-        documentation: TOOLBOX_DOCUMENTATION,
-        presets: TOOLBOX_PRESETS,
+        documentation: this.#catalogExtras.documentation,
+        presets: this.#catalogExtras.presets,
       })
     } catch (error) {
       return errorResult(request.requestId, structuredError(error, 'INVALID_PAYLOAD'))
@@ -1314,48 +1423,100 @@ export class ImagingWorkerHost {
     })
   }
 
-  diagnostics(): WorkerDiagnostics {
-    const active = this.#active
-    const rangeStats = active?.rangeSources.reduce(
-      (totals, source) => ({
-        requests: totals.requests + source.stats.requests,
-        bytesFetched: totals.bytesFetched + source.stats.bytesFetched,
-        cacheBytes: totals.cacheBytes + source.stats.cacheBytes,
-        cacheHits: totals.cacheHits + source.stats.cacheHits,
-      }),
-      { requests: 0, bytesFetched: 0, cacheBytes: 0, cacheHits: 0 },
+  diagnostics(sourceId?: SourceId): WorkerDiagnostics {
+    const sourceRecords = [...this.#sources.values()]
+    const allSources = sourceRecords.map((source) => this.#sourceDiagnostics(source))
+    const sources =
+      sourceId === undefined ? allSources : allSources.filter((source) => source.id === sourceId)
+    const tileRuntimes = sourceRecords.flatMap((source) => [...source.datasets.values()])
+    const tileRuntimeBytes = tileRuntimes.reduce(
+      (sum, dataset) => sum + dataset.runtime.metrics().memory.totalManagedBytes,
+      0,
     )
-    const runtime = active?.datasets.values().next().value as DatasetRecord | undefined
-    const rangeRequests = rangeStats?.requests ?? 0
-    const rangeCacheHits = rangeStats?.cacheHits ?? 0
+    const rangeCacheBytes = allSources.reduce((sum, source) => sum + source.rangeCacheBytes, 0)
+    const firstRuntime = tileRuntimes[0]
     return {
-      generation: active?.generation ?? 0,
-      source:
-        active === undefined
-          ? null
-          : {
-              id: active.id,
-              kind: active.kind,
-              size: active.size,
-              rangeRequests,
-              rangeBytesFetched: rangeStats?.bytesFetched ?? 0,
-              rangeCacheBytes: rangeStats?.cacheBytes ?? 0,
-              rangeCacheHits,
-              rangeCacheMisses: Math.max(0, rangeRequests - rangeCacheHits),
-            },
-      openDatasets: active?.datasets.size ?? 0,
+      epoch: this.#epoch,
+      sources,
+      aggregate: {
+        openSources: this.#sources.size,
+        openDatasets: this.#datasets.size,
+        pendingRequests: this.#pending.size,
+        rangeCacheBytes,
+        tileRuntimeBytes,
+      },
       pendingRequests: this.#pending.size,
-      tileRuntime: runtime === undefined ? null : runtime.runtime.metrics(),
+      tileRuntime: firstRuntime === undefined ? null : firstRuntime.runtime.metrics(),
       releases: { ...this.#releases },
+      limits: this.#limits,
     }
   }
 
-  #assertActive(generation: number): SourceRecord {
-    const active = this.#active
-    if (active === undefined || active.closed || active.generation !== generation) {
-      throw this.#stale('source generation')
+  #sourceDiagnostics(source: SourceRecord): SourceRangeDiagnostics {
+    const rangeStats = source.rangeSources.reduce(
+      (totals, range) => ({
+        requests: totals.requests + range.stats.requests,
+        bytesFetched: totals.bytesFetched + range.stats.bytesFetched,
+        cacheBytes: totals.cacheBytes + range.stats.cacheBytes,
+        cacheHits: totals.cacheHits + range.stats.cacheHits,
+        uniqueBytes: totals.uniqueBytes + range.stats.uniqueBytes,
+      }),
+      { requests: 0, bytesFetched: 0, cacheBytes: 0, cacheHits: 0, uniqueBytes: 0 },
+    )
+    const rangeRequests = rangeStats.requests
+    const rangeCacheHits = rangeStats.cacheHits
+    return {
+      id: source.id,
+      kind: source.kind,
+      size: source.size,
+      revision: source.generation,
+      rangeRequests,
+      rangeBytesFetched: rangeStats.bytesFetched,
+      rangeCacheBytes: rangeStats.cacheBytes,
+      rangeCacheHits,
+      rangeCacheMisses: Math.max(0, rangeRequests - rangeCacheHits),
+      uniqueBytes: rangeStats.uniqueBytes,
+      openDatasets: source.datasets.size,
     }
-    return active
+  }
+
+  #sourceById(sourceId: SourceId, generation: number): SourceRecord {
+    const source = this.#sources.get(sourceId)
+    if (source === undefined || source.closed || source.generation !== generation) {
+      throw this.#stale('source')
+    }
+    return source
+  }
+
+  #sourceForDocument(
+    documentId: DocumentId,
+    generation: number,
+    sourceId: SourceId | undefined,
+  ): SourceRecord {
+    if (sourceId !== undefined) {
+      const source = this.#sourceById(sourceId, generation)
+      if (source.documentId !== documentId) throw this.#stale('document')
+      return source
+    }
+    for (const source of this.#sources.values()) {
+      if (source.documentId !== documentId || source.closed) continue
+      if (source.generation !== generation) throw this.#stale('source generation')
+      return source
+    }
+    throw this.#stale('document')
+  }
+
+  #datasetByHandle(
+    handleId: DatasetHandleId,
+    generation: number,
+  ): { source: SourceRecord; record: DatasetRecord } {
+    const binding = this.#datasets.get(handleId)
+    if (binding === undefined) throw this.#stale('dataset handle')
+    const source = this.#sources.get(binding.sourceId)
+    if (source === undefined || source.closed) throw this.#stale('dataset handle')
+    if (source.generation !== generation) throw this.#stale('source generation')
+    if (binding.record.closed) throw this.#stale('dataset handle')
+    return { source, record: binding.record }
   }
 
   #openFailure(error: unknown): StructuredRpcError {
@@ -1385,7 +1546,7 @@ export class ImagingWorkerHost {
     })
   }
 
-  async #releaseDataset(active: SourceRecord, record: DatasetRecord): Promise<void> {
+  async #releaseDataset(source: SourceRecord, record: DatasetRecord): Promise<void> {
     if (record.closed) return
     record.closed = true
     for (const pending of this.#pending.values()) {
@@ -1394,24 +1555,83 @@ export class ImagingWorkerHost {
       }
     }
     for (const result of [...record.results.values()]) await this.#releaseAnalysis(record, result)
+    await record.disposeExtensions()
     await record.runtime.dispose()
     this.#releases.runtimes += 1
     this.#releases.datasets += 1
-    active.datasets.delete(record.handleId)
+    source.datasets.delete(record.handleId)
+    this.#datasets.delete(record.handleId)
   }
 
   async #releaseSource(record: SourceRecord): Promise<void> {
     if (record.closed) return
     record.closed = true
+    record.lifetime.abort(abortError('Source closed'))
+    for (const pending of this.#pending.values()) {
+      if (pending.sourceId === record.id) pending.controller.abort(abortError('Source closed'))
+    }
     for (const dataset of [...record.datasets.values()]) await this.#releaseDataset(record, dataset)
     await record.document.close?.()
+    this.#sources.delete(record.id)
     this.#releases.documents += 1
   }
 
-  async #releaseActive(): Promise<void> {
-    const active = this.#active
-    this.#active = undefined
-    if (active !== undefined) await this.#releaseSource(active)
+  async #releaseAllSources(): Promise<void> {
+    for (const source of [...this.#sources.values()]) await this.#releaseSource(source)
+  }
+
+  #rangeCacheBudgetForNewSource(): number {
+    const remaining = this.#remainingRangeCacheBytes()
+    if (remaining < MINIMUM_RANGE_CACHE_BYTES) {
+      throw this.#limitError('Range-cache budget is exhausted.')
+    }
+    return Math.min(PREFERRED_RANGE_CACHE_BYTES, remaining)
+  }
+
+  #remainingRangeCacheBytes(): number {
+    let used = 0
+    for (const source of this.#sources.values()) {
+      for (const range of source.rangeSources) used += range.stats.cacheBytes
+    }
+    return Math.max(0, this.#limits.maxRangeCacheBytes - used)
+  }
+
+  #remainingTileRuntimeBytes(): number {
+    let used = 0
+    for (const binding of this.#datasets.values()) {
+      used += binding.record.runtime.metrics().memory.totalManagedBytes
+    }
+    return Math.max(0, this.#limits.maxTileRuntimeBytes - used)
+  }
+
+  #isBudgetedKind(kind: WorkerRequest['kind']): boolean {
+    return (
+      kind === 'source.open-sample' ||
+      kind === 'source.open-local' ||
+      kind === 'source.open-bundled' ||
+      kind === 'source.open-remote' ||
+      kind === 'dataset.open' ||
+      kind === 'tile.request' ||
+      kind === 'analysis.dry-run' ||
+      kind === 'analysis.execute' ||
+      kind === 'analysis.overlay-tile' ||
+      kind === 'analysis.dataset-tile'
+    )
+  }
+
+  #touch(source: SourceRecord): void {
+    source.lastUsedAt = this.#now()
+  }
+
+  #now(): number {
+    return performance.now()
+  }
+
+  #limitError(message: string): StructuredRpcError & Error {
+    return Object.assign(new Error(message), {
+      code: 'LIMIT_EXCEEDED' as const,
+      retryable: false,
+    })
   }
 
   #id(prefix: string): string {

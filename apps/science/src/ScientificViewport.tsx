@@ -9,7 +9,7 @@ import type {
   RenderTile,
 } from '@pji-workbench/contracts'
 import type { RoiTool, ViewportRoi } from '@pji-workbench/domain-science'
-import type { ImagingWorkerClient } from '@pji-workbench/imaging'
+import { ImagingRpcError, type ImagingWorkerClient } from '@pji-workbench/imaging'
 import {
   type Bounds,
   type Camera,
@@ -529,6 +529,8 @@ export function ScientificViewport({
     let requestGeneration = 1
     let tileSequence = 1
     let firstTile = true
+    let rescheduleTimer = 0
+    let retryWhenIdle = false
     let panning = false
     let drawingStart: Point | undefined
     let spacePressed = false
@@ -643,6 +645,7 @@ export function ScientificViewport({
                   },
                   controller.signal,
                 )
+          let retryableFailure = false
           void requested
             .then((tile) => {
               if (currentGeneration !== requestGeneration || controller.signal.aborted) return
@@ -664,12 +667,31 @@ export function ScientificViewport({
               draw()
             })
             .catch((error: unknown) => {
-              if (!controller.signal.aborted && tileStatusRef.current !== null) {
+              retryableFailure =
+                !controller.signal.aborted &&
+                error instanceof ImagingRpcError &&
+                (error.detail.code === 'ABORTED' || error.detail.code === 'LIMIT_EXCEEDED')
+              if (retryableFailure) retryWhenIdle = true
+              if (!controller.signal.aborted && !retryableFailure && tileStatusRef.current !== null) {
                 tileStatusRef.current.textContent =
                   error instanceof Error ? error.message : `Tile ${requestId} failed`
               }
             })
-            .finally(() => pending.delete(tileId))
+            .finally(() => {
+              pending.delete(tileId)
+              if (
+                retryWhenIdle &&
+                pending.size === 0 &&
+                scheduleTilesRef.current === scheduleTiles
+              ) {
+                retryWhenIdle = false
+                window.clearTimeout(rescheduleTimer)
+                rescheduleTimer = window.setTimeout(() => {
+                  if (scheduleTilesRef.current !== scheduleTiles) return
+                  scheduleTiles()
+                }, 0)
+              }
+            })
         }
 
         if (analysisOverlay !== undefined) {
@@ -751,6 +773,7 @@ export function ScientificViewport({
       scheduleTiles()
     })
     resizeObserver.observe(canvas)
+    scheduleTiles()
 
     const pointerPosition = (event: Pick<MouseEvent, 'clientX' | 'clientY'>): Point => {
       const canvasBounds = canvas.getBoundingClientRect()
@@ -925,6 +948,7 @@ export function ScientificViewport({
     return () => {
       requestGeneration += 1
       scheduleTilesRef.current = () => undefined
+      window.clearTimeout(rescheduleTimer)
       onReady(null)
       onRenderSettled?.(false)
       for (const controller of pending.values()) controller.abort()

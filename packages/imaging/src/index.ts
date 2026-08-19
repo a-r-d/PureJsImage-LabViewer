@@ -3,8 +3,13 @@ export {
   createImagingWorkerClient,
   ImagingRpcError,
   ImagingWorkerClient,
+  type ImagingWorkerClientOptions,
 } from './worker-client.js'
-export { ImagingWorkerHost } from './worker-host.js'
+export {
+  ImagingWorkerHost,
+  type ImagingAnalysisCatalogExtras,
+  type ImagingWorkerHostOptions,
+} from './worker-host.js'
 export { SUPPORTED_FILE_ACCEPT, SUPPORTED_READERS } from './worker-readers.js'
 
 // Compile-time probes deliberately verify documented package paths without exporting live objects.

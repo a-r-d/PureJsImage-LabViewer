@@ -51,7 +51,8 @@ apps/science
 
 apps/geo
   Geo Atlas: STAC catalog discovery (generic client + registry; Kentucky From Above is the first
-  entry), native-CRS viewport, layer/display controls, and COG X-ray. Deployed at geo.purejsimage.com.
+  entry), native-CRS viewport, independent COG sources with per-handle tiles, layer/display
+  controls, and COG X-ray. Deployed at geo.purejsimage.com.
 
 packages/actions
   JSON-safe semantic action descriptors, deterministic registry, availability, validation,
@@ -87,7 +88,8 @@ packages/domain-geo
 
 packages/imaging
   The only package that directly composes PureJsImage readers, scientific documents,
-  analysis controller/runtime, and worker-side lifecycles.
+  analysis controller/runtime, and worker-side lifecycles. One Worker owns a bounded map of
+  independent sources; analysis extensions are injected by the app, not hardcoded.
 
 packages/viewport
   Camera math, coordinate-space adapters (image space and world-space affine), visible

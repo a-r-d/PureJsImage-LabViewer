@@ -12,20 +12,22 @@ import {
   scalarNodata,
   transformMapPoint,
 } from '@pji-workbench/domain-geo'
-import type { ImagingWorkerClient } from '@pji-workbench/imaging'
+import { ImagingRpcError, type ImagingWorkerClient } from '@pji-workbench/imaging'
 import {
+  type Bounds,
   type Camera,
   type CoordinateSpaceAdapter,
   createWorldSpaceAffineAdapter,
   fitCameraToLayer,
   type Point,
   panCameraInSpace,
-  planVisibleTileRegions,
+  planMultiLayerTiles,
   resizeCamera,
   type Size,
   sampleViewportPointer,
   scaleAffineToOverview,
   selectOverviewLevel,
+  type TileLayerPlanInput,
   visibleWorldBounds,
   zoomCameraAtScreenPointInSpace,
 } from '@pji-workbench/viewport'
@@ -42,7 +44,7 @@ export interface GeoViewportPointer {
 
 export interface GeoViewportProps {
   readonly client: ImagingWorkerClient
-  readonly opened: OpenedDatasetDescriptor
+  readonly rasters: readonly OpenedDatasetDescriptor[]
   readonly layers: readonly GeoRasterLayer[]
   readonly onPointer: (sample: GeoViewportPointer | undefined) => void
   readonly onOverview: (level: number) => void
@@ -187,7 +189,7 @@ class CanvasGeoRenderer {
 
 export function GeoViewport({
   client,
-  opened,
+  rasters,
   layers,
   onPointer,
   onOverview,
@@ -197,12 +199,19 @@ export function GeoViewport({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const layersRef = useRef(layers)
   layersRef.current = layers
+  const rastersRef = useRef(rasters)
+  rastersRef.current = rasters
   const onViewBboxRef = useRef(onViewBbox)
   onViewBboxRef.current = onViewBbox
   const scheduleRef = useRef<() => void>(() => undefined)
-  const layersKey = layers
-    .map((layer) => `${layer.id}:${layer.visible}:${layer.opacity}:${JSON.stringify(layer.style)}`)
-    .join('|')
+  const rastersIdentity = rasters.map((raster) => `${raster.handleId}:${raster.generation}`).join('|')
+  const layersKey = [
+    rastersIdentity,
+    ...layers.map(
+      (layer) =>
+        `${layer.id}:${layer.sourceId}:${layer.visible}:${layer.opacity}:${JSON.stringify(layer.style)}`,
+    ),
+  ].join('|')
   // biome-ignore lint/correctness/useExhaustiveDependencies: layersKey is the refetch signal; the effect only calls the latest scheduler.
   useEffect(() => {
     scheduleRef.current()
@@ -211,10 +220,12 @@ export function GeoViewport({
   useEffect(() => {
     const canvas = canvasRef.current
     if (canvas === null) return
-    const spatial = opened.dataset.spatialReference
+    const primary = rasters[0]
+    if (primary === undefined) return
+    const spatial = primary.dataset.spatialReference
     if (spatial?.pixelToModel === undefined) return
     const affine = spatial.pixelToModel
-    const full = rasterSize(opened.dataset)
+    const full = rasterSize(primary.dataset)
     const fullAdapter = createWorldSpaceAffineAdapter({
       pixelToWorld: affine,
       ...(spatial.modelToPixel === undefined ? {} : { worldToPixel: spatial.modelToPixel }),
@@ -222,16 +233,24 @@ export function GeoViewport({
       height: full.height,
       pixelInterpretation: spatial.pixelInterpretation,
     })
+    const sharedWorld = unionWorldBounds(
+      rasters.flatMap((raster) => {
+        const rasterAdapter = worldAdapterForDataset(raster)
+        return rasterAdapter === undefined || !sameCrs(spatial, raster.dataset.spatialReference)
+          ? []
+          : [rasterAdapter.worldBounds()]
+      }),
+    )
+    const cameraAdapter = withWorldBounds(fullAdapter, sharedWorld)
     const renderer = new CanvasGeoRenderer(canvas)
     let viewport: Size = { width: 1, height: 1 }
-    let camera: Camera = fitCameraToLayer(fullAdapter, viewport)
+    let camera: Camera = fitCameraToLayer(cameraAdapter, viewport)
     let fitted = false
     let frameRequest = 0
-    let requestGeneration = 1
+    const requestGeneration = 1
     let overview = 0
-    let adapter = fullAdapter
+    const adapter = cameraAdapter
     const pending = new Map<string, AbortController>()
-    const nodata = scalarNodata(spatial)
 
     const draw = (): void => {
       cancelAnimationFrame(frameRequest)
@@ -243,35 +262,75 @@ export function GeoViewport({
     const scheduleTiles = (): void => {
       onSettled(false)
       const nextOverview = selectOverviewLevel(
-        overviewSizes(opened.dataset, full),
+        overviewSizes(primary.dataset, full),
         camera,
         viewport,
-        fullAdapter.worldBounds(),
+        cameraAdapter.worldBounds(),
       )
       if (nextOverview !== overview) {
         overview = nextOverview
-        adapter = adapterForOverview(spatial, affine, full, opened.dataset, overview)
         onOverview(overview)
-        requestGeneration += 1
-        for (const controller of pending.values()) controller.abort()
-        pending.clear()
       }
-      const visible = visibleWorldBounds(camera, viewport, adapter)
-      const pixelVisible = visibleWorldToPixel(adapter, visible)
+      const visible = visibleWorldBounds(camera, viewport, cameraAdapter)
       const required = new Set<string>()
+      const planInputs: TileLayerPlanInput[] = []
+      const contexts = new Map<
+        string,
+        {
+          readonly raster: OpenedDatasetDescriptor
+          readonly overview: number
+          readonly mapping: ReturnType<typeof displayMappingFromStyle>
+        }
+      >()
       for (const layer of layersRef.current) {
         if (!layer.visible) continue
-        const mapping = displayMappingFromStyle(layer.style, nodata)
-        const mappingKey = JSON.stringify(mapping)
-        const candidates = planVisibleTileRegions(
-          adapter.pixelBounds(),
-          pixelVisible,
-          TILE_SIZE,
-          PREFETCH_TILES,
+        const raster = rastersRef.current.find(
+          (candidate) => String(candidate.sourceId) === String(layer.sourceId),
         )
-        const component = mapping.bands?.gray ?? mapping.bands?.red ?? 0
-        for (const candidate of candidates) {
-          const tileId = `${opened.generation}:${layer.id}:${overview}:${mappingKey}:${candidate.column}:${candidate.row}`
+        if (raster === undefined) continue
+        const rasterSpatial = raster.dataset.spatialReference
+        const rasterAffine = rasterSpatial?.pixelToModel
+        if (rasterSpatial === undefined || rasterAffine === undefined) continue
+        const rasterFull = rasterSize(raster.dataset)
+        const rasterWorld = createWorldSpaceAffineAdapter({
+          pixelToWorld: rasterAffine,
+          ...(rasterSpatial.modelToPixel === undefined
+            ? {}
+            : { worldToPixel: rasterSpatial.modelToPixel }),
+          width: rasterFull.width,
+          height: rasterFull.height,
+          pixelInterpretation: rasterSpatial.pixelInterpretation,
+        })
+        const layerOverview = selectOverviewLevel(
+          overviewSizes(raster.dataset, rasterFull),
+          camera,
+          viewport,
+          rasterWorld.worldBounds(),
+        )
+        const layerAdapter = adapterForOverview(
+          rasterSpatial,
+          rasterAffine,
+          rasterFull,
+          raster.dataset,
+          layerOverview,
+        )
+        const mapping = displayMappingFromStyle(layer.style, scalarNodata(rasterSpatial))
+        planInputs.push({
+          layerId: layer.id,
+          sourceId: layer.sourceId,
+          visible: true,
+          adapter: layerAdapter,
+        })
+        contexts.set(layer.id, { raster, overview: layerOverview, mapping })
+      }
+      const plan = planMultiLayerTiles(planInputs, visible, TILE_SIZE, PREFETCH_TILES)
+      for (const layerPlan of plan.layers) {
+        const context = contexts.get(layerPlan.layerId)
+        if (context === undefined) continue
+        const mappingKey = JSON.stringify(context.mapping)
+        const component = context.mapping.bands?.gray ?? context.mapping.bands?.red ?? 0
+        for (const candidate of layerPlan.regions) {
+          const tileId = `${context.raster.handleId}:${layerPlan.layerId}:${context.overview}:${mappingKey}:${candidate.column}:${candidate.row}`
           required.add(tileId)
           if (renderer.has(tileId) || pending.has(tileId)) continue
           const controller = new AbortController()
@@ -281,13 +340,13 @@ export function GeoViewport({
             .requestTile(
               {
                 tileId,
-                datasetHandleId: opened.handleId,
-                generation: opened.generation,
-                displayAxes: opened.selection.displayAxes,
-                fixedIndices: opened.selection.fixedIndices,
-                resolutionLevel: overview,
+                datasetHandleId: context.raster.handleId,
+                generation: context.raster.generation,
+                displayAxes: context.raster.selection.displayAxes,
+                fixedIndices: context.raster.selection.fixedIndices,
+                resolutionLevel: context.overview,
                 component,
-                mapping,
+                mapping: context.mapping,
                 region: {
                   x: candidate.x,
                   y: candidate.y,
@@ -300,11 +359,19 @@ export function GeoViewport({
             )
             .then((tile) => {
               if (currentGeneration !== requestGeneration || controller.signal.aborted) return
-              renderer.upload(layer.id, tile)
+              renderer.upload(layerPlan.layerId, tile)
               draw()
               if (pending.size === 0) onSettled(true)
             })
-            .catch(() => undefined)
+            .catch((error: unknown) => {
+              if (
+                !controller.signal.aborted &&
+                error instanceof ImagingRpcError &&
+                error.detail.code === 'ABORTED'
+              ) {
+                window.setTimeout(() => scheduleRef.current(), 0)
+              }
+            })
             .finally(() => {
               pending.delete(tileId)
               if (pending.size === 0 && currentGeneration === requestGeneration) onSettled(true)
@@ -328,7 +395,7 @@ export function GeoViewport({
         reportBbox(undefined)
         return
       }
-      const visible = visibleWorldBounds(camera, viewport, fullAdapter)
+      const visible = visibleWorldBounds(camera, viewport, cameraAdapter)
       try {
         const corners = [
           { x: visible.x, y: visible.y },
@@ -353,31 +420,67 @@ export function GeoViewport({
       viewport = { width: Math.max(1, box.width), height: Math.max(1, box.height) }
       renderer.configure(viewport)
       if (!fitted) {
-        camera = fitCameraToLayer(fullAdapter, viewport)
+        camera = fitCameraToLayer(cameraAdapter, viewport)
         fitted = viewport.width > 32 && viewport.height > 32
       } else {
-        camera = resizeCamera(camera, previous, viewport, fullAdapter.worldBounds())
+        camera = resizeCamera(camera, previous, viewport, cameraAdapter.worldBounds())
       }
       scheduleTiles()
     })
     resizeObserver.observe(canvas.parentElement ?? canvas)
+    scheduleTiles()
 
     const pointer = (event: PointerEvent): void => {
       const bounds = canvas.getBoundingClientRect()
       const screen = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
-      const sample = sampleViewportPointer(screen, camera, viewport, fullAdapter)
+      const sample = sampleViewportPointer(screen, camera, viewport, cameraAdapter)
       const visibleLayer = [...layersRef.current]
         .sort((left, right) => right.zIndex - left.zIndex)
         .find((layer) => layer.visible)
-      const overviewPixel = adapter.worldToPixel(sample.world)
+      const sampledRaster =
+        visibleLayer === undefined
+          ? primary
+          : (rastersRef.current.find(
+              (candidate) => String(candidate.sourceId) === String(visibleLayer.sourceId),
+            ) ?? primary)
+      const sampledWorld = worldAdapterForDataset(sampledRaster) ?? cameraAdapter
+      const sampledSpatial = sampledRaster.dataset.spatialReference
+      const sampledAffine = sampledSpatial?.pixelToModel
+      const sampledFull = rasterSize(sampledRaster.dataset)
+      const sampledOverview =
+        sampledSpatial === undefined || sampledAffine === undefined
+          ? 0
+          : selectOverviewLevel(
+              overviewSizes(sampledRaster.dataset, sampledFull),
+              camera,
+              viewport,
+              sampledWorld.worldBounds(),
+            )
+      const sampledOverviewAdapter =
+        sampledSpatial === undefined || sampledAffine === undefined
+          ? sampledWorld
+          : adapterForOverview(
+              sampledSpatial,
+              sampledAffine,
+              sampledFull,
+              sampledRaster.dataset,
+              sampledOverview,
+            )
       const bands =
         visibleLayer === undefined
           ? []
-          : (renderer.sample(visibleLayer.id, overviewPixel) ?? []).map((value, index) => ({
+          : (
+              renderer.sample(visibleLayer.id, sampledOverviewAdapter.worldToPixel(sample.world)) ??
+              []
+            ).map((value, index) => ({
               name: `B${index}`,
               value,
             }))
-      onPointer({ pixel: sample.pixel, world: sample.world, bands })
+      onPointer({
+        pixel: sampledWorld.worldToPixel(sample.world),
+        world: sample.world,
+        bands,
+      })
     }
 
     const onWheel = (event: WheelEvent): void => {
@@ -389,7 +492,7 @@ export function GeoViewport({
         { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
         factor,
         viewport,
-        fullAdapter,
+        cameraAdapter,
       )
       scheduleTiles()
     }
@@ -406,7 +509,7 @@ export function GeoViewport({
         camera,
         { x: event.clientX - last.x, y: event.clientY - last.y },
         viewport,
-        fullAdapter,
+        cameraAdapter,
       )
       last = { x: event.clientX, y: event.clientY }
       scheduleTiles()
@@ -423,6 +526,7 @@ export function GeoViewport({
     canvas.addEventListener('wheel', onWheel, { passive: false })
     onOverview(overview)
     return () => {
+      scheduleRef.current = () => undefined
       resizeObserver.disconnect()
       canvas.removeEventListener('pointermove', onPointerMove)
       canvas.removeEventListener('pointerdown', onPointerDown)
@@ -433,7 +537,8 @@ export function GeoViewport({
       renderer.dispose()
       cancelAnimationFrame(frameRequest)
     }
-  }, [client, opened, onOverview, onPointer, onSettled])
+    // biome-ignore lint/correctness/useExhaustiveDependencies: rastersIdentity is the source/handle refetch key; live rasters/layers are read from refs.
+  }, [client, rastersIdentity, onOverview, onPointer, onSettled])
 
   return (
     <div className="geo-viewport">
@@ -484,29 +589,64 @@ function adapterForOverview(
   })
 }
 
-function visibleWorldToPixel(
-  adapter: CoordinateSpaceAdapter,
-  visible: {
-    readonly x: number
-    readonly y: number
-    readonly width: number
-    readonly height: number
-  },
-) {
-  const corners = [
-    { x: visible.x, y: visible.y },
-    { x: visible.x + visible.width, y: visible.y },
-    { x: visible.x + visible.width, y: visible.y + visible.height },
-    { x: visible.x, y: visible.y + visible.height },
-  ].map((corner) => adapter.worldToPixel(corner))
-  const xs = corners.map((corner) => corner.x)
-  const ys = corners.map((corner) => corner.y)
-  const minX = Math.min(...xs)
-  const minY = Math.min(...ys)
+function worldAdapterForDataset(
+  raster: OpenedDatasetDescriptor,
+): CoordinateSpaceAdapter | undefined {
+  const spatial = raster.dataset.spatialReference
+  const affine = spatial?.pixelToModel
+  if (spatial === undefined || affine === undefined) return undefined
+  const size = rasterSize(raster.dataset)
+  return createWorldSpaceAffineAdapter({
+    pixelToWorld: affine,
+    ...(spatial.modelToPixel === undefined ? {} : { worldToPixel: spatial.modelToPixel }),
+    width: size.width,
+    height: size.height,
+    pixelInterpretation: spatial.pixelInterpretation,
+  })
+}
+
+function sameCrs(left: SpatialReference | undefined, right: SpatialReference | undefined): boolean {
+  return crsKey(left) === crsKey(right)
+}
+
+function crsKey(spatial: SpatialReference | undefined): string {
+  const crs = spatial?.crs
+  if (crs === undefined) return 'unknown'
+  return `${crs.kind}:${crs.authority ?? ''}:${String(crs.code ?? crs.name ?? '')}`
+}
+
+function unionWorldBounds(bounds: readonly Bounds[]): Bounds {
+  const first = bounds[0]
+  if (first === undefined) {
+    return { x: 0, y: 0, width: 1, height: 1 }
+  }
+  let minX = first.x
+  let minY = first.y
+  let maxX = first.x + first.width
+  let maxY = first.y + first.height
+  for (const box of bounds.slice(1)) {
+    minX = Math.min(minX, box.x)
+    minY = Math.min(minY, box.y)
+    maxX = Math.max(maxX, box.x + box.width)
+    maxY = Math.max(maxY, box.y + box.height)
+  }
   return {
     x: minX,
     y: minY,
-    width: Math.max(1e-6, Math.max(...xs) - minX),
-    height: Math.max(1e-6, Math.max(...ys) - minY),
+    width: Math.max(1e-6, maxX - minX),
+    height: Math.max(1e-6, maxY - minY),
+  }
+}
+
+function withWorldBounds(adapter: CoordinateSpaceAdapter, world: Bounds): CoordinateSpaceAdapter {
+  return {
+    kind: adapter.kind,
+    worldYDirection: adapter.worldYDirection,
+    pixelToWorld: (pixel) => adapter.pixelToWorld(pixel),
+    worldToPixel: (point) => adapter.worldToPixel(point),
+    pixelBounds: () => adapter.pixelBounds(),
+    worldBounds: () => world,
+    worldToScreen: (point, camera, viewport) => adapter.worldToScreen(point, camera, viewport),
+    screenToWorld: (point, camera, viewport) => adapter.screenToWorld(point, camera, viewport),
   }
 }

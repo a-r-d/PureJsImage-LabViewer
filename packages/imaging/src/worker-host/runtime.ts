@@ -34,13 +34,16 @@ export interface SourceRecord {
   readonly url?: string
   readonly document: ScientificDocument
   readonly rangeSources: readonly HttpRangeSource[]
+  readonly lifetime: AbortController
   readonly cogInspection?: CogInspectionReport
   readonly datasets: Map<DatasetHandleId, DatasetRecord>
+  lastUsedAt: number
   closed: boolean
 }
 
 export interface DatasetRecord {
   readonly handleId: DatasetHandleId
+  readonly sourceId: SourceId
   readonly summary: ScientificDatasetSummary
   readonly dataset: ScientificDataset
   readonly readerId: string
@@ -48,6 +51,7 @@ export interface DatasetRecord {
   readonly tileSource: TileSource
   readonly tileIdentity: ReturnType<typeof createTileDatasetIdentityForScientificDataset>
   readonly analysis: AnalysisController
+  readonly disposeExtensions: () => Promise<void>
   readonly results: Map<AnalysisResultHandleId, AnalysisExecutionRecord>
   selection: PlaneSelection
   closed: boolean
@@ -63,4 +67,5 @@ export interface AnalysisExecutionRecord {
 export interface PendingRequest {
   readonly controller: AbortController
   readonly datasetHandleId?: DatasetHandleId
+  readonly sourceId?: SourceId
 }

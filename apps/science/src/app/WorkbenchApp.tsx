@@ -55,7 +55,7 @@ import {
   workbenchActionRegistry,
   workbenchCommands,
 } from '@pji-workbench/domain-science'
-import { createImagingWorkerClient, type ImagingWorkerClient } from '@pji-workbench/imaging'
+import { type ImagingWorkerClient } from '@pji-workbench/imaging'
 import { type BatchRecipeRow, runBatchRecipe } from '@pji-workbench/materials-analysis'
 import {
   type RecipeDocumentV1,
@@ -125,6 +125,7 @@ import {
   useState,
 } from 'react'
 import type { PublicEnvironment } from '../environment.js'
+import { createScienceImagingWorkerClient } from '../imaging-client.js'
 import { ExampleGallery } from '../features/examples/ExampleGallery.js'
 import {
   InspectorContent,
@@ -1510,7 +1511,7 @@ function WorkbenchRuntime({
             })
           },
           async execute(item, signal) {
-            const batchClient = createImagingWorkerClient()
+            const batchClient = createScienceImagingWorkerClient()
             try {
               await batchClient.initialize()
               const source = await batchClient.openLocal([item.input], item.input, 1, signal)

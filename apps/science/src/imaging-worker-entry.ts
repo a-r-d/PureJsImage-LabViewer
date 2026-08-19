@@ -1,0 +1,31 @@
+import { ImagingWorkerHost } from '@pji-workbench/imaging'
+import {
+  createMaterialsAnalysisExtension,
+  TOOLBOX_DOCUMENTATION,
+  TOOLBOX_PRESETS,
+} from '@pji-workbench/materials-analysis'
+
+interface ImagingWorkerScope {
+  addEventListener(type: 'message', listener: (event: MessageEvent<unknown>) => void): void
+  postMessage(message: unknown, transfer: Transferable[]): void
+}
+
+const worker = self as unknown as ImagingWorkerScope
+const host = new ImagingWorkerHost({
+  analysisExtensions: [createMaterialsAnalysisExtension()],
+  analysisCatalog: {
+    documentation: TOOLBOX_DOCUMENTATION,
+    presets: TOOLBOX_PRESETS,
+  },
+})
+
+worker.addEventListener('message', (event: MessageEvent<unknown>) => {
+  void host.handle(event.data).then(
+    ({ response, transfer }) => worker.postMessage(response, [...transfer]),
+    (error: unknown) => {
+      queueMicrotask(() => {
+        throw error
+      })
+    },
+  )
+})

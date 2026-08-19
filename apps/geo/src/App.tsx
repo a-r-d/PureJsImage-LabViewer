@@ -36,7 +36,7 @@ import {
 import { createImagingWorkerClient, ImagingRpcError } from '@pji-workbench/imaging'
 import { Button, EmptyState, ErrorState, Icon, ThemeRoot } from '@pji-workbench/ui'
 import { WorkbenchShell } from '@pji-workbench/workbench-react'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { CatalogPanel } from './CatalogPanel.js'
 import type { PublicEnvironment } from './environment.js'
@@ -44,9 +44,15 @@ import { GeoViewport, type GeoViewportPointer } from './GeoViewport.js'
 import { InspectorPanel, type InspectorTab } from './InspectorPanel.js'
 import { createLocalStacCache } from './stac-storage.js'
 
+interface OpenedRaster {
+  readonly source: OpenedSourceDescriptor
+  readonly dataset: OpenedDatasetDescriptor
+}
+
 interface OpenedAtlas {
   readonly source: OpenedSourceDescriptor
   readonly dataset: OpenedDatasetDescriptor
+  readonly rasters: readonly OpenedRaster[]
   readonly layers: readonly GeoRasterLayer[]
   readonly catalog?: GeoCatalogReference
   readonly presets?: readonly CatalogStoryPreset[]
@@ -82,9 +88,20 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
 
   useEffect(() => {
     const next = createImagingWorkerClient()
+    let cancelled = false
     setClient(next)
-    void next.initialize().then(() => setReady(true))
+    void next
+      .initialize()
+      .then(() => {
+        if (!cancelled) setReady(true)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        if (error instanceof Error && error.message === 'Imaging Worker client disposed') return
+        setReady(false)
+      })
     return () => {
+      cancelled = true
       openAbortRef.current?.abort()
       next.dispose()
       setClient(null)
@@ -122,26 +139,42 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       const { generation, signal } = beginOpen(generationRef, openAbortRef)
       setBusy(true)
       setError(null)
-      let replaced = false
+      let openedSource: OpenedSourceDescriptor | undefined
+      let committed = false
       try {
         const source = await client.openLocal(files, primary, generation, signal)
-        replaced = true
+        openedSource = source
         const summary = source.datasets[0]
         if (summary === undefined) throw new Error('The GeoTIFF does not expose a raster dataset.')
-        const dataset = await client.openDataset(source.documentId, summary.id, generation, signal)
+        const dataset = await client.openDataset(
+          source.documentId,
+          summary.id,
+          generation,
+          signal,
+          source.sourceId,
+        )
+        const atlas = atlasFromOpen(source, dataset, primary.name)
         const nextDiagnostics = await client.diagnostics()
-        if (signal.aborted || generationRef.current !== generation) return
+        if (signal.aborted || generationRef.current !== generation) {
+          await client.closeSource(source.sourceId, source.generation).catch(() => undefined)
+          return
+        }
         setDiagnostics(nextDiagnostics)
-        setOpened(atlasFromOpen(source, dataset, primary.name))
+        setOpened((current) => appendAtlas(current, atlas))
+        committed = true
         setSelectedLayerId(`${source.sourceId}-layer`)
         setTab('xray')
         setOverview(0)
         setReadout('Move the pointer over the raster')
         clearCatalogHash()
       } catch (caught) {
+        if (!committed && openedSource !== undefined) {
+          await client
+            .closeSource(openedSource.sourceId, openedSource.generation)
+            .catch(() => undefined)
+        }
         if (signal.aborted || generationRef.current !== generation) return
         setError(asOpenFailure(caught))
-        if (replaced) setOpened(null)
       } finally {
         if (generationRef.current === generation) setBusy(false)
       }
@@ -164,15 +197,25 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       const { generation, signal } = beginOpen(generationRef, openAbortRef)
       setBusy(true)
       setError(null)
-      let replaced = false
+      let openedSource: OpenedSourceDescriptor | undefined
+      let committed = false
       try {
         const source = await client.openRemote(remoteUrl, generation, signal)
-        replaced = true
+        openedSource = source
         const summary = source.datasets[0]
         if (summary === undefined) throw new Error('The GeoTIFF does not expose a raster dataset.')
-        const dataset = await client.openDataset(source.documentId, summary.id, generation, signal)
+        const dataset = await client.openDataset(
+          source.documentId,
+          summary.id,
+          generation,
+          signal,
+          source.sourceId,
+        )
         const nextDiagnostics = await client.diagnostics()
-        if (signal.aborted || generationRef.current !== generation) return
+        if (signal.aborted || generationRef.current !== generation) {
+          await client.closeSource(source.sourceId, source.generation).catch(() => undefined)
+          return
+        }
         setDiagnostics(nextDiagnostics)
         setUrlOpen(false)
         const openedAtlas = atlasFromOpen(
@@ -181,7 +224,8 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           options?.label ?? source.source.name,
           options,
         )
-        setOpened(openedAtlas)
+        setOpened((current) => appendAtlas(current, openedAtlas))
+        committed = true
         setSelectedLayerId(`${source.sourceId}-layer`)
         setTab(options?.inspect === true || options?.catalog === undefined ? 'xray' : 'layers')
         setOverview(0)
@@ -202,9 +246,13 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           clearCatalogHash()
         }
       } catch (caught) {
+        if (!committed && openedSource !== undefined) {
+          await client
+            .closeSource(openedSource.sourceId, openedSource.generation)
+            .catch(() => undefined)
+        }
         if (signal.aborted || generationRef.current !== generation) return
         setError(asOpenFailure(caught))
-        if (replaced) setOpened(null)
       } finally {
         if (generationRef.current === generation) setBusy(false)
       }
@@ -274,24 +322,31 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         setReadout('Move the pointer over the raster')
         return
       }
+      const raster = selectedRaster(opened, selectedLayerId)
       setReadout(
         formatGeoCursorReadout({
           pixel: sample.pixel,
           world: sample.world,
-          crs: opened.dataset.dataset.spatialReference?.crs ?? { kind: 'unknown' },
+          crs: raster.dataset.dataset.spatialReference?.crs ?? { kind: 'unknown' },
           bands: sample.bands,
         }),
       )
     },
-    [opened],
+    [opened, selectedLayerId],
   )
 
+  const viewportRasters = useMemo(
+    () => opened?.rasters.map((raster) => raster.dataset) ?? [],
+    [opened?.rasters],
+  )
+
+  const inspected = opened === null ? undefined : selectedRaster(opened, selectedLayerId)
   const xray =
-    opened === null || diagnostics === null
+    inspected === undefined || diagnostics === null
       ? undefined
       : buildCogXrayReport({
-          source: opened.source,
-          dataset: opened.dataset.dataset,
+          source: inspected.source,
+          dataset: inspected.dataset.dataset,
           diagnostics,
           activeOverview: overview,
         })
@@ -395,18 +450,18 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             />
           ) : (
             <GeoViewport
-              key={opened.source.sourceId}
+              key={opened.rasters.map((raster) => raster.source.sourceId).join('|')}
               client={client}
               layers={opened.layers}
               onOverview={setOverview}
               onPointer={onPointer}
               onSettled={setSettled}
               onViewBbox={setViewBbox}
-              opened={opened.dataset}
+              rasters={viewportRasters}
             />
           )}
           <InspectorPanel
-            bandCount={opened?.dataset.dataset.components.length ?? 0}
+            bandCount={inspected?.dataset.dataset.components.length ?? 0}
             catalog={
               <CatalogPanel
                 busy={busy}
@@ -526,10 +581,54 @@ function atlasFromOpen(
   return {
     source,
     dataset,
+    rasters: [{ source, dataset }],
     layers: [layer],
     ...(options?.catalog === undefined ? {} : { catalog: options.catalog }),
     ...(options?.presets === undefined ? {} : { presets: options.presets }),
   }
+}
+
+function appendAtlas(current: OpenedAtlas | null, next: OpenedAtlas): OpenedAtlas {
+  if (current === null) return next
+  const zBase = current.layers.reduce((max, layer) => Math.max(max, layer.zIndex), -1)
+  return {
+    source: next.source,
+    dataset: next.dataset,
+    rasters: [...current.rasters, ...next.rasters],
+    layers: [
+      ...current.layers,
+      ...next.layers.map((layer, index) =>
+        createGeoRasterLayer({
+          id: layer.id,
+          sourceId: layer.sourceId,
+          label: layer.label,
+          zIndex: zBase + 1 + index,
+          visible: layer.visible,
+          opacity: layer.opacity,
+          blendMode: layer.blendMode,
+          style: layer.style,
+        }),
+      ),
+    ],
+    ...(next.catalog === undefined
+      ? current.catalog === undefined
+        ? {}
+        : { catalog: current.catalog }
+      : { catalog: next.catalog }),
+    ...(next.presets === undefined
+      ? current.presets === undefined
+        ? {}
+        : { presets: current.presets }
+      : { presets: next.presets }),
+  }
+}
+
+function selectedRaster(opened: OpenedAtlas, selectedLayerId: string | undefined): OpenedRaster {
+  const layer = opened.layers.find((item) => item.id === selectedLayerId) ?? opened.layers[0]
+  return (
+    opened.rasters.find((raster) => String(raster.source.sourceId) === String(layer?.sourceId)) ??
+    opened.rasters[0] ?? { source: opened.source, dataset: opened.dataset }
+  )
 }
 
 function patchLayer(opened: OpenedAtlas, id: string, patch: Partial<GeoRasterLayer>): OpenedAtlas {

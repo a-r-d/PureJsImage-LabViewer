@@ -9,6 +9,20 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Added
 
+- Bounded multi-source imaging Worker: one Worker owns a map of source records keyed by stable
+  handles. Dataset handles resolve to their owning source. Tile, analysis, and diagnostics paths
+  never consult a global active source. Opening is transactional; a failed second open leaves the
+  first readable. Closing one source releases that source's datasets, tile runtimes, pending
+  requests, range caches, document, and companion range sources. Configurable limits cap open
+  sources, datasets per source, total range cache, total tile-runtime memory, and in-flight
+  requests; the Worker refuses with `LIMIT_EXCEEDED` instead of silently evicting a visible source.
+  Analysis extensions are injected by the app. The generic imaging host used by Atlas does not
+  install the materials toolbox; science installs it in `apps/science` Worker entry.
+- Science `createScienceImagingWorkerClient()` keeps replace-one-source behavior by closing the
+  previous source only after a successful open.
+- Atlas retains independent COG sources and requests tiles per dataset handle so two rasters can
+  stay open and render concurrently.
+
 - PureJsImage Atlas MVP in `apps/geo`: open a local GeoTIFF/COG or a remote HTTPS URL, render it
   in the source CRS, select overviews from viewport resolution, style grayscale/RGB bands with
   min/max or percentile stretch, gamma, and nodata transparency, and inspect cursor pixel,
@@ -19,10 +33,10 @@ The application is not yet versioned for release (`0.0.0`).
   unsupported TIFF layout, unsupported compression, and malformed GeoTIFF metadata separately.
   Percentile stretch is computed from the mapped tile, not a full-raster histogram. Nodata is
   excluded from stretch statistics. Striped GeoTIFFs still open for inspection; X-ray reports they
-  are not Cloud Optimized. The imaging Worker still holds one source, so the layer panel styles that
-  raster (visibility, opacity, order, duplicate display layers) rather than compositing independent
-  files. Atlas also browses STAC catalogs through a generic client and a registry; Kentucky From
-  Above is the first entry. Collection IDs stay in registry/story configuration. Catalog provenance
+  are not Cloud Optimized. Duplicate display layers style one raster (visibility, opacity, order);
+  opening another GeoTIFF or URL keeps the previous source open. Atlas also browses STAC catalogs
+  through a generic client and a registry; Kentucky From Above is the first entry. Collection IDs
+  stay in registry/story configuration. Catalog provenance
   (provider, collection, item, asset, license, attribution, item URL) is stored on the geo source
   and in shareable deep links that never include signed query strings. Curated stories are data:
   Kentucky Through Time, Natural Color / CIR display presets, Terrain Lab (DEM/DTM; no DSM
@@ -38,7 +52,7 @@ The application is not yet versioned for release (`0.0.0`).
   tile selection that shares cached source tiles. Camera state stays outside React panels.
 - JSON-safe spatial references on dataset descriptors: CRS authority/code/name/citation, full
   six-parameter pixel-to-model and model-to-pixel affines, model bounds, raster type, and
-  nodata. The imaging Worker copies PureJsImage 0.12.0 values across the RPC boundary; project
+  nodata. The imaging Worker copies PureJsImage spatial-reference values across the RPC boundary; project
   save/load and inspector facts use the same typed object. Unknown CRS metadata is kept.
 - Architecture decision record for a shared showcase monorepo (gallery, science, and geo;
   medical later), compile-time domain profiles, separate deploys, and a characterization
@@ -52,6 +66,9 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Changed
 
+- The workbench consumes `purejsimage@0.13.0`. Remote `HttpRangeSource.open` uses `openSignal` for
+  the probe and `lifetimeSignal` for subsequent reads; aborting the per-source lifetime controller
+  releases in-flight range work. The imaging RPC schema version is 2.
 - `pnpm build` bundle check enforces gzip ceilings (300 KiB science route chunks, 1,000 KiB
   language Worker, 200 KiB gallery total, 2 MiB geo total) and that science still ships its
   index and Worker chunks. It no longer goldens every hashed asset name and exact gzip byte

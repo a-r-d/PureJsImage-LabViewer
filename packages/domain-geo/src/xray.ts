@@ -65,7 +65,7 @@ export function buildCogXrayReport(input: {
   const width = axisLength(input.dataset, 'x') ?? image?.width ?? 0
   const height = axisLength(input.dataset, 'y') ?? image?.height ?? 0
   const size = input.source.source.size
-  const range = input.diagnostics.source
+  const range = input.diagnostics.sources.find((source) => source.id === input.source.sourceId)
   const bytesFetched = range?.rangeBytesFetched ?? 0
   return {
     objectSize: size,

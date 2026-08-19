@@ -21,6 +21,7 @@ import {
   SUPPORTED_FILE_ACCEPT,
   SUPPORTED_READERS,
 } from '../src/index.js'
+import { createScienceImagingWorkerHost } from './science-host.js'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -140,7 +141,7 @@ describe('science imaging characterization', () => {
 
   it('keeps the reviewed analysis catalog identities', async () => {
     const fixture = await readFixture('science-analysis-operations.json')
-    const host = new ImagingWorkerHost()
+    const host = createScienceImagingWorkerHost()
     const opened = await host.handle(
       rpcRequest('sample-open', 'source.open-sample', { generation: 1 }),
     )
@@ -233,7 +234,7 @@ describe('science imaging characterization', () => {
   })
 
   it('executes a trusted analysis graph through the Worker', async () => {
-    const host = new ImagingWorkerHost()
+    const host = createScienceImagingWorkerHost()
     const { dataset } = await openGeneratedValues(host, Float32Array.from([1, 2, 3, 4, 5, 6]))
     const graph: RpcJsonObject = {
       schemaVersion: 1,

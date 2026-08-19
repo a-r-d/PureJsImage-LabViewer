@@ -330,13 +330,13 @@ importers:
       '@pji-workbench/contracts':
         specifier: workspace:*
         version: link:../contracts
+      purejsimage:
+        specifier: 0.13.0
+        version: 0.13.0
+    devDependencies:
       '@pji-workbench/materials-analysis':
         specifier: workspace:*
         version: link:../materials-analysis
-      purejsimage:
-        specifier: 0.12.0
-        version: 0.12.0
-    devDependencies:
       '@pji-workbench/test-corpus':
         specifier: workspace:*
         version: link:../test-corpus
@@ -350,8 +350,8 @@ importers:
   packages/materials-analysis:
     dependencies:
       purejsimage:
-        specifier: 0.12.0
-        version: 0.12.0
+        specifier: 0.13.0
+        version: 0.13.0
     devDependencies:
       typescript:
         specifier: 7.0.2
@@ -493,8 +493,8 @@ importers:
         specifier: workspace:*
         version: link:../contracts
       purejsimage:
-        specifier: 0.12.0
-        version: 0.12.0
+        specifier: 0.13.0
+        version: 0.13.0
     devDependencies:
       typescript:
         specifier: 7.0.2
@@ -1536,8 +1536,8 @@ packages:
   proj4@2.19.10:
     resolution: {integrity: sha512-uL6/C6kA8+ncJAEDmUeV8PmNJcTlRLDZZa4/87CzRpb8My4p+Ame4LhC4G3H/77z2icVqcu3nNL9h5buSdnY+g==}
 
-  purejsimage@0.12.0:
-    resolution: {integrity: sha512-fR8Utz4BBqs5CtTfncnWw5vhw8J5WiigaJyNCcqArpdeU+LhiYzW8ujTzbsp/1Wz9Vl8Utn6oUhyvmoTiV8qoQ==}
+  purejsimage@0.13.0:
+    resolution: {integrity: sha512-6EXEYRoI11F5D6RxmHfOanSkga5XQj4c7LV2SEZOz3UfqXxkhx22xgwEg0DHwQBSgFZs9+6KzSD3OMKpmh5rGg==}
     engines: {node: '>=22'}
 
   quickjs-emscripten-core@0.31.0:
@@ -2516,7 +2516,7 @@ snapshots:
       mgrs: 1.0.0
       wkt-parser: 1.5.6
 
-  purejsimage@0.12.0: {}
+  purejsimage@0.13.0: {}
 
   quickjs-emscripten-core@0.31.0:
     dependencies:

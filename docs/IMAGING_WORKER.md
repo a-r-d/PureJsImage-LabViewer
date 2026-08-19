@@ -13,7 +13,7 @@ handles do not cross the boundary.
 
 ## Public PureJsImage imports
 
-The integration uses these documented `purejsimage@0.12.0` paths and symbols:
+The integration uses these documented `purejsimage@0.13.0` paths and symbols:
 
 | Package path | Symbols |
 | --- | --- |
@@ -65,14 +65,16 @@ materializes one cached plane and crops viewport tiles and analysis plane reads 
 
 ## RPC protocol
 
-`packages/contracts` defines schema version 1 and validates unknown input before dispatch. Requests
-cover initialization, local/sample/remote source opening, source and dataset close, dataset open,
-plane selection, tile request, request cancellation, diagnostics, and the crash-only test seam.
-Dataset descriptors may include an optional JSON-safe `spatialReference` copied from PureJsImage
-0.12.0. That field is additive: it does not bump the RPC envelope. Local files and remote range
-sources produce the same application descriptor. Science datasets without georeferencing omit the
-field. UI code reads the typed spatial reference; it does not scrape generic dataset metadata for
-CRS, affines, bounds, raster type, or nodata.
+`packages/contracts` defines schema version 2 and validates unknown input before dispatch. Requests
+cover initialization (optional resource limits), local/sample/remote/bundled source opening, source
+and dataset close, dataset open, plane selection, tile request, request cancellation, diagnostics
+(optional `sourceId` filter), and the crash-only test seam. Dataset descriptors may include an
+optional JSON-safe `spatialReference` copied from PureJsImage. That field does not bump the RPC
+envelope by itself; the schema version 2 bump covers multi-source diagnostics, initialize limits,
+and `sourceId` on opened datasets. Local files and remote range sources produce the same application
+descriptor. Science datasets without georeferencing omit the field. UI code reads the typed spatial
+reference; it does not scrape generic dataset metadata for CRS, affines, bounds, raster type, or
+nodata.
 
 Limits are part of the contract:
 
@@ -82,29 +84,51 @@ Limits are part of the contract:
 - metadata depth 8;
 - 262,144 pixels per render tile.
 
-Unknown kinds, malformed payloads, unsupported versions, stale opaque IDs, exceeded limits, and
+Worker resource budgets (overridable at `worker.initialize`) default to:
+
+- 8 open sources;
+- 8 datasets per source;
+- 32 MiB total HTTP range cache;
+- 192 MiB total tile-runtime memory;
+- 32 in-flight budgeted requests.
+
+Reaching a budget returns `LIMIT_EXCEEDED`. The Worker never silently closes a source the UI still
+holds. Unknown kinds, malformed payloads, unsupported versions, stale opaque IDs, exceeded limits, and
 range/CORS failures return structured errors. A tile request ID maps to an `AbortController`; a
-`request.cancel` message aborts that exact operation. Source, dataset, plane, and display changes
-use generation IDs so late tiles cannot enter a newer cache.
+`request.cancel` message aborts that exact operation. Stale work is rejected by source and dataset
+handle identity plus that source's revision; a Worker epoch increments only on reset/dispose.
 
 ## Source and dataset lifecycle
 
-1. Build and probe a candidate document without changing the active source.
-2. On success, atomically activate it and release the prior datasets, runtimes, and document.
-3. Enumerate portable dataset summaries and open the selected dataset lazily.
-4. Create one bounded tile runtime and built-in analysis bundle for that dataset.
-5. On dataset close, abort its pending tiles, dispose the runtime, and remove the opaque handle.
-6. On source close, close every dataset first and call the document close hook once.
+One imaging Worker owns a map of source records keyed by a stable source handle. Each source owns
+its document, HTTP range sources (with a lifetime `AbortController`), datasets, diagnostics, and
+tile runtimes. Dataset handles resolve directly to the owning source. Tile and analysis requests
+must not consult a global active source.
 
-Failed source opening leaves the current UI workspace untouched. A Worker crash is visible and
-requires the user to restart and rebind the source; project state is not silently discarded.
+1. Build and probe a candidate document without inserting it into the source map.
+2. On success, commit it as an additional open source. A failed open aborts only that candidate's
+   lifetime and must not mutate or close existing sources.
+3. Enumerate portable dataset summaries and open the selected dataset lazily against that source.
+4. Create one bounded tile runtime and analysis controller for that dataset. Analysis extensions are
+   injected by the app: the generic imaging Worker entry used by Atlas installs none; the science
+   Worker entry installs the materials-analysis toolbox.
+5. On dataset close, abort its pending tiles, dispose the runtime, and remove the opaque handle.
+6. On source close, abort that source's lifetime signal (cancelling in-flight range reads), close
+   every dataset, close the document, and drop companion range sources. HttpRangeSource has no
+   `close()`; abort `lifetimeSignal` instead. `openSignal` cancels only the open probe.
+
+The science imaging client uses `sourcePolicy: 'replace-one'`: after a successful open it explicitly
+closes the previous source. Atlas retains independent sources. Failed source opening leaves the
+current UI workspace untouched. A Worker crash is visible and requires the user to restart and rebind
+sources; project state is not silently discarded.
 
 ## Renderer tile contract
 
 The viewport asks for 256 by 256 regions covering the visible world plus one prefetch tile. Visible
-regions are scheduled first. Each request contains the dataset handle, display axes, fixed indices,
-resolution level, component, non-destructive display mapping, region, priority, tile identity, and
-generation.
+regions are scheduled first. Each request contains the dataset handle of the owning source, display
+axes, fixed indices, resolution level, component, non-destructive display mapping, region, priority,
+tile identity, and that source's revision. Atlas plans tiles per layer through `planMultiLayerTiles`
+so two independent COGs can stay open and render concurrently.
 
 The Worker copies one selected quantitative component into a bounded `Float32Array`, derives a
 64-bin histogram and an RGBA display tile, then releases the PureJsImage `NumericTile`. The renderer
@@ -119,14 +143,18 @@ The server must return `206`, a valid `Content-Range`, identity encoding, and st
 provided. It must also allow the workbench origin through CORS and expose `Content-Range` to the
 browser.
 
-Request `diagnostics.get` to inspect `rangeRequests`, `rangeBytesFetched`, `rangeCacheBytes`,
-`rangeCacheHits`, `rangeCacheMisses`, tile runtime memory, time to first completed tile, and
-release counters. In tests, compare `rangeBytesFetched` with `source.size`; opening and a small
-first tile must remain below the complete file size. A `200` response to a Range request is
-`RANGE_UNSUPPORTED`. A CORS/`Failed to fetch` probe is `CORS_FAILED`. TIFF layout and
-compression failures are classified separately from truncated or malformed GeoTIFF metadata.
+Request `diagnostics.get` to inspect per-source range stats (`rangeRequests`, `rangeBytesFetched`,
+`rangeCacheBytes`, `rangeCacheHits`, `rangeCacheMisses`, `uniqueBytes`, `openDatasets`) and aggregate
+counters (`openSources`, `openDatasets`, `pendingRequests`, `rangeCacheBytes`, `tileRuntimeBytes`),
+plus tile runtime memory, time to first completed tile, and release counters. Pass `sourceId` to
+filter the `sources` array; aggregate totals remain global. In tests, compare `rangeBytesFetched`
+with `source.size`; opening and a small first tile must remain below the complete file size. A `200`
+response to a Range request is `RANGE_UNSUPPORTED`. A CORS/`Failed to fetch` probe is `CORS_FAILED`.
+TIFF layout and compression failures are classified separately from truncated or malformed GeoTIFF
+metadata.
 
 GeoTIFF/COG opens attach a JSON-safe `inspectCog` report under `purejsimage:cog` on source
-metadata. Atlas X-ray copy is derived from that report plus Worker range diagnostics. The Worker
-still holds one active source; display layers style that raster rather than compositing separate
-files.
+metadata. Atlas X-ray copy is derived from that report plus the matching per-source range
+diagnostics. Atlas retains at least two independent COG sources and requests tiles from each
+dataset handle. Duplicate display layers still style one raster; opening another file or URL adds a
+second source rather than replacing the first.

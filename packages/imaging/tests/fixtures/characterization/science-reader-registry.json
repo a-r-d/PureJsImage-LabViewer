@@ -1,7 +1,7 @@
 {
   "accept": ".ang,.blo,.bmp,.cbf,.ccp4,.ctf,.dat,.dib,.dm3,.dm4,.emd,.emi,.emsa,.envi,.fit,.fits,.fts,.gsf,.hdr,.ibw,.img,.imgcif,.jp2,.jpe,.jpeg,.jpg,.map,.mha,.mhd,.mib,.mrc,.msa,.nhdr,.nii,.nii.gz,.npy,.nrrd,.ome.tif,.ome.tiff,.png,.pro,.raw,.rpl,.ser,.sur,.svs,.sxm,.tif,.tiff,.webp,.x3p",
   "application": "science-workbench",
-  "pureJsImagePackageVersion": "0.12.0",
+  "pureJsImagePackageVersion": "0.13.0",
   "readers": [
     {
       "extensions": ["png"],

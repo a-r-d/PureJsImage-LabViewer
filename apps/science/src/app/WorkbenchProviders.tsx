@@ -1,4 +1,4 @@
-import { createImagingWorkerClient, type ImagingWorkerClient } from '@pji-workbench/imaging'
+import { type ImagingWorkerClient } from '@pji-workbench/imaging'
 import {
   IndexedDbProjectStore,
   type WorkspaceRuntimeReconciler,
@@ -7,6 +7,7 @@ import {
 import type { ReactNode } from 'react'
 
 import { IndexedDbScriptStudioRepository } from '../features/scripts/script-store.js'
+import { createScienceImagingWorkerClient } from '../imaging-client.js'
 import { LocalWorkbenchPreferenceStore, type WorkbenchPreferences } from '../preferences.js'
 import { WorkbenchWorkspaceRuntime } from '../project-runtime.js'
 
@@ -26,7 +27,7 @@ let browserServices: WorkbenchServices | undefined
 
 function getBrowserServices(): WorkbenchServices {
   if (browserServices !== undefined) return browserServices
-  const client = createImagingWorkerClient()
+  const client = createScienceImagingWorkerClient()
   const runtime = new WorkbenchWorkspaceRuntime(client)
   browserServices = {
     client,

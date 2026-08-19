@@ -1,5 +1,5 @@
-/** Worker RPC envelope version. Additive optional descriptor fields do not bump this. */
-export const RPC_SCHEMA_VERSION = 1 as const
+/** Worker RPC envelope version. Multi-source handles and diagnostics require v2. */
+export const RPC_SCHEMA_VERSION = 2 as const
 export const RPC_LIMITS = Object.freeze({
   maxMessageBytes: 2 * 1_024 * 1_024,
   maxStringLength: 4_096,
@@ -9,6 +9,15 @@ export const RPC_LIMITS = Object.freeze({
   maxTilePixels: 512 * 512,
   maxTablePageRows: 200,
   maxTablePageColumns: 32,
+})
+
+/** Default imaging-Worker resource budgets. Visible sources are never LRU-evicted. */
+export const IMAGING_RESOURCE_LIMITS = Object.freeze({
+  maxOpenSources: 8,
+  maxDatasetsPerSource: 8,
+  maxRangeCacheBytes: 32 * 1_024 * 1_024,
+  maxTileRuntimeBytes: 192 * 1_024 * 1_024,
+  maxInFlightRequests: 32,
 })
 
 export type SourceId = string & { readonly __sourceId: unique symbol }
@@ -214,8 +223,21 @@ export interface OpenedSourceDescriptor {
   readonly datasets: readonly DatasetDescriptor[]
 }
 
+export type ImagingResourceLimits = {
+  readonly maxOpenSources: number
+  readonly maxDatasetsPerSource: number
+  readonly maxRangeCacheBytes: number
+  readonly maxTileRuntimeBytes: number
+  readonly maxInFlightRequests: number
+}
+
+export type WorkerInitializePayload = null | Readonly<{
+  readonly limits?: Partial<ImagingResourceLimits>
+}>
+
 export interface OpenedDatasetDescriptor {
   readonly handleId: DatasetHandleId
+  readonly sourceId: SourceId
   readonly generation: number
   readonly dataset: DatasetDescriptor
   readonly selection: PlaneSelection
@@ -269,19 +291,30 @@ export interface ReaderDescriptor {
   readonly mediaTypes: readonly string[]
 }
 
-export interface WorkerDiagnostics {
-  readonly generation: number
-  readonly source: null | Readonly<{
-    id: SourceId
-    kind: SourceKind
-    size: number
-    rangeRequests: number
-    rangeBytesFetched: number
-    rangeCacheBytes: number
-    rangeCacheHits: number
-    rangeCacheMisses: number
-  }>
+export interface SourceRangeDiagnostics {
+  readonly id: SourceId
+  readonly kind: SourceKind
+  readonly size: number
+  readonly revision: number
+  readonly rangeRequests: number
+  readonly rangeBytesFetched: number
+  readonly rangeCacheBytes: number
+  readonly rangeCacheHits: number
+  readonly rangeCacheMisses: number
+  readonly uniqueBytes?: number
   readonly openDatasets: number
+}
+
+export interface WorkerDiagnostics {
+  readonly epoch: number
+  readonly sources: readonly SourceRangeDiagnostics[]
+  readonly aggregate: Readonly<{
+    openSources: number
+    openDatasets: number
+    pendingRequests: number
+    rangeCacheBytes: number
+    tileRuntimeBytes: number
+  }>
   readonly pendingRequests: number
   readonly tileRuntime: null | Readonly<Record<string, unknown>>
   readonly releases: Readonly<{
@@ -290,6 +323,7 @@ export interface WorkerDiagnostics {
     tiles: number
     runtimes: number
   }>
+  readonly limits: ImagingResourceLimits
 }
 
 export type RpcErrorCode =
@@ -337,7 +371,7 @@ export interface StructuredCloneBlob {
 }
 
 export type WorkerRequest =
-  | RpcRequest<'worker.initialize', null>
+  | RpcRequest<'worker.initialize', WorkerInitializePayload>
   | RpcRequest<
       'source.open-sample',
       Readonly<{ generation: number; sampleId?: string | undefined }>
@@ -361,7 +395,12 @@ export type WorkerRequest =
   | RpcRequest<'source.close', Readonly<{ sourceId: SourceId; generation: number }>>
   | RpcRequest<
       'dataset.open',
-      Readonly<{ documentId: DocumentId; datasetId: string; generation: number }>
+      Readonly<{
+        documentId: DocumentId
+        datasetId: string
+        generation: number
+        sourceId?: SourceId
+      }>
     >
   | RpcRequest<'dataset.close', Readonly<{ handleId: DatasetHandleId; generation: number }>>
   | RpcRequest<
@@ -380,7 +419,7 @@ export type WorkerRequest =
   | RpcRequest<'analysis.series-export', AnalysisSeriesExportRequest>
   | RpcRequest<'analysis.release', AnalysisReleaseRequest>
   | RpcRequest<'request.cancel', Readonly<{ targetRequestId: string }>>
-  | RpcRequest<'diagnostics.get', null>
+  | RpcRequest<'diagnostics.get', null | Readonly<{ sourceId?: SourceId }>>
   | RpcRequest<'worker.test-crash', null>
 
 export interface RpcRequest<Kind extends string, Payload> {
@@ -391,7 +430,14 @@ export interface RpcRequest<Kind extends string, Payload> {
 }
 
 export type WorkerResponse =
-  | RpcSuccess<'worker.initialize', Readonly<{ readers: readonly ReaderDescriptor[] }>>
+  | RpcSuccess<
+      'worker.initialize',
+      Readonly<{
+        readers: readonly ReaderDescriptor[]
+        epoch: number
+        limits: ImagingResourceLimits
+      }>
+    >
   | RpcSuccess<'source.opened', OpenedSourceDescriptor>
   | RpcSuccess<
       'source-bundled.opened',
@@ -584,6 +630,45 @@ function assertBasePayload(payload: unknown): asserts payload is PayloadCandidat
 
 function assertGeneration(payload: PayloadCandidate): void {
   assertInteger(payload.generation, 'generation')
+}
+
+function assertPositiveLimit(value: unknown, label: string): void {
+  assertInteger(value, label, 1)
+}
+
+function assertInitializePayload(payload: unknown): void {
+  if (payload === null) return
+  if (!isRecord(payload))
+    throw new RpcValidationError('INVALID_PAYLOAD', 'initialize payload must be null or an object')
+  const extra = Object.keys(payload).filter((key) => key !== 'limits')
+  if (extra.length > 0)
+    throw new RpcValidationError('INVALID_PAYLOAD', 'initialize payload has unknown fields')
+  if (payload['limits'] === undefined) return
+  if (!isRecord(payload['limits']))
+    throw new RpcValidationError('INVALID_PAYLOAD', 'initialize limits must be an object')
+  const limits = payload['limits']
+  const allowed = new Set([
+    'maxOpenSources',
+    'maxDatasetsPerSource',
+    'maxRangeCacheBytes',
+    'maxTileRuntimeBytes',
+    'maxInFlightRequests',
+  ])
+  for (const [key, value] of Object.entries(limits)) {
+    if (!allowed.has(key))
+      throw new RpcValidationError('INVALID_PAYLOAD', `unknown resource limit '${key}'`)
+    assertPositiveLimit(value, key)
+  }
+}
+
+function assertDiagnosticsPayload(payload: unknown): void {
+  if (payload === null) return
+  if (!isRecord(payload))
+    throw new RpcValidationError('INVALID_PAYLOAD', 'diagnostics payload must be null or an object')
+  const extra = Object.keys(payload).filter((key) => key !== 'sourceId')
+  if (extra.length > 0)
+    throw new RpcValidationError('INVALID_PAYLOAD', 'diagnostics payload has unknown fields')
+  if (payload['sourceId'] !== undefined) assertString(payload['sourceId'], 'sourceId')
 }
 
 function assertAxisIndices(value: unknown): void {
@@ -879,9 +964,13 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
   }
 
   const { kind, payload } = candidate
-  if (kind === 'worker.initialize' || kind === 'diagnostics.get' || kind === 'worker.test-crash') {
+  if (kind === 'worker.test-crash') {
     if (payload !== null)
       throw new RpcValidationError('INVALID_PAYLOAD', `${kind} payload must be null`)
+  } else if (kind === 'worker.initialize') {
+    assertInitializePayload(payload)
+  } else if (kind === 'diagnostics.get') {
+    assertDiagnosticsPayload(payload)
   } else {
     assertBasePayload(payload)
     if (kind === 'source.open-sample') {
@@ -945,6 +1034,7 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
       assertGeneration(payload)
       assertString(payload.documentId, 'documentId')
       assertString(payload.datasetId, 'datasetId')
+      if (payload.sourceId !== undefined) assertString(payload.sourceId, 'sourceId')
     }
     if (kind === 'dataset.close') {
       assertGeneration(payload)

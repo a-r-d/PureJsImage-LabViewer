@@ -98,9 +98,9 @@ describe('COG inspection and classified GeoTIFF opens', () => {
     })
     expect(inspection.issues.some((issue) => issue.code === 'STRIPED_IMAGE')).toBe(true)
     const diagnostics = host.diagnostics()
-    expect(diagnostics.source?.rangeRequests).toBeGreaterThan(0)
-    expect(diagnostics.source?.rangeBytesFetched).toBeLessThan(bytes.byteLength)
-    expect(diagnostics.source?.rangeCacheHits).toBeGreaterThan(0)
+    expect(diagnostics.sources[0]?.rangeRequests).toBeGreaterThan(0)
+    expect(diagnostics.sources[0]?.rangeBytesFetched).toBeLessThan(bytes.byteLength)
+    expect(diagnostics.sources[0]?.rangeCacheHits).toBeGreaterThan(0)
     await host.dispose()
   })
 

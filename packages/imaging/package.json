@@ -21,10 +21,10 @@
   },
   "dependencies": {
     "@pji-workbench/contracts": "workspace:*",
-    "@pji-workbench/materials-analysis": "workspace:*",
-    "purejsimage": "0.12.0"
+    "purejsimage": "0.13.0"
   },
   "devDependencies": {
+    "@pji-workbench/materials-analysis": "workspace:*",
     "@pji-workbench/test-corpus": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "4.1.10"

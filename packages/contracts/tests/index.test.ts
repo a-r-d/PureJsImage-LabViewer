@@ -56,7 +56,7 @@ describe('imaging RPC validation', () => {
   it('rejects unknown versions, message kinds, oversized strings, and oversized tiles', () => {
     expect(
       isRpcEnvelope({
-        schemaVersion: 2,
+        schemaVersion: 1,
         requestId: 'request-1',
         kind: 'worker.initialize',
         payload: null,
@@ -139,6 +139,24 @@ describe('imaging RPC validation', () => {
         payload: { ...valid.payload, size: RPC_LIMITS.maxBundledSourceBytes + 1 },
       }),
     ).toThrowError(expect.objectContaining({ code: 'LIMIT_EXCEEDED' }))
+  })
+
+  it('accepts initialize and diagnostics payloads that configure or select sources', () => {
+    expect(
+      validateWorkerRequest(
+        rpcRequest('init-limits', 'worker.initialize', {
+          limits: { maxOpenSources: 2, maxInFlightRequests: 4 },
+        }),
+      ),
+    ).toMatchObject({ kind: 'worker.initialize' })
+    expect(validateWorkerRequest(rpcRequest('diag-all', 'diagnostics.get', null))).toMatchObject({
+      kind: 'diagnostics.get',
+    })
+    expect(
+      validateWorkerRequest(
+        rpcRequest('diag-one', 'diagnostics.get', { sourceId: 'source-1' as never }),
+      ),
+    ).toMatchObject({ kind: 'diagnostics.get' })
   })
 
   it('bounds analysis JSON, overlay pixels, and table pages before Worker execution', () => {
