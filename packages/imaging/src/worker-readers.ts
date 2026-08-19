@@ -1,6 +1,8 @@
 import type { ReaderDescriptor } from '@pji-workbench/contracts'
 import type { ScientificReader } from 'purejsimage/scientific'
 
+import { tiffOpenLimits } from './tiff-open-limits.js'
+
 type ReaderKey =
   | 'png'
   | 'jpeg'
@@ -248,6 +250,34 @@ export function readerKeysForSource(name: string): readonly ReaderKey[] {
   return matches.length > 0 ? matches : READER_KEYS
 }
 
-export async function loadReadersForSource(name: string): Promise<readonly ScientificReader[]> {
-  return Promise.all(readerKeysForSource(name).map((key) => loaders[key]()))
+export async function loadReadersForSource(
+  name: string,
+  options?: { readonly maxInputBytes?: number },
+): Promise<readonly ScientificReader[]> {
+  const keys = readerKeysForSource(name)
+  const readers: ScientificReader[] = []
+  const failures: string[] = []
+  for (const key of keys) {
+    try {
+      readers.push(await loadReader(key, options?.maxInputBytes))
+    } catch {
+      failures.push(key)
+    }
+  }
+  if (readers.length === 0) {
+    const detail = failures.length === 0 ? name : `${name} (${failures.join(', ')})`
+    throw new Error(`Imaging Worker could not load a reader for ${detail}.`)
+  }
+  return readers
+}
+
+async function loadReader(
+  key: ReaderKey,
+  maxInputBytes: number | undefined,
+): Promise<ScientificReader> {
+  if (key === 'tiff' && maxInputBytes !== undefined) {
+    const { createTiffReader } = await import('purejsimage/scientific/readers/tiff')
+    return createTiffReader({ limits: tiffOpenLimits(maxInputBytes) })
+  }
+  return loaders[key]()
 }

@@ -1,31 +1,56 @@
-# Materials Workbench
+# PureJsImage Lab Viewer
 
-Materials Workbench is a browser-native, local-first scientific imaging workbench for
-electron microscopy and adjacent engineering imagery. It consumes `purejsimage@0.13.0`
-through documented public package exports and keeps original files in the browser unless
-the user deliberately chooses a network action.
+This repository is the **product showcase** for [PureJsImage](https://www.npmjs.com/package/purejsimage): browser-native, local-first imaging apps. It is not the library itself.
 
-The science workbench and PureJsImage Atlas are the current product surfaces. Notable product
-changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
+The library (`purejsimage@0.13.0`) owns codecs, scientific rasters, GeoTIFF/COG reading, and analysis. These apps consume it only through public package exports and turn that into end-user workflows. Original files stay in the browser unless you deliberately choose a network action.
 
-The repository is a shared showcase monorepo: separately built gallery, science, and geo
-applications, with medical added later. Shared behavior is a compile-time domain profile.
-Science lives in `apps/science` (`packages/domain-science`). This repository deploys UI
-apps on Cloudflare subdomains; it does not publish the library homepage at
-`purejsimage.com` (GitHub Pages from the core-library repo).
+| What | Link |
+| --- | --- |
+| npm package | [purejsimage](https://www.npmjs.com/package/purejsimage) |
+| Library site and docs | [purejsimage.com](https://purejsimage.com) |
+| Library source | [github.com/a-r-d/PureJsImage](https://github.com/a-r-d/PureJsImage) |
 
-See [`docs/adr/0001-shared-showcase-monorepo.md`](docs/adr/0001-shared-showcase-monorepo.md).
+Product changes in this repo are recorded in [`CHANGELOG.md`](CHANGELOG.md). Architecture: [`docs/adr/0001-shared-showcase-monorepo.md`](docs/adr/0001-shared-showcase-monorepo.md).
 
-## Prerequisites
+## Demo apps
 
-- Node.js 24 LTS (the exact repository version is in `.nvmrc`)
-- Corepack enabled
-- pnpm 11.21.0, selected through the root `packageManager` field
+Each app is a **separate Vite build and Cloudflare deploy**. They do not share one bundle or one imaging Worker. Medical is planned and has no application yet.
+
+| App | Live URL | Local command | What it is |
+| --- | --- | --- | --- |
+| Science (Materials Workbench) | [lab.purejsimage.com](https://lab.purejsimage.com) | `pnpm dev` or `pnpm dev:science` | Electron microscopy and materials imaging: open a local file, inspect calibration, draw ROIs, filter/segment/analyze, save and replay work. |
+| Geo (PureJsImage Atlas) | [geo.purejsimage.com](https://geo.purejsimage.com) | `pnpm dev:geo` | Geospatial rasters: search Kentucky From Above, click a catalog tile to open a Cloud Optimized GeoTIFF, or open a local/remote COG. The map stays in the source CRS and fetches only the HTTP ranges for the current view. |
+| Gallery | local only | `pnpm dev:gallery` | Lightweight linker to the domain apps. It does not load imaging Workers. Not bound to `purejsimage.com`. |
+
+`purejsimage.com` is the **library homepage**, published from the core-library repo (GitHub Pages), not from this monorepo.
+
+## Get started
+
+Requires Node.js 24 LTS (see `.nvmrc`) and pnpm 11.21.0 via Corepack.
 
 ```sh
 corepack enable
 corepack prepare pnpm@11.21.0 --activate
 pnpm install --frozen-lockfile
+```
+
+Then start the app you want. Vite prints the local URL (usually `http://127.0.0.1:5173`; a second app uses the next free port).
+
+```sh
+pnpm dev:science    # Materials Workbench
+pnpm dev:geo        # Atlas
+pnpm dev:gallery    # Showcase linker
+```
+
+`pnpm dev` and `pnpm dev:workbench` are aliases for `pnpm dev:science`. Do not put secrets in `VITE_` variables.
+
+Useful while you work:
+
+```sh
+pnpm lint           # biome check + architecture/security (this is what CI runs after format)
+pnpm format:check   # formatting only — not a substitute for pnpm lint
+pnpm test           # Vitest
+pnpm check          # full merge gate (format, lint, types, tests, build, e2e, deploy dry-run)
 ```
 
 ## Commands
@@ -94,50 +119,24 @@ workspace, agent, and plugin core remain framework and DOM independent.
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the complete dependency and runtime
 model.
 
-## Local development
-
-```sh
-pnpm install --frozen-lockfile
-pnpm dev
-```
-
-The science app is served by Vite (`pnpm dev`). Gallery and geo have their own
-dev servers. Secrets must not use the `VITE_` prefix.
-
 ## Hosts and Cloudflare deploy
 
 | Host | What | This repo? |
 | --- | --- | --- |
-| `purejsimage.com` | PureJsImage library site | No. GitHub Pages from the core-library repository. |
-| `lab.purejsimage.com` | Science workbench | Yes. Worker `purejsimage-materials-workbench`. |
-| `geo.purejsimage.com` | Geo showcase | Yes. Worker `purejsimage-geo`. |
+| [purejsimage.com](https://purejsimage.com) | PureJsImage library site | No. GitHub Pages from [a-r-d/PureJsImage](https://github.com/a-r-d/PureJsImage). |
+| [lab.purejsimage.com](https://lab.purejsimage.com) | Science workbench | Yes. Worker `purejsimage-materials-workbench`. |
+| [geo.purejsimage.com](https://geo.purejsimage.com) | Geo Atlas | Yes. Worker `purejsimage-geo`. |
 
 Gallery is separately built (`@pji-workbench/gallery`) and is **not** bound to apex
 `purejsimage.com`.
 
-Cloudflare Git integration for **lab.purejsimage.com** should use:
-
-```text
-pnpm --filter @pji-workbench/science exec wrangler deploy
-```
-
-That replaces `pnpm --filter @pji-workbench/app exec wrangler deploy`. The Wrangler
-`name` (`purejsimage-materials-workbench`) and custom domain are unchanged.
-
-Geo:
-
-```text
-pnpm --filter @pji-workbench/geo exec wrangler deploy
-```
-
-## Cloudflare dry run
-
-Each app has its own `wrangler.jsonc`. Validate generated workers and asset manifests
-without creating remote resources:
-
 ```sh
-pnpm deploy:dry-run
+pnpm --filter @pji-workbench/science exec wrangler deploy   # lab.purejsimage.com
+pnpm --filter @pji-workbench/geo exec wrangler deploy       # geo.purejsimage.com
+pnpm deploy:dry-run                                         # all apps, no remote resources
 ```
+
+Each app has its own `wrangler.jsonc`.
 
 ## Testing philosophy
 

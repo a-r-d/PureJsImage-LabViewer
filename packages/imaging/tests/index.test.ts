@@ -1421,6 +1421,21 @@ describe('PureJsImage Worker host', () => {
     await host.dispose()
   })
 
+  it('does not classify a Worker reader-module load failure as CORS', async () => {
+    const { structuredError } = await import('../src/worker-host/protocol.js')
+    expect(
+      structuredError(
+        new TypeError(
+          'Failed to fetch dynamically imported module: http://127.0.0.1:5174/node_modules/.vite/deps/purejsimage_scientific_readers_ome-tiff.js',
+        ),
+        'SOURCE_OPEN_FAILED',
+      ),
+    ).toMatchObject({
+      code: 'UNSUPPORTED',
+      guidance: expect.stringContaining('Worker'),
+    })
+  })
+
   it('cancels an in-flight tile through its explicit request ID', async () => {
     const width = 1_024
     const height = 1_024

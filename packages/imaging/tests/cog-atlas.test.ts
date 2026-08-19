@@ -104,6 +104,83 @@ describe('COG inspection and classified GeoTIFF opens', () => {
     await host.dispose()
   })
 
+  it('opens a remote GeoTIFF when CORS hides Content-Range on a valid 206', async () => {
+    const bytes = paddedRemoteObject(northUpGeoTiffFixture())
+    const hiddenRangeFetch: typeof fetch = async (_input, init) => {
+      if ((init?.method ?? 'GET') === 'HEAD') {
+        return new Response(null, {
+          status: 200,
+          headers: { 'accept-ranges': 'bytes', 'content-length': String(bytes.byteLength) },
+        })
+      }
+      const match = new Headers(init?.headers).get('range')?.match(/^bytes=(\d+)-(\d+)$/u)
+      if (match === undefined || match === null) return new Response(null, { status: 416 })
+      const start = Number(match[1])
+      const requestedEnd = Number(match[2])
+      if (start >= bytes.byteLength) {
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?><Error><Code>InvalidRange</Code><ActualObjectSize>${String(bytes.byteLength)}</ActualObjectSize></Error>`,
+          { status: 416, headers: { 'content-type': 'application/xml' } },
+        )
+      }
+      const end = Math.min(requestedEnd, bytes.byteLength - 1)
+      return new Response(bytes.slice(start, end + 1), {
+        status: 206,
+        headers: { 'accept-ranges': 'bytes', etag: '"atlas-cog-hidden-range-v1"' },
+      })
+    }
+    const host = new ImagingWorkerHost({ fetch: hiddenRangeFetch })
+    const opened = await host.handle(
+      rpcRequest('remote-open-hidden-range', 'source.open-remote', {
+        generation: 1,
+        url: 'https://fixtures.invalid/north-up.tif',
+      }),
+    )
+    const source = payload(opened.response, 'source.opened') as OpenedSourceDescriptor
+    expect(source.datasets[0]?.id).toBeTruthy()
+    await host.dispose()
+  })
+
+  it('opens a remote GeoTIFF larger than the default 128 MiB codec input limit', async () => {
+    const bytes = paddedRemoteObject(northUpGeoTiffFixture())
+    const advertisedSize = 200_000_000
+    const largeRangeFetch: typeof fetch = async (_input, init) => {
+      if ((init?.method ?? 'GET') === 'HEAD') {
+        return new Response(null, {
+          status: 200,
+          headers: { 'accept-ranges': 'bytes', 'content-length': String(advertisedSize) },
+        })
+      }
+      const match = new Headers(init?.headers).get('range')?.match(/^bytes=(\d+)-(\d+)$/u)
+      if (match === undefined || match === null) return new Response(null, { status: 416 })
+      const start = Number(match[1])
+      const requestedEnd = Number(match[2])
+      if (start >= advertisedSize) {
+        return new Response(null, { status: 416, headers: { 'content-length': '0' } })
+      }
+      const end = Math.min(requestedEnd, advertisedSize - 1)
+      const slice = new Uint8Array(end - start + 1)
+      if (start < bytes.byteLength) {
+        slice.set(bytes.subarray(start, Math.min(end + 1, bytes.byteLength)))
+      }
+      return new Response(slice, {
+        status: 206,
+        headers: { 'accept-ranges': 'bytes', etag: '"atlas-cog-large-v1"' },
+      })
+    }
+    const host = new ImagingWorkerHost({ fetch: largeRangeFetch })
+    const opened = await host.handle(
+      rpcRequest('remote-open-large', 'source.open-remote', {
+        generation: 1,
+        url: 'https://fixtures.invalid/north-up.tif',
+      }),
+    )
+    const largeSource = payload(opened.response, 'source.opened') as OpenedSourceDescriptor
+    expect(largeSource.source.size).toBe(advertisedSize)
+    expect(largeSource.datasets[0]?.id).toBeTruthy()
+    await host.dispose()
+  })
+
   it('classifies unsupported TIFF compression separately from layout', async () => {
     const host = new ImagingWorkerHost()
     const file = new File(

@@ -56,6 +56,7 @@ interface CachedTile {
   readonly tile: RenderTile
   readonly canvas: HTMLCanvasElement
   readonly layerId: string
+  readonly adapter: CoordinateSpaceAdapter
 }
 
 class CanvasGeoRenderer {
@@ -87,7 +88,7 @@ class CanvasGeoRenderer {
     return this.#tiles.has(tileId)
   }
 
-  upload(layerId: string, tile: RenderTile): void {
+  upload(layerId: string, tile: RenderTile, adapter: CoordinateSpaceAdapter): void {
     const canvas = document.createElement('canvas')
     canvas.width = tile.width
     canvas.height = tile.height
@@ -96,7 +97,7 @@ class CanvasGeoRenderer {
     const pixels = new Uint8ClampedArray(tile.rgba.length)
     pixels.set(tile.rgba)
     context.putImageData(new ImageData(pixels, tile.width, tile.height), 0, 0)
-    this.#tiles.set(tile.tileId, { tile, canvas, layerId })
+    this.#tiles.set(tile.tileId, { tile, canvas, layerId, adapter })
   }
 
   retain(tileIds: ReadonlySet<string>): void {
@@ -152,17 +153,17 @@ class CanvasGeoRenderer {
   ): void {
     const { region } = cached.tile
     const origin = adapter.worldToScreen(
-      adapter.pixelToWorld({ x: region.x, y: region.y }),
+      cached.adapter.pixelToWorld({ x: region.x, y: region.y }),
       camera,
       this.#viewport,
     )
     const xAxis = adapter.worldToScreen(
-      adapter.pixelToWorld({ x: region.x + cached.tile.width, y: region.y }),
+      cached.adapter.pixelToWorld({ x: region.x + cached.tile.width, y: region.y }),
       camera,
       this.#viewport,
     )
     const yAxis = adapter.worldToScreen(
-      adapter.pixelToWorld({ x: region.x, y: region.y + cached.tile.height }),
+      cached.adapter.pixelToWorld({ x: region.x, y: region.y + cached.tile.height }),
       camera,
       this.#viewport,
     )
@@ -282,6 +283,7 @@ export function GeoViewport({
           readonly raster: OpenedDatasetDescriptor
           readonly overview: number
           readonly mapping: ReturnType<typeof displayMappingFromStyle>
+          readonly adapter: CoordinateSpaceAdapter
         }
       >()
       for (const layer of layersRef.current) {
@@ -323,7 +325,7 @@ export function GeoViewport({
           visible: true,
           adapter: layerAdapter,
         })
-        contexts.set(layer.id, { raster, overview: layerOverview, mapping })
+        contexts.set(layer.id, { raster, overview: layerOverview, mapping, adapter: layerAdapter })
       }
       const plan = planMultiLayerTiles(planInputs, visible, TILE_SIZE, PREFETCH_TILES)
       for (const layerPlan of plan.layers) {
@@ -361,7 +363,7 @@ export function GeoViewport({
             )
             .then((tile) => {
               if (currentGeneration !== requestGeneration || controller.signal.aborted) return
-              renderer.upload(layerPlan.layerId, tile)
+              renderer.upload(layerPlan.layerId, tile, context.adapter)
               draw()
               if (pending.size === 0) onSettled(true)
             })

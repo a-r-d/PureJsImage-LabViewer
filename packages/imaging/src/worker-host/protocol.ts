@@ -78,6 +78,15 @@ function classifyNetworkOpenError(
   combined: string,
 ): StructuredRpcError | undefined {
   const cause = error instanceof Error ? error.cause : undefined
+  if (/dynamically imported module/iu.test(combined)) {
+    return {
+      code: 'UNSUPPORTED',
+      message: errorMessage(error),
+      guidance:
+        'The imaging Worker could not load a PureJsImage reader module. Reload the app so Vite can rebuild the Worker bundle. This is not a GeoTIFF CORS failure.',
+      retryable: true,
+    }
+  }
   const fetchBlocked =
     /cors|failed to fetch|networkerror|load failed/iu.test(combined) ||
     ((error instanceof TypeError || cause instanceof TypeError) &&

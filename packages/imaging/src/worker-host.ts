@@ -49,6 +49,7 @@ import {
 import { createScientificFileContext } from 'purejsimage/scientific/browser'
 import { HttpRangeSource } from 'purejsimage/sources/http-range'
 import { cacheCodecAdapterPlane, usesCodecAdapterReader } from './codec-plane-cache.js'
+import { wrapFetchToExposeContentRange } from './cors-range-fetch.js'
 import { datasetDescriptor, defaultPlaneSelection, openedSourceDescriptor } from './descriptor.js'
 import { PUREJSIMAGE_PACKAGE_VERSION } from './package-version.js'
 import { createAnalysisBindings, isScientificDataset } from './worker-host/analysis-rpc.js'
@@ -535,7 +536,7 @@ export class ImagingWorkerHost {
     const lifetime = new AbortController()
     let document: ScientificDocument | undefined
     try {
-      const readers = await loadReadersForSource(primary.name)
+      const readers = await loadReadersForSource(primary.name, { maxInputBytes: primary.size })
       try {
         document = await createScientificLibrary({ readers }).open(
           createScientificFileContext(primary, { companions: files, signal }),
@@ -589,12 +590,14 @@ export class ImagingWorkerHost {
     try {
       const url = assertRemoteUrl(request.payload.url)
       const maxCacheBytes = this.#rangeCacheBudgetForNewSource()
+      const configuredFetch = this.#fetch ?? globalThis.fetch.bind(globalThis)
+      const rangeFetch = wrapFetchToExposeContentRange(configuredFetch)
       const rangeOptions = {
         blockBytes: RANGE_BLOCK_BYTES,
         maxCacheBytes,
         openSignal: signal,
         lifetimeSignal: lifetime.signal,
-        ...(this.#fetch === undefined ? {} : { fetch: this.#fetch }),
+        fetch: rangeFetch,
       }
       const primary = await HttpRangeSource.open(url, rangeOptions)
       const ranges = [primary]
@@ -623,7 +626,7 @@ export class ImagingWorkerHost {
         },
       }
       const name = sourceName(url)
-      const readers = await loadReadersForSource(name)
+      const readers = await loadReadersForSource(name, { maxInputBytes: primary.size })
       try {
         document = await createScientificLibrary({ readers }).open({
           primary: { id: 'remote-primary', name, source: primary },

@@ -7,7 +7,8 @@ describe('geo application', () => {
     const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
     expect(appSource).toContain('WorkbenchShell')
     expect(appSource).toContain('geoUiContributions')
-    expect(appSource).toContain('createImagingWorkerClient')
+    expect(appSource).toContain('createGeoImagingWorkerClient')
+    expect(appSource).toContain('imaging-client.js')
     expect(appSource).toContain('CatalogPanel')
     expect(appSource).toContain('appendAtlas')
     expect(appSource).toContain('viewportRasters')
@@ -20,6 +21,8 @@ describe('geo application', () => {
     )
     expect(viewportSource).toContain('datasetHandleId: context.raster.handleId')
     expect(viewportSource).toContain('rasters: readonly OpenedDatasetDescriptor[]')
+    expect(viewportSource).toContain('renderer.upload(layerPlan.layerId, tile, context.adapter)')
+    expect(viewportSource).toContain('cached.adapter.pixelToWorld')
     expect(viewportSource).not.toContain('opened.handleId')
     expect(appSource).not.toContain('orthos-phase2')
     expect(appSource).not.toContain('dem-phase2')
@@ -62,5 +65,20 @@ describe('geo application', () => {
     )
     expect(names).not.toContain('@pji-workbench/domain-science')
     expect(names).not.toContain('@pji-workbench/materials-analysis')
+  })
+
+  it('hosts the imaging Worker from the Atlas app entry, not the package Worker URL', async () => {
+    const clientSource = await readFile(
+      new URL('../src/imaging-client.ts', import.meta.url),
+      'utf8',
+    )
+    const workerSource = await readFile(
+      new URL('../src/imaging-worker-entry.ts', import.meta.url),
+      'utf8',
+    )
+    expect(clientSource).toContain('./imaging-worker-entry.ts')
+    expect(workerSource).toContain('ImagingWorkerHost')
+    expect(workerSource).not.toContain('materials-analysis')
+    expect(workerSource).not.toContain('createMaterialsAnalysisExtension')
   })
 })

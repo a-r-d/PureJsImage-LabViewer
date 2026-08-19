@@ -33,7 +33,7 @@ import {
   serializeAtlasDeepLink,
   storiesForCatalog,
 } from '@pji-workbench/domain-geo'
-import { createImagingWorkerClient, ImagingRpcError } from '@pji-workbench/imaging'
+import { ImagingRpcError } from '@pji-workbench/imaging'
 import { Button, EmptyState, ErrorState, Icon, ThemeRoot } from '@pji-workbench/ui'
 import { WorkbenchShell } from '@pji-workbench/workbench-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
@@ -42,6 +42,7 @@ import { CatalogPanel } from './CatalogPanel.js'
 import type { PublicEnvironment } from './environment.js'
 import { GeoViewport, type GeoViewportPointer } from './GeoViewport.js'
 import { InspectorPanel, type InspectorTab } from './InspectorPanel.js'
+import { createGeoImagingWorkerClient } from './imaging-client.js'
 import { createLocalStacCache } from './stac-storage.js'
 
 interface OpenedRaster {
@@ -65,7 +66,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const generationRef = useRef(0)
   const openAbortRef = useRef<AbortController | null>(null)
   const fileInputId = useId()
-  const [client, setClient] = useState<ReturnType<typeof createImagingWorkerClient> | null>(null)
+  const [client, setClient] = useState<ReturnType<typeof createGeoImagingWorkerClient> | null>(null)
   const [ready, setReady] = useState(false)
   const [opened, setOpened] = useState<OpenedAtlas | null>(null)
   const [error, setError] = useState<GeoOpenFailure | null>(null)
@@ -92,7 +93,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   )
 
   useEffect(() => {
-    const next = createImagingWorkerClient()
+    const next = createGeoImagingWorkerClient()
     let cancelled = false
     setClient(next)
     void next
@@ -181,7 +182,9 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             .catch(() => undefined)
         }
         if (signal.aborted || generationRef.current !== generation) return
-        setError(asOpenFailure(caught))
+        const failure = asOpenFailure(caught)
+        setError(failure)
+        setReadout(failure.title)
       } finally {
         if (generationRef.current === generation) setBusy(false)
       }
@@ -268,7 +271,9 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             .catch(() => undefined)
         }
         if (signal.aborted || generationRef.current !== generation) return
-        setError(asOpenFailure(caught))
+        const failure = asOpenFailure(caught)
+        setError(failure)
+        setReadout(failure.title)
       } finally {
         if (generationRef.current === generation) setBusy(false)
       }

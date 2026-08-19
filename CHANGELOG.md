@@ -13,6 +13,18 @@ The application is not yet versioned for release (`0.0.0`).
   button runs a catalog search instead of only switching the already-open Catalog tab. The map
   shows an opening state with Cancel while HTTP Range fetches are in flight, instead of staying on
   the empty placeholder with no network activity.
+- Atlas constructs its imaging Worker from `apps/geo` the same way science does, so Vite bundles
+  PureJsImage reader modules into the Worker instead of fetching optimized-dep URLs that fail as
+  a fake CORS error. Opening a local or remote COG can actually load in `pnpm dev:geo`.
+- Atlas reconstructs a numeric `Content-Range` when object stores hide that header from Worker
+  JavaScript. KyFromAbove S3 answers Range requests with HTTP 206 but CORS only exposes `ETag`;
+  Chrome also empties the 416 XML body (ORB). Object size is taken from the CORS-readable HEAD
+  `Content-Length`. A 200 full-body response is still classified as missing Range support.
+- Atlas TIFF opens raise PureJsImage `maxInputBytes` to the object size and `maxPixels` to 10
+  billion. The codec defaults (128 MiB / 256 Mpx) were written for whole-file decodes and
+  rejected live KyFromAbove COGs even though only HTTP ranges are read.
+- Atlas draws overview tiles with the overview affine, not the full-resolution pixel-to-world
+  transform, so a fitted COG fills the map instead of appearing as a postage stamp.
 
 ### Added
 

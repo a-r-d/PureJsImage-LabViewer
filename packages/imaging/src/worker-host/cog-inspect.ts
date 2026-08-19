@@ -1,13 +1,12 @@
-import {
-  COG_INSPECTION_METADATA_KEY,
-  type CogInspectionReport,
-  type RpcErrorCode,
-  type StructuredRpcError,
+import type {
+  CogInspectionReport,
+  RpcErrorCode,
+  StructuredRpcError,
 } from '@pji-workbench/contracts'
 import { BlobSource, type ImageSource } from 'purejsimage'
 import { inspectCog, openTiffDocument } from 'purejsimage/tiff'
 
-export { COG_INSPECTION_METADATA_KEY }
+import { tiffOpenLimits } from '../tiff-open-limits.js'
 
 export function looksLikeTiffName(name: string): boolean {
   const lower = name.toLowerCase()
@@ -36,7 +35,10 @@ export async function tryInspectTiffSource(
   readonly error?: unknown
 }> {
   try {
-    const document = await openTiffDocument(source, { signal })
+    const document = await openTiffDocument(source, {
+      signal,
+      ...tiffOpenLimits(source.size),
+    })
     const inspection = await inspectCog(document)
     return { inspection: JSON.parse(JSON.stringify(inspection)) as CogInspectionReport }
   } catch (error) {
