@@ -20,7 +20,7 @@
     "clean": "node ../../tooling/scripts/clean-package.mjs"
   },
   "dependencies": {
-    "purejsimage": "0.11.0"
+    "purejsimage": "0.12.0"
   },
   "devDependencies": {
     "typescript": "7.0.2",

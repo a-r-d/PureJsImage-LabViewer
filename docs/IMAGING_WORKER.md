@@ -13,7 +13,7 @@ handles do not cross the boundary.
 
 ## Public PureJsImage imports
 
-The integration uses these documented `purejsimage@0.11.0` paths and symbols:
+The integration uses these documented `purejsimage@0.12.0` paths and symbols:
 
 | Package path | Symbols |
 | --- | --- |
@@ -68,6 +68,11 @@ materializes one cached plane and crops viewport tiles and analysis plane reads 
 `packages/contracts` defines schema version 1 and validates unknown input before dispatch. Requests
 cover initialization, local/sample/remote source opening, source and dataset close, dataset open,
 plane selection, tile request, request cancellation, diagnostics, and the crash-only test seam.
+Dataset descriptors may include an optional JSON-safe `spatialReference` copied from PureJsImage
+0.12.0. That field is additive: it does not bump the RPC envelope. Local files and remote range
+sources produce the same application descriptor. Science datasets without georeferencing omit the
+field. UI code reads the typed spatial reference; it does not scrape generic dataset metadata for
+CRS, affines, bounds, raster type, or nodata.
 
 Limits are part of the contract:
 

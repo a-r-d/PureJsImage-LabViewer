@@ -1309,7 +1309,7 @@ function WorkbenchRuntime({
         },
       ],
       requestedCapabilities: ['analysis.execute'],
-      compatibility: { pureJsImage: '^0.11.0', workbench: '>=0.0.0 <1.0.0' },
+      compatibility: { pureJsImage: '^0.12.0', workbench: '>=0.0.0 <1.0.0' },
     }
     const recipe: RecipeDocumentV1 = {
       ...base,

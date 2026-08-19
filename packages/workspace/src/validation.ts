@@ -1,4 +1,5 @@
 import type { DatasetDescriptor, DisplayMapping, PlaneSelection } from '@pji-workbench/contracts'
+import { normalizeSpatialReference, SpatialReferenceError } from '@pji-workbench/contracts'
 import type { AnalysisGraph, AnalysisSemanticIdentity } from 'purejsimage/analysis'
 import type { PersistedInputBinding, PersistedSourceReference } from 'purejsimage/analysis/project'
 import type { RoiSet } from 'purejsimage/analysis/roi'
@@ -74,6 +75,7 @@ interface Candidate extends Record<string, unknown> {
   readonly label?: unknown
   readonly lastModified?: unknown
   readonly layers?: unknown
+  readonly level?: unknown
   readonly levels?: unknown
   readonly locator?: unknown
   readonly mapping?: unknown
@@ -110,6 +112,7 @@ interface Candidate extends Record<string, unknown> {
   readonly source?: unknown
   readonly sourceReferences?: unknown
   readonly sources?: unknown
+  readonly spatialReference?: unknown
   readonly summary?: unknown
   readonly title?: unknown
   readonly updatedAt?: unknown
@@ -356,13 +359,51 @@ function planeSelection(value: unknown, path: string): PlaneSelection {
   }
 }
 
+function spatialReference(
+  value: unknown,
+  path: string,
+  componentCount: number,
+): DatasetDescriptor['spatialReference'] {
+  try {
+    return normalizeSpatialReference(value, { componentCount, label: path })
+  } catch (error) {
+    if (error instanceof SpatialReferenceError) {
+      throw new WorkspaceValidationError('INVALID_PROJECT', error.message)
+    }
+    throw error
+  }
+}
+
+function resolutionLevel(
+  value: unknown,
+  path: string,
+  componentCount: number,
+): DatasetDescriptor['levels'][number] {
+  const candidate = record(value, path)
+  const reference =
+    candidate.spatialReference === undefined
+      ? undefined
+      : spatialReference(candidate.spatialReference, `${path}.spatialReference`, componentCount)
+  return {
+    ...(candidate as unknown as DatasetDescriptor['levels'][number]),
+    level: integer(candidate.level, `${path}.level`),
+    ...(reference === undefined ? {} : { spatialReference: reference }),
+  }
+}
+
 function datasetDescriptor(value: unknown, path: string): DatasetDescriptor {
   const candidate = record(value, path)
   jsonValue(candidate, path)
   const axes = boundedArray(candidate.axes, `${path}.axes`, 64)
   const components = boundedArray(candidate.components, `${path}.components`, 64)
-  const levels = boundedArray(candidate.levels, `${path}.levels`, 64)
+  const levels = boundedArray(candidate.levels, `${path}.levels`, 64).map((level, index) =>
+    resolutionLevel(level, `${path}.levels[${index}]`, components.length),
+  )
   const capabilities = record(candidate.capabilities, `${path}.capabilities`)
+  const reference =
+    candidate.spatialReference === undefined
+      ? undefined
+      : spatialReference(candidate.spatialReference, `${path}.spatialReference`, components.length)
   return {
     ...(candidate as unknown as DatasetDescriptor),
     id: stringValue(candidate.id, `${path}.id`),
@@ -372,8 +413,9 @@ function datasetDescriptor(value: unknown, path: string): DatasetDescriptor {
     sampleType: stringValue(candidate.sampleType, `${path}.sampleType`),
     axes: axes as DatasetDescriptor['axes'],
     components: components as DatasetDescriptor['components'],
-    levels: levels as DatasetDescriptor['levels'],
+    levels,
     capabilities: capabilities as unknown as DatasetDescriptor['capabilities'],
+    ...(reference === undefined ? {} : { spatialReference: reference }),
   }
 }
 

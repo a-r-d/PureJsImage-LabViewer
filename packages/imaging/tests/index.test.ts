@@ -932,7 +932,10 @@ describe('PureJsImage Worker host', () => {
         sourceReferences: [
           { id: 'source-1', identity: source.identity, locatorHint: { kind: 'sample' } },
         ],
-        createdWith: { packageVersion: '0.11.0', buildFingerprint: 'workbench-test' },
+        createdWith: {
+          packageVersion: PUREJSIMAGE_PACKAGE_VERSION,
+          buildFingerprint: 'workbench-test',
+        },
         hashes,
       },
       {
@@ -946,7 +949,7 @@ describe('PureJsImage Worker host', () => {
   })
 
   it('pins the package and exposes the thirty-one explicit reader descriptors', async () => {
-    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.11.0')
+    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.12.0')
     expect(SUPPORTED_READERS.map(({ id }) => id)).toEqual([
       'purejsimage/png',
       'purejsimage/jpeg',

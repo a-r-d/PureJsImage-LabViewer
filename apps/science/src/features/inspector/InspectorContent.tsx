@@ -1,8 +1,9 @@
-import type {
-  DisplayMapping,
-  OpenedDatasetDescriptor,
-  OpenedSourceDescriptor,
-  PlaneSelection,
+import {
+  type DisplayMapping,
+  type OpenedDatasetDescriptor,
+  type OpenedSourceDescriptor,
+  type PlaneSelection,
+  spatialReferenceFacts,
 } from '@pji-workbench/contracts'
 import { Button, type TabItem } from '@pji-workbench/ui'
 import type { WorkspaceHistoryEntry } from '@pji-workbench/workspace'
@@ -228,6 +229,14 @@ export function InspectorContent({
         <dt>Calibration</dt>
         <dd>{calibrationLabel(opened)}</dd>
       </div>
+      {opened.dataset.spatialReference === undefined
+        ? null
+        : spatialReferenceFacts(opened.dataset.spatialReference).map((fact) => (
+            <div key={fact.label}>
+              <dt>{fact.label}</dt>
+              <dd>{fact.value}</dd>
+            </div>
+          ))}
       <div>
         <dt>Source</dt>
         <dd>{source.reader.format}</dd>

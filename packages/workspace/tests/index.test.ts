@@ -406,6 +406,51 @@ describe('history, serialization, migration, and storage', () => {
     ).toThrow('application-owned example path')
   })
 
+  it('persists spatial references on dataset descriptors through project save/load', () => {
+    const spatialReference = {
+      crs: {
+        kind: 'geographic' as const,
+        authority: 'EPSG',
+        code: 4_326,
+        name: 'WGS 84',
+      },
+      pixelInterpretation: 'pixel-is-area' as const,
+      pixelToModel: [10, 0, 100, 0, -20, 200] as const,
+      modelToPixel: [0.1, 0, -10, 0, -0.05, 10] as const,
+      bounds: { minX: 100, minY: 160, maxX: 140, maxY: 200 },
+      noData: { kind: 'scalar' as const, value: -9_999 },
+      metadata: {
+        'purejsimage:geotiff': { citation: 'WGS 84', geographicCrs: 4_326 },
+        'purejsimage:crs-extra': { wkt: 'LOCAL_CS["unregistered"]' },
+      },
+    }
+    const levelZero = descriptor.levels[0]
+    if (levelZero === undefined) throw new Error('expected level zero')
+    const snapshot = apply(empty(), {
+      ...sourceAdd,
+      datasets: [
+        {
+          id: DATASET_ID,
+          sourceId: SOURCE_ID,
+          datasetId: 'surface',
+          identity,
+          descriptor: {
+            ...descriptor,
+            spatialReference,
+            levels: [{ ...levelZero, spatialReference }],
+          },
+        },
+      ],
+    })
+    const loaded = importWorkspaceProject(serializeWorkspaceProject(snapshot))
+    expect(loaded.datasets[0]?.descriptor.spatialReference).toEqual(spatialReference)
+    expect(loaded.datasets[0]?.descriptor.levels[0]?.spatialReference).toEqual(spatialReference)
+    expect(loaded.datasets[0]?.descriptor.spatialReference?.pixelToModel).toEqual([
+      10, 0, 100, 0, -20, 200,
+    ])
+    expect(descriptor).not.toHaveProperty('spatialReference')
+  })
+
   it('undoes, redoes, and clears redo after a new command', () => {
     const history = new WorkspaceHistory(empty())
     history.dispatch(

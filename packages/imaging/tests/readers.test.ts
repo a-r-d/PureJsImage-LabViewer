@@ -431,8 +431,8 @@ function angFixture(): Uint8Array<ArrayBuffer> {
 `)
 }
 
-describe('0.11.0 scientific reader catalog', () => {
-  it('matches every live published reader descriptor', () => {
+describe('scientific reader catalog', () => {
+  it('wires every supported reader from the live published catalog', () => {
     const live = Object.values(allScientificReaders)
       .filter(
         (
@@ -448,12 +448,12 @@ describe('0.11.0 scientific reader catalog', () => {
       )
       .map(({ descriptor }) => ({ id: descriptor.id, format: descriptor.format }))
       .sort((left, right) => left.id.localeCompare(right.id))
-    expect(live).toEqual(
-      [...SUPPORTED_READERS]
-        .map(({ id, format }) => ({ id, format }))
-        .sort((left, right) => left.id.localeCompare(right.id)),
-    )
-    expect(live).toHaveLength(31)
+    const supported = [...SUPPORTED_READERS]
+      .map(({ id, format }) => ({ id, format }))
+      .sort((left, right) => left.id.localeCompare(right.id))
+    expect(live).toEqual(expect.arrayContaining(supported))
+    expect(supported).toHaveLength(31)
+    expect(live.length).toBeGreaterThanOrEqual(31)
   })
 
   it('selects probe candidates from filename extensions', () => {

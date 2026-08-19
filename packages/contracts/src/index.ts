@@ -1,3 +1,4 @@
+/** Worker RPC envelope version. Additive optional descriptor fields do not bump this. */
 export const RPC_SCHEMA_VERSION = 1 as const
 export const RPC_LIMITS = Object.freeze({
   maxMessageBytes: 2 * 1_024 * 1_024,
@@ -34,8 +35,10 @@ import type {
   AnalysisTablePage,
   AnalysisTablePageRequest,
 } from './analysis.js'
+import type { SpatialReference } from './spatial-reference.js'
 
 export * from './analysis.js'
+export * from './spatial-reference.js'
 
 export type SourceKind = 'bundled' | 'local' | 'remote' | 'sample'
 export type TilePriority = 'visible' | 'near-visible' | 'background'
@@ -91,6 +94,7 @@ export interface ComponentDescriptor {
 export interface ResolutionLevelDescriptor {
   readonly level: number
   readonly axisLengths: readonly Readonly<{ axisId: string; length: number }>[]
+  readonly spatialReference?: SpatialReference
 }
 
 export interface DatasetDescriptor {
@@ -115,6 +119,7 @@ export interface DatasetDescriptor {
       | Readonly<{ kind: 'any-axis' }>
       | Readonly<{ kind: 'axes'; axes: readonly string[] }>
   }>
+  readonly spatialReference?: SpatialReference
   readonly metadata?: Readonly<Record<string, unknown>>
 }
 

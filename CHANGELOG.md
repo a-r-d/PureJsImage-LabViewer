@@ -9,6 +9,10 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Added
 
+- JSON-safe spatial references on dataset descriptors: CRS authority/code/name/citation, full
+  six-parameter pixel-to-model and model-to-pixel affines, model bounds, raster type, and
+  nodata. The imaging Worker copies PureJsImage 0.12.0 values across the RPC boundary; project
+  save/load and inspector facts use the same typed object. Unknown CRS metadata is kept.
 - Architecture decision record for a shared showcase monorepo (gallery, science, and geo;
   medical later), compile-time domain profiles, separate deploys, and a characterization
   suite that locks current science workbench behavior without moving application code.
@@ -21,6 +25,14 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Changed
 
+- The workbench consumes `purejsimage@0.12.0`. The reviewed science reader-registry
+  characterization fixture records the package version bump only. Science datasets without a
+  spatial reference are unchanged. The Worker still wires the same 31 readers; dicom and
+  ome-zarr remain unpublished on this surface. The reviewed science gzip inventory records
+  the expected 0.12.0/spatial-reference growth: index +2,670, imaging Worker +1,753,
+  JPEG +2,393, WebP +1,662, PNG +180, reader +755, and the two TIFF chunks +4,000
+  combined (Vite hash order swapped their logical names). The 300 KiB route-chunk and
+  1,000 KiB language-Worker ceilings are unchanged.
 - The science workbench moved from `apps/workbench` to `apps/science`
   (`@pji-workbench/science`). Cloudflare worker name and `lab.purejsimage.com`
   route are unchanged. Deploy with
