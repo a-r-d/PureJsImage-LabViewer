@@ -1,0 +1,171 @@
+packages/agent/src/types.ts
+  s_896fa7e1aa98f9::t_6041e0cc64ad5b 29
+  s_896fa7e1aa98f9::t_628a7ed5db833c 103-104
+  s_896fa7e1aa98f9::t_800ae8beb20635 267
+  s_896fa7e1aa98f9::t_a52531e1d1e728 149-150,199
+  s_896fa7e1aa98f9::t_0bf3dcab7b98e8 30,102,127-128,137-140
+docs/DECISIONS.md
+  s_896fa7e1aa98f9::t_86ba71bddb8e34 77-81
+packages/agent/package.json
+  s_896fa7e1aa98f9::t_9049136647a024 24-25
+apps-e2e/science/tsconfig.json
+  s_896fa7e1aa98f9::t_3dd5d7518ef126 12-17
+package.json
+  s_896fa7e1aa98f9::t_3dd5d7518ef126 35
+apps/science/src/app/WorkbenchApp.tsx
+  s_896fa7e1aa98f9::t_2b107172d0bd15 1393-1395
+  s_896fa7e1aa98f9::t_b59f70cbf0688c 2,137-140,3458,3460
+  s_896fa7e1aa98f9::t_a9bde510efa63e 1410-1411,1413,3174-3177,3179-3192
+  s_896fa7e1aa98f9::t_1a4d5b40412c39 1412
+  s_896fa7e1aa98f9::t_0bf3dcab7b98e8 3483
+  s_896fa7e1aa98f9::t_800ae8beb20635 189,203,1391-1392,1396-1397,1475-1478,3170-3173,3178
+packages/agent/tests/index.test.ts
+  s_896fa7e1aa98f9::t_48905ecd9f5b31 197-221
+  s_896fa7e1aa98f9::t_6fa3a4f32ef4c3 257-262
+  s_896fa7e1aa98f9::t_41517e68e9aee2 68-77,353-382
+  s_896fa7e1aa98f9::t_0bf3dcab7b98e8 771,782
+  s_896fa7e1aa98f9::t_9c43424b423d05 763,790
+  s_896fa7e1aa98f9::t_fcef34e17672b4 744,810-811,826,845-846,912-918
+  s_896fa7e1aa98f9::t_8e9a9d1823dc91 111,113,129,132-138,281-283,285,290,293-296,311-333
+  s_896fa7e1aa98f9::t_9def355c3b0ae8 801
+  s_896fa7e1aa98f9::t_aee1c709208185 228
+  s_896fa7e1aa98f9::t_79b7aa7610c1c6 798-800,802-809,812-825,827-844
+  s_896fa7e1aa98f9::t_ffe785074514cd 385-431
+  s_896fa7e1aa98f9::t_4fd6d15b6da2f6 274-277
+  s_896fa7e1aa98f9::t_819875278f3f7f 286-289,291-292,306-310
+  s_896fa7e1aa98f9::t_800ae8beb20635 112,121,130-131,284,334-352
+  s_896fa7e1aa98f9::t_c5d8c16f905aee 948,950-982
+  s_896fa7e1aa98f9::t_c48612a593e463 297-305
+  s_896fa7e1aa98f9::t_b1744991d1fac2 222-227,229-256,263-273,278-280,383-384,890-911,919-947
+  s_896fa7e1aa98f9::t_1b9586d8a75274 786
+  s_896fa7e1aa98f9::t_421092cd2e1268 949
+packages/geo-workbench/src/agent.ts
+  s_896fa7e1aa98f9::t_038856fed53cfb 37-38,40
+apps-e2e/science/agent-evals/agent-live.spec.ts
+  s_896fa7e1aa98f9::t_8266d823140cdd 7-13,17,22,329
+  s_896fa7e1aa98f9::t_5f41cd1767a0ea 1-4,6,16,18-21,23-52,58-86,88-89,110,113-141,144,146-147,149,157-183,185-188,191-212,221-254,257-259,263-328,330-368,371-373,375-376,378-411,413-416,418,421-432
+  s_896fa7e1aa98f9::t_6041e0cc64ad5b 5,255-256,260-262
+  s_896fa7e1aa98f9::t_25767f861f7c42 14-15,87,111-112,142-143,145,148,150-156,189-190
+  s_896fa7e1aa98f9::t_a91be90940e564 218-220
+  s_896fa7e1aa98f9::t_f998fe50165b80 53-57,90-109,184
+  s_896fa7e1aa98f9::t_a52531e1d1e728 412
+  s_896fa7e1aa98f9::t_93efc34c160742 213-217
+  s_896fa7e1aa98f9::t_48905ecd9f5b31 369-370,374,377,417,419-420
+docs/AGENT_V2.md
+  s_896fa7e1aa98f9::t_86ba71bddb8e34 145-146
+  s_896fa7e1aa98f9::t_cc7e0c36fc8213 158
+packages/domain-science/src/actions.ts
+  s_896fa7e1aa98f9::t_a9bde510efa63e 91-94,96
+  s_896fa7e1aa98f9::t_800ae8beb20635 95
+apps/science/src/features/agent/science-agent-credentials.ts
+  s_896fa7e1aa98f9::t_537684b6948996 1-83
+tooling/scripts/run-science-agent-evals.mjs
+  s_896fa7e1aa98f9::t_de376046f6e48e 6,15,19-21,49,59-64,189-190,218-219,228-229,236-242
+  s_896fa7e1aa98f9::t_e9d7fac7cc5187 1,3,5,7-12,14,16-18,22-48,50-58,65-66,71-74,151-155,158-188,194-215,234-235
+  s_896fa7e1aa98f9::t_b70aa1bcd73c99 144-147
+  s_896fa7e1aa98f9::t_6041e0cc64ad5b 156-157
+  s_896fa7e1aa98f9::t_46c859b1c5babd 220-227
+  s_896fa7e1aa98f9::t_25767f861f7c42 2,4,13,75-143,148-150,216-217,230-233
+  s_896fa7e1aa98f9::t_323bd4b6c41ab3 67-70,191-193
+apps/science/tests/science-agent-credentials.test.ts
+  s_896fa7e1aa98f9::t_537684b6948996 1-69
+packages/agent/src/runtime.ts
+  s_896fa7e1aa98f9::t_80ccadd970b9c8 322,402,424-425
+  s_896fa7e1aa98f9::t_41517e68e9aee2 365-370,404-421,954-974
+  s_896fa7e1aa98f9::t_a52531e1d1e728 76,485,502-509,511-515,592-606,608-618,860-863
+  s_896fa7e1aa98f9::t_aee1c709208185 10,257,276,281,286,929,937-953
+  s_896fa7e1aa98f9::t_0bf3dcab7b98e8 17,74,107,128,220-222,575-584
+  s_896fa7e1aa98f9::t_800ae8beb20635 26,209,337-342,381
+  s_896fa7e1aa98f9::t_9a0399536d11ff 330-336,343-357,374-380,403,864,930,975-979
+  s_896fa7e1aa98f9::t_fc4f18c54db6df 227-231
+  s_896fa7e1aa98f9::t_628a7ed5db833c 232-256,258-275,277-279,931
+  s_896fa7e1aa98f9::t_d6dcbece45e402 323,358-364,371-373
+  s_896fa7e1aa98f9::t_e5674db67a19e1 865
+  s_896fa7e1aa98f9::t_c709f04875fc6c 980
+packages/ui/src/index.tsx
+  s_896fa7e1aa98f9::t_10427ebe634ad3 27,244,280
+apps-e2e/science/tests/smoke.spec.ts
+  s_896fa7e1aa98f9::t_2a7d80583883a8 56-59
+  s_896fa7e1aa98f9::t_93efc34c160742 48-53
+AGENTS.md
+  s_896fa7e1aa98f9::t_e529cc5288dc16 180-200
+packages/agent/src/openrouter.ts
+  s_896fa7e1aa98f9::t_e529cc5288dc16 2,384-385,390,410,412-414
+  s_896fa7e1aa98f9::t_0bf3dcab7b98e8 13,20-28,143-149,176-181,205-207,250-253,268-277,297-298
+  s_896fa7e1aa98f9::t_1b9586d8a75274 391,403
+  s_896fa7e1aa98f9::t_628a7ed5db833c 29-64,190-203,299
+  s_896fa7e1aa98f9::t_6041e0cc64ad5b 164
+  s_896fa7e1aa98f9::t_3e747b94c406bc 300
+docs/ATLAS_AGENT.md
+  s_896fa7e1aa98f9::t_038856fed53cfb 37-40
+apps/science/tests/fixtures/characterization/science-action-catalog.json
+  s_896fa7e1aa98f9::t_7cd77cb62153c4 356,513
+packages/domain-science/tests/science-agent.test.ts
+  s_896fa7e1aa98f9::t_06e33108bf5add 128,230-240,246,250-252,287,294,296-301
+  s_896fa7e1aa98f9::t_ffe785074514cd 340-354
+packages/agent/src/manifest.ts
+  s_896fa7e1aa98f9::t_1b9586d8a75274 41
+packages/domain-science/src/agent.ts
+  s_896fa7e1aa98f9::t_a52531e1d1e728 95-96,98
+apps-e2e/science/tests/accessibility.spec.ts
+  s_896fa7e1aa98f9::t_7d4723d292ee31 74-78,82-100
+  s_896fa7e1aa98f9::t_af889c18eb1770 79-81
+apps/science/src/features/agent/ScienceAgentPanel.tsx
+  s_896fa7e1aa98f9::t_7d4723d292ee31 125
+  s_896fa7e1aa98f9::t_7251780ced2e1c 271-272,287
+  s_896fa7e1aa98f9::t_10427ebe634ad3 7,128,369,445
+  s_896fa7e1aa98f9::t_d80735ea704cf2 1,3-6,8-78,86,92,95,97-98,105,107-109,112-115,119,122-124,126-127,129-144,154-155,157-160,164-165,172-181,197,214-219,226-234,236-238,240-242,244-252,254,262-270,273-286,288-294,298-305,318-357,362-368,370-375,446-462,466-476,478-480,487-515,517-538,540-580,582-589,592-621
+  s_896fa7e1aa98f9::t_65df0501dd34d2 120,358-361,376-444,463-465,481-486
+  s_896fa7e1aa98f9::t_b9206be0762971 100-102,106,146-147,149-151,153,200-201,205,208-209,243,256-261,308-314,316
+  s_896fa7e1aa98f9::t_37ae2e3d9ccc57 121,148,152
+apps/science/src/styles.css
+  s_896fa7e1aa98f9::t_7251780ced2e1c 772-773
+  s_896fa7e1aa98f9::t_a5165e629aaad1 27,624-627,629-631,634-636,640-644,646,652-654,658-660,663-689,691-702,704-705,707-733,735-771,774-779,781-803,806-808,810-816,818-820,822-837,839-840,842,845-857,860-889,900-936,939-948,972-1029,1045-1134,1137-1156,1178-1188
+  s_896fa7e1aa98f9::t_de6b2318dd69f1 645,734,1030-1044,1157-1177
+  s_896fa7e1aa98f9::t_65df0501dd34d2 647-651
+biome.json
+  s_896fa7e1aa98f9::t_6fa3a4f32ef4c3 13
+apps-e2e/science/tests/agent.spec.ts
+  s_896fa7e1aa98f9::t_86ba71bddb8e34 125-126,128
+  s_896fa7e1aa98f9::t_93efc34c160742 3-5,106-117,120-124,146-148
+  s_896fa7e1aa98f9::t_4e5f6763fff916 11-14,42,129-132
+tooling/scripts/run-science-agent-evals.test.ts
+  s_896fa7e1aa98f9::t_de376046f6e48e 1-40
+README.md
+  s_896fa7e1aa98f9::t_280e04074887f6 15-34
+playwright.agent-evals.config.ts
+  s_896fa7e1aa98f9::t_3dd5d7518ef126 1-37
+.gitignore
+  s_896fa7e1aa98f9::t_3dd5d7518ef126 271
+packages/geo-workbench/tests/agent.test.ts
+  s_896fa7e1aa98f9::t_038856fed53cfb 175-184
+.env.example
+  s_896fa7e1aa98f9::t_3dd5d7518ef126 1-5
+docs/AGENT_EVALS.md
+  s_896fa7e1aa98f9::t_a52531e1d1e728 168-170
+  s_896fa7e1aa98f9::t_25767f861f7c42 43-45
+  s_896fa7e1aa98f9::t_cc7e0c36fc8213 9-10,21-22,30-33,36-42,162-167,171-174
+pnpm-lock.yaml
+  s_896fa7e1aa98f9::t_c76229a26455bc 258-260,1378-1380,2384-2385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "e1769a71114719e2170b2a0b1fc4f8e272904d55",
+  "prompts": {},
+  "humans": {
+    "h_9f4a25732fa0c1": {
+      "author": "aaron decker <aaron@ard.ninja>"
+    }
+  },
+  "sessions": {
+    "s_896fa7e1aa98f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01c80-0b22-75c1-ae02-3ac87fba6167",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
