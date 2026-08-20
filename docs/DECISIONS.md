@@ -74,9 +74,11 @@ The first implementations remain local. A future open-source Docker service or h
 ## Local-first agent credentials
 
 Durable agent credentials, when a domain explicitly enables them, go only through the reviewed
-credential store. Atlas instead defaults to a memory-only OpenRouter key: paste is explicit, removal
-is explicit, and application-session teardown clears it. Neither mode places credentials in semantic
-actions, project state, history, URLs, logs, telemetry, or error reports.
+credential store. The Science application enables durable BYOK after explicit one-time setup and
+stores the validated key only through its browser credential adapter; users can replace or remove it
+from Agent settings. Atlas instead defaults to a memory-only OpenRouter key: paste is explicit,
+removal is explicit, and application-session teardown clears it. Neither mode places credentials in
+semantic actions, project state, history, URLs, logs, telemetry, or error reports.
 
 The key must never enter:
 

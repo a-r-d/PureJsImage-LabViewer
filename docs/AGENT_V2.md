@@ -142,6 +142,8 @@ The approval card shows exact command/tool, target object, normalized parameters
 - Atlas keeps the OpenRouter key in a session-only memory credential store by default and clears it
   when the application session ends. A domain that explicitly enables durable BYOK may use the
   separately reviewed `CredentialStore`; the provider-independent agent core never owns storage.
+- The Science application enables that durable BYOK adapter: initial setup is a one-time modal,
+  subsequent access is behind Agent settings, and explicit removal clears the browser value.
 - Store conversation/event history in IndexedDB because it can exceed localStorage capacity.
 - Never store the API key in history, tools, projects, logs, error reports, URLs, telemetry, or eval traces.
 - Add a clear “local browser storage is not an enterprise secret vault” warning.
@@ -153,7 +155,7 @@ Use a configurable model setting. The suggested default for development/evals is
 
 ```text
 model: openai/gpt-5.6-luna
-reasoning effort: medium
+reasoning effort: high for the Science live-eval configuration
 parallel tool calls: false
 ```
 

@@ -36,10 +36,9 @@ export function modelToolInputSchema(capability: AgentActionCapability): JsonSch
   return {
     type: 'object',
     properties: {
-      projectRevision: { type: 'integer', minimum: 0 },
       input: capability.inputSchema,
     },
-    required: ['projectRevision', 'input'],
+    required: ['input'],
     additionalProperties: false,
   }
 }

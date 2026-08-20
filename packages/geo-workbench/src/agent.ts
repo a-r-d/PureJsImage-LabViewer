@@ -34,9 +34,10 @@ export function createGeoAgentPolicy(
         return {
           decision: 'require-approval',
           reason: isScreenPreview(input)
-            ? 'Sharing a browser screen frame with the model requires preview approval and the browser display-share picker.'
-            : 'Creating a model-visible image requires dedicated preview approval.',
+            ? 'The first browser screen preview in this session requires approval and the browser display-share picker; later screen previews reuse that approval.'
+            : 'The first model-visible Atlas preview in this session requires approval; later viewport previews reuse that approval.',
           permissions,
+          approvalScope: `geo:model-preview:${isScreenPreview(input) ? 'screen' : 'viewport'}`,
         }
       if (
         capability.actionId.startsWith('geo.export.') ||

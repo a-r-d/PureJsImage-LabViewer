@@ -65,6 +65,16 @@ const ALLOW_READS: AgentPolicy = {
   },
 }
 
+const ALLOW_ALL: AgentPolicy = {
+  decide(capability) {
+    return {
+      decision: 'allow',
+      reason: 'Deterministic test action.',
+      permissions: capability.permissions,
+    }
+  },
+}
+
 function modelResponse(
   toolCalls: readonly AgentActionCall[],
   content = toolCalls.length === 0
@@ -98,7 +108,9 @@ function call(
   return { callId, actionId, actionVersion: 1, projectRevision, input }
 }
 
-function fixtureGateway(options: Readonly<{ available?: boolean; largeResult?: boolean }> = {}): {
+function fixtureGateway(
+  options: Readonly<{ available?: boolean; failReadCount?: number; largeResult?: boolean }> = {},
+): {
   readonly gateway: AgentActionGateway
   readonly executions: AgentActionCall[]
   revision(): number
@@ -106,6 +118,7 @@ function fixtureGateway(options: Readonly<{ available?: boolean; largeResult?: b
   const context = { available: options.available ?? true }
   const registry = new WorkbenchActionRegistry([READ_ACTION, MUTATE_ACTION])
   let revision = 0
+  let pendingReadFailures = options.failReadCount ?? 0
   const executions: AgentActionCall[] = []
   const host = new WorkbenchActionHost(
     registry,
@@ -113,10 +126,16 @@ function fixtureGateway(options: Readonly<{ available?: boolean; largeResult?: b
       [
         'fixture.read@1',
         {
-          execute: (input: JsonValue) => ({
-            query: (input as Readonly<Record<string, JsonValue>>)['query'] ?? null,
-            rows: options.largeResult ? 'x'.repeat(128) : ['one', 'two'],
-          }),
+          execute: (input: JsonValue) => {
+            if (pendingReadFailures > 0) {
+              pendingReadFailures -= 1
+              throw new Error('Use the canonical fixture query returned by metadata.')
+            }
+            return {
+              query: (input as Readonly<Record<string, JsonValue>>)['query'] ?? null,
+              rows: options.largeResult ? 'x'.repeat(128) : ['one', 'two'],
+            }
+          },
         },
       ],
       [
@@ -175,6 +194,241 @@ describe('agent capability and policy foundation', () => {
 })
 
 describe('model-independent agent runtime', () => {
+  it('sends the configured reasoning effort on every model step', async () => {
+    const fixture = fixtureGateway()
+    const efforts: Array<string | undefined> = []
+    const transport = new DeterministicAgentTransport([
+      (request) => {
+        efforts.push(request.reasoningEffort)
+        return modelResponse([call('fixture.read', { query: 'Kentucky' })])
+      },
+      (request) => {
+        efforts.push(request.reasoningEffort)
+        return modelResponse([])
+      },
+    ])
+    const runtime = new AgentRuntime({
+      transport,
+      gateway: fixture.gateway,
+      policy: ALLOW_READS,
+      reasoningEffort: 'high',
+    })
+
+    await runtime.start('Inspect.', 'fake/atlas')
+
+    expect(efforts).toEqual(['high', 'high'])
+  })
+
+  it('recovers a missing inline plan through a tool-free structured planning step', async () => {
+    const fixture = fixtureGateway()
+    const recoveredPlan = {
+      goalSummary: 'Inspect the bounded fixture',
+      actions: [
+        {
+          actionId: 'fixture__read__v1',
+          actionVersion: 1,
+          input: { query: 'Kentucky' },
+          expectedOutput: 'A bounded fixture summary',
+        },
+      ],
+      approvalsRequired: [],
+      stoppingCondition: 'The summary is available.',
+    }
+    const transport = new DeterministicAgentTransport([
+      {
+        provider: 'fake',
+        model: 'fake/atlas',
+        content: '',
+        toolCalls: [call('fixture.read', { query: 'discarded' })],
+      },
+      (request) => {
+        expect(request.planningOnly).toBe(true)
+        return {
+          provider: 'fake',
+          model: 'fake/atlas',
+          content: JSON.stringify(recoveredPlan),
+          toolCalls: [],
+          plan: recoveredPlan,
+        }
+      },
+      (request) => {
+        expect(request.planningOnly).toBeUndefined()
+        expect(JSON.stringify(request.messages)).toContain('The bounded plan is recorded.')
+        return {
+          provider: 'fake',
+          model: 'fake/atlas',
+          content: '',
+          toolCalls: [call('fixture.read', { query: 'Kentucky' })],
+        }
+      },
+      modelResponse([], 'Recovered execution completed.'),
+    ])
+    const runtime = new AgentRuntime({
+      transport,
+      gateway: fixture.gateway,
+      policy: ALLOW_READS,
+    })
+
+    const audit = await runtime.start('Inspect.', 'fake/atlas')
+
+    expect(audit.plan).toEqual({
+      ...recoveredPlan,
+      actions: [{ ...recoveredPlan.actions[0], actionId: 'fixture.read' }],
+    })
+    expect(fixture.executions).toHaveLength(1)
+    expect(fixture.executions[0]?.input).toEqual({ query: 'Kentucky' })
+    expect(transport.requests).toHaveLength(4)
+  })
+
+  it('returns bounded action execution errors to the model so it can correct a tool call', async () => {
+    const fixture = fixtureGateway({ failReadCount: 1 })
+    const transport = new DeterministicAgentTransport([
+      modelResponse([
+        call('fixture.read', { query: 'guessed' }),
+        call('fixture.read', { query: 'dependent' }, 0, 'call-dependent'),
+      ]),
+      (request) => {
+        const toolMessages = request.messages.slice(-2)
+        const toolMessage = toolMessages[0]
+        expect(toolMessage).toMatchObject({
+          role: 'tool',
+          actionId: 'fixture.read',
+        })
+        expect(
+          JSON.parse(typeof toolMessage?.content === 'string' ? toolMessage.content : '{}'),
+        ).toMatchObject({
+          ok: false,
+          error: {
+            code: 'ACTION_EXECUTION_FAILED',
+            message: 'Use the canonical fixture query returned by metadata.',
+          },
+        })
+        expect(toolMessages[1]).toMatchObject({
+          role: 'tool',
+          actionId: 'fixture.read',
+          content: expect.stringContaining('NOT_EXECUTED'),
+        })
+        return modelResponse([call('fixture.read', { query: 'canonical' }, 0, 'call-2')])
+      },
+      modelResponse([], 'Corrected tool call completed.'),
+    ])
+    const runtime = new AgentRuntime({ transport, gateway: fixture.gateway, policy: ALLOW_READS })
+
+    const audit = await runtime.start('Inspect and correct bounded action errors.', 'fake/atlas')
+
+    expect(fixture.executions.map(({ input }) => input)).toEqual([
+      { query: 'guessed' },
+      { query: 'canonical' },
+    ])
+    expect(audit.failures).toEqual([
+      expect.objectContaining({
+        code: 'ACTION_EXECUTION_FAILED',
+        message: 'Use the canonical fixture query returned by metadata.',
+      }),
+    ])
+    expect(audit.trace).toHaveLength(1)
+    expect(runtime.getSnapshot()).toMatchObject({
+      status: 'completed',
+      finalText: 'Corrected tool call completed.',
+    })
+  })
+
+  it('stops a model after the configured consecutive action-failure budget', async () => {
+    const fixture = fixtureGateway({ failReadCount: 3 })
+    const runtime = new AgentRuntime({
+      transport: new DeterministicAgentTransport([
+        modelResponse([call('fixture.read', { query: 'one' })]),
+        modelResponse([call('fixture.read', { query: 'two' }, 0, 'call-2')]),
+        modelResponse([call('fixture.read', { query: 'three' }, 0, 'call-3')]),
+      ]),
+      gateway: fixture.gateway,
+      policy: ALLOW_READS,
+      limits: { maximumConsecutiveToolFailures: 2 },
+    })
+
+    await expect(runtime.start('Keep retrying a failing read.', 'fake/atlas')).rejects.toThrow(
+      'stopped after 2 consecutive action failures',
+    )
+    expect(fixture.executions).toHaveLength(2)
+  })
+
+  it('defers bundled calls after a mutation advances the project revision', async () => {
+    const fixture = fixtureGateway()
+    const transport = new DeterministicAgentTransport([
+      modelResponse([
+        call('fixture.mutate', {}),
+        call('fixture.read', { query: 'stale-batch' }, 0, 'call-stale'),
+      ]),
+      (request) => {
+        expect(request.manifest.projectRevision).toBe(1)
+        expect(request.messages.slice(-2)).toEqual([
+          expect.objectContaining({ role: 'tool', actionId: 'fixture.mutate' }),
+          expect.objectContaining({
+            role: 'tool',
+            actionId: 'fixture.read',
+            content: expect.stringContaining('PROJECT_REVISION_ADVANCED'),
+          }),
+        ])
+        return modelResponse([call('fixture.read', { query: 'current' }, 1, 'call-current')])
+      },
+      modelResponse([], 'Read completed against the current revision.'),
+    ])
+    const runtime = new AgentRuntime({ transport, gateway: fixture.gateway, policy: ALLOW_ALL })
+
+    const audit = await runtime.start('Mutate, then read.', 'fake/atlas')
+
+    expect(fixture.executions.map(({ callId }) => callId)).toEqual(['call-1', 'call-current'])
+    expect(audit.trace.map(({ actionId }) => actionId)).toEqual(['fixture.mutate', 'fixture.read'])
+    expect(fixture.revision()).toBe(1)
+  })
+
+  it('reuses a bounded session approval scope and preserves it in replay provenance', async () => {
+    const original = fixtureGateway()
+    const scopedPolicy: AgentPolicy = {
+      decide(capability) {
+        return capability.actionId === 'fixture.mutate'
+          ? {
+              decision: 'require-approval',
+              reason: 'Approve fixture mutation once for this session.',
+              permissions: capability.permissions,
+              approvalScope: 'fixture:mutation',
+            }
+          : {
+              decision: 'allow',
+              reason: 'Bounded read.',
+              permissions: capability.permissions,
+            }
+      },
+    }
+    const runtime = new AgentRuntime({
+      transport: new DeterministicAgentTransport([
+        modelResponse([call('fixture.mutate', {})]),
+        modelResponse([call('fixture.mutate', {}, 1, 'call-2')]),
+        modelResponse([]),
+      ]),
+      gateway: original.gateway,
+      policy: scopedPolicy,
+    })
+
+    const run = runtime.start('Mutate twice.', 'fake/atlas')
+    await vi.waitFor(() => expect(runtime.getSnapshot().status).toBe('awaiting-approval'))
+    runtime.approve(runtime.getSnapshot().approval?.id ?? '')
+    const audit = await run
+
+    expect(audit.approvals).toHaveLength(1)
+    expect(audit.trace.map(({ approval }) => approval)).toEqual(['approved', 'remembered'])
+    expect(original.revision()).toBe(2)
+
+    const replayTarget = fixtureGateway()
+    const replay = new AgentRuntime({
+      transport: new DeterministicAgentTransport([]),
+      gateway: replayTarget.gateway,
+      policy: scopedPolicy,
+    })
+    await expect(replay.replay(audit)).resolves.toHaveLength(2)
+    expect(replayTarget.revision()).toBe(2)
+  })
+
   it('preserves bounded history across user turns and can reset the conversation', async () => {
     const fixture = fixtureGateway()
     const transport = new DeterministicAgentTransport([
@@ -487,7 +741,7 @@ describe('OpenRouter transport', () => {
                   type: 'function',
                   function: {
                     name: 'fixture__read__v1',
-                    arguments: '{"projectRevision":0,"input":{"query":"Kentucky"}}',
+                    arguments: '```json\n{"input":{"query":"Kentucky"}}\n```',
                   },
                 },
               ],
@@ -506,7 +760,7 @@ describe('OpenRouter transport', () => {
     const credentials = new MemoryOpenRouterCredentialStore()
     credentials.set('sk-or-session-fixture')
     const transport = new OpenRouterTransport({ credentials, fetch: fetcher })
-    const manifest = fixtureGateway().gateway.capabilities()
+    const manifest = { ...fixtureGateway().gateway.capabilities(), projectRevision: 7 }
 
     const response = await transport.complete(
       {
@@ -514,6 +768,7 @@ describe('OpenRouter transport', () => {
         messages: [{ role: 'user', content: 'Inspect Kentucky' }],
         manifest,
         maximumTokens: 512,
+        reasoningEffort: 'high',
       },
       new AbortController().signal,
     )
@@ -524,18 +779,69 @@ describe('OpenRouter transport', () => {
       model: 'fixture/tools',
       parallel_tool_calls: false,
       max_tokens: 512,
+      reasoning: { effort: 'high' },
     })
     expect(JSON.stringify(requestBody)).toContain('Permissions: workspace.read')
     expect(JSON.stringify(requestBody)).toContain('Output schema:')
+    expect(JSON.stringify(requestBody)).not.toContain('projectRevision')
     expect(response.toolCalls[0]).toMatchObject({
       actionId: 'fixture.read',
       actionVersion: 1,
-      projectRevision: 0,
+      projectRevision: 7,
       input: { query: 'Kentucky' },
     })
     expect(JSON.stringify(requests)).not.toContain('sk-or-session-fixture')
     credentials.clear()
     expect(credentials.has()).toBe(false)
+  })
+
+  it('keeps shared AI parsing behind schema and JSON-safety validation', async () => {
+    const invalidArguments = [
+      ['{"input":{"query":"Kentucky"},}', 'fixture.read arguments are malformed.'],
+      ['{"input":{"__proto__":{"polluted":true}}}', 'JSON contains a forbidden key.'],
+    ] as const
+    for (const [argumentsText, expectedMessage] of invalidArguments) {
+      const credentials = new MemoryOpenRouterCredentialStore()
+      credentials.set('sk-or-session-fixture')
+      const responses = [
+        {
+          data: [{ id: 'fixture/tools', supported_parameters: ['tools'] }],
+        },
+        {
+          model: 'fixture/tools',
+          choices: [
+            {
+              message: {
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'or-call-invalid',
+                    type: 'function',
+                    function: { name: 'fixture__read__v1', arguments: argumentsText },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ]
+      const transport = new OpenRouterTransport({
+        credentials,
+        fetch: async () => Response.json(responses.shift() ?? {}),
+      })
+
+      await expect(
+        transport.complete(
+          {
+            model: 'fixture/tools',
+            messages: [{ role: 'user', content: 'Inspect Kentucky' }],
+            manifest: fixtureGateway().gateway.capabilities(),
+            maximumTokens: 128,
+          },
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ code: 'INVALID_MODEL_RESPONSE', message: expectedMessage })
+    }
   })
 
   it('invokes a browser fetch implementation with the global receiver', async () => {
@@ -576,6 +882,99 @@ describe('OpenRouter transport', () => {
           manifest: fixtureGateway().gateway.capabilities(),
           maximumTokens: 128,
         },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: 'UNSUPPORTED_MODEL' })
+  })
+
+  it('uses strict structured output and exposes no action tools during plan recovery', async () => {
+    const requests: string[] = []
+    const credentials = new MemoryOpenRouterCredentialStore()
+    credentials.set('sk-or-session-fixture')
+    const plan = {
+      goalSummary: 'Inspect',
+      actions: [],
+      approvalsRequired: [],
+      stoppingCondition: 'Done',
+    }
+    const responses = [
+      {
+        data: [
+          {
+            id: 'fixture/tools',
+            supported_parameters: ['tools', 'structured_outputs'],
+            architecture: { input_modalities: ['text'] },
+          },
+        ],
+      },
+      {
+        model: 'fixture/tools',
+        choices: [
+          {
+            message: {
+              content: `Here is the requested plan:\n\n\`\`\`json\n${JSON.stringify(plan)}\n\`\`\``,
+            },
+          },
+        ],
+      },
+    ]
+    const transport = new OpenRouterTransport({
+      credentials,
+      fetch: async (_input, init) => {
+        if (typeof init?.body === 'string') requests.push(init.body)
+        return Response.json(responses.shift() ?? {})
+      },
+    })
+
+    await expect(
+      transport.complete(
+        {
+          model: 'fixture/tools',
+          messages: [{ role: 'user', content: 'Plan an inspection.' }],
+          manifest: fixtureGateway().gateway.capabilities(),
+          maximumTokens: 512,
+          planningOnly: true,
+        },
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({ plan })
+    const body = JSON.parse(requests[0] ?? '{}') as Record<string, unknown>
+    expect(body['tools']).toBeUndefined()
+    expect(body['tool_choice']).toBeUndefined()
+    expect(body['response_format']).toMatchObject({
+      type: 'json_schema',
+      json_schema: { name: 'workbench_agent_plan', strict: true },
+    })
+  })
+
+  it('parses advertised reasoning efforts and rejects an explicitly unsupported effort', async () => {
+    const credentials = new MemoryOpenRouterCredentialStore()
+    credentials.set('sk-or-session-fixture')
+    const transport = new OpenRouterTransport({
+      credentials,
+      fetch: async () =>
+        Response.json({
+          data: [
+            {
+              id: 'fixture/reasoning',
+              supported_parameters: ['tools'],
+              architecture: { input_modalities: ['text', 'image'] },
+              reasoning: { supported_efforts: ['low', 'medium', 'invalid'] },
+            },
+          ],
+        }),
+    })
+
+    await expect(transport.listModels()).resolves.toEqual([
+      expect.objectContaining({
+        id: 'fixture/reasoning',
+        supportedReasoningEfforts: ['low', 'medium'],
+      }),
+    ])
+    await expect(
+      transport.validateModel(
+        'fixture/reasoning',
+        { imageInput: true, reasoningEffort: 'high' },
         new AbortController().signal,
       ),
     ).rejects.toMatchObject({ code: 'UNSUPPORTED_MODEL' })

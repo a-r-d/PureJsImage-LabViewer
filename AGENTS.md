@@ -177,6 +177,27 @@ Trusted build-time extensions are not sandboxed and must be described as trusted
 
 The agent is built after the semantic action surface is stable.
 
+Agent behavior should come from the model's intelligence, clear context, and well-designed tools—not
+from application code trying to outsmart the model.
+
+- Do not route requests or infer intent with regexes, keyword lists, phrase matching, or model-specific
+  branches.
+- Do not repair, rewrite, or mine model prose with hand-built regex pipelines. Use structured tool
+  calling or response schemas. At an AI-generated JSON boundary, use `ai-json-safe-parse`, prefer
+  `mode: 'safe'` for action-bearing data, and always validate the parsed `unknown` against the real
+  schema afterward.
+- Improve reliability by improving system instructions, capability descriptions, bounded current
+  context, tool results, examples, and evals. Do not add hidden orchestration that second-guesses a
+  valid model decision.
+- Give the model the relevant current state and stable object identities without flooding it with
+  stale or low-value context. Compact or summarize old turns deliberately.
+- Make tools graceful: return concise actionable failures, preserve IDs and provenance, allow the
+  model to correct a call, and keep cancellation, limits, approvals, and policy enforcement in the
+  host.
+- The model chooses what action to propose next. Deterministic code validates schemas, permissions,
+  revisions, resource limits, and side effects; it does not choose the scientific workflow on the
+  model's behalf.
+
 The agent:
 
 - proposes semantic actions;

@@ -12,6 +12,26 @@ The library (`purejsimage@0.14.0`) owns codecs, scientific rasters, GeoTIFF/COG 
 
 Product changes in this repo are recorded in [`CHANGELOG.md`](CHANGELOG.md). Architecture: [`docs/adr/0001-shared-showcase-monorepo.md`](docs/adr/0001-shared-showcase-monorepo.md).
 
+## AI-enabled particle counting
+
+![AI-enabled particle counting in PureJsImage Lab, showing calibrated labeled particles, quantitative results, and the Lab Assistant conversation](docs/images/ai-enabled-particle-counting.png)
+
+Ask the Lab Assistant to count and measure particles in plain language. The agent reads the current
+calibration and analysis settings, prepares a bounded dry-run, requests approval for the scientific
+operation, and executes it through the same versioned semantic actions used by the normal UI. It can
+then inspect an approved, bounded viewport preview, assess the labeled detections, explain the
+measurements and units, and iteratively tune the parameters when the segmentation needs work.
+
+The screenshot above shows the generated calibrated SEM fixture with **10 detected particles**,
+linked label overlays, per-particle measurements, aggregate ROI statistics, and the agent's analysis
+in one workspace. Raw source pixels, credentials, Workers, and application stores are never exposed
+as agent tools; sharing a bounded viewport image and running analysis remain approval-gated.
+
+The Science app supports a configurable OpenRouter model and keeps the ordinary workbench fully
+usable without an API key. See [`docs/AGENT_V2.md`](docs/AGENT_V2.md) for the agent boundary and
+[`docs/SEGMENTATION_PARTICLE_ANALYSIS.md`](docs/SEGMENTATION_PARTICLE_ANALYSIS.md) for the numerical
+workflow.
+
 ## Demo apps
 
 Each app is a **separate Vite build and Cloudflare deploy**. They do not share one bundle or one imaging Worker. Medical is planned and has no application yet.

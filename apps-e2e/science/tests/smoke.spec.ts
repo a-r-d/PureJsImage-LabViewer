@@ -45,8 +45,16 @@ test('@visual agent panel state', async ({ browserName, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await openSample(page)
   await page.getByRole('button', { name: 'Show agent readiness' }).click()
-  await expect(page.getByRole('region', { name: 'OpenRouter session' })).toBeVisible()
+  const settings = page.getByRole('dialog', { name: 'Agent settings' })
+  await expect(settings).toBeVisible()
+  await expect(settings.getByRole('button', { name: 'Save and continue' })).toBeDisabled()
+  await settings.getByRole('button', { name: 'Not now' }).click()
+  await expect(page.getByRole('heading', { name: 'What would you like to analyze?' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Example prompts' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Start task' })).toBeDisabled()
   await waitForWorkbenchSettled(page)
-  await expect(page).toHaveScreenshot('workbench-agent-scientific.png', { animations: 'disabled' })
+  await expect(page).toHaveScreenshot('workbench-agent-scientific.png', {
+    animations: 'disabled',
+    maxDiffPixelRatio: 0,
+  })
 })

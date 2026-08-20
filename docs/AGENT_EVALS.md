@@ -6,10 +6,10 @@ Measure whether the real model can complete scientific and product tasks through
 
 ## Local configuration
 
-Create and gitignore:
+Create a repository-root `.env` from `.env.example`. It is already ignored, and the real key must
+never be copied into `.env.example` or an eval artifact. Reports are written under:
 
 ```text
-.env.agent-evals.local
 .local/agent-evals/
 ```
 
@@ -18,10 +18,8 @@ Example variables:
 ```text
 OPENROUTER_API_KEY=...
 PJI_AGENT_EVAL_MODEL=openai/gpt-5.6-luna
-PJI_AGENT_EVAL_REASONING_EFFORT=medium
-PJI_AGENT_EVAL_MAX_STEPS=20
-PJI_AGENT_EVAL_MAX_COST_USD=2.00
-PJI_AGENT_EVAL_RUNS_PER_CASE=1
+PJI_AGENT_EVAL_REASONING_EFFORT=high
+PJI_AGENT_EVAL_MAX_COST_USD=0.25
 ```
 
 Never load this file in normal app builds, unit tests, E2E tests, or CI.
@@ -29,14 +27,22 @@ Never load this file in normal app builds, unit tests, E2E tests, or CI.
 ## Commands
 
 ```text
-pnpm eval:agent --suite smoke
-pnpm eval:agent --suite analysis
-pnpm eval:agent --case sem-particle-count
-pnpm eval:agent --model openai/gpt-5.6-luna --reasoning medium
-pnpm eval:agent:report <run-directory>
+pnpm eval:agent --confirm-live --suite smoke
+pnpm eval:agent --confirm-live --suite analysis
+pnpm eval:agent --confirm-live --case sem-particle-count
+pnpm eval:agent --confirm-live --model openai/gpt-5.6-luna --reasoning high
 ```
 
-Require an explicit confirmation flag for a live run and print the model, case count, estimated maximum cost, and output directory before sending requests.
+The launcher refuses CI and requires `--confirm-live`. It prints the model, case count, soft cost
+ceiling, and output directory before sending requests. The ceiling is checked after each provider
+response, so one in-flight request can exceed it. Each case also has a hard maximum of 20 chat
+requests.
+
+The required live Science configuration is currently `openai/gpt-5.6-luna` with high reasoning.
+The launcher verifies current tool and image-input support before starting Playwright. Chromium runs
+serially with trace, screenshots, and video disabled. The browser holds only a dummy credential.
+The launcher owns a localhost-only, destination-allowlisted relay, removes the real key from the
+Playwright child environment, and adds it only to the relay's outbound OpenRouter requests.
 
 ## Eval case format
 
@@ -153,3 +159,16 @@ The Materials Workbench keeps its deterministic multi-turn tuning evaluation in
 can read particle settings, dry-run a bounded patch, pause for execution approval, read the compact
 result, pause for preview approval, deliver only the bounded rendered image, and retain a redacted
 follow-up turn without any live provider request.
+
+The opt-in Chromium suite adds two real-model paths:
+
+- `sem-particle-count` runs reviewed particle analysis, reads bounded results, approves a viewport
+  preview, and asks a follow-up that must retain the prior tool context;
+- `split-touching-particles` compares a no-watershed baseline with a watershed run, requiring two
+  executions, two bounded summaries, and two model-visible viewport previews. The first preview is
+  approved explicitly and the second must reuse the session-scoped preview grant without another
+  prompt.
+
+Reports contain action IDs, approval IDs, final visible answers, UI result headlines, request IDs,
+latency, usage, known provider cost, and whether an image was present. They omit request bodies,
+tool arguments/results, image data, headers, credentials, and reasoning details.

@@ -172,6 +172,16 @@ describe('Atlas deterministic agent evaluations', () => {
     expect(decision('geo.analysis.zonal_statistics')).toBe('require-approval')
     expect(decision('geo.preview.create')).toBe('require-approval')
     expect(decision('geo.project.export')).toBe('require-approval')
+
+    const preview = manifest.actions.find(({ actionId }) => actionId === 'geo.preview.create')
+    if (preview === undefined) throw new Error('Missing geo.preview.create')
+    expect(
+      policy.decide(
+        preview,
+        { scope: 'viewport', width: 512, height: 512 },
+        { projectRevision: 1 },
+      ),
+    ).toMatchObject({ approvalScope: 'geo:model-preview:viewport' })
   })
 })
 

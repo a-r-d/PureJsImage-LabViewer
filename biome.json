@@ -10,6 +10,7 @@
       "!**/playwright-report-geo",
       "!**/test-results",
       "!**/.cache",
+      "!**/.local",
       "!**/.turbo",
       "!**/.wrangler",
       "!pnpm-lock.yaml"

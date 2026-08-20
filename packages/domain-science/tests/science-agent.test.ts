@@ -125,7 +125,7 @@ describe('science agent runtime', () => {
     expect(() => gate.assertCurrent(consumed, 'settings:c')).toThrow(/current valid dry-run plan/)
   })
 
-  it('iterates through settings, planning, approved execution, results, and an approved preview', async () => {
+  it('iterates through analysis and reuses the first viewport-preview approval', async () => {
     let workspace: WorkspaceSnapshot = createEmptyWorkspace('Agent fixture')
     const executed: string[] = []
     const host = new WorkbenchActionHost(
@@ -230,13 +230,26 @@ describe('science agent runtime', () => {
         (request: AgentModelRequest) => {
           expect(request.messages.at(-1)).toMatchObject({ role: 'user' })
           expect(JSON.stringify(request.messages.at(-1))).toContain('data:image/png;base64')
+          return response([
+            call('preview-2', 'viewport.preview.create', 1, {
+              scope: 'viewport',
+              width: 96,
+              height: 64,
+            }),
+          ])
+        },
+        (request: AgentModelRequest) => {
+          expect(request.messages.at(-1)).toMatchObject({ role: 'user' })
+          expect(JSON.stringify(request.messages.at(-1))).toContain('data:image/png;base64')
           return response(
             [],
-            'The tuned run counted 17 particles and the labels preview was inspected.',
+            'The tuned run counted 17 particles and two labels previews were inspected.',
           )
         },
         (request: AgentModelRequest) => {
-          expect(JSON.stringify(request.messages)).toContain('The tuned run counted 17 particles')
+          expect(JSON.stringify(request.messages)).toContain(
+            'The tuned run counted 17 particles and two labels previews were inspected.',
+          )
           expect(JSON.stringify(request.messages)).not.toContain('data:image/png;base64')
           return response([], 'The prior tuning used watershed and a 24-pixel minimum.')
         },
@@ -271,15 +284,21 @@ describe('science agent runtime', () => {
     runtime.approve(runtime.getSnapshot().approval?.id ?? '')
     const audit = await firstTurn
 
-    expect(executed).toEqual(['particle', 'preview'])
+    expect(executed).toEqual(['particle', 'preview', 'preview'])
     expect(audit.trace.map(({ actionId }) => actionId)).toEqual([
       'analysis.particle.settings.read',
       'analysis.particle.plan',
       'analysis.particle.execute',
       'result.summary.read',
       'viewport.preview.create',
+      'viewport.preview.create',
     ])
-    expect(runtime.getSnapshot().artifacts).toHaveLength(1)
+    expect(audit.trace.slice(-2).map(({ approval }) => approval)).toEqual([
+      'approved',
+      'remembered',
+    ])
+    expect(audit.approvals.filter(({ callId }) => callId.startsWith('preview'))).toHaveLength(1)
+    expect(runtime.getSnapshot().artifacts).toHaveLength(2)
 
     await runtime.start('Which settings changed?', 'fake/science-vision')
     expect(runtime.getSnapshot()).toMatchObject({
@@ -318,7 +337,20 @@ describe('science agent runtime', () => {
         capability('viewport.preview.create'),
         { scope: 'screen', width: 512, height: 512 },
         { projectRevision: 0 },
-      ).decision,
-    ).toBe('require-approval')
+      ),
+    ).toMatchObject({
+      decision: 'require-approval',
+      approvalScope: 'science:model-preview:screen',
+    })
+    expect(
+      policy.decide(
+        capability('viewport.preview.create'),
+        { scope: 'viewport', width: 512, height: 512 },
+        { projectRevision: 0 },
+      ),
+    ).toMatchObject({
+      decision: 'require-approval',
+      approvalScope: 'science:model-preview:viewport',
+    })
   })
 })

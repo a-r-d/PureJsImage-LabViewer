@@ -353,6 +353,7 @@
                 "type": "string"
               },
               "roiId": {
+                "description": "Use particle-whole-plane for the whole active plane, or an area ROI ID returned by particle settings or ROI actions. Never invent another ROI ID.",
                 "maxLength": 256,
                 "type": "string"
               },
@@ -509,6 +510,7 @@
                 "type": "string"
               },
               "roiId": {
+                "description": "Use particle-whole-plane for the whole active plane, or an area ROI ID returned by particle settings or ROI actions. Never invent another ROI ID.",
                 "maxLength": 256,
                 "type": "string"
               },

@@ -24,6 +24,7 @@ import {
   Scan,
   ScanLine,
   Search,
+  SendHorizontal,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -240,6 +241,7 @@ export type IconName =
   | 'search'
   | 'save'
   | 'save-as'
+  | 'send'
   | 'settings'
   | 'shield'
   | 'sliders'
@@ -275,6 +277,7 @@ const iconComponents: Readonly<Record<IconName, LucideIcon>> = {
   search: Search,
   save: Save,
   'save-as': SaveAll,
+  send: SendHorizontal,
   settings: Settings,
   shield: ShieldCheck,
   sliders: SlidersHorizontal,

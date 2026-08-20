@@ -9,5 +9,10 @@
     "declarationMap": false,
     "sourceMap": false
   },
-  "include": ["./scenario-reporter.ts", "./tests/**/*.ts", "../../apps/science/src/env.d.ts"]
+  "include": [
+    "./agent-evals/**/*.ts",
+    "./scenario-reporter.ts",
+    "./tests/**/*.ts",
+    "../../apps/science/src/env.d.ts"
+  ]
 }

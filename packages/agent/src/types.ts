@@ -26,6 +26,8 @@ export type AgentPermission =
 
 export type AgentDecision = 'allow' | 'deny' | 'require-approval'
 
+export type AgentReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
 export interface AgentActionCapability {
   readonly toolName: string
   readonly actionId: string
@@ -97,6 +99,9 @@ export interface AgentModelRequest {
   readonly messages: readonly AgentModelMessage[]
   readonly manifest: AgentCapabilityManifest
   readonly maximumTokens: number
+  readonly reasoningEffort?: AgentReasoningEffort
+  /** Retry a missing plan without exposing executable tools. */
+  readonly planningOnly?: boolean
 }
 
 export interface AgentModelResponse {
@@ -119,6 +124,8 @@ export interface AgentModelSummary {
   readonly contextLength?: number
   readonly supportedParameters: readonly string[]
   readonly inputModalities: readonly string[]
+  /** Undefined when OpenRouter does not publish reasoning metadata; null means all efforts. */
+  readonly supportedReasoningEfforts?: readonly AgentReasoningEffort[] | null
 }
 
 export interface AgentModelTransport {
@@ -127,7 +134,10 @@ export interface AgentModelTransport {
   listModels?(signal?: AbortSignal): Promise<readonly AgentModelSummary[]>
   validateModel?(
     model: string,
-    requirements: Readonly<{ imageInput: boolean }>,
+    requirements: Readonly<{
+      imageInput: boolean
+      reasoningEffort?: AgentReasoningEffort
+    }>,
     signal: AbortSignal,
   ): Promise<void>
 }
@@ -136,6 +146,8 @@ export interface AgentPolicyResult {
   readonly decision: AgentDecision
   readonly reason: string
   readonly permissions: readonly string[]
+  /** Reuse one explicit approval for this bounded scope until the runtime session ends. */
+  readonly approvalScope?: string
 }
 
 export interface AgentPolicy {
@@ -184,7 +196,7 @@ export interface AgentActionTrace {
   readonly input: JsonValue
   readonly projectRevisionBefore: number
   readonly projectRevisionAfter: number
-  readonly approval: 'automatic' | 'approved'
+  readonly approval: 'automatic' | 'approved' | 'remembered'
   readonly result: JsonValue
   readonly startedAt: string
   readonly completedAt: string
@@ -252,6 +264,7 @@ export interface AgentRuntimeSnapshot {
 export interface AgentRuntimeLimits {
   readonly maximumModelSteps: number
   readonly maximumToolCalls: number
+  readonly maximumConsecutiveToolFailures: number
   readonly maximumTokens: number
   readonly maximumToolResultBytes: number
   readonly maximumConcurrentTasks: number

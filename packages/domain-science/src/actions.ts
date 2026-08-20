@@ -88,7 +88,12 @@ const SCRIPT_DIGEST = { type: 'string', minLength: 64, maxLength: 64 } as const
 const PARTICLE_SETTINGS = {
   type: 'object',
   properties: {
-    roiId: { type: 'string', maxLength: 256 },
+    roiId: {
+      type: 'string',
+      maxLength: 256,
+      description:
+        'Use particle-whole-plane for the whole active plane, or an area ROI ID returned by particle settings or ROI actions. Never invent another ROI ID.',
+    },
     component: { type: 'integer', minimum: 0, maximum: 4_095 },
     thresholdMethod: {
       type: 'string',

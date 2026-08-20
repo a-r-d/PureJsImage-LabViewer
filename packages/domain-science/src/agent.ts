@@ -92,9 +92,10 @@ export function createScienceAgentPolicy(
           decision: 'require-approval',
           reason:
             previewScope(input) === 'screen'
-              ? 'Sharing a user-selected browser screen frame with the model requires preview approval and the browser display-share picker.'
-              : 'Creating a model-visible specimen image requires dedicated preview approval.',
+              ? 'The first browser screen preview in this session requires approval and the browser display-share picker; later screen previews reuse that approval.'
+              : 'The first model-visible specimen preview in this session requires approval; later viewport previews reuse that approval.',
           permissions,
+          approvalScope: `science:model-preview:${previewScope(input) === 'screen' ? 'screen' : 'viewport'}`,
         }
       if (capability.actionId.startsWith('source.open-'))
         return {

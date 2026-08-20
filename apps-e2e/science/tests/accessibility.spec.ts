@@ -71,3 +71,30 @@ test('@a11y project and remote-source dialogs have no serious violations', async
     remoteResults.violations.filter(({ impact }) => impact === 'critical' || impact === 'serious'),
   ).toEqual([])
 })
+
+test('@a11y agent setup and chat have no serious violations', async ({ page }) => {
+  await page.getByRole('button', { name: 'Show agent readiness' }).click()
+  const settings = page.getByRole('dialog', { name: 'Agent settings' })
+  await expect(settings.getByLabel('OpenRouter key')).toBeFocused()
+  const settingsResults = await new AxeBuilder({ page })
+    .include('.science-agent-settings')
+    .analyze()
+  expect(
+    settingsResults.violations.filter(
+      ({ impact }) => impact === 'critical' || impact === 'serious',
+    ),
+  ).toEqual([])
+
+  await page.keyboard.press('Escape')
+  await expect(settings).toBeHidden()
+  await expect(page.getByLabel('Request or follow-up')).toBeFocused()
+  const chatResults = await new AxeBuilder({ page }).include('.science-agent').analyze()
+  expect(
+    chatResults.violations.filter(({ impact }) => impact === 'critical' || impact === 'serious'),
+  ).toEqual([])
+
+  const settingsTrigger = page.getByRole('button', { name: 'Agent settings' })
+  await settingsTrigger.click()
+  await page.keyboard.press('Escape')
+  await expect(settingsTrigger).toBeFocused()
+})

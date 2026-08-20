@@ -34,7 +34,10 @@ The audit record includes the request, provider/model, plan, approvals, versione
 inputs/results, source/project context, artifact IDs, failures, retries, and timestamps. Replay invokes
 the saved approved action inputs against the same initial project revision without a model request.
 
-`geo.preview.create` is an approval-gated action. It accepts a layer, viewport, or user-selected
+`geo.preview.create` is an approval-gated action. The first viewport preview in a runtime session
+grants the bounded viewport-preview scope, so later viewport previews remain audited without
+repeated prompts. Screen sharing has a separate one-time session scope and still invokes the native
+display picker. The action accepts a layer, viewport, or user-selected
 browser screen, 64–1024
 pixel dimensions under a 786,432-pixel total, current Atlas styling, and optional overlays. The
 viewport renderer enforces a 2 MiB result budget and returns attribution and project revision.

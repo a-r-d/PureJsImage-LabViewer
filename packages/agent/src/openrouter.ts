@@ -1,4 +1,5 @@
 import type { JsonValue } from '@pji-workbench/actions'
+import { aiJsonParse } from 'ai-json-safe-parse'
 
 import { agentToolName, modelToolInputSchema } from './manifest.js'
 import type {
@@ -9,12 +10,58 @@ import type {
   AgentModelSummary,
   AgentModelTransport,
   AgentPlan,
+  AgentReasoningEffort,
 } from './types.js'
 import { AgentRuntimeError } from './types.js'
 
 const CHAT_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions'
 const MODELS_ENDPOINT = 'https://openrouter.ai/api/v1/models?supported_parameters=tools&limit=1000'
 const MAX_RESPONSE_BYTES = 2 * 1_024 * 1_024
+const REASONING_EFFORTS = new Set<AgentReasoningEffort>([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+])
+const PLAN_RESPONSE_FORMAT: JsonValue = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'workbench_agent_plan',
+    strict: true,
+    schema: {
+      type: 'object',
+      properties: {
+        goalSummary: { type: 'string', minLength: 1, maxLength: 4_096 },
+        actions: {
+          type: 'array',
+          maxItems: 32,
+          items: {
+            type: 'object',
+            properties: {
+              actionId: { type: 'string', minLength: 1, maxLength: 256 },
+              actionVersion: { type: 'integer', minimum: 1 },
+              input: { type: 'object' },
+              expectedOutput: { type: 'string', minLength: 1, maxLength: 1_024 },
+            },
+            required: ['actionId', 'actionVersion', 'input', 'expectedOutput'],
+            additionalProperties: false,
+          },
+        },
+        approvalsRequired: {
+          type: 'array',
+          maxItems: 32,
+          items: { type: 'string', maxLength: 1_024 },
+        },
+        stoppingCondition: { type: 'string', minLength: 1, maxLength: 4_096 },
+      },
+      required: ['goalSummary', 'actions', 'approvalsRequired', 'stoppingCondition'],
+      additionalProperties: false,
+    },
+  },
+}
 
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-5.6-luna'
 export const OPENROUTER_RECOMMENDED_MODELS = Object.freeze([
@@ -93,6 +140,13 @@ export class OpenRouterTransport implements AgentModelTransport {
         : []
       if (!supportedParameters.includes('tools')) return []
       const architecture = record(item['architecture'])
+      const reasoning = record(item['reasoning'])
+      const supportedReasoningEfforts =
+        reasoning?.['supported_efforts'] === null
+          ? null
+          : Array.isArray(reasoning?.['supported_efforts'])
+            ? reasoning['supported_efforts'].filter(isReasoningEffort)
+            : undefined
       const inputModalities = Array.isArray(architecture?.['input_modalities'])
         ? architecture['input_modalities'].filter(
             (entry): entry is string => typeof entry === 'string',
@@ -107,6 +161,7 @@ export class OpenRouterTransport implements AgentModelTransport {
             : {}),
           supportedParameters,
           inputModalities,
+          ...(supportedReasoningEfforts === undefined ? {} : { supportedReasoningEfforts }),
         },
       ]
     })
@@ -118,7 +173,12 @@ export class OpenRouterTransport implements AgentModelTransport {
     const key = this.#key()
     await this.validateModel(
       request.model,
-      { imageInput: request.messages.some(messageContainsImage) },
+      {
+        imageInput: request.messages.some(messageContainsImage),
+        ...(request.reasoningEffort === undefined
+          ? {}
+          : { reasoningEffort: request.reasoningEffort }),
+      },
       signal,
     )
     const response = await this.#fetch(CHAT_ENDPOINT, {
@@ -127,17 +187,24 @@ export class OpenRouterTransport implements AgentModelTransport {
       body: JSON.stringify({
         model: request.model,
         messages: request.messages.map(openRouterMessage),
-        tools: request.manifest.actions.map((action) => ({
-          type: 'function',
-          function: {
-            name: action.toolName,
-            description: modelToolDescription(action),
-            parameters: modelToolInputSchema(action),
-          },
-        })),
-        tool_choice: 'auto',
-        parallel_tool_calls: false,
+        ...(request.planningOnly
+          ? { response_format: PLAN_RESPONSE_FORMAT }
+          : {
+              tools: request.manifest.actions.map((action) => ({
+                type: 'function',
+                function: {
+                  name: action.toolName,
+                  description: modelToolDescription(action),
+                  parameters: modelToolInputSchema(action),
+                },
+              })),
+              tool_choice: 'auto',
+              parallel_tool_calls: false,
+            }),
         max_tokens: request.maximumTokens,
+        ...(request.reasoningEffort === undefined
+          ? {}
+          : { reasoning: { effort: request.reasoningEffort } }),
       }),
       signal,
     })
@@ -180,7 +247,10 @@ export class OpenRouterTransport implements AgentModelTransport {
 
   async validateModel(
     model: string,
-    requirements: Readonly<{ imageInput: boolean }>,
+    requirements: Readonly<{
+      imageInput: boolean
+      reasoningEffort?: AgentReasoningEffort
+    }>,
     signal: AbortSignal,
   ): Promise<void> {
     if (this.#models === undefined) await this.listModels(signal)
@@ -194,6 +264,16 @@ export class OpenRouterTransport implements AgentModelTransport {
       throw new AgentRuntimeError(
         'UNSUPPORTED_MODEL',
         `OpenRouter model ${model} does not advertise image input support required by the approved preview.`,
+      )
+    if (
+      requirements.reasoningEffort !== undefined &&
+      selectedModel.supportedReasoningEfforts !== undefined &&
+      selectedModel.supportedReasoningEfforts !== null &&
+      !selectedModel.supportedReasoningEfforts.includes(requirements.reasoningEffort)
+    )
+      throw new AgentRuntimeError(
+        'UNSUPPORTED_MODEL',
+        `OpenRouter model ${model} does not advertise ${requirements.reasoningEffort} reasoning effort support.`,
       )
   }
 
@@ -212,6 +292,10 @@ export class OpenRouterTransport implements AgentModelTransport {
       ...(this.#referer === undefined ? {} : { 'HTTP-Referer': this.#referer }),
     }
   }
+}
+
+function isReasoningEffort(value: unknown): value is AgentReasoningEffort {
+  return typeof value === 'string' && REASONING_EFFORTS.has(value as AgentReasoningEffort)
 }
 
 function modelToolDescription(action: AgentModelRequest['manifest']['actions'][number]): string {
@@ -260,7 +344,6 @@ function openRouterMessage(message: AgentModelMessage): JsonValue {
             function: {
               name: agentToolName(call.actionId, call.actionVersion),
               arguments: JSON.stringify({
-                projectRevision: call.projectRevision,
                 input: call.input,
               }),
             },
@@ -298,21 +381,14 @@ function parseToolCalls(value: unknown, request: AgentModelRequest): readonly Ag
         `OpenRouter requested unknown tool ${name}.`,
       )
     const argumentsText = typeof fn?.['arguments'] === 'string' ? fn['arguments'] : ''
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(argumentsText) as unknown
-    } catch {
+    const parsed = aiJsonParse<unknown>(argumentsText, { mode: 'safe' })
+    if (!parsed.success)
       throw new AgentRuntimeError(
         'INVALID_MODEL_RESPONSE',
         `${capability.actionId} arguments are not valid JSON.`,
       )
-    }
-    const args = record(parsed)
-    if (
-      args === undefined ||
-      !Number.isSafeInteger(args['projectRevision']) ||
-      args['input'] === undefined
-    )
+    const args = record(parsed.data)
+    if (args === undefined || args['input'] === undefined)
       throw new AgentRuntimeError(
         'INVALID_MODEL_RESPONSE',
         `${capability.actionId} arguments are malformed.`,
@@ -324,22 +400,18 @@ function parseToolCalls(value: unknown, request: AgentModelRequest): readonly Ag
           : `openrouter-call-${index + 1}`,
       actionId: capability.actionId,
       actionVersion: capability.actionVersion,
-      projectRevision: args['projectRevision'] as number,
+      projectRevision: request.manifest.projectRevision,
       input: jsonValue(args['input']),
     }
   })
 }
 
 function parsePlan(content: string): AgentPlan | undefined {
-  const trimmed = content.trim().replace(/^```(?:json)?\s*|\s*```$/giu, '')
+  const trimmed = content.trim()
   if (trimmed.length === 0 || trimmed.length > 64 * 1_024) return undefined
-  let value: unknown
-  try {
-    value = JSON.parse(trimmed) as unknown
-  } catch {
-    return undefined
-  }
-  const root = record(value)
+  const parsed = aiJsonParse<unknown>(trimmed, { mode: 'safe' })
+  if (!parsed.success) return undefined
+  const root = record(parsed.data)
   const candidate = record(root?.['plan']) ?? root
   if (
     candidate === undefined ||

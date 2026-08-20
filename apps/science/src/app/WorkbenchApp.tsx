@@ -1,9 +1,5 @@
 import type { ActionAbortSignal, JsonValue, WorkbenchActionHost } from '@pji-workbench/actions'
-import {
-  AgentRuntime,
-  MemoryOpenRouterCredentialStore,
-  OpenRouterTransport,
-} from '@pji-workbench/agent'
+import { AgentRuntime, OpenRouterTransport } from '@pji-workbench/agent'
 import type {
   AnalysisCatalog,
   AnalysisDryRunResponse,
@@ -138,6 +134,10 @@ import {
 } from 'react'
 import type { PublicEnvironment } from '../environment.js'
 import { ScienceAgentPanel } from '../features/agent/ScienceAgentPanel.js'
+import {
+  createScienceAgentCredentialStore,
+  type ScienceAgentCredentialStore,
+} from '../features/agent/science-agent-credentials.js'
 import { ExampleGallery } from '../features/examples/ExampleGallery.js'
 import {
   InspectorContent,
@@ -186,6 +186,7 @@ import { WorkbenchShell } from './WorkbenchShell.js'
 type OpenStatus = 'ready' | 'opening' | 'crashed'
 const MAX_EXPORT_ROWS = 100_000
 const MAX_EXPORT_BYTES = 16 * 1_024 * 1_024
+const PARTICLE_WHOLE_PLANE_ID = 'particle-whole-plane'
 
 function wholePlaneRoi(opened: OpenedDatasetDescriptor, selection: PlaneSelection): ViewportRoi {
   const level = opened.dataset.levels.find(({ level }) => level === selection.resolutionLevel)
@@ -199,7 +200,7 @@ function wholePlaneRoi(opened: OpenedDatasetDescriptor, selection: PlaneSelectio
     throw new Error('The active plane dimensions are unavailable.')
   return {
     schemaVersion: 1,
-    id: 'particle-whole-plane',
+    id: PARTICLE_WHOLE_PLANE_ID,
     name: 'Whole active plane',
     axisIds: selection.displayAxes,
     fixedIndices: selection.fixedIndices,
@@ -1387,7 +1388,13 @@ function WorkbenchRuntime({
       const request = rpcObject(input)
       const patch = rpcObject(request?.['settings'])
       if (patch === undefined) throw new Error('Particle settings must be an object.')
-      const merged = json({ ...particleSettings, ...patch }) as unknown as ParticleWorkflowSettings
+      const mergedWithRoi = { ...particleSettings, ...patch }
+      const merged = json(
+        mergedWithRoi['roiId'] === PARTICLE_WHOLE_PLANE_ID ||
+          mergedWithRoi['roiId'] === 'whole-plane'
+          ? Object.fromEntries(Object.entries(mergedWithRoi).filter(([key]) => key !== 'roiId'))
+          : mergedWithRoi,
+      ) as unknown as ParticleWorkflowSettings
       if (opened === undefined || merged.component >= opened.dataset.components.length)
         throw new Error('The selected particle component is unavailable.')
       if (merged.minimumArea > merged.maximumArea)
@@ -1400,7 +1407,10 @@ function WorkbenchRuntime({
         throw new Error('Minimum solidity cannot exceed maximum solidity.')
       if (merged.roiId !== undefined) {
         const roi = workspace.analysis.roiSet.rois.find(({ id }) => id === merged.roiId)
-        if (roi === undefined) throw new Error('The requested particle ROI is unavailable.')
+        if (roi === undefined)
+          throw new Error(
+            'The requested particle ROI is unavailable. Use settings.roiId particle-whole-plane for the whole active plane, or an available area ROI ID returned by particle settings.',
+          )
         if (
           roi.geometry.kind === 'point' ||
           roi.geometry.kind === 'line-segment' ||
@@ -1462,7 +1472,10 @@ function WorkbenchRuntime({
       return json({
         planId,
         valid: dryRun.valid,
-        settings,
+        settings: {
+          ...settings,
+          roiId: settings.roiId ?? PARTICLE_WHOLE_PLANE_ID,
+        },
         roi: { id: roi.id, name: roi.name ?? null, kind: roi.geometry.kind },
         graphSteps: graph.nodes.map(({ id, label, operation }) => ({
           id,
@@ -3154,7 +3167,29 @@ function WorkbenchRuntime({
             }),
           particleSettings: () =>
             json({
-              settings: particleSettings,
+              settings: {
+                ...particleSettings,
+                roiId: particleSettings.roiId ?? PARTICLE_WHOLE_PLANE_ID,
+              },
+              roiSelection: {
+                mode: particleSettings.roiId === undefined ? 'whole-plane' : 'area-roi',
+                selectedRoiId: particleSettings.roiId ?? null,
+                wholePlaneInputRule:
+                  'Use settings.roiId particle-whole-plane. The action normalizes this reserved ID to the whole active plane.',
+                availableAreaRois: workspace.analysis.roiSet.rois
+                  .filter(
+                    ({ geometry }) =>
+                      geometry.kind !== 'point' &&
+                      geometry.kind !== 'line-segment' &&
+                      geometry.kind !== 'polyline',
+                  )
+                  .slice(0, 128)
+                  .map(({ id, name, geometry }) => ({
+                    id,
+                    name: name ?? null,
+                    kind: geometry.kind,
+                  })),
+              },
               guidance: {
                 threshold:
                   'Try automatic methods first; manual bounds are dataset-value units, not display colors.',
@@ -3420,9 +3455,9 @@ function WorkbenchRuntime({
   )
   const agentStateRef = useRef({ actionHost, commandContext, workspace, agentModelContext })
   agentStateRef.current = { actionHost, commandContext, workspace, agentModelContext }
-  const agentCredentialsRef = useRef<MemoryOpenRouterCredentialStore | null>(null)
+  const agentCredentialsRef = useRef<ScienceAgentCredentialStore | null>(null)
   if (agentCredentialsRef.current === null)
-    agentCredentialsRef.current = new MemoryOpenRouterCredentialStore()
+    agentCredentialsRef.current = createScienceAgentCredentialStore()
   const agentCredentials = agentCredentialsRef.current
   const agentTransportRef = useRef<OpenRouterTransport | null>(null)
   if (agentTransportRef.current === null)
@@ -3445,6 +3480,7 @@ function WorkbenchRuntime({
       gateway,
       policy: createScienceAgentPolicy(),
       productName: 'PureJsImage Materials Workbench',
+      reasoningEffort: 'high',
       limits: {
         maximumModelSteps: 24,
         maximumToolCalls: 48,
