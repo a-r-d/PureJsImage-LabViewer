@@ -1,0 +1,160 @@
+packages/workspace/src/model.ts
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 191
+docs/GEO_RASTER_ANALYSIS.md
+  s_896fa7e1aa98f9::t_7af0914303b255 1-44
+packages/imaging/src/worker-host/derived-raster.ts
+  s_896fa7e1aa98f9::t_908d76ece18556 325-332,375-378
+  s_896fa7e1aa98f9::t_4761fd933fd85f 1-27,29-34,37-123,125-155,157-189,193-322,335-353,355-357,359-371,373,383-385,422-452,454,482-483,489-633,638-700,706-714,720-729,732-733,735-747
+  s_896fa7e1aa98f9::t_4c3d50a6c520e7 455-475,479,484-485
+  s_896fa7e1aa98f9::t_781265615b5e26 124,190-192,323-324,333-334,374,379-382,386-421
+  s_896fa7e1aa98f9::t_bc43266d373a83 28,35-36,156,488,634-637,701-705,715-719
+  s_896fa7e1aa98f9::t_d7edeca9710aff 486-487
+  s_896fa7e1aa98f9::t_5617b573f63e9a 731
+  s_896fa7e1aa98f9::t_1a37c3f22a7b4f 358,372,730,734
+  s_896fa7e1aa98f9::t_1b0bb91564920c 354,453,476-478,480-481
+CHANGELOG.md
+  s_896fa7e1aa98f9::t_7af0914303b255 12-20
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 118
+packages/domain-geo/tests/model.test.ts
+  s_896fa7e1aa98f9::t_1b61031e30f92f 81
+  s_896fa7e1aa98f9::t_1ef8d437e9bb8f 79-80,82-123
+packages/domain-geo/tests/catalog-adapters.test.ts
+  s_896fa7e1aa98f9::t_e3a7c1d001aedd 360-361
+  s_896fa7e1aa98f9::t_f650906f7368a9 362-363
+packages/imaging/src/worker-client.ts
+  s_896fa7e1aa98f9::t_638b8084234896 18-26,272-310
+  s_896fa7e1aa98f9::t_20e9e8cec8ea54 311
+apps/geo/src/App.tsx
+  s_896fa7e1aa98f9::t_35395c11dd55f0 512
+packages/workspace/package.json
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 24
+packages/imaging/package.json
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 24
+packages/contracts/src/index.ts
+  s_896fa7e1aa98f9::t_c7bccf7b6a13ee 1206-1225,1229-1231,1235-1272,1275-1279,1282-1286,1288-1293,1295-1298,1302-1310,1328,1419-1448
+  s_896fa7e1aa98f9::t_ed78d5796eb27c 1226-1228,1232-1234,1274,1294,1299-1301,1311-1327,1329-1380,1383,1385-1395,1412-1418
+  s_896fa7e1aa98f9::t_ef10ab7abf77b6 1384,1396-1398,1400-1411
+  s_896fa7e1aa98f9::t_2cfe3c714a0e40 1381-1382
+  s_896fa7e1aa98f9::t_bc5d63f4a330d5 1399
+  s_896fa7e1aa98f9::t_1b61031e30f92f 1280-1281
+  s_896fa7e1aa98f9::t_20286cb9aca785 47-53,56-58,62,539-543,588-592,638-642
+  s_896fa7e1aa98f9::t_68768c69deb4f7 1595-1650
+  s_896fa7e1aa98f9::t_de1e0f08acad2e 54
+  s_896fa7e1aa98f9::t_71f160bb2cd089 55,1273
+  s_896fa7e1aa98f9::t_bc43266d373a83 1287
+apps/geo/src/imaging-worker-entry.ts
+  s_896fa7e1aa98f9::t_f18fcffb85ce07 1-6,15-38
+packages/domain-geo/src/model.ts
+  s_896fa7e1aa98f9::t_b6251f029dc12b 3,7,179,275,350,364,439-448
+docs/IMAGING_WORKER.md
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 16
+packages/imaging/tests/index.test.ts
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 953
+docs/ARCHITECTURE.md
+  s_896fa7e1aa98f9::t_56dbdc9f1c3e08 99-101,110-112
+packages/imaging/tests/fixtures/characterization/science-reader-registry.json
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 4
+packages/imaging/src/worker-readers.ts
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 54
+packages/imaging/tests/derived-raster.test.ts
+  s_896fa7e1aa98f9::t_ed6f1bd365aa5e 283-294,648-653,656,694
+  s_896fa7e1aa98f9::t_492c441ba98997 477-494,529-579,637-647,654-655,657-693,695-696
+  s_896fa7e1aa98f9::t_d3e1ee7f25034e 495-528
+  s_896fa7e1aa98f9::t_1b8515e10780b9 580-636
+  s_896fa7e1aa98f9::t_f38082026955ec 1-13,15-33,80-119,170-207,209-233,335-371,391-440,447-448,450-472,474-476,697
+  s_896fa7e1aa98f9::t_c7105cb66f1ea9 14,34-79
+  s_896fa7e1aa98f9::t_a07fb595c8807d 148-149
+  s_896fa7e1aa98f9::t_395fe562940c14 120-147,150-169,295-331
+  s_896fa7e1aa98f9::t_18604ce483f592 234-282,332-334,372-390
+  s_896fa7e1aa98f9::t_1ff13b9d1a9466 208
+  s_896fa7e1aa98f9::t_781265615b5e26 441-446,449,473
+packages/geo-workbench/src/controller.ts
+  s_896fa7e1aa98f9::t_d1085b24f9fe12 872,1423-1451,1453-1457,1478-1542,1615-1626,1628-1643
+  s_896fa7e1aa98f9::t_b7a780f9edb7e2 381-387,390-402,404-413
+  s_896fa7e1aa98f9::t_c83431c446ebcd 403
+  s_896fa7e1aa98f9::t_7c28e748e8362b 34-35,51,834-836,851-852,1627
+  s_896fa7e1aa98f9::t_dc04d3ed063976 10-16,30,74-86
+  s_896fa7e1aa98f9::t_c448674c39c6a7 445,457-464
+  s_896fa7e1aa98f9::t_1abd1af98504b1 773-806,808,810-819,830-832,837-850,853-871
+  s_896fa7e1aa98f9::t_0b1696975bcab9 19,23,1452
+  s_896fa7e1aa98f9::t_aee5937fe0d120 43
+  s_896fa7e1aa98f9::t_72df43b2ea43cd 809,833
+  s_896fa7e1aa98f9::t_43fc9f935a3110 807,820-829
+  s_896fa7e1aa98f9::t_92bfb4760779d7 1115-1215
+  s_896fa7e1aa98f9::t_223912b0476b82 1458-1477
+  s_896fa7e1aa98f9::t_3c2affe7ab9953 873
+  s_896fa7e1aa98f9::t_a1f1a092f97b17 1644
+packages/contracts/src/spatial-reference.ts
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 35
+packages/geo-workbench/tests/controller.test.ts
+  s_896fa7e1aa98f9::t_54e7101d6e11c8 111-155
+  s_896fa7e1aa98f9::t_621812d5ea1c48 274
+  s_896fa7e1aa98f9::t_fddf90b2c80698 216-223,225-273,275-287
+  s_896fa7e1aa98f9::t_1b61031e30f92f 224
+packages/imaging/src/package-version.ts
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 1
+packages/imaging/src/worker-host.ts
+  s_896fa7e1aa98f9::t_b11be079d6ef22 65-66,69-72,232,301,312,345-346,350-352,354,413-422,1135-1141,1143-1192,1194-1279,1922-1925,1990-1993
+  s_896fa7e1aa98f9::t_5617b573f63e9a 67,1142
+  s_896fa7e1aa98f9::t_4ea9303ab8a99a 68,123-149,1193
+  s_896fa7e1aa98f9::t_fe7d85c6eeac04 64
+apps/geo/tests/geo-app.test.ts
+  s_896fa7e1aa98f9::t_6c9e0effda6c9c 31-33
+  s_896fa7e1aa98f9::t_5859702b94f13c 36
+packages/contracts/tests/index.test.ts
+  s_896fa7e1aa98f9::t_fbd359fe9ed7e3 4,14-16,18-74
+  s_896fa7e1aa98f9::t_1b61031e30f92f 17
+packages/contracts/src/geo-analysis.ts
+  s_896fa7e1aa98f9::t_bc43266d373a83 1
+  s_896fa7e1aa98f9::t_20286cb9aca785 2-95,98-220
+  s_896fa7e1aa98f9::t_1b61031e30f92f 96-97
+packages/domain-geo/tests/actions.test.ts
+  s_896fa7e1aa98f9::t_8e335d1c1e3361 45-58
+packages/domain-geo/src/actions.ts
+  s_896fa7e1aa98f9::t_7c28e748e8362b 376-384
+  s_896fa7e1aa98f9::t_c7dded5b8480d8 375,385-443
+  s_896fa7e1aa98f9::t_3216ad02fc94a2 47-60,146-156
+  s_896fa7e1aa98f9::t_954447ec792087 157-158
+packages/materials-analysis/package.json
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 23
+README.md
+  s_896fa7e1aa98f9::t_5862bde3cb5ca3 5
+  s_896fa7e1aa98f9::t_7af0914303b255 22
+packages/domain-geo/src/catalog/candidates.ts
+  s_896fa7e1aa98f9::t_dc4e2cc5ee1e01 76-83,148,153-165
+  s_896fa7e1aa98f9::t_4d308befa2b710 106-107,116-117
+  s_896fa7e1aa98f9::t_7ff0dde95e81fb 10-15,100-105,141-147,149-152
+  s_896fa7e1aa98f9::t_50b70ac975c4e3 166
+packages/imaging/src/worker-host/runtime.ts
+  s_896fa7e1aa98f9::t_b11be079d6ef22 70,72
+apps/geo/src/GeoViewport.tsx
+  s_896fa7e1aa98f9::t_d0f730a2f8a665 1429
+  s_896fa7e1aa98f9::t_8247b85f807676 1407,1409-1411,1426,1430,1432
+  s_896fa7e1aa98f9::t_87ef20159326cf 4,16,20,86,107-110
+  s_896fa7e1aa98f9::t_7c70843b250e73 206,269,293,364,1461,1469,1480,1524
+  s_896fa7e1aa98f9::t_f608d66162383e 3,169,561-563,565,570,574-576,579-580,590
+  s_896fa7e1aa98f9::t_05377033ef492e 639-641
+  s_896fa7e1aa98f9::t_343875c4914526 742-761
+  s_896fa7e1aa98f9::t_5a7dee5b2623f9 1181-1198,1206-1293
+  s_896fa7e1aa98f9::t_c26c7c81317bda 616
+  s_896fa7e1aa98f9::t_34832b5384e72c 614-615,617-638,642-646,719-741,762-765,858
+  s_896fa7e1aa98f9::t_d136e2da218421 18,1199-1205,1484
+pnpm-lock.yaml
+  s_896fa7e1aa98f9::t_62198f33d57c15 365-366,384-385,527-528,1570-1571,2550
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "8ee7300bb0afb6c14d138220444434c6f35c329f",
+  "prompts": {},
+  "sessions": {
+    "s_896fa7e1aa98f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01c80-0b22-75c1-ae02-3ac87fba6167",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
