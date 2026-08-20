@@ -28,7 +28,7 @@ export const USGS_LANDSAT_CATALOG: CatalogRegistryEntry = Object.freeze({
   }),
   homepage: 'https://landsatlook.usgs.gov/',
   attribution: 'U.S. Geological Survey, Landsat Collection 2',
-  license: 'CC0-1.0',
+  license: 'Unknown',
   cacheVersion: '2026-08-19',
   defaultBbox: USGS_LANDSAT_DEFAULT_BBOX,
   defaultDatetime: USGS_LANDSAT_DEFAULT_DATETIME,

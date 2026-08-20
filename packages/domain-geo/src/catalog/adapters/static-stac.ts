@@ -132,10 +132,27 @@ async function loadItemDocument(
 ): Promise<StacItem | undefined> {
   const base = collection.itemDocumentBaseHref
   if (base !== undefined) {
-    const href = new URL(`${itemId}.json`, base.endsWith('/') ? base : `${base}/`).toString()
+    const baseUrl = new URL(base.endsWith('/') ? base : `${base}/`)
+    const encodedId = encodeURIComponent(itemId)
+    if (itemId.length === 0 || itemId === '.' || itemId === '..' || encodedId.length > 8_192) {
+      throw new StacClientError(
+        'INVALID_DOCUMENT',
+        'Static STAC item id is not a safe path segment.',
+      )
+    }
+    const itemUrl = new URL(`${encodedId}.json`, baseUrl)
+    if (itemUrl.origin !== baseUrl.origin || !itemUrl.pathname.startsWith(baseUrl.pathname)) {
+      throw new StacClientError(
+        'INVALID_DOCUMENT',
+        'Static STAC item id escaped its collection directory.',
+      )
+    }
+    const href = itemUrl.toString()
+    const maxBytes = collection.maxItemCollectionBytes ?? jsonOptions.maxBytes
     const body = await fetchCatalogJson(jsonOptions, {
       href,
       ...(signal === undefined ? {} : { signal }),
+      ...(maxBytes === undefined ? {} : { maxBytes }),
     })
     return parseStacItem(body, { baseHref: href })
   }

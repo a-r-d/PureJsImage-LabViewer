@@ -73,7 +73,10 @@ export interface CatalogRegistryEntry {
 export type CatalogAssetIdentity = Pick<
   GeoCatalogReference,
   'catalogId' | 'collectionId' | 'itemId' | 'assetKey'
->
+> & {
+  readonly href?: string
+  readonly sourceUrl?: string
+}
 
 export type CatalogAssetProvenance = GeoCatalogReference
 
@@ -139,12 +142,14 @@ export interface CatalogCursor {
   readonly href: string
   readonly method?: 'GET' | 'POST'
   readonly body?: Readonly<Record<string, unknown>>
+  readonly headers?: Readonly<Record<string, string>>
 }
 
 export interface CatalogSearchItem {
   readonly id: string
   readonly collectionId: string
   readonly title?: string
+  readonly collectionTitle?: string
   readonly datetime?: string
   readonly bbox?: StacBbox
   readonly candidates: readonly CatalogSourceCandidate[]

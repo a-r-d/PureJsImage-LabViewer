@@ -54,6 +54,8 @@ export function createTnmAccessAdapter(jsonOptions: CatalogJsonFetchOptions): Ca
       const href = productsHref(endpoint.productsHref, {
         datasets,
         ...(request.bbox === undefined ? {} : { bbox: request.bbox.join(',') }),
+        ...tnmDateParams(request.datetime),
+        prodFormats: 'GeoTIFF,TIFF',
         max: String(limit),
         offset: String(offset),
         outputFormat: 'json',
@@ -68,13 +70,27 @@ export function createTnmAccessAdapter(jsonOptions: CatalogJsonFetchOptions): Ca
       return this.search(entry, requestFromCursor(cursor), signal)
     },
     async resolveDeepLink(entry, identity, signal) {
-      const page = await this.search(
-        entry,
-        { collections: [identity.collectionId], limit: 50 },
-        signal,
-      )
-      const match = page.items.find((item) => item.id === identity.itemId)
-      return match?.candidates.find((candidate) => candidate.assetKey === identity.assetKey)
+      if (identity.href !== undefined && isDownloadableGeoTiff(identity.href, 'GeoTIFF')) {
+        return {
+          catalogId: entry.id,
+          catalogTitle: entry.title,
+          collectionId: identity.collectionId,
+          itemId: identity.itemId,
+          assetKey: identity.assetKey,
+          href: identity.href,
+          protocol: entry.protocol,
+          label: identity.itemId,
+          attribution: entry.attribution,
+          license: entry.license,
+          provider: entry.title,
+          mediaType: 'image/tiff',
+          ...(identity.sourceUrl === undefined ? {} : { sourceUrl: identity.sourceUrl }),
+        }
+      }
+      // Legacy links did not preserve the product href. Do not scan a national prefix and
+      // accidentally resolve a different product; deterministic rehydration requires the href.
+      signal?.throwIfAborted()
+      return undefined
     },
   }
 }
@@ -187,13 +203,17 @@ function tnmSearchItem(
 }
 
 function geotiffHref(record: Record<string, unknown>): string | undefined {
+  const raster = optionalString(record['downloadURLRaster'])
+  if (raster !== undefined && isDownloadableGeoTiff(raster, optionalString(record['format']))) {
+    return raster
+  }
   const direct = optionalString(record['downloadURL'])
-  if (direct !== undefined && looksLikeGeoTiff(direct, optionalString(record['format'])))
+  if (direct !== undefined && isDownloadableGeoTiff(direct, optionalString(record['format'])))
     return direct
   const urls = record['urls']
   if (isRecord(urls)) {
-    for (const value of Object.values(urls)) {
-      if (typeof value === 'string' && looksLikeGeoTiff(value, undefined)) return value
+    for (const [format, value] of Object.entries(urls)) {
+      if (typeof value === 'string' && isDownloadableGeoTiff(value, format)) return value
     }
   }
   const files = record['files']
@@ -202,17 +222,41 @@ function geotiffHref(record: Record<string, unknown>): string | undefined {
       if (!isRecord(file)) continue
       const href = optionalString(file['url']) ?? optionalString(file['href'])
       const format = optionalString(file['format']) ?? optionalString(file['type'])
-      if (href !== undefined && looksLikeGeoTiff(href, format)) return href
+      if (href !== undefined && isDownloadableGeoTiff(href, format)) return href
     }
   }
   return undefined
 }
 
-function looksLikeGeoTiff(href: string, format: string | undefined): boolean {
+function isDownloadableGeoTiff(href: string, format: string | undefined): boolean {
+  let pathname: string
+  try {
+    const url = new URL(href)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return false
+    pathname = url.pathname.toLowerCase()
+  } catch {
+    return false
+  }
+  if (/\.(zip|xml|json|txt|pdf)$/u.test(pathname)) return false
   if (format !== undefined && /geotiff|\btiff\b/iu.test(format) && looksLikeTiffHref(href)) {
     return true
   }
   return looksLikeTiffHref(href)
+}
+
+function tnmDateParams(datetime: string | undefined): Readonly<Record<string, string>> {
+  if (datetime === undefined || datetime.length === 0) return {}
+  const [rawStart, rawEnd] = datetime.split('/', 2)
+  const start = normalizeTnmDate(rawStart)
+  const end = normalizeTnmDate(rawEnd ?? rawStart)
+  if (start === undefined || end === undefined) return {}
+  return { dateType: 'Publication', start, end }
+}
+
+function normalizeTnmDate(value: string | undefined): string | undefined {
+  if (value === undefined || value.length === 0 || value === '..') return undefined
+  const date = value.slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/u.test(date) ? date : undefined
 }
 
 function datasetTagsFromBody(

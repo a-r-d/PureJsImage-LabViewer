@@ -8,6 +8,7 @@ export interface StacLink {
   readonly method?: string
   readonly body?: Readonly<Record<string, unknown>>
   readonly merge?: boolean
+  readonly headers?: Readonly<Record<string, string>>
 }
 
 export interface StacProvider {
@@ -94,6 +95,12 @@ export interface StacItemCollection {
   readonly numberMatched?: number
   readonly numberReturned?: number
   readonly nextHref?: string
+  readonly next?: StacLink
+}
+
+export interface StacCollectionsPage {
+  readonly collections: readonly StacCollection[]
+  readonly links: readonly StacLink[]
   readonly next?: StacLink
 }
 

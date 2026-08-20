@@ -25,11 +25,12 @@ function chromeOrbS3Fetch(calls: string[]): typeof fetch {
     if (start >= OBJECT_SIZE) {
       return new Response(null, { status: 416, headers: { 'content-length': '0' } })
     }
-    return new Response(bytes, {
+    const end = Number(match[2])
+    return new Response(bytes.slice(start, end + 1), {
       status: 206,
       headers: {
         'accept-ranges': 'bytes',
-        'content-length': String(bytes.byteLength),
+        'content-length': String(end - start + 1),
         etag: '"s3"',
       },
     })
@@ -42,7 +43,9 @@ function xml416Fetch(calls: string[]): typeof fetch {
     const method = init?.method ?? 'GET'
     const range = new Headers(init?.headers).get('range') ?? ''
     calls.push(`${method} ${range}`)
-    if (method === 'HEAD') return new Response(null, { status: 405 })
+    if (method === 'HEAD') {
+      return new Response(null, { status: 405, headers: { 'content-length': '999' } })
+    }
     const match = /^bytes=(\d+)-(\d+)$/u.exec(range)
     if (match === null || match[1] === undefined || match[2] === undefined) {
       return new Response(null, { status: 416 })
@@ -54,7 +57,8 @@ function xml416Fetch(calls: string[]): typeof fetch {
         { status: 416, headers: { 'content-type': 'application/xml' } },
       )
     }
-    return new Response(bytes, {
+    const end = Number(match[2])
+    return new Response(bytes.slice(start, end + 1), {
       status: 206,
       headers: { 'accept-ranges': 'bytes', etag: '"s3-hidden-range"' },
     })
@@ -90,7 +94,7 @@ describe('wrapFetchToExposeContentRange', () => {
     expect(calls.filter((call) => call.startsWith('HEAD'))).toHaveLength(1)
   })
 
-  it('falls back to an S3 416 ActualObjectSize body when HEAD has no Content-Length', async () => {
+  it('falls back to an S3 416 ActualObjectSize body when HEAD fails', async () => {
     const calls: string[] = []
     const wrapped = wrapFetchToExposeContentRange(xml416Fetch(calls))
     const probe = await wrapped(URL, { headers: { Range: 'bytes=0-0' } })
@@ -99,13 +103,104 @@ describe('wrapFetchToExposeContentRange', () => {
     expect(calls.some((call) => call.includes('9007199254740990'))).toBe(true)
   })
 
-  it('passes a 200 full-body response through so missing Range support stays detectable', async () => {
+  it('cancels a declared 500 MB HTTP 200 without reading its body', async () => {
+    let cancelled = false
     const wrapped = wrapFetchToExposeContentRange(
-      async () => new Response('whole file', { status: 200 }),
+      async () =>
+        new Response(
+          new ReadableStream({
+            cancel() {
+              cancelled = true
+            },
+          }),
+          { status: 200, headers: { 'content-length': String(500 * 1024 * 1024) } },
+        ),
     )
     const response = await wrapped(URL, { headers: { Range: 'bytes=0-0' } })
     expect(response.status).toBe(200)
     expect(response.headers.get('Content-Range')).toBeNull()
-    expect(await response.text()).toBe('whole file')
+    expect((await response.arrayBuffer()).byteLength).toBe(0)
+    expect(cancelled).toBe(true)
+  })
+
+  it('rejects oversized and short streaming 206 bodies', async () => {
+    const oversized = wrapFetchToExposeContentRange(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(Uint8Array.of(1, 2))
+            },
+          }),
+          {
+            status: 206,
+            headers: { 'content-range': 'bytes 0-0/16' },
+          },
+        ),
+    )
+    await expect(oversized(URL, { headers: { Range: 'bytes=0-0' } })).rejects.toMatchObject({
+      code: 'BODY_TOO_LARGE',
+    })
+
+    const short = wrapFetchToExposeContentRange(
+      async () =>
+        new Response(Uint8Array.of(1), {
+          status: 206,
+          headers: { 'content-range': 'bytes 0-1/16' },
+        }),
+    )
+    await expect(short(URL, { headers: { Range: 'bytes=0-1' } })).rejects.toMatchObject({
+      code: 'LENGTH_MISMATCH',
+    })
+  })
+
+  it('rejects a hidden Content-Range body whose size does not match the request', async () => {
+    const wrapped = wrapFetchToExposeContentRange(async (_input, init) => {
+      if (init?.method === 'HEAD') {
+        return new Response(null, { status: 200, headers: { 'content-length': '16' } })
+      }
+      return new Response(Uint8Array.of(1, 2), { status: 206 })
+    })
+    await expect(wrapped(URL, { headers: { Range: 'bytes=0-0' } })).rejects.toMatchObject({
+      code: 'BODY_TOO_LARGE',
+    })
+  })
+
+  it('bounds an oversized HTTP 416 XML fallback after HEAD fails', async () => {
+    const wrapped = wrapFetchToExposeContentRange(async (_input, init) => {
+      if (init?.method === 'HEAD') throw new Error('HEAD unavailable')
+      const range = new Headers(init?.headers).get('range')
+      if (range?.includes('9007199254740990') === true) {
+        return new Response(new Uint8Array(65_537), { status: 416 })
+      }
+      return new Response(Uint8Array.of(1), { status: 206 })
+    })
+    await expect(wrapped(URL, { headers: { Range: 'bytes=0-0' } })).rejects.toMatchObject({
+      code: 'BODY_TOO_LARGE',
+    })
+  })
+
+  it('propagates cancellation while reading a range stream', async () => {
+    const controller = new AbortController()
+    const wrapped = wrapFetchToExposeContentRange(
+      async () =>
+        new Response(
+          new ReadableStream({
+            pull() {
+              return new Promise(() => undefined)
+            },
+          }),
+          {
+            status: 206,
+            headers: { 'content-range': 'bytes 0-0/16' },
+          },
+        ),
+    )
+    const pending = wrapped(URL, {
+      headers: { Range: 'bytes=0-0' },
+      signal: controller.signal,
+    })
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ code: 'ABORTED' })
   })
 })

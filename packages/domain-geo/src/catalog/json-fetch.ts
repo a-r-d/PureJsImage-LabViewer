@@ -1,4 +1,5 @@
 import { StacClientError } from '../stac/types.js'
+import { CatalogBodyError, cancelCatalogBody, readBoundedCatalogBody } from './bounded-response.js'
 
 export const DEFAULT_CATALOG_MAX_JSON_BYTES = 8 * 1024 * 1024
 export const DEFAULT_CATALOG_TIMEOUT_MS = 30_000
@@ -15,6 +16,7 @@ export interface CatalogJsonRequest {
   readonly body?: unknown
   readonly signal?: AbortSignal
   readonly maxBytes?: number
+  readonly headers?: Readonly<Record<string, string>>
 }
 
 export async function fetchCatalogJson(
@@ -26,24 +28,31 @@ export async function fetchCatalogJson(
   if (method === 'HEAD') {
     const response = await catalogFetch(options, request, method)
     const length = contentLength(response)
+    await cancelCatalogBody(response)
     if (length !== undefined && length > maxBytes) {
       throw tooLarge(request.href, maxBytes)
     }
     return undefined
   }
   const response = await catalogFetch(options, request, method)
-  const length = contentLength(response)
-  if (length !== undefined && length > maxBytes) {
-    try {
-      await response.body?.cancel()
-    } catch {
-      // Best-effort; the body may already be closed.
+  let bytes: Uint8Array
+  try {
+    bytes = await readBoundedCatalogBody(response, {
+      maxBytes,
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
+      label: `Catalog document ${request.href}`,
+    })
+  } catch (error) {
+    if (error instanceof CatalogBodyError) {
+      if (error.code === 'ABORTED') {
+        throw new StacClientError('ABORTED', 'The catalog request was cancelled.')
+      }
+      if (error.code === 'DECLARED_TOO_LARGE' || error.code === 'BODY_TOO_LARGE') {
+        throw tooLarge(request.href, maxBytes)
+      }
+      throw new StacClientError('INVALID_DOCUMENT', error.message)
     }
-    throw tooLarge(request.href, maxBytes)
-  }
-  const bytes = new Uint8Array(await response.arrayBuffer())
-  if (bytes.byteLength > maxBytes) {
-    throw tooLarge(request.href, maxBytes)
+    throw error
   }
   try {
     return JSON.parse(new TextDecoder().decode(bytes)) as unknown
@@ -63,11 +72,7 @@ export async function headCatalogBytes(
       { href, ...(signal === undefined ? {} : { signal }) },
       'HEAD',
     )
-    try {
-      await response.body?.cancel()
-    } catch {
-      // HEAD bodies are empty.
-    }
+    await cancelCatalogBody(response)
     return contentLength(response)
   } catch (error) {
     if (error instanceof StacClientError && error.code === 'ABORTED') throw error
@@ -97,18 +102,21 @@ function catalogFetch(
 ): Promise<Response> {
   const timeout = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_CATALOG_TIMEOUT_MS)
   const signal = request.signal === undefined ? timeout : AbortSignal.any([request.signal, timeout])
-  const init: RequestInit = { method, signal }
+  const headers = new Headers(request.headers)
+  const init: RequestInit = { method, signal, headers }
   if (method === 'POST') {
-    init.headers = { 'content-type': 'application/json' }
+    headers.set('content-type', 'application/json')
     init.body = JSON.stringify(request.body ?? {})
   }
   return options.fetch
     .call(globalThis, request.href, init)
-    .then((response) => {
+    .then(async (response) => {
       if (response.status === 404) {
+        await cancelCatalogBody(response)
         throw new StacClientError('NOT_FOUND', `Catalog resource not found: ${request.href}`)
       }
       if (!response.ok) {
+        await cancelCatalogBody(response)
         throw new StacClientError(
           'UNAVAILABLE',
           `Catalog request failed with HTTP ${response.status}.`,

@@ -53,8 +53,9 @@ apps/geo
   Geo Atlas: multi-provider catalog discovery (generic CatalogService + registry;
   STAC API, static STAC, and TNMAccess adapters; NOAA Digital Coast, USGS 3DEP, USGS Landsat,
   and Kentucky From Above), native-CRS viewport, independent COG sources with per-handle tiles,
-  layer/display controls, and COG X-ray. Raster preflight (HTTPS Range + TIFF inspect) runs in
-  `packages/imaging` before a catalog URL is opened. Deployed at geo.purejsimage.com.
+  layer/display controls, and COG X-ray. Raster preflight runs in `packages/imaging` before a
+  catalog URL is opened: metadata-only, range-readable, TIFF-compatible, then decoder-ready.
+  Only decoder-ready assets may report Ready. Deployed at geo.purejsimage.com.
 
 packages/actions
   JSON-safe semantic action descriptors, deterministic registry, availability, validation,
@@ -94,8 +95,9 @@ packages/imaging
   The only package that directly composes PureJsImage readers, scientific documents,
   analysis controller/runtime, and worker-side lifecycles. One Worker owns a bounded map of
   independent sources; analysis extensions are injected by the app, not hardcoded. Raster
-  preflight (tiny HTTPS Range GET plus TIFF inspect) lives here so domain-geo never imports
-  PureJsImage; Atlas only opens catalog URLs that report Ready.
+  preflight lives here so domain-geo never imports PureJsImage. Its selected-asset path reuses one
+  bounded range source for container inspection, documented reader selection, scientific-document
+  open, and a bounded native sample read; Atlas only opens catalog URLs that reach decoder-ready.
 
 packages/viewport
   Camera math, coordinate-space adapters (image space and world-space affine), visible

@@ -24,11 +24,13 @@ export function candidatesFromItem(
   const license = item.license ?? collection?.license ?? entry.license
   const provider =
     providerName(item.providers) ?? providerName(collection?.providers ?? []) ?? entry.title
+  const collectionAttribution = collectionAttributionText(collection)
   const sourceUrl = itemSelfHref(item)
   return rasterAssets(item).map((asset) =>
     candidateFromAsset(entry, item, collectionId, preferHttpsAsset(asset), {
       license,
       provider,
+      attribution: collectionAttribution ?? entry.attribution,
       ...(sourceUrl === undefined ? {} : { sourceUrl }),
       ...(style === undefined ? {} : { style }),
     }),
@@ -59,6 +61,7 @@ export function candidateFromAsset(
   extra: {
     readonly license?: string
     readonly provider?: string
+    readonly attribution?: string
     readonly sourceUrl?: string
     readonly style?: CatalogStory['style']
   },
@@ -81,10 +84,16 @@ export function candidateFromAsset(
     ...(item.projEpsg === undefined ? {} : { projEpsg: item.projEpsg }),
     ...(extra.provider === undefined ? {} : { provider: extra.provider }),
     ...(extra.license === undefined ? {} : { license: extra.license }),
-    attribution: entry.attribution,
+    attribution: extra.attribution ?? entry.attribution,
     ...(extra.sourceUrl === undefined ? {} : { sourceUrl: extra.sourceUrl }),
     ...(extra.style === undefined ? {} : { style: extra.style }),
   }
+}
+
+function collectionAttributionText(collection: StacCollection | undefined): string | undefined {
+  if (collection === undefined || collection.providers.length === 0) return undefined
+  const names = [...new Set(collection.providers.map(({ name }) => name))]
+  return names.length === 0 ? undefined : names.join(', ')
 }
 
 export function preferredCandidate(

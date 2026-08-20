@@ -9,7 +9,7 @@ import {
   linkHref,
   parseStacCatalog,
   parseStacCollection,
-  parseStacCollections,
+  parseStacCollectionsPage,
   parseStacItem,
   parseStacItemCollection,
 } from './parse.js'
@@ -68,7 +68,11 @@ export function createStacClient(options: StacClientOptions): StacClient {
   async function readJson(
     href: string,
     signal: AbortSignal | undefined,
-    request?: { readonly method?: 'GET' | 'POST'; readonly body?: unknown },
+    request?: {
+      readonly method?: 'GET' | 'POST'
+      readonly body?: unknown
+      readonly headers?: Readonly<Record<string, string>>
+    },
   ): Promise<unknown> {
     const method = request?.method ?? 'GET'
     const key = cacheUrl(href, method, request?.body)
@@ -78,6 +82,7 @@ export function createStacClient(options: StacClientOptions): StacClient {
       href,
       method,
       ...(request?.body === undefined ? {} : { body: request.body }),
+      ...(request?.headers === undefined ? {} : { headers: request.headers }),
       ...(signal === undefined ? {} : { signal }),
     })
     await cache.set({
@@ -97,7 +102,11 @@ export function createStacClient(options: StacClientOptions): StacClient {
   async function readItemCollection(
     href: string,
     signal: AbortSignal | undefined,
-    request?: { readonly method?: 'GET' | 'POST'; readonly body?: unknown },
+    request?: {
+      readonly method?: 'GET' | 'POST'
+      readonly body?: unknown
+      readonly headers?: Readonly<Record<string, string>>
+    },
   ): Promise<StacItemCollection> {
     return parseStacItemCollection(await readJson(href, signal, request), parseOptions(href))
   }
@@ -107,8 +116,42 @@ export function createStacClient(options: StacClientOptions): StacClient {
       return parseStacCatalog(await readJson(href, signal), parseOptions(href))
     },
     async listCollections(catalog, signal) {
-      const href = linkHref(catalog.links, 'data') ?? joinHref(catalogSelf(catalog), 'collections')
-      return parseStacCollections(await readJson(href, signal), parseOptions(href))
+      let link: StacLink | undefined = {
+        rel: 'data',
+        href: linkHref(catalog.links, 'data') ?? joinHref(catalogSelf(catalog), 'collections'),
+        method: 'GET',
+      }
+      const collections: StacCollection[] = []
+      const visited = new Set<string>()
+      for (let pageIndex = 0; link !== undefined && pageIndex < 32; pageIndex += 1) {
+        assertPaginationPolicy(link.href, options.catalogRootHref ?? catalogSelf(catalog))
+        const method = httpMethod(link.method) ?? 'GET'
+        const key = `${method}:${link.href}:${stableBody(link.body)}`
+        if (visited.has(key)) {
+          throw new StacClientError(
+            'INVALID_DOCUMENT',
+            'STAC collections pagination repeated a page.',
+          )
+        }
+        visited.add(key)
+        const page = parseStacCollectionsPage(
+          await readJson(link.href, signal, {
+            method,
+            ...(link.body === undefined ? {} : { body: link.body }),
+            ...(link.headers === undefined ? {} : { headers: allowedLinkHeaders(link.headers) }),
+          }),
+          parseOptions(link.href),
+        )
+        collections.push(...page.collections)
+        if (collections.length > 10_000) {
+          throw new StacClientError('TOO_LARGE', 'STAC collections listing exceeds 10,000 entries.')
+        }
+        link = page.next
+      }
+      if (link !== undefined) {
+        throw new StacClientError('TOO_LARGE', 'STAC collections pagination exceeds 32 pages.')
+      }
+      return collections
     },
     async getCollection(href, signal) {
       return parseStacCollection(await readJson(href, signal), parseOptions(href))
@@ -128,12 +171,16 @@ export function createStacClient(options: StacClientOptions): StacClient {
             'Atlas only POSTs search when the catalog advertises it on the same origin as the catalog root.',
           )
         }
-        return readItemCollection(link.href, signal, {
+        const body = searchBody(query)
+        const page = await readItemCollection(link.href, signal, {
           method: 'POST',
-          body: searchBody(query),
+          body,
+          ...(link.headers === undefined ? {} : { headers: allowedLinkHeaders(link.headers) }),
         })
+        return withEffectiveNext(page, body)
       }
-      return readItemCollection(withSearchQuery(link.href, query), signal)
+      const page = await readItemCollection(withSearchQuery(link.href, query), signal)
+      return withEffectiveNext(page, searchBody(query))
     },
     async follow(href, signal) {
       return readItemCollection(href, signal)
@@ -141,20 +188,19 @@ export function createStacClient(options: StacClientOptions): StacClient {
     async followLink(link, signal) {
       const method = httpMethod(link.method) ?? 'GET'
       const root = options.catalogRootHref ?? link.href
+      assertPaginationPolicy(link.href, root)
       if (method === 'POST') {
-        if (!sameOrigin(link.href, root)) {
-          throw new StacClientError(
-            'UNAVAILABLE',
-            'Refusing a cross-origin STAC POST next page.',
-            'Atlas only POSTs pagination when the next link is on the catalog origin.',
-          )
-        }
-        return readItemCollection(link.href, signal, {
+        const page = await readItemCollection(link.href, signal, {
           method: 'POST',
           ...(link.body === undefined ? {} : { body: link.body }),
+          ...(link.headers === undefined ? {} : { headers: allowedLinkHeaders(link.headers) }),
         })
+        return withEffectiveNext(page, link.body ?? {})
       }
-      return readItemCollection(link.href, signal)
+      const page = await readItemCollection(link.href, signal, {
+        ...(link.headers === undefined ? {} : { headers: allowedLinkHeaders(link.headers) }),
+      })
+      return withEffectiveNext(page, link.body ?? {})
     },
     async invalidate(url) {
       if (url === undefined) {
@@ -164,6 +210,40 @@ export function createStacClient(options: StacClientOptions): StacClient {
       await cache.invalidate(cacheUrl(url, 'GET'))
     },
   }
+}
+
+function withEffectiveNext(
+  page: StacItemCollection,
+  previousBody: Readonly<Record<string, unknown>>,
+): StacItemCollection {
+  if (page.next === undefined || (httpMethod(page.next.method) ?? 'GET') !== 'POST') return page
+  const body =
+    page.next.merge === true ? { ...previousBody, ...(page.next.body ?? {}) } : page.next.body
+  const next: StacLink = {
+    ...page.next,
+    ...(body === undefined ? {} : { body }),
+  }
+  return { ...page, next, nextHref: next.href }
+}
+
+function assertPaginationPolicy(href: string, root: string): void {
+  if (sameOrigin(href, root)) return
+  throw new StacClientError(
+    'UNAVAILABLE',
+    'Refusing STAC pagination outside the configured catalog origin.',
+    'Pagination links must remain within the configured catalog policy.',
+  )
+}
+
+function allowedLinkHeaders(
+  headers: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> {
+  const allowed: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers)) {
+    const normalized = name.toLowerCase()
+    if (normalized === 'accept' || normalized === 'prefer') allowed[normalized] = value
+  }
+  return allowed
 }
 
 function catalogSelf(catalog: StacCatalog): string {

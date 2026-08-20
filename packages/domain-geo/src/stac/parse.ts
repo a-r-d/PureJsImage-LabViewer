@@ -4,6 +4,7 @@ import type {
   StacBbox,
   StacCatalog,
   StacCollection,
+  StacCollectionsPage,
   StacEoBand,
   StacItem,
   StacItemCollection,
@@ -74,6 +75,20 @@ export function parseStacCollections(
     )
   }
   return collections.map((collection) => parseStacCollection(collection, options))
+}
+
+export function parseStacCollectionsPage(
+  value: unknown,
+  options?: StacParseOptions,
+): StacCollectionsPage {
+  const record = asRecord(value, 'STAC collections')
+  const links = parseLinks(record['links'], options?.baseHref)
+  const next = links.find((link) => link.rel === 'next')
+  return {
+    collections: parseStacCollections(value, options),
+    links,
+    ...(next === undefined ? {} : { next }),
+  }
 }
 
 export function parseStacItem(value: unknown, options?: StacParseOptions): StacItem {
@@ -211,6 +226,7 @@ function parseLinks(value: unknown, baseHref: string | undefined): readonly Stac
     const method = optionalString(record['method'])
     const body = isRecord(record['body']) ? record['body'] : undefined
     const merge = record['merge'] === true ? true : undefined
+    const headers = parseLinkHeaders(record['headers'])
     return {
       rel: requiredString(record['rel'], `STAC link ${index} rel`),
       href: resolveStacHref(requiredString(record['href'], `STAC link ${index} href`), baseHref),
@@ -219,8 +235,19 @@ function parseLinks(value: unknown, baseHref: string | undefined): readonly Stac
       ...(method === undefined ? {} : { method }),
       ...(body === undefined ? {} : { body }),
       ...(merge === undefined ? {} : { merge }),
+      ...(headers === undefined ? {} : { headers }),
     }
   })
+}
+
+function parseLinkHeaders(value: unknown): Readonly<Record<string, string>> | undefined {
+  if (!isRecord(value)) return undefined
+  const headers: Record<string, string> = {}
+  for (const [name, entry] of Object.entries(value)) {
+    if (typeof entry !== 'string' || entry.length === 0) continue
+    headers[name.toLowerCase()] = entry
+  }
+  return Object.keys(headers).length === 0 ? undefined : headers
 }
 
 function parseProviders(value: unknown): readonly StacProvider[] {

@@ -20,6 +20,7 @@ import {
   preflightBadgeLabel,
   type RasterAssetPreflight,
   type RasterPreflightCompatibility,
+  type RasterPreflightStage,
 } from '@pji-workbench/imaging'
 import { Button, ErrorState } from '@pji-workbench/ui'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -40,8 +41,16 @@ export function CatalogPanel({
   readonly viewBbox?: StacBbox
   readonly busy: boolean
   readonly searchNonce?: number
-  readonly onOpen: (candidate: CatalogSourceCandidate, inspect: boolean) => void
-  readonly onPreflight: (href: string, signal: AbortSignal) => Promise<RasterAssetPreflight>
+  readonly onOpen: (
+    candidate: CatalogSourceCandidate,
+    inspect: boolean,
+    preflight: RasterAssetPreflight,
+  ) => void
+  readonly onPreflight: (
+    href: string,
+    signal: AbortSignal,
+    stage: RasterPreflightStage,
+  ) => Promise<RasterAssetPreflight>
 }) {
   const [catalogId, setCatalogId] = useState(catalogs[0]?.id ?? '')
   const catalog = catalogs.find((entry) => entry.id === catalogId) ?? catalogs[0]
@@ -63,6 +72,18 @@ export function CatalogPanel({
   const requestGenRef = useRef(0)
   const lastSearchNonceRef = useRef(0)
   const preflightRef = useRef<AbortController | null>(null)
+  const selectedPreflightRef = useRef<AbortController | null>(null)
+  const preflightGenerationRef = useRef(0)
+  const preflightCacheRef = useRef(
+    new Map<string, { readonly report: RasterAssetPreflight; readonly expiresAt?: number }>(),
+  )
+  const inflightPreflightRef = useRef(
+    new Map<
+      string,
+      { readonly promise: Promise<RasterAssetPreflight>; readonly signal: AbortSignal }
+    >(),
+  )
+  const [retryNonce, setRetryNonce] = useState(0)
 
   const catalogStories = stories.filter((story) => story.catalogId === catalog?.id)
 
@@ -110,36 +131,87 @@ export function CatalogPanel({
     return () => {
       requestRef.current?.abort()
       preflightRef.current?.abort()
+      selectedPreflightRef.current?.abort()
     }
   }, [loadCollections])
 
+  const probe = useCallback(
+    async (
+      href: string,
+      stage: RasterPreflightStage,
+      signal: AbortSignal,
+      force = false,
+    ): Promise<RasterAssetPreflight> => {
+      const key = normalizeHref(href)
+      const cached = preflightCacheRef.current.get(key)
+      if (
+        !force &&
+        cached !== undefined &&
+        (cached.expiresAt === undefined || cached.expiresAt > Date.now()) &&
+        stageRank(cached.report.stage) >= stageRank(stage)
+      ) {
+        return cached.report
+      }
+      const inflightKey = `${key}:${stage}`
+      const existing = inflightPreflightRef.current.get(inflightKey)
+      if (!force && existing !== undefined && !existing.signal.aborted) return existing.promise
+      if (existing?.signal.aborted === true) inflightPreflightRef.current.delete(inflightKey)
+      const pending = onPreflight(href, signal, stage).then((report) => {
+        const success =
+          report.compatibility === 'ready' ||
+          report.compatibility === 'tiff-compatible' ||
+          report.compatibility === 'range-readable'
+        preflightCacheRef.current.set(key, {
+          report,
+          ...(success ? {} : { expiresAt: Date.now() + 15_000 }),
+        })
+        const validator = report.transport.validator
+        if (validator !== undefined) {
+          preflightCacheRef.current.set(`${key}|${validator.header}:${validator.value}`, { report })
+        }
+        return report
+      })
+      inflightPreflightRef.current.set(inflightKey, { promise: pending, signal })
+      try {
+        return await pending
+      } finally {
+        if (inflightPreflightRef.current.get(inflightKey)?.promise === pending) {
+          inflightPreflightRef.current.delete(inflightKey)
+        }
+      }
+    },
+    [onPreflight],
+  )
+
   const runPreflight = useCallback(
-    async (pageItems: readonly CatalogSearchItem[], signal: AbortSignal) => {
+    async (pageItems: readonly CatalogSearchItem[], signal: AbortSignal, selectedHref?: string) => {
       preflightRef.current?.abort()
       const controller = new AbortController()
       preflightRef.current = controller
       const combined = AbortSignal.any([signal, controller.signal])
-      const updates: Record<string, RasterAssetPreflight> = {}
-      for (const item of pageItems) {
-        const candidate = preferredSearchCandidate(item, undefined, catalog?.preferredAssetKeys)
-        if (candidate === undefined) continue
-        try {
-          updates[candidate.href] = await onPreflight(candidate.href, combined)
-        } catch {
-          if (combined.aborted) return
-          updates[candidate.href] = {
-            href: candidate.href,
-            compatibility: 'unknown',
-            title: 'Preflight failed',
-            message: 'Could not probe this raster.',
-            transport: { href: candidate.href, scheme: '', bytesRead: 0 },
+      const generation = ++preflightGenerationRef.current
+      const candidates = pageItems
+        .map((item) => preferredSearchCandidate(item, undefined, catalog?.preferredAssetKeys))
+        .filter((candidate): candidate is CatalogSourceCandidate => candidate !== undefined)
+        .filter((candidate) => normalizeHref(candidate.href) !== normalizeHref(selectedHref ?? ''))
+      let index = 0
+      const worker = async (): Promise<void> => {
+        while (index < candidates.length && !combined.aborted) {
+          const candidate = candidates[index]
+          index += 1
+          if (candidate === undefined) continue
+          try {
+            const report = await probe(candidate.href, 'tiff-compatible', combined)
+            if (combined.aborted || preflightGenerationRef.current !== generation) return
+            setPreflight((current) => ({ ...current, [candidate.href]: report }))
+          } catch {
+            if (combined.aborted || preflightGenerationRef.current !== generation) return
           }
         }
-        if (combined.aborted) return
-        setPreflight((current) => ({ ...current, ...updates }))
       }
+      await Promise.all(Array.from({ length: Math.min(3, candidates.length) }, () => worker()))
     },
-    [catalog?.preferredAssetKeys, onPreflight],
+    [catalog?.preferredAssetKeys, probe],
   )
 
   const search = useCallback(
@@ -149,12 +221,27 @@ export function CatalogPanel({
       readonly datetime?: string
     }) => {
       if (catalog === undefined) return
+      const explicitBbox = overrides?.bbox ?? parseBbox(bboxText)
+      if (
+        overrides?.bbox === undefined &&
+        bboxText.trim().length > 0 &&
+        explicitBbox === undefined
+      ) {
+        setError({
+          kind: 'catalog-unavailable',
+          title: 'Invalid bounding box',
+          message:
+            'Enter west,south,east,north with finite WGS84 coordinates, west < east, and south < north.',
+        })
+        setStatus('')
+        return
+      }
       const { generation, signal } = beginRequest()
       setLoading(true)
       setError(null)
       setPreflight({})
       try {
-        const bbox = overrides?.bbox ?? parseBbox(bboxText) ?? catalog.defaultBbox
+        const bbox = explicitBbox ?? catalog.defaultBbox
         const collectionsFilter =
           overrides?.collections ?? (collectionId.length > 0 ? [collectionId] : undefined)
         const page = await service.search(
@@ -172,16 +259,19 @@ export function CatalogPanel({
         if (requestGenRef.current !== generation) return
         setItems(page.items)
         setNext(page.next)
-        setSelectedItemId((current) =>
-          page.items.some((item) => item.id === current) ? current : undefined,
-        )
-        setAssetKey(undefined)
+        const selectedItem = page.items.find((item) => item.id === selectedItemId) ?? page.items[0]
+        const selectedCandidate =
+          selectedItem === undefined
+            ? undefined
+            : preferredSearchCandidate(selectedItem, undefined, catalog.preferredAssetKeys)
+        setSelectedItemId(selectedItem?.id)
+        setAssetKey(selectedCandidate?.assetKey)
         setStatus(
           page.numberMatched === undefined
             ? `${page.items.length} items`
             : `${page.items.length} of ${page.numberMatched} items`,
         )
-        void runPreflight(page.items, signal)
+        void runPreflight(page.items, signal, selectedCandidate?.href)
       } catch (caught) {
         if (signal.aborted || requestGenRef.current !== generation) return
         setItems([])
@@ -191,7 +281,16 @@ export function CatalogPanel({
         if (requestGenRef.current === generation) setLoading(false)
       }
     },
-    [beginRequest, bboxText, catalog, collectionId, datetime, runPreflight, service],
+    [
+      beginRequest,
+      bboxText,
+      catalog,
+      collectionId,
+      datetime,
+      runPreflight,
+      selectedItemId,
+      service,
+    ],
   )
 
   const loadMore = useCallback(async () => {
@@ -232,7 +331,7 @@ export function CatalogPanel({
       if (nextCandidate === undefined) return
       const probe = preflight[nextCandidate.href]
       if (probe?.compatibility !== 'ready') return
-      onOpen(nextCandidate, inspect)
+      onOpen(nextCandidate, inspect, probe)
     },
     [catalog, onOpen, preflight, storyStyle],
   )
@@ -258,6 +357,24 @@ export function CatalogPanel({
       : preferredSearchCandidate({ ...selected, candidates }, assetKey, catalog?.preferredAssetKeys)
   const activeProbe = active === undefined ? undefined : preflight[active.href]
   const canOpen = activeProbe?.compatibility === 'ready'
+  const activeHref = active?.href
+
+  useEffect(() => {
+    if (activeHref === undefined) return
+    preflightRef.current?.abort()
+    selectedPreflightRef.current?.abort()
+    const controller = new AbortController()
+    selectedPreflightRef.current = controller
+    const generation = ++preflightGenerationRef.current
+    void probe(activeHref, 'decoder-ready', controller.signal, retryNonce > 0)
+      .then((report) => {
+        if (controller.signal.aborted || preflightGenerationRef.current !== generation) return
+        setPreflight((current) => ({ ...current, [activeHref]: report }))
+        void runPreflight(items, controller.signal, activeHref)
+      })
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [activeHref, items, probe, retryNonce, runPreflight])
 
   return (
     <div className="geo-inspector-body geo-catalog" data-testid="catalog-panel">
@@ -390,8 +507,17 @@ export function CatalogPanel({
               <button
                 aria-label={`Open ${item.id}`}
                 aria-pressed={item.id === selectedItemId}
-                disabled={opening || probe?.compatibility !== 'ready'}
-                onClick={() => openItem(item, preferInspect)}
+                disabled={
+                  opening || (item.id === selectedItemId && probe?.compatibility !== 'ready')
+                }
+                onClick={() => {
+                  if (probe?.compatibility === 'ready') {
+                    openItem(item, preferInspect)
+                    return
+                  }
+                  setSelectedItemId(item.id)
+                  setAssetKey(candidate?.assetKey)
+                }}
                 type="button"
               >
                 <strong>{item.id}</strong>
@@ -460,6 +586,9 @@ export function CatalogPanel({
               ? 'Checking…'
               : `${preflightBadgeLabel(activeProbe.compatibility)}. ${activeProbe.message}`}
           </p>
+          <p className="geo-catalog-hint">
+            {`${selected.collectionTitle ?? selected.collectionId} · ${active.provider ?? 'Unknown provider'} · ${active.license ?? 'Unknown'} · ${active.attribution ?? 'Unknown attribution'}`}
+          </p>
           <div className="geo-inspector-toolbar">
             <Button
               disabled={busy || !canOpen}
@@ -468,6 +597,18 @@ export function CatalogPanel({
             >
               Open as layer
             </Button>
+            {activeProbe !== undefined &&
+            activeProbe.compatibility !== 'ready' &&
+            activeProbe.compatibility !== 'checking' ? (
+              <Button
+                onClick={() => {
+                  preflightCacheRef.current.delete(normalizeHref(active.href))
+                  setRetryNonce((value) => value + 1)
+                }}
+              >
+                Retry
+              </Button>
+            ) : null}
             <Button
               disabled={busy || !canOpen}
               onClick={() => openItem(selected, true, active.assetKey)}
@@ -496,7 +637,31 @@ function parseBbox(value: string): StacBbox | undefined {
   if (west === undefined || south === undefined || east === undefined || north === undefined) {
     return undefined
   }
+  if (west < -180 || east > 180 || south < -90 || north > 90 || west >= east || south >= north) {
+    return undefined
+  }
   return [west, south, east, north]
+}
+
+function normalizeHref(href: string): string {
+  try {
+    return new URL(href).href
+  } catch {
+    return href
+  }
+}
+
+function stageRank(stage: RasterPreflightStage): number {
+  switch (stage) {
+    case 'metadata-only':
+      return 0
+    case 'range-readable':
+      return 1
+    case 'tiff-compatible':
+      return 2
+    case 'decoder-ready':
+      return 3
+  }
 }
 
 function asCatalogFailure(error: unknown): GeoOpenFailure {

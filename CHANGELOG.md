@@ -11,8 +11,12 @@ The application is not yet versioned for release (`0.0.0`).
 
 - Atlas catalog adapters for STAC API, static STAC, and USGS TNMAccess. The registry lists NOAA
   Digital Coast, USGS 3DEP, USGS Landsat, and Kentucky From Above. CatalogPanel talks only to
-  `CatalogService`. Imaging raster preflight (HTTPS Range + TIFF inspect) must report Ready before
-  Atlas opens a catalog URL. `s3://` assets stay metadata-only. Opt-in diagnostics:
+  `CatalogService`. Imaging raster preflight uses bounded streaming and advances through
+  metadata-only, range-readable, TIFF-compatible, and decoder-ready stages; Ready requires a
+  successful documented-reader open and bounded native sample. Catalog probes use bounded
+  concurrency, cancellation, and short-lived failure caching, and Open reuses the verified report
+  rather than repeating preflight. Aborted in-flight probes are not reused by a replacement
+  catalog selection. `s3://` assets stay metadata-only. Opt-in diagnostics:
   `pnpm geo:probe-catalogs` and `PJI_GEO_LIVE=1 pnpm test:e2e:geo:live`. See
   `docs/GOVERNMENT_GEO_SOURCES.md`.
 

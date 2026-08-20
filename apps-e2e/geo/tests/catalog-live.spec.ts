@@ -13,7 +13,12 @@ test.describe('live government catalog probes', () => {
       const href =
         'https://noaa-nos-coastal-lidar-pds.s3.amazonaws.com/dem/NCEI_third_Topobathy_PuertoRico_9524/ncei13_n17x75_w065x75_2022v1.tif'
       try {
-        const response = await fetch(href, { method: 'GET', headers: { Range: 'bytes=0-65535' } })
+        const response = await fetch(href, { method: 'GET', headers: { Range: 'bytes=0-3' } })
+        if (response.status !== 206) {
+          await response.body?.cancel()
+          return { ok: false, message: `Range request returned HTTP ${String(response.status)}` }
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer())
         return {
           ok: true,
           status: response.status,
@@ -21,6 +26,10 @@ test.describe('live government catalog probes', () => {
           expose: response.headers.get('access-control-expose-headers'),
           contentRange: response.headers.get('content-range'),
           encoding: response.headers.get('content-encoding'),
+          tiffMagic:
+            bytes.length === 4 &&
+            ((bytes[0] === 0x49 && bytes[1] === 0x49 && bytes[2] === 0x2a && bytes[3] === 0) ||
+              (bytes[0] === 0x4d && bytes[1] === 0x4d && bytes[2] === 0 && bytes[3] === 0x2a)),
         }
       } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) }
@@ -28,7 +37,8 @@ test.describe('live government catalog probes', () => {
     })
     expect(result.ok).toBe(true)
     if (result.ok) {
-      expect([200, 206]).toContain(result.status)
+      expect(result.status).toBe(206)
+      expect(result.tiffMagic).toBe(true)
     }
   })
 })

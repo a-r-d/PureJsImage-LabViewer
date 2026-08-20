@@ -144,6 +144,7 @@ describe('Landsat STAC API adapter', () => {
 
   it('POSTs search and next only when advertised on the catalog origin', async () => {
     const requests: string[] = []
+    const bodies: unknown[] = []
     const postCatalog = {
       type: 'Catalog',
       id: 'post-only',
@@ -161,6 +162,7 @@ describe('Landsat STAC API adapter', () => {
       const url = String(input)
       const method = init?.method ?? 'GET'
       requests.push(`${method} ${url}`)
+      if (method === 'POST') bodies.push(JSON.parse(String(init?.body)) as unknown)
       if (url === 'https://landsat.example.test/' || url.endsWith('stac-server/')) {
         return jsonResponse(postCatalog)
       }
@@ -174,6 +176,8 @@ describe('Landsat STAC API adapter', () => {
               href: 'https://landsat.example.test/search',
               method: 'POST',
               body: { token: 'next' },
+              merge: true,
+              headers: { Accept: 'application/geo+json', Authorization: 'secret' },
             },
           ],
         })
@@ -189,6 +193,47 @@ describe('Landsat STAC API adapter', () => {
     expect(page.next?.method).toBe('POST')
     await service.follow(postEntry, page.next ?? { href: 'https://landsat.example.test/search' })
     expect(requests.filter((entry) => entry.startsWith('POST'))).toHaveLength(2)
+    expect(bodies[1]).toMatchObject({
+      collections: ['landsat-c2l2-sr'],
+      limit: 12,
+      token: 'next',
+    })
+  })
+
+  it('uses collection metadata ahead of registry fallback metadata', async () => {
+    const catalog = await fixture('./fixtures/stac-api/landsat-catalog.json')
+    const search = await fixture('./fixtures/stac-api/landsat-search.json')
+    const fetchFn: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('stac-server/')) return jsonResponse(catalog)
+      if (url.includes('/search')) return jsonResponse(search)
+      if (url.includes('/collections')) {
+        return jsonResponse({
+          collections: [
+            {
+              type: 'Collection',
+              id: 'landsat-c2l2-sr',
+              title: 'Live Landsat Level-2',
+              license:
+                'https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits',
+              providers: [{ name: 'USGS EROS', roles: ['producer'] }],
+              links: [],
+            },
+          ],
+        })
+      }
+      return new Response(null, { status: 404 })
+    }
+    const service = createCatalogService({ fetch: fetchFn, cacheVersion: 'metadata' })
+    const page = await service.search(USGS_LANDSAT_CATALOG, {
+      collections: ['landsat-c2l2-sr'],
+    })
+    expect(page.items[0]?.collectionTitle).toBe('Live Landsat Level-2')
+    expect(page.items[0]?.candidates[0]).toMatchObject({
+      provider: 'USGS EROS',
+      attribution: 'USGS EROS',
+      license: 'https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits',
+    })
   })
 })
 
@@ -201,6 +246,12 @@ describe('TNMAccess adapter', () => {
     const errored = await fixture('./fixtures/tnm/products-error.json')
     const fetchFn: typeof fetch = async (input) => {
       const url = String(input)
+      if (url.includes('/products?')) {
+        const parsed = new URL(url)
+        expect(parsed.searchParams.get('dateType')).toBe('Publication')
+        expect(parsed.searchParams.get('start')).toBe('2021-01-01')
+        expect(parsed.searchParams.get('end')).toBe('2021-12-31')
+      }
       if (url.includes('/datasets')) return jsonResponse(datasets)
       if (url.includes('products-empty')) return jsonResponse(empty)
       if (url.includes('products-img')) return jsonResponse(nonTiff)
@@ -213,10 +264,24 @@ describe('TNMAccess adapter', () => {
     const page = await service.search(USGS_3DEP_CATALOG, {
       collections: [USGS_3DEP_NED_13],
       bbox: [-84.6, 39.05, -84.4, 39.2],
+      datetime: '2021-01-01/2021-12-31',
     })
     expect(page.items).toHaveLength(1)
     expect(page.items[0]?.candidates[0]?.assetKey).toBe('geotiff')
     expect(page.items[0]?.candidates[0]?.href.endsWith('.tif')).toBe(true)
+    const candidate = page.items[0]?.candidates[0]
+    expect(candidate).toBeDefined()
+    if (candidate !== undefined) {
+      await expect(
+        service.resolveDeepLink(USGS_3DEP_CATALOG, {
+          catalogId: candidate.catalogId,
+          collectionId: candidate.collectionId,
+          itemId: candidate.itemId,
+          assetKey: candidate.assetKey,
+          href: candidate.href,
+        }),
+      ).resolves.toMatchObject({ href: candidate.href, itemId: candidate.itemId })
+    }
     const skipped = await service.search(
       {
         ...USGS_3DEP_CATALOG,

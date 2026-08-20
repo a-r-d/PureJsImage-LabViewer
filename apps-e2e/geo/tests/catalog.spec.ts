@@ -41,7 +41,9 @@ async function openReadyTile(page: import('@playwright/test').Page, name: RegExp
 test('searches a mocked Kentucky collection and opens a COG asset as a layer', async ({ page }) => {
   test.setTimeout(60_000)
   let delayedFirstRange = false
+  let zeroByteProbes = 0
   await page.route('http://127.0.0.1:4175/north-up.tif', async (route) => {
+    if (route.request().headers()['range'] === 'bytes=0-0') zeroByteProbes += 1
     if (!delayedFirstRange) {
       delayedFirstRange = true
       await new Promise((resolve) => {
@@ -57,6 +59,7 @@ test('searches a mocked Kentucky collection and opens a COG asset as a layer', a
     timeout: 15_000,
   })
   await expect(page.getByText('Click a Ready tile to open it in the map')).toBeVisible()
+  const probesBeforeOpen = zeroByteProbes
   await openReadyTile(page, /Open N082E280_2019_6IN_cog/u)
   await expect(page.getByTestId('geo-opening')).toBeVisible()
   await expect(page.getByRole('img', { name: /Geo raster viewport/u })).toBeVisible({
@@ -66,6 +69,69 @@ test('searches a mocked Kentucky collection and opens a COG asset as a layer', a
   await expect(page.getByTestId('catalog-provenance')).toContainText('orthos-phase2')
   await expect(page.getByTestId('catalog-provenance')).toContainText('CC-BY-4.0')
   await expect(page.getByTestId('catalog-provenance')).not.toContainText('X-Amz-Signature')
+  expect(zeroByteProbes - probesBeforeOpen).toBe(1)
+})
+
+test('preflights an alternate raster asset when it is selected', async ({ page }) => {
+  await page.getByLabel('Catalog').selectOption('usgs-landsat')
+  await page.getByRole('button', { name: 'USGS Landsat Cincinnati' }).click()
+  await expect(page.getByTestId('catalog-status')).toHaveText(/^\d+ of \d+ items$/u, {
+    timeout: 15_000,
+  })
+  const picker = page.getByLabel('Raster asset')
+  await expect(picker).toBeVisible()
+  const options = await picker.locator('option').all()
+  expect(options.length).toBeGreaterThan(1)
+  const alternate = await options[1]?.getAttribute('value')
+  expect(alternate).toBeTruthy()
+  if (alternate === null) return
+  await picker.selectOption(alternate)
+  await expect(page.getByTestId('catalog-preflight')).toContainText('Ready.', {
+    timeout: 30_000,
+  })
+})
+
+test('suppresses a stale preflight when catalog selection changes', async ({ page }) => {
+  test.setTimeout(60_000)
+  let releaseFirstRange: (() => void) | undefined
+  let observedFirstRange: (() => void) | undefined
+  const firstRangeObserved = new Promise<void>((resolve) => {
+    observedFirstRange = resolve
+  })
+  const firstRangeReleased = new Promise<void>((resolve) => {
+    releaseFirstRange = resolve
+  })
+  let delayed = false
+  await page.route('http://127.0.0.1:4175/north-up.tif', async (route) => {
+    if (!delayed && route.request().headers()['range'] === 'bytes=0-0') {
+      delayed = true
+      observedFirstRange?.()
+      await firstRangeReleased
+    }
+    await route.continue().catch(() => undefined)
+  })
+
+  await selectKentucky(page)
+  await page.getByRole('button', { name: 'Kentucky Through Time' }).click()
+  await firstRangeObserved
+  await page.getByLabel('Catalog').selectOption('usgs-landsat')
+  await expect(page.getByTestId('catalog-status')).toHaveText(/\d+ collections/u, {
+    timeout: 15_000,
+  })
+  await page.getByRole('button', { name: 'USGS Landsat Cincinnati' }).click()
+  releaseFirstRange?.()
+
+  await expect(page.getByTestId('catalog-preflight')).toContainText('Ready.', {
+    timeout: 30_000,
+  })
+  await expect(page.getByTestId('catalog-panel')).toContainText('landsat-c2l2-sr')
+  await expect(page.getByTestId('catalog-panel')).not.toContainText('orthos-phase2')
+})
+
+test('shows invalid bbox input instead of silently using the catalog default', async ({ page }) => {
+  await page.getByLabel('Bounding box').fill('not,a,bbox')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
+  await expect(page.getByText('Invalid bounding box')).toBeVisible()
 })
 
 test('empty-state Search runs a catalog search', async ({ page }) => {

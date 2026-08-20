@@ -1,7 +1,7 @@
 import type { AtlasDeepLink, CatalogAssetIdentity } from './types.js'
 import { ATLAS_DEEP_LINK_SCHEMA_VERSION } from './types.js'
 
-const KEYS = ['catalog', 'collection', 'item', 'asset', 'inspect'] as const
+const KEYS = ['catalog', 'collection', 'item', 'asset', 'href', 'source', 'inspect'] as const
 
 export function serializeAtlasDeepLink(
   link: CatalogAssetIdentity & { readonly inspect?: boolean },
@@ -12,6 +12,8 @@ export function serializeAtlasDeepLink(
   params.set('collection', link.collectionId)
   params.set('item', link.itemId)
   params.set('asset', link.assetKey)
+  if (safeHttpsUrl(link.href)) params.set('href', link.href)
+  if (safeHttpsUrl(link.sourceUrl)) params.set('source', link.sourceUrl)
   if (link.inspect === true) params.set('inspect', '1')
   return `#${params.toString()}`
 }
@@ -26,6 +28,8 @@ export function parseAtlasDeepLink(hash: string): AtlasDeepLink | undefined {
   const collectionId = params.get('collection')
   const itemId = params.get('item')
   const assetKey = params.get('asset')
+  const href = params.get('href')
+  const sourceUrl = params.get('source')
   if (
     catalogId === null ||
     collectionId === null ||
@@ -47,6 +51,18 @@ export function parseAtlasDeepLink(hash: string): AtlasDeepLink | undefined {
     collectionId,
     itemId,
     assetKey,
+    ...(safeHttpsUrl(href) ? { href } : {}),
+    ...(safeHttpsUrl(sourceUrl) ? { sourceUrl } : {}),
     ...(params.get('inspect') === '1' ? { inspect: true } : {}),
+  }
+}
+
+function safeHttpsUrl(value: string | null | undefined): value is string {
+  if (value === null || value === undefined || value.length === 0 || value.length > 8_192)
+    return false
+  try {
+    return new URL(value).protocol === 'https:'
+  } catch {
+    return false
   }
 }

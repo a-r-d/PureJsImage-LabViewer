@@ -1,5 +1,11 @@
 import type { StacClient } from '../../stac/client.js'
-import type { StacCatalog, StacItem, StacItemCollection, StacLink } from '../../stac/types.js'
+import type {
+  StacCatalog,
+  StacCollection,
+  StacItem,
+  StacItemCollection,
+  StacLink,
+} from '../../stac/types.js'
 import { StacClientError } from '../../stac/types.js'
 import { candidatesFromItem, preferredCandidate, searchItemFromCandidates } from '../candidates.js'
 import type {
@@ -9,12 +15,13 @@ import type {
   CatalogSearchPage,
   CatalogSourceCandidate,
 } from '../types.js'
-import { catalogRootHref } from '../types.js'
 import type { CatalogAdapter } from './types.js'
 
 export function createStacApiAdapter(
   clientFor: (entry: CatalogRegistryEntry) => StacClient,
 ): CatalogAdapter {
+  const collectionCache = new Map<string, Promise<StacCollection | undefined>>()
+  const collectionLists = new Map<string, Promise<readonly StacCollection[]>>()
   return {
     protocol: 'stac-api',
     async listCollections(entry, signal) {
@@ -44,21 +51,40 @@ export function createStacApiAdapter(
         },
         signal,
       )
-      return toSearchPage(entry, page)
+      return toSearchPage(entry, page, client, root, collectionCache, collectionLists, signal)
     },
     async follow(entry, cursor, signal) {
       const client = clientFor(entry)
       const page = await client.followLink(cursorToLink(cursor), signal)
-      return toSearchPage(entry, page)
+      const root = await rootCatalog(client, entry, signal)
+      return toSearchPage(entry, page, client, root, collectionCache, collectionLists, signal)
     },
     async resolveDeepLink(entry, identity, signal) {
       const client = clientFor(entry)
-      const itemHref = new URL(
-        `collections/${identity.collectionId}/items/${encodeURIComponent(identity.itemId)}`,
-        withSlash(catalogRootHref(entry)),
-      ).toString()
-      const item = await client.getItem(itemHref, signal)
-      return candidateFromResolvedItem(entry, item, identity.assetKey)
+      const root = await rootCatalog(client, entry, signal)
+      let page = await client.search(
+        root,
+        { collections: [identity.collectionId], limit: 100 },
+        signal,
+      )
+      for (let pageIndex = 0; pageIndex < 10; pageIndex += 1) {
+        const item = page.items.find((candidate) => candidate.id === identity.itemId)
+        if (item !== undefined) {
+          const collection = await collectionForItem(
+            entry,
+            item,
+            client,
+            root,
+            collectionCache,
+            collectionLists,
+            signal,
+          )
+          return candidateFromResolvedItem(entry, item, identity.assetKey, collection)
+        }
+        if (page.next === undefined) return undefined
+        page = await client.followLink(page.next, signal)
+      }
+      return undefined
     },
   }
 }
@@ -74,14 +100,42 @@ async function rootCatalog(
   return client.getCatalog(entry.endpoint.rootHref, signal)
 }
 
-function toSearchPage(entry: CatalogRegistryEntry, page: StacItemCollection): CatalogSearchPage {
+async function toSearchPage(
+  entry: CatalogRegistryEntry,
+  page: StacItemCollection,
+  client: StacClient,
+  root: StacCatalog,
+  collectionCache: Map<string, Promise<StacCollection | undefined>>,
+  collectionLists: Map<string, Promise<readonly StacCollection[]>>,
+  signal?: AbortSignal,
+): Promise<CatalogSearchPage> {
   const next = page.next === undefined ? undefined : cursorFromLink(page.next)
-  return {
-    items: page.items.flatMap((item) => {
+  const items = await Promise.all(
+    page.items.map(async (item): Promise<CatalogSearchPage['items'][number] | undefined> => {
       const collectionId = item.collection
-      if (collectionId === undefined) return []
-      return [searchItemFromCandidates(item, collectionId, candidatesFromItem(entry, item))]
+      if (collectionId === undefined) return undefined
+      const collection = await collectionForItem(
+        entry,
+        item,
+        client,
+        root,
+        collectionCache,
+        collectionLists,
+        signal,
+      )
+      const result = searchItemFromCandidates(
+        item,
+        collectionId,
+        candidatesFromItem(entry, item, collection === undefined ? undefined : { collection }),
+      )
+      return {
+        ...result,
+        ...(collection?.title === undefined ? {} : { collectionTitle: collection.title }),
+      }
     }),
+  )
+  return {
+    items: items.filter((item): item is CatalogSearchPage['items'][number] => item !== undefined),
     ...(next === undefined ? {} : { next }),
     ...(page.numberMatched === undefined ? {} : { numberMatched: page.numberMatched }),
     ...(page.numberReturned === undefined ? {} : { numberReturned: page.numberReturned }),
@@ -93,6 +147,7 @@ function cursorFromLink(link: StacLink): CatalogCursor {
     href: link.href,
     method: link.method?.toUpperCase() === 'POST' ? 'POST' : 'GET',
     ...(link.body === undefined ? {} : { body: link.body }),
+    ...(link.headers === undefined ? {} : { headers: link.headers }),
   }
 }
 
@@ -102,6 +157,7 @@ function cursorToLink(cursor: CatalogCursor): StacLink {
     href: cursor.href,
     ...(cursor.method === undefined ? {} : { method: cursor.method }),
     ...(cursor.body === undefined ? {} : { body: cursor.body }),
+    ...(cursor.headers === undefined ? {} : { headers: cursor.headers }),
   }
 }
 
@@ -109,10 +165,48 @@ function candidateFromResolvedItem(
   entry: CatalogRegistryEntry,
   item: StacItem,
   assetKey: string,
+  collection?: StacCollection,
 ): CatalogSourceCandidate | undefined {
-  return preferredCandidate(candidatesFromItem(entry, item), item, assetKey)
+  return preferredCandidate(
+    candidatesFromItem(entry, item, collection === undefined ? undefined : { collection }),
+    item,
+    assetKey,
+  )
 }
 
-function withSlash(href: string): string {
-  return href.endsWith('/') ? href : `${href}/`
+async function collectionForItem(
+  entry: CatalogRegistryEntry,
+  item: StacItem,
+  client: StacClient,
+  root: StacCatalog,
+  collectionCache: Map<string, Promise<StacCollection | undefined>>,
+  collectionLists: Map<string, Promise<readonly StacCollection[]>>,
+  signal?: AbortSignal,
+): Promise<StacCollection | undefined> {
+  const collectionId = item.collection
+  if (collectionId === undefined) return undefined
+  const key = `${entry.id}:${entry.cacheVersion}:${collectionId}`
+  const cached = collectionCache.get(key)
+  if (cached !== undefined) return cached
+  const pending = (async (): Promise<StacCollection | undefined> => {
+    const advertised = item.links.find((link) => link.rel === 'collection')?.href
+    if (advertised !== undefined) return client.getCollection(advertised, signal)
+    const listKey = `${entry.id}:${entry.cacheVersion}`
+    let listed = collectionLists.get(listKey)
+    if (listed === undefined) {
+      listed = client.listCollections(root, signal).catch((error: unknown) => {
+        collectionLists.delete(listKey)
+        throw error
+      })
+      collectionLists.set(listKey, listed)
+    }
+    return (await listed).find((collection) => collection.id === collectionId)
+  })()
+  collectionCache.set(key, pending)
+  try {
+    return await pending
+  } catch (error) {
+    collectionCache.delete(key)
+    throw error
+  }
 }

@@ -39,6 +39,13 @@ function jsonFulfill(body: unknown) {
 export async function mockKentuckyStac(page: Page): Promise<void> {
   const catalog = loadFixture('catalog.json')
   const collections = loadFixture('collections.json')
+  const collectionRows =
+    typeof collections === 'object' &&
+    collections !== null &&
+    'collections' in collections &&
+    Array.isArray(collections.collections)
+      ? collections.collections
+      : []
   const item = withLocalCog(loadFixture('item-ortho.json'))
   await page.route(KENTUCKY_STAC_ROUTE, async (route) => {
     const url = new URL(route.request().url())
@@ -49,6 +56,19 @@ export async function mockKentuckyStac(page: Page): Promise<void> {
     }
     if (pathname === '/collections') {
       await route.fulfill(jsonFulfill(collections))
+      return
+    }
+    if (pathname.startsWith('/collections/') && !pathname.includes('/items')) {
+      const id = pathname.slice('/collections/'.length)
+      const collection = collectionRows.find(
+        (value): value is Record<string, unknown> =>
+          typeof value === 'object' && value !== null && value['id'] === id,
+      )
+      await route.fulfill(
+        collection === undefined
+          ? { status: 404, json: { code: 'NOT_FOUND' } }
+          : jsonFulfill(collection),
+      )
       return
     }
     if (pathname.includes('/items/') && pathname.endsWith('.tif')) {

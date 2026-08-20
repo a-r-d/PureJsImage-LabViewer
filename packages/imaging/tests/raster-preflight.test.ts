@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import { preflightRasterAsset } from '../src/raster-preflight.js'
-import { northUpGeoTiffFixture, unsupportedCompressionTiffFixture } from './geotiff-fixture.js'
+import {
+  geoTiffFixture,
+  northUpGeoTiffFixture,
+  unsupportedCompressionTiffFixture,
+} from './geotiff-fixture.js'
 
 function padded(bytes: Uint8Array, size = 128 * 1024): Uint8Array {
   if (bytes.byteLength >= size) return bytes
@@ -41,6 +45,15 @@ describe('raster preflight', () => {
     expect(result.compatibility).toBe('ready')
     expect(result.transport.rangeStatus).toBe('partial')
     expect(result.raster?.width).toBeGreaterThan(0)
+    expect(result.readerId).toBe('purejsimage/tiff')
+    expect(result.dataset?.axes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'x' }),
+        expect.objectContaining({ id: 'y' }),
+      ]),
+    )
+    expect(result.transport.transferBytes).toBeGreaterThan(0)
+    expect(result.transport.uniqueBytes).toBeGreaterThan(0)
   })
 
   it('classifies a 200 full-body Range ignore as no-range', async () => {
@@ -53,6 +66,8 @@ describe('raster preflight', () => {
         }),
     })
     expect(result.compatibility).toBe('no-range')
+    expect(result.transport.bytesRead).toBe(0)
+    expect(result.transport.transferBytes).toBe(0)
   })
 
   it('classifies HTTP 416 as no-range', async () => {
@@ -100,5 +115,28 @@ describe('raster preflight', () => {
       fetch: rangeFetch(bytes),
     })
     expect(result.compatibility).toBe('unsupported-tiff')
+  })
+
+  it('does not call structural TIFF compatibility Ready when native decoding fails', async () => {
+    const bytes = padded(
+      geoTiffFixture({
+        width: 1,
+        height: 1,
+        pixels: Uint8Array.of(0xff, 0xff, 0xff),
+        extraEntries: [{ tag: 259, type: 3, values: [8] }],
+      }),
+    )
+    const structural = await preflightRasterAsset('https://fixtures.invalid/invalid-deflate.tif', {
+      fetch: rangeFetch(bytes),
+      stage: 'tiff-compatible',
+    })
+    expect(structural.compatibility).toBe('tiff-compatible')
+
+    const decoded = await preflightRasterAsset('https://fixtures.invalid/invalid-deflate.tif', {
+      fetch: rangeFetch(bytes),
+      stage: 'decoder-ready',
+    })
+    expect(decoded.compatibility).toBe('decoder-failed')
+    expect(decoded.failureCode).toBe('DECODER_FAILED')
   })
 })

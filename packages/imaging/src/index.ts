@@ -1,8 +1,10 @@
 export { PUREJSIMAGE_PACKAGE_VERSION } from './package-version.js'
 export type {
   RasterAssetPreflight,
+  RasterDatasetSummary,
   RasterPreflightCompatibility,
   RasterPreflightOptions,
+  RasterPreflightStage,
   RasterTransportProbe,
 } from './raster-preflight.js'
 export {

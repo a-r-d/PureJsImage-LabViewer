@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { rasterAssets } from '../src/stac/assets.js'
 import { createMemoryStacCache } from '../src/stac/cache.js'
 import { createStacClient } from '../src/stac/client.js'
@@ -131,6 +131,95 @@ describe('STAC client', () => {
     await expect(client.getCatalog('https://stac.example.test/')).rejects.toMatchObject({
       code: 'TOO_LARGE',
     })
+  })
+
+  it('stops streaming catalog JSON when missing Content-Length crosses the limit', async () => {
+    let cancelled = false
+    const client = createStacClient({
+      fetch: async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(513))
+            },
+            cancel() {
+              cancelled = true
+            },
+          }),
+          { status: 200 },
+        ),
+      cacheVersion: 'stream-limit',
+      maxJsonBytes: 512,
+    })
+    await expect(client.getCatalog('https://stac.example.test/')).rejects.toMatchObject({
+      code: 'TOO_LARGE',
+    })
+    expect(cancelled).toBe(true)
+  })
+
+  it('cancels an in-progress catalog stream when the caller aborts', async () => {
+    const cancelReader = vi.fn(async () => undefined)
+    let started: (() => void) | undefined
+    const streamStarted = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const client = createStacClient({
+      fetch: async () =>
+        ({
+          status: 200,
+          ok: true,
+          headers: new Headers(),
+          body: {
+            getReader: () => ({
+              read: () => {
+                started?.()
+                return new Promise<ReadableStreamReadResult<Uint8Array>>(() => undefined)
+              },
+              cancel: cancelReader,
+            }),
+          },
+        }) as unknown as Response,
+      cacheVersion: 'stream-abort',
+    })
+    const controller = new AbortController()
+    const pending = client.getCatalog('https://stac.example.test/', controller.signal)
+    await streamStarted
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ code: 'ABORTED' })
+    expect(cancelReader).toHaveBeenCalledOnce()
+  })
+
+  it('follows paginated collection listings within the catalog origin', async () => {
+    const client = createStacClient({
+      fetch: async (input) => {
+        const url = String(input)
+        if (url.endsWith('/')) {
+          return jsonResponse({
+            type: 'Catalog',
+            id: 'paged',
+            links: [
+              { rel: 'self', href: 'https://stac.example.test/' },
+              { rel: 'data', href: 'https://stac.example.test/collections?page=1' },
+            ],
+          })
+        }
+        const page = new URL(url).searchParams.get('page')
+        return jsonResponse({
+          collections: [{ type: 'Collection', id: `collection-${page}`, links: [] }],
+          links:
+            page === '1'
+              ? [{ rel: 'next', href: 'https://stac.example.test/collections?page=2' }]
+              : [],
+        })
+      },
+      cacheVersion: 'collections-pages',
+      catalogRootHref: 'https://stac.example.test/',
+    })
+    const catalog = await client.getCatalog('https://stac.example.test/')
+    await expect(client.listCollections(catalog)).resolves.toMatchObject([
+      { id: 'collection-1' },
+      { id: 'collection-2' },
+    ])
   })
 
   it('refuses a cross-origin POST search', async () => {

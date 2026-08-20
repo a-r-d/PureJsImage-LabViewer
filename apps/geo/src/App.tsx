@@ -32,7 +32,11 @@ import {
   serializeAtlasDeepLink,
   storiesForCatalog,
 } from '@pji-workbench/domain-geo'
-import { ImagingRpcError, preflightRasterAsset } from '@pji-workbench/imaging'
+import {
+  ImagingRpcError,
+  preflightRasterAsset,
+  type RasterAssetPreflight,
+} from '@pji-workbench/imaging'
 import { Button, EmptyState, ErrorState, Icon, ThemeRoot } from '@pji-workbench/ui'
 import { WorkbenchShell } from '@pji-workbench/workbench-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
@@ -278,6 +282,10 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               collectionId: options.catalog.collectionId,
               itemId: options.catalog.itemId,
               assetKey: options.catalog.assetKey,
+              href: options.catalog.href,
+              ...(options.catalog.sourceUrl === undefined
+                ? {}
+                : { sourceUrl: options.catalog.sourceUrl }),
               ...(options.inspect === true ? { inspect: true } : {}),
             })}`,
           )
@@ -302,7 +310,11 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   )
 
   const openCatalogAsset = useCallback(
-    (candidate: CatalogSourceCandidate, inspect: boolean) => {
+    (
+      candidate: CatalogSourceCandidate,
+      inspect: boolean,
+      verifiedReport?: RasterAssetPreflight,
+    ) => {
       const presets = storiesForCatalog(candidate.catalogId)
         .flatMap((story) => story.presets ?? [])
         .filter((preset) => {
@@ -310,7 +322,9 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           return candidate.bandCount === undefined ? required === 0 : required < candidate.bandCount
         })
       void (async () => {
-        const probe = await preflightRasterAsset(candidate.href)
+        const probe =
+          verifiedReport ??
+          (await preflightRasterAsset(candidate.href, { fetch, stage: 'decoder-ready' }))
         if (probe.compatibility !== 'ready') {
           setBusy(false)
           setError({
@@ -329,6 +343,14 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             title: probe.title,
             message: probe.message,
             ...(probe.guidance === undefined ? {} : { guidance: probe.guidance }),
+          })
+          return
+        }
+        if (new URL(probe.href).href !== new URL(candidate.href).href) {
+          setError({
+            kind: 'unsupported',
+            title: 'Stale raster verification',
+            message: 'The verified raster does not match the selected catalog asset.',
           })
           return
         }
@@ -608,7 +630,9 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                 busy={busy || !ready}
                 catalogs={CATALOG_REGISTRY}
                 onOpen={openCatalogAsset}
-                onPreflight={(href, signal) => preflightRasterAsset(href, { fetch, signal })}
+                onPreflight={(href, signal, stage) =>
+                  preflightRasterAsset(href, { fetch, signal, stage })
+                }
                 searchNonce={searchNonce}
                 service={catalogServiceRef.current}
                 stories={CATALOG_STORIES}
