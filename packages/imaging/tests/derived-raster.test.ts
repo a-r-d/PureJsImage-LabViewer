@@ -231,6 +231,63 @@ const rawInput = (name: string, layerId: string) => ({
 })
 
 describe('derived geo raster RPC', () => {
+  it('masks polygon holes across tile boundaries and excludes nodata', async () => {
+    const host = new ImagingWorkerHost()
+    const width = 300
+    const height = 2
+    const values = Float32Array.from({ length: width * height }, (_, index) => index)
+    values[250] = Number.NaN
+    const opened = await openGrid(host, 'zonal.gsf', width, height, values, 1)
+    const target = grid(width, height)
+    const input = rawInput('source', 'source')
+    const result = payload(
+      (
+        await host.handle(
+          rpcRequest('zonal-mask', 'geo.analysis.region_statistics', {
+            layerId: 'zonal-mask',
+            recipe: recipe(target, [input], {
+              kind: 'linear-combination',
+              terms: [{ input: 'source', coefficient: 1 }],
+              constant: 0,
+            }),
+            inputs: [runtimeInput('source', opened, target)],
+            region: { x: 240, y: 0, width: 60, height: 2 },
+            component: 0,
+            mask: {
+              pixelInterpretation: 'pixel-is-area',
+              polygons: [
+                [
+                  [
+                    { x: 250, y: 0 },
+                    { x: 270, y: 0 },
+                    { x: 270, y: 2 },
+                    { x: 250, y: 2 },
+                    { x: 250, y: 0 },
+                  ],
+                  [
+                    { x: 255, y: 0 },
+                    { x: 265, y: 0 },
+                    { x: 265, y: 2 },
+                    { x: 255, y: 2 },
+                    { x: 255, y: 0 },
+                  ],
+                ],
+              ],
+            },
+          }),
+        )
+      ).response,
+      'geo.analysis.region_statistics',
+    )
+    expect(result).toMatchObject({
+      count: 19,
+      invalidCount: 1,
+      excludedByMask: 100,
+      visitedTiles: 2,
+    })
+    await host.dispose()
+  })
+
   it('derives a normalized difference from two bands of one four-band raster', async () => {
     const host = new ImagingWorkerHost()
     const opened = await openFile(host, 'four-band.tif', fourBandGeoTiffFixture())

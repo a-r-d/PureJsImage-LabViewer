@@ -20,6 +20,7 @@ export const geoUiContributions: DomainUiContributions = Object.freeze({
   panels: Object.freeze([
     Object.freeze({ id: 'geo-catalog', title: 'Catalog', surface: 'inspector' as const }),
     Object.freeze({ id: 'geo-layers', title: 'Layers', surface: 'inspector' as const }),
+    Object.freeze({ id: 'geo-vectors', title: 'ROI & Measure', surface: 'inspector' as const }),
     Object.freeze({ id: 'geo-display', title: 'Display', surface: 'inspector' as const }),
     Object.freeze({ id: 'geo-xray', title: 'COG X-ray', surface: 'inspector' as const }),
   ]),

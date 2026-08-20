@@ -89,6 +89,31 @@ export {
 export type { GeoOpenFailure, GeoOpenFailureKind } from './errors.js'
 export { classifyGeoOpenError, classifyStacClientError, displayMappingFromStyle } from './errors.js'
 export type {
+  GeoJsonExportResult,
+  GeoJsonParseIssue,
+  GeoJsonParseIssueCode,
+  GeoJsonParseOptions,
+  GeoJsonParseResult,
+} from './geojson.js'
+export {
+  exportGeoJson,
+  GEOJSON_LIMITS,
+  parseGeoJson,
+  transformGeoMapGeometry,
+} from './geojson.js'
+export type {
+  GeoMeasurementErrorCode,
+  GeoMeasurementMethod,
+  GeoMeasurementResult,
+  GeoMeasurementValue,
+  PlanarLinearUnit,
+} from './measurement.js'
+export {
+  GeoMeasurementError,
+  measureGeoArea,
+  measureGeoDistance,
+} from './measurement.js'
+export type {
   BandMapping,
   CreateDerivedGeoRasterLayerInput,
   CreateGeoMapRoiInput,
@@ -116,6 +141,7 @@ export type {
   GeoRasterSource,
   GeoRecipeReference,
   GeoRoiId,
+  GeoRoiProvenance,
   GeoSourceId,
   GeoWorkflowProvenanceRecord,
   LocalFileFingerprint,

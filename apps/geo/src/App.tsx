@@ -3,6 +3,7 @@ import type {
   CatalogSearchPage,
   CatalogService,
   CatalogSourceCandidate,
+  GeoMapGeometry,
   GeoRasterLayer,
   StacBbox,
 } from '@pji-workbench/domain-geo'
@@ -20,7 +21,11 @@ import {
   registerCrsDefinition,
   serializeAtlasDeepLink,
 } from '@pji-workbench/domain-geo'
-import { GeoWorkbenchController, GeoWorkflowRunner } from '@pji-workbench/geo-workbench'
+import {
+  type GeoViewportPort,
+  GeoWorkbenchController,
+  GeoWorkflowRunner,
+} from '@pji-workbench/geo-workbench'
 import { preflightRasterAsset, type RasterAssetPreflight } from '@pji-workbench/imaging'
 import { Button, EmptyState, ErrorState, Icon, ThemeRoot } from '@pji-workbench/ui'
 import { WorkbenchShell } from '@pji-workbench/workbench-react'
@@ -41,6 +46,7 @@ import { GeoViewport, type GeoViewportPointer } from './GeoViewport.js'
 import { InspectorPanel, type InspectorTab } from './InspectorPanel.js'
 import { createGeoImagingWorkerClient } from './imaging-client.js'
 import { createLocalStacCache } from './stac-storage.js'
+import { type GeoDrawingTool, VectorAnalysisPanel } from './VectorAnalysisPanel.js'
 import { WorkflowBrowser } from './WorkflowBrowser.js'
 
 export function App({ environment }: { readonly environment: PublicEnvironment }) {
@@ -63,10 +69,24 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     })
   }
   const rawCatalogService = rawCatalogServiceRef.current
+  const exportFrameRef = useRef<((includeRoiOverlay: boolean) => void) | undefined>(undefined)
+  const viewportPortRef = useRef<GeoViewportPort | null>(null)
+  if (viewportPortRef.current === null) {
+    viewportPortRef.current = {
+      read: () => {
+        const canvas = document.querySelector<HTMLCanvasElement>('.geo-viewport canvas')
+        return canvas === null
+          ? { mounted: false }
+          : { mounted: true, width: canvas.width, height: canvas.height }
+      },
+      propose: (input) => renderViewportExport(input, exportFrameRef.current),
+    }
+  }
   const controllerRef = useRef<GeoWorkbenchController | null>(null)
   if (controllerRef.current === null) {
     controllerRef.current = new GeoWorkbenchController({
       runtime,
+      viewport: viewportPortRef.current,
       catalogService: rawCatalogService,
       preflightCatalogAsset: async (candidate, signal) => {
         const cached = verifiedPreflightsRef.current.get(new URL(candidate.href).href)
@@ -116,6 +136,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [settled, setSettled] = useState(true)
   const [viewBbox, setViewBbox] = useState<StacBbox | undefined>()
   const [blinkInterval, setBlinkInterval] = useState(750)
+  const [drawingTool, setDrawingTool] = useState<GeoDrawingTool>('pan')
 
   const semanticCatalogService = useMemo(
     () => createSemanticCatalogService(controller, rawCatalogService),
@@ -349,6 +370,21 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     },
     [controller],
   )
+  const onDrawGeometry = useCallback(
+    (geometry: GeoMapGeometry) => {
+      const crs = selectedSource?.spatialReference.crs ?? snapshot.project.crs
+      void controller
+        .executeAction('geo.roi.create', {
+          geometry,
+          crs,
+          tool: drawingTool,
+          name: `${drawingTool[0]?.toUpperCase() ?? ''}${drawingTool.slice(1)} ROI`,
+        })
+        .then(() => setTab('vectors'))
+        .catch(() => undefined)
+    },
+    [controller, drawingTool, selectedSource?.spatialReference.crs, snapshot.project.crs],
+  )
 
   return (
     <ThemeRoot className="workbench-theme" theme="dark">
@@ -527,6 +563,15 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                 onPointer={onPointer}
                 onSettled={setSettled}
                 onViewBbox={onViewBbox}
+                onDrawGeometry={onDrawGeometry}
+                onExportFrame={(render) => {
+                  exportFrameRef.current = render
+                }}
+                drawingTool={drawingTool}
+                rois={snapshot.project.rois}
+                {...(snapshot.selectedRoiId === undefined
+                  ? {}
+                  : { selectedRoiId: snapshot.selectedRoiId })}
                 rasters={viewportRasters}
                 sources={snapshot.project.sources}
                 {...(snapshot.selectedLayerId === undefined
@@ -594,6 +639,16 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                 }
                 runner={workflowRunner}
                 snapshot={workflowSnapshot}
+              />
+            }
+            vectors={
+              <VectorAnalysisPanel
+                disabled={!ready || busy || snapshot.project.sources.length === 0}
+                execute={(id, input, signal) => controller.executeAction(id, input, signal)}
+                onTool={setDrawingTool}
+                project={snapshot.project}
+                selectedRoiId={snapshot.selectedRoiId}
+                tool={drawingTool}
               />
             }
             layers={rasterLayers}
@@ -716,4 +771,103 @@ function errorTitle(code: string): string {
   if (code === 'CRS_INCOMPATIBLE') return 'Raster CRS is incompatible'
   if (code === 'SOURCE_LIMIT') return 'Source limit reached'
   return 'Could not complete this Atlas action'
+}
+
+async function renderViewportExport(
+  input: Parameters<GeoViewportPort['propose']>[0],
+  renderFrame: ((includeRoiOverlay: boolean) => void) | undefined,
+): Promise<Awaited<ReturnType<GeoViewportPort['propose']>>> {
+  if (typeof input !== 'object' || input === null || Array.isArray(input))
+    throw new Error('Rendered export input must be an object.')
+  const record = input as Readonly<Record<string, unknown>>
+  if (record['kind'] !== 'export-rendered-image')
+    throw new Error('This viewport proposal is unsupported.')
+  const source = document.querySelector<HTMLCanvasElement>('.geo-viewport canvas')
+  if (source === null) throw new Error('The viewport is not mounted.')
+  const width = boundedExportInteger(record['width'], 'width', 8_192)
+  const height = boundedExportInteger(record['height'], 'height', 8_192)
+  const maxBytes = boundedExportInteger(record['maxBytes'], 'maxBytes', 32 * 1_024 * 1_024)
+  if (width * height > 16_777_216) throw new Error('Rendered export exceeds 16.8 megapixels.')
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (context === null) throw new Error('A 2D canvas context is required for export.')
+  context.fillStyle = '#050709'
+  context.fillRect(0, 0, width, height)
+  const includeRoiOverlay = record['includeRoiOverlay'] !== false
+  renderFrame?.(includeRoiOverlay)
+  try {
+    context.drawImage(source, 0, 0, width, height)
+  } finally {
+    renderFrame?.(true)
+  }
+  const attribution = boundedStringArray(record['attribution'])
+  const layerTitles = boundedStringArray(record['layerTitles'])
+  const crsNote = typeof record['crsNote'] === 'string' ? record['crsNote'] : 'CRS unavailable'
+  const footer = [
+    layerTitles.length === 0 ? 'Atlas rendered viewport' : layerTitles.join(' · '),
+    `${crsNote}${attribution.length === 0 ? '' : ` · ${attribution.join(' · ')}`}`,
+  ]
+  const fontSize = Math.max(12, Math.min(24, Math.round(width / 96)))
+  const footerHeight = fontSize * 3.2
+  context.fillStyle = '#071018dd'
+  context.fillRect(0, height - footerHeight, width, footerHeight)
+  context.fillStyle = '#f7fbff'
+  context.font = `${fontSize}px system-ui, sans-serif`
+  context.textBaseline = 'top'
+  context.fillText(
+    footer[0] ?? '',
+    fontSize,
+    height - footerHeight + fontSize * 0.45,
+    width - fontSize * 2,
+  )
+  context.fillStyle = '#c7d5df'
+  context.fillText(
+    footer[1] ?? '',
+    fontSize,
+    height - footerHeight + fontSize * 1.7,
+    width - fontSize * 2,
+  )
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (value) => (value === null ? reject(new Error('PNG encoding failed.')) : resolve(value)),
+      'image/png',
+    ),
+  )
+  if (blob.size > maxBytes) throw new Error(`Rendered PNG exceeds the ${maxBytes}-byte limit.`)
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Rendered PNG could not be read.'))
+    reader.onload = () =>
+      typeof reader.result === 'string'
+        ? resolve(reader.result)
+        : reject(new Error('Rendered PNG could not be encoded.'))
+    reader.readAsDataURL(blob)
+  })
+  return {
+    mimeType: 'image/png',
+    width,
+    height,
+    bytes: blob.size,
+    dataUrl,
+    attribution,
+    layerTitles,
+    crsNote,
+    roiOverlayIncluded: includeRoiOverlay,
+  }
+}
+
+function boundedExportInteger(value: unknown, label: string, maximum: number): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > maximum)
+    throw new Error(`Rendered export ${label} is invalid.`)
+  return value
+}
+
+function boundedStringArray(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === 'string' && item.length > 0)
+    .slice(0, 128)
+    .map((item) => item.slice(0, 4_096))
 }

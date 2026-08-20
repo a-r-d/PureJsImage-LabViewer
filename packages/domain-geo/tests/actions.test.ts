@@ -41,6 +41,7 @@ describe('Atlas semantic action catalog', () => {
       'geo.viewport.fit_bounds',
       'geo.viewport.propose',
       'geo.raster.sample_point',
+      'geo.raster.sample_points',
       'geo.raster.describe_bands',
       'geo.raster.describe_statistics',
       'geo.analysis.describe',
@@ -54,9 +55,20 @@ describe('Atlas semantic action catalog', () => {
       'geo.analysis.raster_difference',
       'geo.analysis.region_statistics',
       'geo.analysis.line_profile',
+      'geo.analysis.zonal_statistics',
       'geo.analysis.cancel',
       'geo.analysis.release',
       'geo.derived_layer.remove',
+      'geo.roi.list',
+      'geo.roi.create',
+      'geo.roi.update',
+      'geo.roi.remove',
+      'geo.roi.select',
+      'geo.roi.import_geojson',
+      'geo.roi.export_geojson',
+      'geo.measure.distance',
+      'geo.measure.area',
+      'geo.export.rendered_image',
     ])
     for (const { descriptor } of geoActionDefinitions) {
       expect(descriptor.version).toBe(1)

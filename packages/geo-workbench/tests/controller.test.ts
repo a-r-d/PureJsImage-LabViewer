@@ -19,6 +19,7 @@ class FakeRuntime implements GeoImagingRuntime {
   opens = 0
   readonly closedSources: string[] = []
   readonly closedDatasets: string[] = []
+  lastStatisticsRequest: Parameters<GeoImagingRuntime['requestDerivedStatistics']>[0] | undefined
   failNext = false
   disposed = false
 
@@ -55,7 +56,10 @@ class FakeRuntime implements GeoImagingRuntime {
           { id: 'x', kind: 'space', length: 16, coordinates: { type: 'index' } },
           { id: 'y', kind: 'space', length: 8, coordinates: { type: 'index' } },
         ],
-        components: [{ id: 'gray', name: 'Gray', kind: 'intensity', unit: 'reflectance' }],
+        components: [
+          { id: 'gray', name: 'Gray', kind: 'intensity', unit: 'reflectance' },
+          { id: 'nir', name: 'NIR', kind: 'intensity', unit: 'reflectance' },
+        ],
         levels: [],
         capabilities: {
           regionReads: true,
@@ -130,11 +134,16 @@ class FakeRuntime implements GeoImagingRuntime {
     }
   }
 
-  async requestDerivedStatistics() {
+  async requestDerivedStatistics(
+    request: Parameters<GeoImagingRuntime['requestDerivedStatistics']>[0],
+  ) {
+    this.lastStatisticsRequest = request
     return {
       cacheKey: 'derived:statistics',
       count: 1,
       invalidCount: 0,
+      excludedByMask: 2,
+      visitedTiles: 1,
       minimum: 0.5,
       maximum: 0.5,
       mean: 0.5,
@@ -148,6 +157,22 @@ class FakeRuntime implements GeoImagingRuntime {
       distances: Float64Array.of(0, 1),
       values: Float64Array.of(0.25, 0.5),
       valid: Uint8Array.of(1, 1),
+    }
+  }
+
+  async sampleRasterPoint(request: Parameters<GeoImagingRuntime['sampleRasterPoint']>[0]) {
+    return {
+      sourceIdentity: request.sourceIdentity,
+      datasetHandleId: request.datasetHandleId,
+      layerId: request.layerId,
+      pixel: request.pixel,
+      sourceMapCoordinate: request.projectMapCoordinate,
+      projectMapCoordinate: request.projectMapCoordinate,
+      nodata: false,
+      components: [
+        { index: 0, name: 'Gray', unit: 'reflectance', value: 12, nodata: false },
+        { index: 1, name: 'NIR', unit: 'reflectance', value: 24, nodata: false },
+      ],
     }
   }
 
@@ -497,7 +522,7 @@ describe('GeoWorkbenchController', () => {
     })
     expect(workbench.actionAvailability('geo.raster.sample_point')).toEqual({
       available: false,
-      reason: 'Point sampling requires the mounted viewport tile cache.',
+      reason: 'Open a source first.',
     })
     expect(workbench.actionAvailability('geo.raster.describe_statistics')).toEqual({
       available: false,
@@ -509,6 +534,154 @@ describe('GeoWorkbenchController', () => {
     expect(runtime.closedSources).toHaveLength(2)
     expect(runtime.closedDatasets).toHaveLength(2)
     expect(runtime.disposed).toBe(true)
+  })
+
+  it('draws, measures, samples, analyzes, and exports a polygon through semantic actions', async () => {
+    const { runtime, controller: workbench } = controller()
+    await workbench.executeAction('geo.source.open_remote', { url: 'https://example.com/a.tif' })
+    const layerId = workbench.getSnapshot().selectedLayerId
+    const created = (await workbench.executeAction('geo.roi.create', {
+      name: 'Analysis polygon',
+      tool: 'polygon',
+      geometry: {
+        kind: 'polygon',
+        rings: [
+          [
+            { x: 0, y: 0 },
+            { x: 8, y: 0 },
+            { x: 8, y: 8 },
+            { x: 0, y: 8 },
+            { x: 0, y: 0 },
+          ],
+          [
+            { x: 2, y: 2 },
+            { x: 4, y: 2 },
+            { x: 4, y: 4 },
+            { x: 2, y: 4 },
+            { x: 2, y: 2 },
+          ],
+        ],
+      },
+      crs: CRS_EPSG_4326,
+      properties: { class: 'test' },
+    })) as { readonly id: string }
+    expect(workbench.getSnapshot()).toMatchObject({ selectedRoiId: created.id })
+
+    const measurement = await workbench.executeAction('geo.measure.area', { roiId: created.id })
+    expect(measurement).toMatchObject({
+      mode: 'geodesic',
+      method: 'wgs84-authalic-sphere-area',
+      ellipsoid: 'WGS84',
+    })
+
+    const samples = await workbench.executeAction('geo.raster.sample_points', {
+      layerId,
+      points: [{ x: 1, y: 7 }],
+      crs: CRS_EPSG_4326,
+      valuePolicy: 'raw',
+    })
+    expect(samples).toMatchObject({
+      validSampleCount: 1,
+      nodataCount: 0,
+      samples: [
+        {
+          components: [
+            { index: 0, value: 12 },
+            { index: 1, value: 24 },
+          ],
+        },
+      ],
+    })
+
+    const plan = await workbench.executeAction('geo.analysis.zonal_statistics', {
+      layerId,
+      roiId: created.id,
+      dryRun: true,
+      valuePolicy: 'raw',
+    })
+    expect(plan).toMatchObject({
+      valid: true,
+      estimatedTiles: 2,
+      gridTiles: 1,
+      bandCount: 2,
+      valuePolicy: 'raw',
+    })
+    const statistics = await workbench.executeAction('geo.analysis.zonal_statistics', {
+      layerId,
+      roiId: created.id,
+      valuePolicy: 'raw',
+    })
+    expect(statistics).toMatchObject({
+      roiId: created.id,
+      bands: [
+        { component: 0, count: 1 },
+        { component: 1, count: 1 },
+      ],
+      validSampleCount: 2,
+      nodataCount: 0,
+      provenance: { originalGeometryPreserved: true, transform: { id: 'identity' } },
+    })
+    expect(runtime.lastStatisticsRequest?.mask?.polygons[0]).toHaveLength(2)
+
+    const exported = await workbench.executeAction('geo.roi.export_geojson', {
+      roiIds: [created.id],
+    })
+    expect(exported).toMatchObject({ format: 'RFC7946-GeoJSON', compliant: true })
+    expect(String((exported as { text: string }).text)).toContain('atlas:provenance')
+  })
+
+  it('requires explicit legacy CRS confirmation and refuses unsupported raster transforms', async () => {
+    const { controller: workbench } = controller()
+    const legacy = JSON.stringify({
+      type: 'Feature',
+      crs: { type: 'name', properties: { name: 'EPSG:3857' } },
+      geometry: { type: 'Point', coordinates: [0, 0] },
+      properties: {},
+    })
+    const warning = await workbench.executeAction('geo.roi.import_geojson', { document: legacy })
+    expect(warning).toMatchObject({ requiresConfirmation: true, rois: [] })
+    const imported = await workbench.executeAction('geo.roi.import_geojson', {
+      document: legacy,
+      legacyCrsConfirmed: true,
+      legacyCrs: CRS_EPSG_4326,
+    })
+    expect(imported).toMatchObject({
+      requiresConfirmation: false,
+      rois: [{ provenance: { interpretationConfirmed: true } }],
+    })
+
+    await workbench.executeAction('geo.source.open_remote', { url: 'https://example.com/a.tif' })
+    const roi = (await workbench.executeAction('geo.roi.create', {
+      geometry: { kind: 'point', x: 1, y: 1 },
+      crs: { kind: 'projected', authority: 'EPSG', code: 9999 },
+    })) as { id: string }
+    await expect(
+      workbench.executeAction('geo.raster.sample_points', {
+        roiId: roi.id,
+        points: [{ x: 1, y: 1 }],
+        crs: { kind: 'projected', authority: 'EPSG', code: 9999 },
+      }),
+    ).rejects.toThrow(/No transform is available/u)
+  })
+
+  it('honors cancellation before zonal work starts', async () => {
+    const { controller: workbench } = controller()
+    await workbench.executeAction('geo.source.open_remote', { url: 'https://example.com/a.tif' })
+    const roi = (await workbench.executeAction('geo.roi.create', {
+      geometry: {
+        kind: 'rectangle',
+        minX: 0,
+        minY: 0,
+        maxX: 8,
+        maxY: 8,
+      },
+      crs: CRS_EPSG_4326,
+    })) as { id: string }
+    const abort = new AbortController()
+    abort.abort()
+    await expect(
+      workbench.executeAction('geo.analysis.zonal_statistics', { roiId: roi.id }, abort.signal),
+    ).rejects.toMatchObject({ code: 'ABORTED' })
   })
 
   it('recovers from the source limit after a source is closed', async () => {

@@ -250,6 +250,70 @@ body,
   display: grid;
   gap: 8px;
 }
+
+.geo-vector-panel section + section {
+  border-top: 1px solid var(--border-subtle, #26343f);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.geo-roi-list {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.geo-roi-list li {
+  align-items: center;
+  border: 1px solid #26343f;
+  border-radius: 0.4rem;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0.45rem;
+}
+
+.geo-roi-list li.is-selected {
+  border-color: #ffd166;
+}
+
+.geo-roi-list li > button:first-child {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  text-align: left;
+}
+
+.geo-roi-list small,
+.geo-help {
+  color: #aebdca;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.geo-compatibility-warning {
+  background: #3a2c10;
+  border: 1px solid #c79224;
+  border-radius: 0.4rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+}
+
+.geo-result {
+  background: #071018;
+  border: 1px solid #26343f;
+  border-radius: 0.4rem;
+  font-size: 0.75rem;
+  max-height: 16rem;
+  overflow: auto;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+}
 .geo-layer-row {
   display: grid;
   gap: 6px;

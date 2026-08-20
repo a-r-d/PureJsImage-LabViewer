@@ -14,12 +14,10 @@ import type {
   Region,
 } from '@pji-workbench/contracts'
 import {
-  computeRasterRegionStatistics,
   createLinearCombinationPlan,
   createNormalizedDifferencePlan,
   createRasterBandMathPlan,
   createRasterLineProfilePlan,
-  createRasterRegionStatisticsPlan,
   createRasterSubtractionPlan,
   createRasterTargetGridPlan,
   createRasterTerrainPlan,
@@ -244,33 +242,148 @@ export async function computeDerivedRasterStatistics(
   signal: AbortSignal,
   transforms: DerivedRasterTransformProvider | undefined,
 ): Promise<DerivedRasterStatisticsResponse> {
-  const tile = await evaluateDerivedRasterTile(
-    request,
-    inputs,
-    request.region,
-    'background',
-    signal,
-    transforms,
-  )
-  try {
-    const result = computeRasterRegionStatistics(
-      createRasterRegionStatisticsPlan({
-        component: request.component,
-        noData: noData(request.recipe.outputNoData),
-        ...(request.histogram === undefined ? {} : { histogram: request.histogram }),
-        limits: operationLimits(request.recipe),
-      }),
-      tile,
-      request.region,
-      { signal, limits: operationLimits(request.recipe) },
+  const regions = tiledRegions(request.region, 256)
+  const histogram = request.histogram
+  const counts = histogram === undefined ? undefined : new Uint32Array(histogram.bins)
+  let count = 0
+  let invalidCount = 0
+  let excludedByMask = 0
+  let minimum = Number.POSITIVE_INFINITY
+  let maximum = Number.NEGATIVE_INFINITY
+  let mean = 0
+  let squaredDifferences = 0
+  let underflow = 0
+  let overflow = 0
+  for (const region of regions) {
+    signal.throwIfAborted()
+    const tile = await evaluateDerivedRasterTile(
+      request,
+      inputs,
+      region,
+      'background',
+      signal,
+      transforms,
     )
-    return {
-      cacheKey: derivedRasterCacheKey(request),
-      ...result,
+    try {
+      if (request.component < 0 || request.component >= tile.componentCount)
+        throw new Error('Statistics component is outside the derived raster.')
+      for (let row = 0; row < region.height; row += 1) {
+        signal.throwIfAborted()
+        for (let column = 0; column < region.width; column += 1) {
+          const gridX = region.x + column
+          const gridY = region.y + row
+          if (request.mask !== undefined && !maskContains(request.mask, gridX, gridY)) {
+            excludedByMask += 1
+            continue
+          }
+          const value = tileNumber(tile, column, row, request.component)
+          if (isOutputNoData(value, request.recipe.outputNoData)) {
+            invalidCount += 1
+            continue
+          }
+          count += 1
+          minimum = Math.min(minimum, value)
+          maximum = Math.max(maximum, value)
+          const delta = value - mean
+          mean += delta / count
+          squaredDifferences += delta * (value - mean)
+          if (histogram !== undefined && counts !== undefined) {
+            if (value < histogram.minimum) underflow += 1
+            else if (value > histogram.maximum) overflow += 1
+            else {
+              const normalized =
+                ((value - histogram.minimum) / (histogram.maximum - histogram.minimum)) *
+                histogram.bins
+              const bin = Math.min(histogram.bins - 1, Math.max(0, Math.floor(normalized)))
+              counts[bin] = (counts[bin] ?? 0) + 1
+            }
+          }
+        }
+      }
+    } finally {
+      tile.release()
     }
-  } finally {
-    tile.release()
   }
+  return {
+    cacheKey: derivedRasterCacheKey(request),
+    count,
+    invalidCount,
+    excludedByMask,
+    visitedTiles: regions.length,
+    minimum: count === 0 ? null : minimum,
+    maximum: count === 0 ? null : maximum,
+    mean: count === 0 ? null : mean,
+    variance: count === 0 ? null : squaredDifferences / count,
+    ...(histogram === undefined || counts === undefined
+      ? {}
+      : {
+          histogram: {
+            minimum: histogram.minimum,
+            maximum: histogram.maximum,
+            counts,
+            underflow,
+            overflow,
+          },
+        }),
+  }
+}
+
+function tiledRegions(region: Region, tileSize: number): readonly Region[] {
+  const result: Region[] = []
+  const maximumX = region.x + region.width
+  const maximumY = region.y + region.height
+  const firstTileX = Math.floor(region.x / tileSize) * tileSize
+  const firstTileY = Math.floor(region.y / tileSize) * tileSize
+  for (let tileY = firstTileY; tileY < maximumY; tileY += tileSize) {
+    for (let tileX = firstTileX; tileX < maximumX; tileX += tileSize) {
+      const x = Math.max(region.x, tileX)
+      const y = Math.max(region.y, tileY)
+      result.push({
+        x,
+        y,
+        width: Math.min(maximumX, tileX + tileSize) - x,
+        height: Math.min(maximumY, tileY + tileSize) - y,
+      })
+    }
+  }
+  return result
+}
+
+function maskContains(
+  mask: NonNullable<DerivedRasterStatisticsRequest['mask']>,
+  column: number,
+  row: number,
+): boolean {
+  const offset = mask.pixelInterpretation === 'pixel-is-area' ? 0.5 : 0
+  const point = { x: column + offset, y: row + offset }
+  return mask.polygons.some((polygon) => {
+    const exterior = polygon[0]
+    if (exterior === undefined || !ringContains(exterior, point)) return false
+    return !polygon.slice(1).some((hole) => ringContains(hole, point))
+  })
+}
+
+function ringContains(
+  ring: readonly Readonly<{ x: number; y: number }>[],
+  point: Readonly<{ x: number; y: number }>,
+): boolean {
+  let inside = false
+  for (let current = 0, previous = ring.length - 1; current < ring.length; previous = current++) {
+    const left = ring[current]
+    const right = ring[previous]
+    if (left === undefined || right === undefined) continue
+    const crosses =
+      left.y > point.y !== right.y > point.y &&
+      point.x < ((right.x - left.x) * (point.y - left.y)) / (right.y - left.y) + left.x
+    if (crosses) inside = !inside
+  }
+  return inside
+}
+
+function isOutputNoData(value: number, policy: DerivedRasterRecipeV1['outputNoData']): boolean {
+  if (!Number.isFinite(value)) return true
+  if (policy.kind === 'nan') return Number.isNaN(value)
+  return policy.kind === 'value' && Object.is(value, policy.value)
 }
 
 export async function sampleDerivedRasterLine(

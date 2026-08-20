@@ -1620,11 +1620,15 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
     if (kind === 'geo.analysis.region_statistics') {
       assertDerivedRegion(payload)
       assertInteger(payload['component'], 'derived statistics component')
+      const mask = payload['mask']
+      if (mask !== undefined) assertDerivedPolygonMask(mask)
       const histogram = payload['histogram']
       if (histogram !== undefined) {
         if (!isRecord(histogram))
           throw new RpcValidationError('INVALID_PAYLOAD', 'derived histogram is invalid')
         assertInteger(histogram['bins'], 'derived histogram bins', 1)
+        if (Number(histogram['bins']) > 4_096)
+          throw new RpcValidationError('LIMIT_EXCEEDED', 'derived histogram exceeds 4096 bins')
         assertFinite(histogram['minimum'], 'derived histogram minimum')
         assertFinite(histogram['maximum'], 'derived histogram maximum')
         if (Number(histogram['maximum']) <= Number(histogram['minimum']))
@@ -1643,6 +1647,8 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
         assertFinite(point['y'], `derived ${name} y`)
       }
       assertInteger(payload['sampleCount'], 'derived line sampleCount', 1)
+      if (Number(payload['sampleCount']) > 100_000)
+        throw new RpcValidationError('LIMIT_EXCEEDED', 'derived line sampleCount exceeds 100000')
       assertInteger(payload['component'], 'derived line component')
       if (payload['resampling'] !== 'nearest' && payload['resampling'] !== 'bilinear')
         throw new RpcValidationError('INVALID_PAYLOAD', 'derived line resampling is invalid')
@@ -1716,6 +1722,47 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
     if (kind === 'request.cancel') assertString(payload.targetRequestId, 'targetRequestId')
   }
   return value as unknown as WorkerRequest
+}
+
+function assertDerivedPolygonMask(value: unknown): void {
+  if (!isRecord(value))
+    throw new RpcValidationError('INVALID_PAYLOAD', 'derived polygon mask must be an object')
+  if (
+    value['pixelInterpretation'] !== 'pixel-is-area' &&
+    value['pixelInterpretation'] !== 'pixel-is-point'
+  )
+    throw new RpcValidationError(
+      'INVALID_PAYLOAD',
+      'derived polygon mask pixel interpretation is invalid',
+    )
+  const polygons = value['polygons']
+  if (!Array.isArray(polygons) || polygons.length === 0 || polygons.length > RPC_LIMITS.maxItems)
+    throw new RpcValidationError('LIMIT_EXCEEDED', 'derived polygon mask polygon count is invalid')
+  let coordinateCount = 0
+  for (const polygon of polygons) {
+    if (!Array.isArray(polygon) || polygon.length === 0 || polygon.length > RPC_LIMITS.maxItems)
+      throw new RpcValidationError('INVALID_PAYLOAD', 'derived polygon mask requires bounded rings')
+    for (const ring of polygon) {
+      if (!Array.isArray(ring) || ring.length < 4)
+        throw new RpcValidationError('INVALID_PAYLOAD', 'derived polygon mask ring is invalid')
+      coordinateCount += ring.length
+      if (coordinateCount > 100_000)
+        throw new RpcValidationError(
+          'LIMIT_EXCEEDED',
+          'derived polygon mask has too many coordinates',
+        )
+      for (const point of ring) {
+        if (!isRecord(point))
+          throw new RpcValidationError('INVALID_PAYLOAD', 'derived polygon mask point is invalid')
+        assertFinite(point['x'], 'derived polygon mask x')
+        assertFinite(point['y'], 'derived polygon mask y')
+      }
+      const first = ring[0] as Readonly<Record<string, unknown>> | undefined
+      const last = ring.at(-1) as Readonly<Record<string, unknown>> | undefined
+      if (first?.['x'] !== last?.['x'] || first?.['y'] !== last?.['y'])
+        throw new RpcValidationError('INVALID_PAYLOAD', 'derived polygon mask ring must be closed')
+    }
+  }
 }
 
 export function isRpcEnvelope(value: unknown): value is WorkerRequest {

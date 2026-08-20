@@ -15,6 +15,7 @@ export const GEO_PROJECT_LIMITS = Object.freeze({
   maxLayers: 128,
   maxRois: 256,
   maxRoiPoints: 4_096,
+  maxRoiPropertyBytes: 32 * 1_024,
   maxProvenance: 128,
   maxWorkflowRuns: 128,
   maxInputLayers: 16,
@@ -240,9 +241,26 @@ export type GeoComparisonState =
 
 export type GeoMapGeometry =
   | Readonly<{ kind: 'point'; x: number; y: number }>
+  | Readonly<{ kind: 'multi-point'; points: readonly GeoMapPoint[] }>
   | Readonly<{ kind: 'rectangle'; minX: number; minY: number; maxX: number; maxY: number }>
   | Readonly<{ kind: 'line'; points: readonly GeoMapPoint[] }>
+  | Readonly<{ kind: 'multi-line'; lines: readonly (readonly GeoMapPoint[])[] }>
   | Readonly<{ kind: 'polygon'; rings: readonly (readonly GeoMapPoint[])[] }>
+  | Readonly<{
+      kind: 'multi-polygon'
+      polygons: readonly (readonly (readonly GeoMapPoint[])[])[]
+    }>
+
+export type GeoRoiProvenance =
+  | Readonly<{ kind: 'drawn'; tool: 'point' | 'line' | 'rectangle' | 'polygon' }>
+  | Readonly<{
+      kind: 'imported'
+      format: 'RFC7946-GeoJSON' | 'legacy-crs-GeoJSON' | 'native-crs-GeoJSON'
+      sourceName?: string
+      legacyCrs?: string
+      interpretationConfirmed?: boolean
+    }>
+  | Readonly<{ kind: 'action'; actionId: string; note?: string }>
 
 export interface GeoMapRoi {
   readonly id: GeoRoiId
@@ -250,6 +268,9 @@ export interface GeoMapRoi {
   readonly coordinateSpace: 'map'
   readonly crs: CrsReference
   readonly geometry: GeoMapGeometry
+  readonly provenance: GeoRoiProvenance
+  readonly createdAt: string
+  readonly properties?: Readonly<Record<string, JsonValue>>
 }
 
 export interface GeoProject {
@@ -317,6 +338,9 @@ export interface CreateGeoMapRoiInput {
   readonly name?: string
   readonly crs: CrsReference
   readonly geometry: GeoMapGeometry
+  readonly provenance?: GeoRoiProvenance
+  readonly createdAt?: string
+  readonly properties?: Readonly<Record<string, JsonValue>>
 }
 
 export interface CreateGeoProjectInput {
@@ -404,12 +428,17 @@ export function createDerivedGeoRasterLayer(
 }
 
 export function createGeoMapRoi(input: CreateGeoMapRoiInput): GeoMapRoi {
+  const properties =
+    input.properties === undefined ? undefined : normalizeRoiProperties(input.properties)
   return {
     id: boundedId(input.id, 'ROI id') as GeoRoiId,
     ...(input.name === undefined ? {} : { name: boundedString(input.name, 'ROI name') }),
     coordinateSpace: 'map',
     crs: input.crs,
     geometry: normalizeGeometry(input.geometry),
+    provenance: normalizeRoiProvenance(input.provenance ?? { kind: 'action', actionId: 'legacy' }),
+    createdAt: normalizedDate(input.createdAt ?? new Date().toISOString(), 'ROI createdAt'),
+    ...(properties === undefined ? {} : { properties }),
   }
 }
 
@@ -428,7 +457,17 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
     }),
   )
   const layers = input.layers ?? []
-  const rois = input.rois ?? []
+  const rois = (input.rois ?? []).map((roi) =>
+    createGeoMapRoi({
+      id: roi.id,
+      ...(roi.name === undefined ? {} : { name: roi.name }),
+      crs: roi.crs,
+      geometry: roi.geometry,
+      provenance: roi.provenance ?? { kind: 'action', actionId: 'legacy-project' },
+      createdAt: roi.createdAt ?? '1970-01-01T00:00:00.000Z',
+      ...(roi.properties === undefined ? {} : { properties: roi.properties }),
+    }),
+  )
   const provenance = input.provenance ?? []
   const workflowRuns = input.workflowRuns ?? []
   if (sources.length > GEO_PROJECT_LIMITS.maxSources) {
@@ -1048,6 +1087,9 @@ function normalizeProvenance(value: GeoProvenanceReference): GeoProvenanceRefere
 }
 
 function normalizeGeometry(geometry: GeoMapGeometry): GeoMapGeometry {
+  if (geometryCoordinateCount(geometry) > GEO_PROJECT_LIMITS.maxRoiPoints) {
+    throw new GeoValidationError('LIMIT_EXCEEDED', 'ROI geometry exceeds the total point limit')
+  }
   switch (geometry.kind) {
     case 'point':
       return {
@@ -1055,6 +1097,8 @@ function normalizeGeometry(geometry: GeoMapGeometry): GeoMapGeometry {
         x: finiteNumber(geometry.x, 'ROI x'),
         y: finiteNumber(geometry.y, 'ROI y'),
       }
+    case 'multi-point':
+      return { kind: 'multi-point', points: mapPoints(geometry.points, 'multipoint') }
     case 'rectangle': {
       const minX = finiteNumber(geometry.minX, 'ROI minX')
       const minY = finiteNumber(geometry.minY, 'ROI minY')
@@ -1066,14 +1110,40 @@ function normalizeGeometry(geometry: GeoMapGeometry): GeoMapGeometry {
       return { kind: 'rectangle', minX, minY, maxX, maxY }
     }
     case 'line':
-      return { kind: 'line', points: mapPoints(geometry.points, 'line') }
+      return { kind: 'line', points: mapPoints(geometry.points, 'line', 2) }
+    case 'multi-line':
+      if (geometry.lines.length === 0) {
+        throw new GeoValidationError('INVALID_PROJECT', 'A multi-line ROI requires a line')
+      }
+      return {
+        kind: 'multi-line',
+        lines: geometry.lines.map((line, index) => mapPoints(line, `multi-line ${index}`, 2)),
+      }
     case 'polygon':
       if (geometry.rings.length === 0) {
         throw new GeoValidationError('INVALID_PROJECT', 'A polygon ROI requires a ring')
       }
       return {
         kind: 'polygon',
-        rings: geometry.rings.map((ring, index) => mapPoints(ring, `polygon ring ${index}`)),
+        rings: geometry.rings.map((ring, index) => closedRing(ring, `polygon ring ${index}`)),
+      }
+    case 'multi-polygon':
+      if (geometry.polygons.length === 0) {
+        throw new GeoValidationError('INVALID_PROJECT', 'A multi-polygon ROI requires a polygon')
+      }
+      return {
+        kind: 'multi-polygon',
+        polygons: geometry.polygons.map((polygon, polygonIndex) => {
+          if (polygon.length === 0) {
+            throw new GeoValidationError(
+              'INVALID_PROJECT',
+              `Multi-polygon ${polygonIndex} requires a ring`,
+            )
+          }
+          return polygon.map((ring, ringIndex) =>
+            closedRing(ring, `multi-polygon ${polygonIndex} ring ${ringIndex}`),
+          )
+        }),
       }
     default: {
       const unexpected: never = geometry
@@ -1085,9 +1155,37 @@ function normalizeGeometry(geometry: GeoMapGeometry): GeoMapGeometry {
   }
 }
 
-function mapPoints(points: readonly GeoMapPoint[], label: string): readonly GeoMapPoint[] {
-  if (points.length === 0) {
-    throw new GeoValidationError('INVALID_PROJECT', `${label} requires at least one point`)
+function geometryCoordinateCount(geometry: GeoMapGeometry): number {
+  switch (geometry.kind) {
+    case 'point':
+      return 1
+    case 'multi-point':
+    case 'line':
+      return geometry.points.length
+    case 'rectangle':
+      return 5
+    case 'multi-line':
+      return geometry.lines.reduce((sum, line) => sum + line.length, 0)
+    case 'polygon':
+      return geometry.rings.reduce((sum, ring) => sum + ring.length, 0)
+    case 'multi-polygon':
+      return geometry.polygons.reduce(
+        (sum, polygon) => sum + polygon.reduce((polygonSum, ring) => polygonSum + ring.length, 0),
+        0,
+      )
+  }
+}
+
+function mapPoints(
+  points: readonly GeoMapPoint[],
+  label: string,
+  minimum = 1,
+): readonly GeoMapPoint[] {
+  if (points.length < minimum) {
+    throw new GeoValidationError(
+      'INVALID_PROJECT',
+      `${label} requires at least ${minimum} point${minimum === 1 ? '' : 's'}`,
+    )
   }
   if (points.length > GEO_PROJECT_LIMITS.maxRoiPoints) {
     throw new GeoValidationError('LIMIT_EXCEEDED', `${label} exceeds the point limit`)
@@ -1096,6 +1194,81 @@ function mapPoints(points: readonly GeoMapPoint[], label: string): readonly GeoM
     x: finiteNumber(point.x, `${label}[${index}].x`),
     y: finiteNumber(point.y, `${label}[${index}].y`),
   }))
+}
+
+function closedRing(points: readonly GeoMapPoint[], label: string): readonly GeoMapPoint[] {
+  const ring = mapPoints(points, label, 4)
+  const first = ring[0]
+  const last = ring.at(-1)
+  if (first === undefined || last === undefined || first.x !== last.x || first.y !== last.y) {
+    throw new GeoValidationError('INVALID_PROJECT', `${label} must be closed`)
+  }
+  return ring
+}
+
+function normalizeRoiProvenance(value: GeoRoiProvenance): GeoRoiProvenance {
+  switch (value.kind) {
+    case 'drawn':
+      return { kind: 'drawn', tool: value.tool }
+    case 'imported':
+      return {
+        kind: 'imported',
+        format: value.format,
+        ...(value.sourceName === undefined
+          ? {}
+          : { sourceName: boundedString(value.sourceName, 'ROI import source') }),
+        ...(value.legacyCrs === undefined
+          ? {}
+          : { legacyCrs: boundedString(value.legacyCrs, 'ROI legacy CRS') }),
+        ...(value.interpretationConfirmed === undefined
+          ? {}
+          : { interpretationConfirmed: value.interpretationConfirmed }),
+      }
+    case 'action':
+      return {
+        kind: 'action',
+        actionId: boundedString(value.actionId, 'ROI provenance action'),
+        ...(value.note === undefined
+          ? {}
+          : { note: boundedString(value.note, 'ROI provenance note') }),
+      }
+  }
+}
+
+function normalizeRoiProperties(
+  value: Readonly<Record<string, JsonValue>>,
+): Readonly<Record<string, JsonValue>> {
+  const serialized = JSON.stringify(value)
+  if (new TextEncoder().encode(serialized).byteLength > GEO_PROJECT_LIMITS.maxRoiPropertyBytes) {
+    throw new GeoValidationError('LIMIT_EXCEEDED', 'ROI properties exceed the byte limit')
+  }
+  const parsed = JSON.parse(serialized) as Readonly<Record<string, JsonValue>>
+  rejectUnsafeJsonKeys(parsed, 'ROI properties')
+  return parsed
+}
+
+function rejectUnsafeJsonKeys(value: JsonValue, label: string): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      rejectUnsafeJsonKeys(item, `${label}[${index}]`)
+    })
+    return
+  }
+  if (value === null || typeof value !== 'object') return
+  for (const [key, item] of Object.entries(value)) {
+    if (key === '__proto__' || key === 'prototype' || key === 'constructor') {
+      throw new GeoValidationError('INVALID_PROJECT', `${label} contains forbidden key ${key}`)
+    }
+    rejectUnsafeJsonKeys(item, `${label}.${key}`)
+  }
+}
+
+function normalizedDate(value: string, label: string): string {
+  const normalized = boundedString(value, label)
+  if (!Number.isFinite(Date.parse(normalized))) {
+    throw new GeoValidationError('INVALID_PROJECT', `${label} must be an ISO date`)
+  }
+  return normalized
 }
 
 function blendMode(value: GeoBlendMode): GeoBlendMode {

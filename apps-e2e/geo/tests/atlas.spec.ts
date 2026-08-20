@@ -80,6 +80,34 @@ test('supports keyboard navigation, swipe adjustment, and blink timing', async (
   await expect(page.locator('[data-atlas-settled="true"]')).toBeVisible({ timeout: 45_000 })
 })
 
+test('draws a map ROI, plans tiled statistics, runs them, and exports WGS84 GeoJSON', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  await openRemoteFixture(page)
+  await page.getByRole('tab', { name: 'ROI & Measure' }).click()
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click()
+  const viewport = page.getByRole('img', { name: /Geo raster viewport/u })
+  const bounds = await viewport.boundingBox()
+  if (bounds === null) throw new Error('Expected viewport bounds')
+  await page.mouse.move(bounds.x + bounds.width * 0.35, bounds.y + bounds.height * 0.35)
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.65)
+  await page.mouse.up()
+  await expect(page.getByText('Rectangle ROI')).toBeVisible()
+  await expect(viewport).toHaveAttribute('data-drawing-tool', 'rectangle')
+
+  await page.getByRole('button', { name: 'Plan zonal statistics' }).click()
+  await expect(page.getByTestId('zonal-plan')).toContainText('estimatedTiles')
+  await page.getByRole('button', { name: 'Run planned statistics' }).click()
+  await expect(page.getByTestId('vector-result')).toContainText('validSampleCount')
+  await expect(page.getByTestId('vector-result')).toContainText('originalGeometryPreserved')
+
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export WGS84 GeoJSON' }).click()
+  expect((await download).suggestedFilename()).toBe('atlas-rois.geojson')
+})
+
 test('@visual atlas inspector and rendered raster', async ({ browserName, page }) => {
   test.skip(browserName !== 'chromium', 'Chromium owns the deterministic visual baselines.')
   test.setTimeout(60_000)

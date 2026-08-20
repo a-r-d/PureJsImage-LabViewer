@@ -29,6 +29,7 @@ describe('geo domain profile', () => {
     expect(geoUiContributions.panels.map(({ id }) => id)).toEqual([
       'geo-catalog',
       'geo-layers',
+      'geo-vectors',
       'geo-display',
       'geo-xray',
     ])

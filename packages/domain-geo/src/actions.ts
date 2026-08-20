@@ -42,6 +42,7 @@ export type GeoActionId =
   | 'geo.viewport.fit_bounds'
   | 'geo.viewport.propose'
   | 'geo.raster.sample_point'
+  | 'geo.raster.sample_points'
   | 'geo.raster.describe_bands'
   | 'geo.raster.describe_statistics'
   | 'geo.analysis.describe'
@@ -55,9 +56,20 @@ export type GeoActionId =
   | 'geo.analysis.raster_difference'
   | 'geo.analysis.region_statistics'
   | 'geo.analysis.line_profile'
+  | 'geo.analysis.zonal_statistics'
   | 'geo.analysis.cancel'
   | 'geo.analysis.release'
   | 'geo.derived_layer.remove'
+  | 'geo.roi.create'
+  | 'geo.roi.update'
+  | 'geo.roi.remove'
+  | 'geo.roi.select'
+  | 'geo.roi.list'
+  | 'geo.roi.import_geojson'
+  | 'geo.roi.export_geojson'
+  | 'geo.measure.distance'
+  | 'geo.measure.area'
+  | 'geo.export.rendered_image'
   | 'geo.workflow.record'
 
 export interface GeoActionContext {
@@ -68,6 +80,7 @@ export interface GeoActionContext {
   readonly hasLocalResources: boolean
   readonly comparisonEnabled: boolean
   readonly viewportAvailable: boolean
+  readonly hasRoi: boolean
 }
 
 const EMPTY = { type: 'object', additionalProperties: false } as const
@@ -135,10 +148,10 @@ const requiresViewport = (context: GeoActionContext) =>
   context.viewportAvailable
     ? requiresSource(context)
     : { available: false, reason: 'The viewport is not mounted.' }
-const requiresRasterSampling = () => ({
-  available: false,
-  reason: 'Point sampling requires the mounted viewport tile cache.',
-})
+const requiresRoi = (context: GeoActionContext) =>
+  context.hasRoi
+    ? { available: true }
+    : { available: false, reason: 'Create or import an ROI first.' }
 const requiresRasterStatistics = () => ({
   available: false,
   reason: 'Statistics are not implemented for Atlas yet.',
@@ -358,7 +371,16 @@ export const geoActionDefinitions: readonly ActionDefinition<GeoActionContext>[]
       input: OBJECT,
       cost: 'interactive',
     }),
-    availability: requiresRasterSampling,
+    availability: requiresSource,
+  },
+  {
+    descriptor: descriptor('geo.raster.sample_points', 'Sample raster points', 'raster', {
+      input: OBJECT,
+      cost: 'interactive',
+      permissions: ['source.read-pixels'],
+      cancellable: true,
+    }),
+    availability: requiresSource,
   },
   {
     descriptor: descriptor('geo.raster.describe_bands', 'Describe raster bands', 'raster', {
@@ -426,6 +448,15 @@ export const geoActionDefinitions: readonly ActionDefinition<GeoActionContext>[]
     }),
     availability: requiresSource,
   },
+  {
+    descriptor: descriptor('geo.analysis.zonal_statistics', 'Analyze raster ROI', 'analysis', {
+      input: OBJECT,
+      cost: 'expensive',
+      permissions: ['source.read-pixels'],
+      cancellable: true,
+    }),
+    availability: (context) => (context.hasSource ? requiresRoi(context) : requiresSource(context)),
+  },
   ...(['cancel', 'release'] as const).map((name) => ({
     descriptor: descriptor(
       `geo.analysis.${name}`,
@@ -448,5 +479,67 @@ export const geoActionDefinitions: readonly ActionDefinition<GeoActionContext>[]
       permissions: ['workspace.propose'],
     }),
     availability: requiresSource,
+  },
+  {
+    descriptor: descriptor('geo.roi.list', 'List map ROIs', 'roi', { output: ARRAY }),
+  },
+  {
+    descriptor: descriptor('geo.roi.create', 'Create map ROI', 'roi', {
+      input: OBJECT,
+      mutability: 'mutation',
+      permissions: ['workspace.propose'],
+    }),
+  },
+  {
+    descriptor: descriptor('geo.roi.update', 'Update map ROI', 'roi', {
+      input: OBJECT,
+      mutability: 'mutation',
+      permissions: ['workspace.propose'],
+    }),
+    availability: requiresRoi,
+  },
+  ...(['remove', 'select'] as const).map((name) => ({
+    descriptor: descriptor(`geo.roi.${name}`, `${name} map ROI`, 'roi', {
+      input: objectInput({ roiId: ID }, ['roiId']),
+      mutability: 'mutation',
+      permissions: ['workspace.propose'],
+    }),
+    availability: requiresRoi,
+  })),
+  {
+    descriptor: descriptor('geo.roi.import_geojson', 'Import bounded GeoJSON ROIs', 'roi', {
+      input: OBJECT,
+      mutability: 'mutation',
+      cost: 'interactive',
+      permissions: ['workspace.propose'],
+    }),
+  },
+  {
+    descriptor: descriptor('geo.roi.export_geojson', 'Export map ROIs', 'roi', {
+      input: OBJECT,
+      cost: 'interactive',
+    }),
+    availability: requiresRoi,
+  },
+  ...(['distance', 'area'] as const).map((name) => ({
+    descriptor: descriptor(`geo.measure.${name}`, `Measure ${name}`, 'measurement', {
+      input: OBJECT,
+      cost: 'interactive',
+    }),
+    availability: requiresRoi,
+  })),
+  {
+    descriptor: descriptor(
+      'geo.export.rendered_image',
+      'Export rendered viewport image',
+      'export',
+      {
+        input: OBJECT,
+        cost: 'interactive',
+        permissions: ['viewport.read'],
+        cancellable: true,
+      },
+    ),
+    availability: requiresViewport,
   },
 ])

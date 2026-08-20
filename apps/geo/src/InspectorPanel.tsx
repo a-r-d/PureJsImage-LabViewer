@@ -10,7 +10,7 @@ import type {
 import { Button, Panel, Tabs } from '@pji-workbench/ui'
 import type { ReactNode } from 'react'
 
-export type InspectorTab = 'workflows' | 'catalog' | 'layers' | 'display' | 'xray'
+export type InspectorTab = 'workflows' | 'catalog' | 'layers' | 'vectors' | 'display' | 'xray'
 
 export function InspectorPanel({
   tab,
@@ -27,6 +27,7 @@ export function InspectorPanel({
   xray,
   catalog,
   workflows,
+  vectors,
   provenance,
   presets,
 }: {
@@ -47,6 +48,7 @@ export function InspectorPanel({
   readonly xray: CogXrayReport | undefined
   readonly catalog: ReactNode
   readonly workflows: ReactNode
+  readonly vectors: ReactNode
   readonly provenance?: GeoCatalogReference
   readonly presets?: readonly CatalogDisplayPreset[]
 }) {
@@ -58,6 +60,7 @@ export function InspectorPanel({
           { id: 'workflows', label: 'Workflows' },
           { id: 'catalog', label: 'Catalog' },
           { id: 'layers', label: 'Layers' },
+          { id: 'vectors', label: 'ROI & Measure' },
           { id: 'display', label: 'Display' },
           { id: 'xray', label: 'COG X-ray' },
         ]}
@@ -152,6 +155,7 @@ export function InspectorPanel({
           {provenance === undefined ? null : <ProvenanceFacts provenance={provenance} />}
         </div>
       ) : null}
+      {tab === 'vectors' ? vectors : null}
       {tab === 'display' && selected !== undefined ? (
         <DisplayControls
           bandCount={bandCount}

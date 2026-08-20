@@ -16,8 +16,11 @@ import type {
   DerivedRasterStatisticsResponse,
   OpenedDatasetDescriptor,
   OpenedSourceDescriptor,
+  RasterPointSample,
+  RasterPointSampleRequest,
   RasterSampleType,
   SourceId,
+  SpatialReference,
   WorkerDiagnostics,
 } from '@pji-workbench/contracts'
 import { assertDerivedRasterRecipe } from '@pji-workbench/contracts'
@@ -27,29 +30,43 @@ import {
   type CatalogSearchRequest,
   type CatalogService,
   type CatalogSourceCandidate,
+  CrsTransformError,
   createDerivedGeoRasterLayer,
+  createGeoMapRoi,
   createGeoProject,
   createGeoRasterLayer,
   createGeoRasterSource,
   crsKey,
   type DerivedGeoRasterLayer,
+  exportGeoJson,
   GEO_PROJECT_LIMITS,
   type GeoActionContext,
   type GeoActionId,
   type GeoBandMetadata,
   type GeoLayer,
   type GeoLayerId,
+  type GeoMapGeometry,
+  type GeoMapPoint,
+  type GeoMapRoi,
+  GeoMeasurementError,
   type GeoProject,
   type GeoProvenanceId,
   type GeoRasterLayer,
   type GeoRasterLocator,
   type GeoRasterSource,
+  type GeoRoiId,
   type GeoSourceId,
+  GeoValidationError,
   type GeoWorkflowProvenanceRecord,
   geoActionDefinitions,
+  measureGeoArea,
+  measureGeoDistance,
+  parseGeoJson,
   type RasterStyle,
   sameCrs,
   scalarNodata,
+  transformGeoMapGeometry,
+  transformMapPoint,
 } from '@pji-workbench/domain-geo'
 
 import { GeoLocalResourceRegistry } from './resource-registry.js'
@@ -84,6 +101,10 @@ export interface GeoImagingRuntime {
     request: DerivedRasterLineProfileRequest,
     signal?: AbortSignal,
   ): Promise<DerivedRasterLineProfileResponse>
+  sampleRasterPoint(
+    request: RasterPointSampleRequest,
+    signal?: AbortSignal,
+  ): Promise<RasterPointSample>
   releaseDerivedRaster(request: Readonly<{ layerId: string }>): Promise<void>
   dispose(): void
 }
@@ -134,6 +155,7 @@ export interface GeoControllerSnapshot {
   readonly project: GeoProject
   readonly selectedSourceId?: GeoSourceId
   readonly selectedLayerId?: GeoLayerId
+  readonly selectedRoiId?: GeoRoiId
   readonly task: Readonly<{
     kind: 'idle' | 'opening' | 'closing' | 'rehydrating'
     label?: string
@@ -217,6 +239,7 @@ export class GeoWorkbenchController {
           (layer): layer is GeoRasterLayer => layer.kind === 'raster' && layer.visible,
         ).length >= 2,
       viewportAvailable: this.#viewport !== undefined,
+      hasRoi: this.#snapshot.project.rois.length > 0,
     }
   }
 
@@ -882,11 +905,12 @@ export class GeoWorkbenchController {
 
   #replaceProject(
     patch: Partial<
-      Pick<GeoProject, 'sources' | 'layers' | 'comparison' | 'provenance' | 'workflowRuns'>
+      Pick<GeoProject, 'sources' | 'layers' | 'comparison' | 'rois' | 'provenance' | 'workflowRuns'>
     >,
     selection: {
       readonly selectedLayerId?: GeoLayerId | undefined
       readonly selectedSourceId?: GeoSourceId | undefined
+      readonly selectedRoiId?: GeoRoiId | undefined
     } = {},
   ): void {
     const project = createGeoProject({ ...this.#snapshot.project, ...patch })
@@ -894,11 +918,14 @@ export class GeoWorkbenchController {
       'selectedLayerId' in selection ? selection.selectedLayerId : this.#snapshot.selectedLayerId
     const selectedSourceId =
       'selectedSourceId' in selection ? selection.selectedSourceId : this.#snapshot.selectedSourceId
+    const selectedRoiId =
+      'selectedRoiId' in selection ? selection.selectedRoiId : this.#snapshot.selectedRoiId
     this.#setSnapshot({
       revision: this.#snapshot.revision + 1,
       project,
       ...(selectedSourceId === undefined ? {} : { selectedSourceId }),
       ...(selectedLayerId === undefined ? {} : { selectedLayerId }),
+      ...(selectedRoiId === undefined ? {} : { selectedRoiId }),
       task: { kind: 'idle' },
     })
   }
@@ -1118,13 +1145,230 @@ export class GeoWorkbenchController {
       'geo.viewport.propose',
     ] as const)
       set(id, (input) => this.#viewportAction(json({ kind: id, input })))
-    set('geo.raster.describe_bands', (input) => json(this.#sourceForRasterInput(input).bands))
-    set('geo.raster.sample_point', () => {
-      throw new GeoControllerError(
-        'UNAVAILABLE',
-        'Point sampling requires the mounted viewport tile cache.',
+    set('geo.roi.list', () => json(this.#snapshot.project.rois))
+    set('geo.roi.create', (input) => {
+      if (this.#snapshot.project.rois.length >= GEO_PROJECT_LIMITS.maxRois)
+        throw new GeoControllerError('PROJECT_INVALID', 'The project ROI limit has been reached.')
+      const record = recordInput(input)
+      const geometry = geometryField(record['geometry'])
+      const crs = crsField(record['crs'] ?? this.#snapshot.project.crs)
+      const id =
+        optionalStringField(record, 'id') ??
+        this.#uniqueId(
+          'roi',
+          this.#snapshot.project.rois.map(({ id }) => id),
+        )
+      const name = optionalStringField(record, 'name')
+      const tool = drawingTool(record['tool'], geometry)
+      const roi = createGeoMapRoi({
+        id,
+        ...(name === undefined ? {} : { name }),
+        crs,
+        geometry,
+        provenance: { kind: 'drawn', tool },
+        createdAt: this.#now(),
+        ...(record['properties'] === undefined
+          ? {}
+          : { properties: jsonRecordField(record['properties'], 'properties') }),
+      })
+      this.#replaceProject(
+        { rois: [...this.#snapshot.project.rois, roi] },
+        { selectedRoiId: roi.id },
+      )
+      return json(roi)
+    })
+    set('geo.roi.update', (input) => {
+      const record = recordInput(input)
+      const current = this.#requireRoi(stringField(record, 'roiId'))
+      const name = optionalStringField(record, 'name') ?? current.name
+      const properties =
+        record['properties'] === undefined
+          ? current.properties
+          : jsonRecordField(record['properties'], 'properties')
+      const next = createGeoMapRoi({
+        id: current.id,
+        ...(name === undefined ? {} : { name }),
+        crs: record['crs'] === undefined ? current.crs : crsField(record['crs']),
+        geometry:
+          record['geometry'] === undefined ? current.geometry : geometryField(record['geometry']),
+        provenance: current.provenance,
+        createdAt: current.createdAt,
+        ...(properties === undefined ? {} : { properties }),
+      })
+      this.#replaceProject({
+        rois: this.#snapshot.project.rois.map((roi) => (roi.id === current.id ? next : roi)),
+      })
+      return json(next)
+    })
+    set('geo.roi.remove', (input) => {
+      const roi = this.#requireRoi(stringField(input, 'roiId'))
+      const rois = this.#snapshot.project.rois.filter(({ id }) => id !== roi.id)
+      this.#replaceProject({ rois }, { selectedRoiId: rois.at(-1)?.id })
+      return { removed: true }
+    })
+    set('geo.roi.select', (input) => {
+      const roi = this.#requireRoi(stringField(input, 'roiId'))
+      this.#replaceProject({}, { selectedRoiId: roi.id })
+      return { selected: true }
+    })
+    set('geo.roi.import_geojson', (input) => {
+      const record = recordInput(input)
+      const document = record['document']
+      if (typeof document !== 'string')
+        throw new GeoControllerError('INVALID_ACTION_INPUT', 'GeoJSON document must be a string.')
+      const legacyDefinition =
+        record['legacyCrs'] === undefined ? undefined : crsField(record['legacyCrs'])
+      const sourceName = optionalStringField(record, 'sourceName')
+      const existingIds = this.#snapshot.project.rois.map(({ id }) => id)
+      const result = parseGeoJson(document, {
+        now: this.#now,
+        ...(sourceName === undefined ? {} : { sourceName }),
+        idFactory: (index) => this.#uniqueId(`roi-import-${index + 1}`, existingIds),
+        ...(record['legacyCrsConfirmed'] === true
+          ? {
+              legacyCrs: {
+                confirmed: true,
+                ...(legacyDefinition === undefined ? {} : { definition: legacyDefinition }),
+              },
+            }
+          : {}),
+      })
+      if (result.issues.some(({ severity }) => severity === 'error') || result.requiresConfirmation)
+        return json(result)
+      if (this.#snapshot.project.rois.length + result.rois.length > GEO_PROJECT_LIMITS.maxRois)
+        throw new GeoControllerError(
+          'PROJECT_INVALID',
+          'Imported GeoJSON exceeds the project ROI limit.',
+        )
+      const usedIds = new Set(this.#snapshot.project.rois.map(({ id }) => id))
+      const importedRois = result.rois.map((roi) => {
+        const id = usedIds.has(roi.id) ? this.#uniqueId('roi-import', [...usedIds]) : roi.id
+        usedIds.add(id as GeoRoiId)
+        return id === roi.id
+          ? roi
+          : createGeoMapRoi({
+              id,
+              ...(roi.name === undefined ? {} : { name: roi.name }),
+              crs: roi.crs,
+              geometry: roi.geometry,
+              provenance: roi.provenance,
+              createdAt: roi.createdAt,
+              ...(roi.properties === undefined ? {} : { properties: roi.properties }),
+            })
+      })
+      this.#replaceProject(
+        { rois: [...this.#snapshot.project.rois, ...importedRois] },
+        { selectedRoiId: importedRois.at(-1)?.id },
+      )
+      return json({ ...result, rois: importedRois })
+    })
+    set('geo.roi.export_geojson', (input) => {
+      const record = recordInput(input)
+      const ids = optionalStringArrayField(record, 'roiIds')
+      const rois =
+        ids === undefined ? this.#snapshot.project.rois : ids.map((id) => this.#requireRoi(id))
+      const transformNote = optionalStringField(record, 'transformNote')
+      return json(
+        exportGeoJson(rois, {
+          nativeCrs: record['nativeCrs'] === true,
+          ...(record['includeProperties'] === false ? { includeProperties: false } : {}),
+          ...(record['transformApproximate'] === true
+            ? {
+                transformAccuracy: {
+                  kind: 'approximate',
+                  ...(transformNote === undefined ? {} : { note: transformNote }),
+                },
+              }
+            : {}),
+        }),
       )
     })
+    for (const id of ['geo.measure.distance', 'geo.measure.area'] as const) {
+      set(id, (input) => {
+        const record = recordInput(input)
+        const roi = this.#requireRoi(optionalStringField(record, 'roiId') ?? this.#selectedRoiId())
+        const planarUnit = planarUnitField(record['planarUnit'])
+        return json(
+          id === 'geo.measure.distance'
+            ? measureGeoDistance(
+                roi.geometry,
+                roi.crs,
+                planarUnit === undefined ? {} : { planarUnit },
+              )
+            : measureGeoArea(roi.geometry, roi.crs, planarUnit === undefined ? {} : { planarUnit }),
+        )
+      })
+    }
+    set('geo.raster.describe_bands', (input) => json(this.#sourceForRasterInput(input).bands))
+    const samplePoints = async (
+      input: JsonValue,
+      signal: ActionAbortSignal,
+    ): Promise<JsonValue> => {
+      const record = recordInput(input)
+      const layer = this.#rasterLayerForInput(record)
+      const source = this.#requireSource(layer.sourceId)
+      const binding = this.#bindings.get(source.id)
+      if (binding === undefined)
+        throw new GeoControllerError('UNAVAILABLE', 'Raster source is not open.')
+      const roiId = optionalStringField(record, 'roiId')
+      const roi = roiId === undefined ? undefined : this.#requireRoi(roiId)
+      const roiPointValues =
+        roi?.geometry.kind === 'point'
+          ? [{ x: roi.geometry.x, y: roi.geometry.y }]
+          : roi?.geometry.kind === 'multi-point'
+            ? roi.geometry.points
+            : undefined
+      const pointValues = Array.isArray(record['points'])
+        ? record['points']
+        : record['point'] !== undefined
+          ? [record['point']]
+          : (roiPointValues ?? [])
+      if (pointValues.length === 0 || pointValues.length > 2_000)
+        throw new GeoControllerError(
+          'INVALID_ACTION_INPUT',
+          'Point sampling requires 1 to 2000 points.',
+        )
+      const inputCrs =
+        record['crs'] === undefined
+          ? (roi?.crs ?? this.#snapshot.project.crs)
+          : crsField(record['crs'])
+      const valuePolicy = record['valuePolicy'] === 'scaled' ? 'scaled' : 'raw'
+      const samples = []
+      for (const [index, value] of pointValues.entries()) {
+        if (nativeSignal(signal)?.aborted) throw new DOMException('Action aborted', 'AbortError')
+        const projectPoint = pointFieldValue(value, `points[${index}]`)
+        const sourcePoint = sameCrs(inputCrs, source.spatialReference.crs)
+          ? projectPoint
+          : transformMapPoint(projectPoint, inputCrs, source.spatialReference.crs)
+        const pixel = mapToPixel(sourcePoint, source.spatialReference)
+        const sample = await this.#runtime.sampleRasterPoint(
+          {
+            datasetHandleId: binding.dataset.handleId,
+            generation: binding.dataset.generation,
+            sourceIdentity: JSON.stringify(binding.source.identity),
+            layerId: layer.id,
+            displayAxes: binding.dataset.selection.displayAxes,
+            fixedIndices: binding.dataset.selection.fixedIndices,
+            pixel,
+            projectMapCoordinate: projectPoint,
+          },
+          nativeSignal(signal),
+        )
+        samples.push({
+          ...sample,
+          valuePolicy,
+          components: scaleSampleComponents(sample, source, valuePolicy),
+        })
+      }
+      return json({
+        samples,
+        validSampleCount: samples.filter(({ nodata }) => !nodata).length,
+        nodataCount: samples.filter(({ nodata }) => nodata).length,
+        valuePolicy,
+      })
+    }
+    set('geo.raster.sample_point', (input, _context, signal) => samplePoints(input, signal))
+    set('geo.raster.sample_points', (input, _context, signal) => samplePoints(input, signal))
     set('geo.raster.describe_statistics', () => {
       throw new GeoControllerError('UNAVAILABLE', 'Statistics are not implemented for Atlas yet.')
     })
@@ -1202,6 +1446,84 @@ export class GeoWorkbenchController {
     })
     set('geo.analysis.line_profile', async (input, _context, signal) => {
       const record = recordInput(input)
+      const roiId = optionalStringField(record, 'roiId')
+      if (roiId !== undefined) {
+        const roi = this.#requireRoi(roiId)
+        const points = linePoints(roi.geometry)
+        const layer = this.#rasterLayerForInput(record)
+        const source = this.#requireSource(layer.sourceId)
+        const component = optionalIntegerField(record, 'component') ?? 0
+        const valuePolicy = record['valuePolicy'] === 'scaled' ? 'scaled' : 'raw'
+        const pixelPoints = points.map((point) =>
+          mapToPixel(
+            sameCrs(roi.crs, source.spatialReference.crs)
+              ? point
+              : transformMapPoint(point, roi.crs, source.spatialReference.crs),
+            source.spatialReference,
+          ),
+        )
+        if (pixelPoints.length < 2)
+          throw new GeoControllerError('INVALID_ACTION_INPUT', 'Line ROI has no points.')
+        const recipe = identityRasterRecipe(
+          layer,
+          source,
+          component,
+          valuePolicy,
+          this.bindingForLayer(layer.id),
+        )
+        const requestedCount = optionalIntegerField(record, 'sampleCount')
+        if (requestedCount !== undefined && (requestedCount < 2 || requestedCount > 100_000))
+          throw new GeoControllerError(
+            'INVALID_ACTION_INPUT',
+            'Line profile sampleCount must be between 2 and 100000.',
+          )
+        const totalLength = polylinePixelLength(pixelPoints)
+        const profileCount = requestedCount ?? Math.min(100_000, Math.ceil(totalLength) + 1)
+        const distances: number[] = []
+        const values: number[] = []
+        const valid: number[] = []
+        const cacheKeys: string[] = []
+        let distanceOffset = 0
+        for (let index = 1; index < pixelPoints.length; index += 1) {
+          const start = pixelPoints[index - 1]
+          const end = pixelPoints[index]
+          if (start === undefined || end === undefined) continue
+          const segmentLength = Math.hypot(end.x - start.x, end.y - start.y)
+          const sampleCount = Math.max(
+            2,
+            Math.round((profileCount * segmentLength) / Math.max(totalLength, 1)),
+          )
+          const segment = await this.#runtime.requestDerivedLineProfile(
+            {
+              ...this.#derivedRequest(recipe, `geo-line-profile-${roi.id}-${index}`),
+              start,
+              end,
+              sampleCount,
+              component: 0,
+              resampling: record['resampling'] === 'bilinear' ? 'bilinear' : 'nearest',
+            },
+            nativeSignal(signal),
+          )
+          cacheKeys.push(segment.cacheKey)
+          const skip = index === 1 ? 0 : 1
+          for (let sampleIndex = skip; sampleIndex < segment.distances.length; sampleIndex += 1) {
+            distances.push(distanceOffset + (segment.distances[sampleIndex] ?? 0))
+            values.push(segment.values[sampleIndex] ?? Number.NaN)
+            valid.push(segment.valid[sampleIndex] ?? 0)
+          }
+          distanceOffset += segment.distances.at(-1) ?? segmentLength
+        }
+        return json({
+          cacheKeys,
+          distances,
+          values,
+          valid,
+          validSampleCount: valid.filter(Boolean).length,
+          nodataCount: valid.filter((value) => value === 0).length,
+          valuePolicy,
+          provenance: analysisTransformProvenance(roi, source),
+        })
+      }
       const recipeValue = record['recipe']
       const request =
         recipeValue === undefined
@@ -1228,6 +1550,94 @@ export class GeoWorkbenchController {
         valid: [...result.valid],
       })
     })
+    set('geo.analysis.zonal_statistics', async (input, _context, signal) => {
+      const record = recordInput(input)
+      const roi = this.#requireRoi(optionalStringField(record, 'roiId') ?? this.#selectedRoiId())
+      const layer = this.#rasterLayerForInput(record)
+      const source = this.#requireSource(layer.sourceId)
+      const valuePolicy = record['valuePolicy'] === 'scaled' ? 'scaled' : 'raw'
+      const transformed = sameCrs(roi.crs, source.spatialReference.crs)
+        ? roi.geometry
+        : transformGeoMapGeometry(roi.geometry, roi.crs, source.spatialReference.crs)
+      const mask = pixelMask(transformed, source.spatialReference)
+      const region = maskRegion(mask, source.width, source.height)
+      const requestedComponents = Array.isArray(record['components'])
+        ? integerArrayField(record, 'components')
+        : Array.from({ length: source.componentCount }, (_, index) => index)
+      for (const component of requestedComponents) {
+        if (component < 0 || component >= source.componentCount)
+          throw new GeoControllerError(
+            'INVALID_ACTION_INPUT',
+            `Band ${component} is outside the raster.`,
+          )
+      }
+      const gridTiles = alignedTileCount(region, 256)
+      const estimatedTiles = gridTiles * requestedComponents.length
+      const provenance = analysisTransformProvenance(roi, source)
+      if (record['dryRun'] === true) {
+        return json({
+          valid: true,
+          estimatedTiles,
+          gridTiles,
+          bandCount: requestedComponents.length,
+          estimatedPixels: region.width * region.height,
+          estimatedSampleVisits: region.width * region.height * requestedComponents.length,
+          region,
+          valuePolicy,
+          pixelInterpretation: source.pixelInterpretation,
+          transform: provenance.transform,
+        })
+      }
+      const histogramValue = record['histogram']
+      const histogram =
+        histogramValue === undefined
+          ? undefined
+          : {
+              bins: integerField(histogramValue, 'bins'),
+              minimum: numberField(histogramValue, 'minimum'),
+              maximum: numberField(histogramValue, 'maximum'),
+            }
+      const bands = []
+      for (const component of requestedComponents) {
+        if (nativeSignal(signal)?.aborted) throw new DOMException('Action aborted', 'AbortError')
+        const recipe = identityRasterRecipe(
+          layer,
+          source,
+          component,
+          valuePolicy,
+          this.bindingForLayer(layer.id),
+        )
+        const result = await this.#runtime.requestDerivedStatistics(
+          {
+            ...this.#derivedRequest(recipe, `geo-zonal-${roi.id}-${component}`),
+            region,
+            component: 0,
+            mask,
+            ...(histogram === undefined ? {} : { histogram }),
+          },
+          nativeSignal(signal),
+        )
+        bands.push({
+          component,
+          name: source.bands[component]?.name ?? `Band ${component + 1}`,
+          ...result,
+          ...(result.histogram === undefined
+            ? {}
+            : { histogram: { ...result.histogram, counts: [...result.histogram.counts] } }),
+        })
+      }
+      return json({
+        roiId: roi.id,
+        layerId: layer.id,
+        bands,
+        validSampleCount: bands.reduce((sum, band) => sum + band.count, 0),
+        nodataCount: bands.reduce((sum, band) => sum + band.invalidCount, 0),
+        estimatedTiles,
+        valuePolicy,
+        pixelInterpretation: source.pixelInterpretation,
+        provenance,
+      })
+    })
     for (const id of ['geo.analysis.cancel', 'geo.analysis.release'] as const) {
       set(id, async (input) => {
         const layerId = stringField(input, 'layerId')
@@ -1242,6 +1652,39 @@ export class GeoWorkbenchController {
       await this.#runtime.releaseDerivedRaster({ layerId })
       this.removeLayer(layerId)
       return { removed: true }
+    })
+    set('geo.export.rendered_image', async (input) => {
+      const record = recordInput(input)
+      const width = optionalIntegerField(record, 'width') ?? 1_920
+      const height = optionalIntegerField(record, 'height') ?? 1_080
+      if (width < 1 || height < 1 || width > 8_192 || height > 8_192 || width * height > 16_777_216)
+        throw new GeoControllerError(
+          'INVALID_ACTION_INPUT',
+          'Rendered export dimensions exceed the 16.8 megapixel limit.',
+        )
+      return this.#viewportAction(
+        json({
+          kind: 'export-rendered-image',
+          width,
+          height,
+          maxBytes: Math.min(
+            optionalIntegerField(record, 'maxBytes') ?? 32 * 1_024 * 1_024,
+            32 * 1_024 * 1_024,
+          ),
+          includeRoiOverlay: record['includeRoiOverlay'] !== false,
+          attribution: this.#snapshot.project.sources.flatMap(
+            (source) => source.catalog?.attribution ?? [],
+          ),
+          crsNote:
+            crsKey(this.#snapshot.project.crs) ??
+            this.#snapshot.project.crs.name ??
+            this.#snapshot.project.crs.kind,
+          layerTitles: this.#snapshot.project.layers
+            .filter(({ visible }) => visible)
+            .map(({ label }) => label),
+          rois: this.#snapshot.project.rois,
+        }),
+      )
     })
     return handlers
   }
@@ -1278,6 +1721,26 @@ export class GeoWorkbenchController {
     if (layer === undefined)
       throw new GeoControllerError('PROJECT_INVALID', `Layer ${layerId} does not exist.`)
     return layer
+  }
+
+  #requireRoi(roiId: string): GeoMapRoi {
+    const roi = this.#snapshot.project.rois.find(({ id }) => id === roiId)
+    if (roi === undefined)
+      throw new GeoControllerError('PROJECT_INVALID', `ROI ${roiId} does not exist.`)
+    return roi
+  }
+
+  #selectedRoiId(): string {
+    const id = this.#snapshot.selectedRoiId ?? this.#snapshot.project.rois.at(-1)?.id
+    if (id === undefined) throw new GeoControllerError('PROJECT_INVALID', 'No ROI is selected.')
+    return id
+  }
+
+  #rasterLayerForInput(input: Readonly<Record<string, JsonValue>>): GeoRasterLayer {
+    const layerId = optionalStringField(input, 'layerId') ?? this.#snapshot.selectedLayerId
+    if (layerId === undefined)
+      throw new GeoControllerError('PROJECT_INVALID', 'No raster layer is selected.')
+    return this.#requireRasterLayer(layerId)
   }
 
   #requireRasterLayer(layerId: string): GeoRasterLayer {
@@ -1588,6 +2051,301 @@ function remoteName(url: string): string {
   }
 }
 
+function geometryField(value: unknown): GeoMapGeometry {
+  const geometry = recordInput(value)
+  const kind = geometry['kind']
+  const points = (input: JsonValue | undefined, label: string): readonly GeoMapPoint[] => {
+    if (!Array.isArray(input))
+      throw new GeoControllerError('INVALID_ACTION_INPUT', `${label} must be an array.`)
+    return input.map((point, index) => pointFieldValue(point, `${label}[${index}]`))
+  }
+  const rings = (input: JsonValue | undefined, label: string) => {
+    if (!Array.isArray(input))
+      throw new GeoControllerError('INVALID_ACTION_INPUT', `${label} must be an array.`)
+    return input.map((ring, index) => points(ring, `${label}[${index}]`))
+  }
+  if (kind === 'point')
+    return { kind, x: numberField(geometry, 'x'), y: numberField(geometry, 'y') }
+  if (kind === 'multi-point') return { kind, points: points(geometry['points'], 'points') }
+  if (kind === 'rectangle')
+    return {
+      kind,
+      minX: numberField(geometry, 'minX'),
+      minY: numberField(geometry, 'minY'),
+      maxX: numberField(geometry, 'maxX'),
+      maxY: numberField(geometry, 'maxY'),
+    }
+  if (kind === 'line') return { kind, points: points(geometry['points'], 'points') }
+  if (kind === 'multi-line') {
+    const lines = geometry['lines']
+    if (!Array.isArray(lines))
+      throw new GeoControllerError('INVALID_ACTION_INPUT', 'lines must be an array.')
+    return { kind, lines: lines.map((line, index) => points(line, `lines[${index}]`)) }
+  }
+  if (kind === 'polygon') return { kind, rings: rings(geometry['rings'], 'rings') }
+  if (kind === 'multi-polygon') {
+    const polygons = geometry['polygons']
+    if (!Array.isArray(polygons))
+      throw new GeoControllerError('INVALID_ACTION_INPUT', 'polygons must be an array.')
+    return {
+      kind,
+      polygons: polygons.map((polygon, index) => rings(polygon, `polygons[${index}]`)),
+    }
+  }
+  throw new GeoControllerError('INVALID_ACTION_INPUT', `Unsupported ROI geometry ${String(kind)}.`)
+}
+
+function crsField(value: unknown): GeoMapRoi['crs'] {
+  const crs = recordInput(value)
+  const kind = crs['kind']
+  if (kind !== 'projected' && kind !== 'geographic' && kind !== 'unknown')
+    throw new GeoControllerError('INVALID_ACTION_INPUT', 'CRS kind is invalid.')
+  const authority = optionalStringField(crs, 'authority')
+  const code = crs['code']
+  if (code !== undefined && typeof code !== 'string' && typeof code !== 'number')
+    throw new GeoControllerError('INVALID_ACTION_INPUT', 'CRS code must be a string or number.')
+  const name = optionalStringField(crs, 'name')
+  return {
+    kind,
+    ...(authority === undefined ? {} : { authority }),
+    ...(code === undefined ? {} : { code }),
+    ...(name === undefined ? {} : { name }),
+  }
+}
+
+function pointFieldValue(value: unknown, label: string): GeoMapPoint {
+  try {
+    return { x: numberField(value, 'x'), y: numberField(value, 'y') }
+  } catch {
+    throw new GeoControllerError('INVALID_ACTION_INPUT', `${label} must contain finite x and y.`)
+  }
+}
+
+function jsonRecordField(value: unknown, label: string): Readonly<Record<string, JsonValue>> {
+  try {
+    return recordInput(value)
+  } catch {
+    throw new GeoControllerError('INVALID_ACTION_INPUT', `${label} must be a JSON object.`)
+  }
+}
+
+function drawingTool(
+  value: JsonValue | undefined,
+  geometry: GeoMapGeometry,
+): 'point' | 'line' | 'rectangle' | 'polygon' {
+  if (value === 'point' || value === 'line' || value === 'rectangle' || value === 'polygon')
+    return value
+  if (geometry.kind === 'point' || geometry.kind === 'multi-point') return 'point'
+  if (geometry.kind === 'line' || geometry.kind === 'multi-line') return 'line'
+  if (geometry.kind === 'rectangle') return 'rectangle'
+  return 'polygon'
+}
+
+function optionalStringArrayField(
+  value: Readonly<Record<string, JsonValue>>,
+  key: string,
+): readonly string[] | undefined {
+  return value[key] === undefined ? undefined : stringArrayField(value, key)
+}
+
+function integerArrayField(value: unknown, key: string): readonly number[] {
+  const field = recordInput(value)[key]
+  if (!Array.isArray(field) || field.length === 0 || field.length > 32)
+    throw new GeoControllerError('INVALID_ACTION_INPUT', `${key} must be a bounded integer array.`)
+  return field.map((item, index) => {
+    if (typeof item !== 'number' || !Number.isInteger(item))
+      throw new GeoControllerError('INVALID_ACTION_INPUT', `${key}[${index}] must be an integer.`)
+    return item
+  })
+}
+
+function planarUnitField(value: JsonValue | undefined) {
+  if (value === undefined) return undefined
+  if (value === 'metre' || value === 'international-foot' || value === 'us-survey-foot')
+    return value
+  throw new GeoControllerError(
+    'INVALID_ACTION_INPUT',
+    'planarUnit must be metre, international-foot, or us-survey-foot.',
+  )
+}
+
+function mapToPixel(point: GeoMapPoint, spatial: SpatialReference): GeoMapPoint {
+  if (spatial.modelToPixel !== undefined) return modelPoint(spatial.modelToPixel, point.x, point.y)
+  const affine = spatial.pixelToModel
+  if (affine === undefined)
+    throw new GeoControllerError('CRS_INCOMPATIBLE', 'Raster has no pixel-to-model affine.')
+  const [a, b, c, d, e, f] = affine
+  const determinant = a * e - b * d
+  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-15)
+    throw new GeoControllerError('CRS_INCOMPATIBLE', 'Raster affine is not invertible.')
+  return {
+    x: (e * (point.x - c) - b * (point.y - f)) / determinant,
+    y: (-d * (point.x - c) + a * (point.y - f)) / determinant,
+  }
+}
+
+function pixelMask(
+  geometry: GeoMapGeometry,
+  spatial: SpatialReference,
+): NonNullable<DerivedRasterStatisticsRequest['mask']> {
+  const convertRing = (ring: readonly GeoMapPoint[]) =>
+    ring.map((point) => mapToPixel(point, spatial))
+  const polygons =
+    geometry.kind === 'polygon'
+      ? [geometry.rings.map(convertRing)]
+      : geometry.kind === 'multi-polygon'
+        ? geometry.polygons.map((polygon) => polygon.map(convertRing))
+        : geometry.kind === 'rectangle'
+          ? [
+              [
+                convertRing([
+                  { x: geometry.minX, y: geometry.minY },
+                  { x: geometry.maxX, y: geometry.minY },
+                  { x: geometry.maxX, y: geometry.maxY },
+                  { x: geometry.minX, y: geometry.maxY },
+                  { x: geometry.minX, y: geometry.minY },
+                ]),
+              ],
+            ]
+          : undefined
+  if (polygons === undefined)
+    throw new GeoControllerError(
+      'INVALID_ACTION_INPUT',
+      'Zonal statistics require a polygon, multipolygon, or rectangle ROI.',
+    )
+  return {
+    polygons,
+    pixelInterpretation:
+      spatial.pixelInterpretation === 'pixel-is-point' ? 'pixel-is-point' : 'pixel-is-area',
+  }
+}
+
+function maskRegion(
+  mask: NonNullable<DerivedRasterStatisticsRequest['mask']>,
+  width: number,
+  height: number,
+): Readonly<{ x: number; y: number; width: number; height: number }> {
+  const coordinates = mask.polygons.flat(2)
+  const xs = coordinates.map(({ x }) => x)
+  const ys = coordinates.map(({ y }) => y)
+  const x = Math.max(0, Math.floor(Math.min(...xs)))
+  const y = Math.max(0, Math.floor(Math.min(...ys)))
+  const maximumX = Math.min(width, Math.ceil(Math.max(...xs)))
+  const maximumY = Math.min(height, Math.ceil(Math.max(...ys)))
+  if (maximumX <= x || maximumY <= y)
+    throw new GeoControllerError('INVALID_ACTION_INPUT', 'ROI does not intersect the raster grid.')
+  return { x, y, width: maximumX - x, height: maximumY - y }
+}
+
+function alignedTileCount(
+  region: Readonly<{ x: number; y: number; width: number; height: number }>,
+  size: number,
+): number {
+  const columns = Math.ceil((region.x + region.width) / size) - Math.floor(region.x / size)
+  const rows = Math.ceil((region.y + region.height) / size) - Math.floor(region.y / size)
+  return columns * rows
+}
+
+function identityRasterRecipe(
+  layer: GeoRasterLayer,
+  source: GeoRasterSource,
+  component: number,
+  valuePolicy: 'raw' | 'scaled',
+  binding: GeoRuntimeBinding | undefined,
+): DerivedRasterRecipeV1 {
+  if (binding === undefined)
+    throw new GeoControllerError('UNAVAILABLE', 'Raster source is not open.')
+  const targetGrid = targetGridForSource(source, binding.dataset.dataset.sampleType)
+  const band = source.bands[component]
+  const noData =
+    band?.nodata === undefined ? targetGrid.noData : { kind: 'value' as const, value: band.nodata }
+  const input = {
+    name: 'source',
+    layerId: layer.id,
+    component,
+    valueMode: valuePolicy,
+    scale: band?.scale ?? 1,
+    offset: band?.offset ?? 0,
+    noData,
+  } as const
+  return {
+    schemaVersion: 1,
+    operationVersion: 1,
+    operation: {
+      kind: 'linear-combination',
+      terms: [{ input: 'source', coefficient: 1 }],
+      constant: 0,
+    },
+    inputs: [input],
+    targetGrid,
+    alignment: 'exact',
+    outputNoData: noData,
+    minimumValidWeight: 0.5,
+    limits: {
+      maxTilePixels: 256 * 256,
+      maxOutputBytes: 4 * 1_024 * 1_024,
+      maxWorkingBytes: 16 * 1_024 * 1_024,
+    },
+  }
+}
+
+function linePoints(geometry: GeoMapGeometry): readonly GeoMapPoint[] {
+  if (geometry.kind === 'line') return geometry.points
+  if (geometry.kind === 'multi-line' && geometry.lines.length === 1) return geometry.lines[0] ?? []
+  throw new GeoControllerError(
+    'INVALID_ACTION_INPUT',
+    'Line profile requires a single LineString ROI.',
+  )
+}
+
+function polylinePixelLength(points: readonly GeoMapPoint[]): number {
+  let length = 0
+  for (let index = 1; index < points.length; index += 1) {
+    const left = points[index - 1]
+    const right = points[index]
+    if (left !== undefined && right !== undefined)
+      length += Math.hypot(right.x - left.x, right.y - left.y)
+  }
+  return length
+}
+
+function analysisTransformProvenance(roi: GeoMapRoi, source: GeoRasterSource) {
+  const from = crsKey(roi.crs) ?? roi.crs.name ?? roi.crs.kind
+  const to =
+    crsKey(source.spatialReference.crs) ??
+    source.spatialReference.crs.name ??
+    source.spatialReference.crs.kind
+  return {
+    roiId: roi.id,
+    originalCrs: from,
+    gridCrs: to,
+    transform: {
+      id: sameCrs(roi.crs, source.spatialReference.crs) ? 'identity' : `proj4:${from}->${to}`,
+      accuracy: sameCrs(roi.crs, source.spatialReference.crs) ? 'exact' : 'estimated',
+    },
+    originalGeometryPreserved: true,
+  }
+}
+
+function scaleSampleComponents(
+  sample: RasterPointSample,
+  source: GeoRasterSource,
+  policy: 'raw' | 'scaled',
+) {
+  return sample.components.map((component) => {
+    const band = source.bands[component.index]
+    const value =
+      component.value === null || policy === 'raw'
+        ? component.value
+        : component.value * (band?.scale ?? 1) + (band?.offset ?? 0)
+    return {
+      ...component,
+      value,
+      ...(band?.unit === undefined ? {} : { unit: band.unit }),
+    }
+  })
+}
+
 function replayUrl(locator: GeoRasterLocator): string | undefined {
   if (locator.kind === 'remote-url') return locator.url
   if (locator.kind === 'stac-asset') return locator.catalog.href
@@ -1597,6 +2355,14 @@ function replayUrl(locator: GeoRasterLocator): string | undefined {
 
 function classifyControllerError(error: unknown): GeoControllerError {
   if (error instanceof GeoControllerError) return error
+  if (error instanceof CrsTransformError)
+    return new GeoControllerError('CRS_INCOMPATIBLE', error.message, { transformCode: error.code })
+  if (error instanceof GeoMeasurementError)
+    return new GeoControllerError('INVALID_ACTION_INPUT', error.message, {
+      measurementCode: error.code,
+    })
+  if (error instanceof GeoValidationError)
+    return new GeoControllerError('PROJECT_INVALID', error.message, { validationCode: error.code })
   if (error instanceof DOMException && error.name === 'AbortError')
     return new GeoControllerError('ABORTED', 'Opening was cancelled.')
   return new GeoControllerError(

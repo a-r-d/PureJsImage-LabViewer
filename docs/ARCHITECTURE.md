@@ -92,6 +92,8 @@ packages/domain-geo
   (EPSG:3089 for Kentucky From Above). Unsupported projections return typed errors. Pixel
   reprojection and basemaps are out of scope. Must not import domain-science,
   materials-analysis, React, or PureJsImage.
+  Focused vector import/export, map-coordinate ROI geometry, measurement policy, and raster-mask
+  semantics follow `docs/VECTOR_MEASUREMENT.md`; they do not expand Atlas into a vector GIS.
 
 packages/geo-workbench
   Headless Atlas application controller and semantic action handlers. Owns durable GeoProject

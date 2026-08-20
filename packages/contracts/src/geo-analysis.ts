@@ -181,12 +181,19 @@ export interface DerivedRasterStatisticsRequest extends DerivedRasterRequestBase
   readonly region: Region
   readonly component: number
   readonly histogram?: Readonly<{ bins: number; minimum: number; maximum: number }>
+  /** Target-grid pixel coordinates. Ring zero is exterior; later rings are holes. */
+  readonly mask?: Readonly<{
+    readonly polygons: readonly (readonly (readonly Readonly<{ x: number; y: number }>[])[])[]
+    readonly pixelInterpretation: 'pixel-is-area' | 'pixel-is-point'
+  }>
 }
 
 export interface DerivedRasterStatisticsResponse {
   readonly cacheKey: string
   readonly count: number
   readonly invalidCount: number
+  readonly excludedByMask: number
+  readonly visitedTiles: number
   readonly minimum: number | null
   readonly maximum: number | null
   readonly mean: number | null

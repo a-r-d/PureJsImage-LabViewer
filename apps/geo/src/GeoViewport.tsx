@@ -18,9 +18,13 @@ import {
   crsKey as domainCrsKey,
   type GeoComparisonState,
   type GeoLayer,
+  type GeoMapGeometry,
+  type GeoMapRoi,
   type GeoRasterLayer,
   type GeoRasterSource,
+  sameCrs as sameCrsReference,
   scalarNodata,
+  transformGeoMapGeometry,
   transformMapPoint,
 } from '@pji-workbench/domain-geo'
 import { ImagingRpcError, type ImagingWorkerClient } from '@pji-workbench/imaging'
@@ -92,6 +96,11 @@ export interface GeoViewportProps {
   readonly onSettled: (settled: boolean) => void
   readonly onStatus?: (status: GeoViewportStatus) => void
   readonly onViewBbox?: (bbox: readonly [number, number, number, number] | undefined) => void
+  readonly rois?: readonly GeoMapRoi[]
+  readonly selectedRoiId?: string
+  readonly drawingTool?: 'pan' | 'point' | 'line' | 'rectangle' | 'polygon'
+  readonly onDrawGeometry?: (geometry: GeoMapGeometry) => void
+  readonly onExportFrame?: (render: ((includeRoiOverlay: boolean) => void) | undefined) => void
 }
 
 interface CachedTile {
@@ -209,6 +218,8 @@ class CanvasGeoRenderer {
     blinkPhase: 0 | 1,
     required: ReadonlySet<string>,
     failures: readonly FailedTile[],
+    rois: readonly GeoMapRoi[],
+    selectedRoiId: string | undefined,
   ): void {
     const context = this.#context
     context.setTransform(this.#ratio, 0, 0, this.#ratio, 0, 0)
@@ -253,6 +264,7 @@ class CanvasGeoRenderer {
       this.#drawLayers(camera, projectAdapter, visibleLayers, required)
     }
     this.#drawFailures(camera, projectAdapter, failures)
+    this.#drawRois(camera, projectAdapter, rois, selectedRoiId, sources)
   }
 
   diagnostics(): DisplayTileCacheDiagnostics {
@@ -359,6 +371,40 @@ class CanvasGeoRenderer {
     }
   }
 
+  #drawRois(
+    camera: Camera,
+    adapter: CoordinateSpaceAdapter,
+    rois: readonly GeoMapRoi[],
+    selectedRoiId: string | undefined,
+    sources: readonly GeoRasterSource[],
+  ): void {
+    const projectCrs = sources[0]?.spatialReference.crs
+    if (projectCrs === undefined) return
+    for (const roi of rois) {
+      let geometry = roi.geometry
+      try {
+        geometry = sameCrsReference(roi.crs, projectCrs)
+          ? geometry
+          : transformGeoMapGeometry(geometry, roi.crs, projectCrs)
+      } catch {
+        continue
+      }
+      const selected = roi.id === selectedRoiId
+      this.#context.save()
+      this.#context.setTransform(this.#ratio, 0, 0, this.#ratio, 0, 0)
+      this.#context.strokeStyle = selected ? '#ffd166' : '#39d0ff'
+      this.#context.fillStyle = selected ? '#ffd16633' : '#39d0ff22'
+      this.#context.lineWidth = selected ? 3 : 2
+      this.#context.beginPath()
+      traceGeometry(this.#context, geometry, (point) =>
+        adapter.worldToScreen(point, camera, this.#viewport),
+      )
+      this.#context.fill('evenodd')
+      this.#context.stroke()
+      this.#context.restore()
+    }
+  }
+
   #drawSwipeAdornment(
     comparison: Extract<GeoComparisonState, { mode: 'swipe' }>,
     layers: readonly GeoLayer[],
@@ -412,6 +458,11 @@ export function GeoViewport({
   onSettled,
   onStatus,
   onViewBbox,
+  rois = [],
+  selectedRoiId,
+  drawingTool = 'pan',
+  onDrawGeometry,
+  onExportFrame,
 }: GeoViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const layersRef = useRef(layers)
@@ -422,6 +473,11 @@ export function GeoViewport({
   const onViewBboxRef = useRef(onViewBbox)
   const onStatusRef = useRef(onStatus)
   const onComparisonChangeRef = useRef(onComparisonChange)
+  const roisRef = useRef(rois)
+  const selectedRoiRef = useRef(selectedRoiId)
+  const drawingToolRef = useRef(drawingTool)
+  const onDrawGeometryRef = useRef(onDrawGeometry)
+  const onExportFrameRef = useRef(onExportFrame)
   layersRef.current = layers
   rastersRef.current = rasters
   sourcesRef.current = sources
@@ -430,6 +486,11 @@ export function GeoViewport({
   onViewBboxRef.current = onViewBbox
   onStatusRef.current = onStatus
   onComparisonChangeRef.current = onComparisonChange
+  roisRef.current = rois
+  selectedRoiRef.current = selectedRoiId
+  drawingToolRef.current = drawingTool
+  onDrawGeometryRef.current = onDrawGeometry
+  onExportFrameRef.current = onExportFrame
   const scheduleRef = useRef<() => void>(() => undefined)
   const retryFailedRef = useRef<() => void>(() => undefined)
   const [status, setStatus] = useState<GeoViewportStatus | undefined>()
@@ -442,6 +503,8 @@ export function GeoViewport({
     layers,
     comparison,
     selectedLayerId,
+    rois,
+    selectedRoiId,
   })
   // biome-ignore lint/correctness/useExhaustiveDependencies: sceneKey is the revision signal; refs hold the latest scene.
   useEffect(() => scheduleRef.current(), [sceneKey])
@@ -491,6 +554,7 @@ export function GeoViewport({
     let samplingController: AbortController | undefined
     let dragPoint: Point | undefined
     let swipeDragging = false
+    let drawingPoints: Point[] = []
     const pending = new Map<string, AbortController>()
     const tileStates = new Map<string, TileState>()
     const retryCounts = new Map<string, number>()
@@ -519,9 +583,28 @@ export function GeoViewport({
           blinkPhase,
           required,
           failures(),
+          roisRef.current,
+          selectedRoiRef.current,
         )
       })
     }
+
+    const renderExportFrame = (includeRoiOverlay: boolean): void => {
+      cancelAnimationFrame(frameRequest)
+      renderer.render(
+        camera,
+        cameraAdapter,
+        layersRef.current,
+        sourcesRef.current,
+        comparisonState,
+        blinkPhase,
+        required,
+        failures(),
+        includeRoiOverlay ? roisRef.current : [],
+        includeRoiOverlay ? selectedRoiRef.current : undefined,
+      )
+    }
+    onExportFrameRef.current?.(renderExportFrame)
 
     const reportStatus = (): void => {
       const states = [...required].map((tileId) => tileStates.get(tileId))
@@ -994,8 +1077,40 @@ export function GeoViewport({
       dragPoint = undefined
       swipeDragging = false
     }
+    const eventWorld = (event: PointerEvent): Point => {
+      const bounds = canvas.getBoundingClientRect()
+      return cameraAdapter.screenToWorld(
+        { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+        camera,
+        viewport,
+      )
+    }
+    const finishDrawing = (): void => {
+      const tool = drawingToolRef.current
+      if (tool === 'line' && drawingPoints.length >= 2) {
+        onDrawGeometryRef.current?.({ kind: 'line', points: [...drawingPoints] })
+        drawingPoints = []
+      } else if (tool === 'polygon' && drawingPoints.length >= 3) {
+        const first = drawingPoints[0]
+        if (first !== undefined)
+          onDrawGeometryRef.current?.({ kind: 'polygon', rings: [[...drawingPoints, first]] })
+        drawingPoints = []
+      }
+    }
     const onPointerDown = (event: PointerEvent): void => {
       if (event.button !== 0) return
+      const tool = drawingToolRef.current
+      if (tool !== 'pan') {
+        const world = eventWorld(event)
+        if (tool === 'point') onDrawGeometryRef.current?.({ kind: 'point', x: world.x, y: world.y })
+        else if (tool === 'rectangle') drawingPoints = [world]
+        else {
+          drawingPoints.push(world)
+          if (event.detail >= 2) finishDrawing()
+        }
+        event.preventDefault()
+        return
+      }
       const bounds = canvas.getBoundingClientRect()
       const divider =
         comparisonState.mode === 'swipe'
@@ -1008,6 +1123,7 @@ export function GeoViewport({
     }
     const onPointerMove = (event: PointerEvent): void => {
       queuePointSample(event)
+      if (drawingToolRef.current !== 'pan') return
       if (dragPoint === undefined) return
       if (swipeDragging) updateSwipe(event.clientX)
       else {
@@ -1022,6 +1138,23 @@ export function GeoViewport({
         scheduleTiles()
       }
     }
+    const onPointerUp = (event: PointerEvent): void => {
+      if (drawingToolRef.current === 'rectangle' && drawingPoints[0] !== undefined) {
+        const start = drawingPoints[0]
+        const end = eventWorld(event)
+        drawingPoints = []
+        if (start.x !== end.x && start.y !== end.y)
+          onDrawGeometryRef.current?.({
+            kind: 'rectangle',
+            minX: Math.min(start.x, end.x),
+            minY: Math.min(start.y, end.y),
+            maxX: Math.max(start.x, end.x),
+            maxY: Math.max(start.y, end.y),
+          })
+        return
+      }
+      endPointerInteraction()
+    }
     const onPointerLeave = (): void => {
       samplingController?.abort()
       if (samplingTimer !== undefined) window.clearTimeout(samplingTimer)
@@ -1029,6 +1162,12 @@ export function GeoViewport({
     }
     const onVisibility = (): void => syncBlinkTimer()
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (drawingToolRef.current !== 'pan' && (event.key === 'Enter' || event.key === 'Escape')) {
+        if (event.key === 'Enter') finishDrawing()
+        else drawingPoints = []
+        event.preventDefault()
+        return
+      }
       const pan = 32
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         if (comparisonState.mode === 'swipe' && event.shiftKey) {
@@ -1116,7 +1255,7 @@ export function GeoViewport({
 
     canvas.addEventListener('pointermove', onPointerMove)
     canvas.addEventListener('pointerdown', onPointerDown)
-    canvas.addEventListener('pointerup', endPointerInteraction)
+    canvas.addEventListener('pointerup', onPointerUp)
     canvas.addEventListener('pointercancel', endPointerInteraction)
     canvas.addEventListener('lostpointercapture', endPointerInteraction)
     canvas.addEventListener('pointerleave', onPointerLeave)
@@ -1125,12 +1264,13 @@ export function GeoViewport({
     document.addEventListener('visibilitychange', onVisibility)
     scheduleTiles()
     return () => {
+      onExportFrameRef.current?.(undefined)
       scheduleRef.current = () => undefined
       retryFailedRef.current = () => undefined
       resizeObserver.disconnect()
       canvas.removeEventListener('pointermove', onPointerMove)
       canvas.removeEventListener('pointerdown', onPointerDown)
-      canvas.removeEventListener('pointerup', endPointerInteraction)
+      canvas.removeEventListener('pointerup', onPointerUp)
       canvas.removeEventListener('pointercancel', endPointerInteraction)
       canvas.removeEventListener('lostpointercapture', endPointerInteraction)
       canvas.removeEventListener('pointerleave', onPointerLeave)
@@ -1153,6 +1293,7 @@ export function GeoViewport({
         aria-describedby="geo-viewport-status"
         aria-label="Geo raster viewport. Arrow keys pan, plus and minus zoom, 0 fits the project, F fits the selected layer, and 1 shows native resolution. Shift plus left or right arrow adjusts a swipe divider."
         data-comparison-mode={comparison.mode}
+        data-drawing-tool={drawingTool}
         data-swipe-position={comparison.mode === 'swipe' ? comparison.swipePosition : undefined}
         ref={canvasRef}
         role="img"
@@ -1479,6 +1620,54 @@ export function displayStyleRevision(layer: GeoLayer): string {
 
 export function canvasSmoothingEnabled(resample: GeoLayer['style']['resample']): boolean {
   return resample === 'bilinear'
+}
+
+function traceGeometry(
+  context: CanvasRenderingContext2D,
+  geometry: GeoMapGeometry,
+  screen: (point: Point) => Point,
+): void {
+  const traceLine = (points: readonly Point[], close = false): void => {
+    const first = points[0]
+    if (first === undefined) return
+    const start = screen(first)
+    context.moveTo(start.x, start.y)
+    for (const point of points.slice(1)) {
+      const next = screen(point)
+      context.lineTo(next.x, next.y)
+    }
+    if (close) context.closePath()
+  }
+  if (geometry.kind === 'point') {
+    const point = screen({ x: geometry.x, y: geometry.y })
+    context.moveTo(point.x + 5, point.y)
+    context.arc(point.x, point.y, 5, 0, Math.PI * 2)
+  } else if (geometry.kind === 'multi-point') {
+    for (const value of geometry.points) {
+      const point = screen(value)
+      context.moveTo(point.x + 5, point.y)
+      context.arc(point.x, point.y, 5, 0, Math.PI * 2)
+    }
+  } else if (geometry.kind === 'rectangle') {
+    traceLine(
+      [
+        { x: geometry.minX, y: geometry.minY },
+        { x: geometry.maxX, y: geometry.minY },
+        { x: geometry.maxX, y: geometry.maxY },
+        { x: geometry.minX, y: geometry.maxY },
+      ],
+      true,
+    )
+  } else if (geometry.kind === 'line') traceLine(geometry.points)
+  else if (geometry.kind === 'multi-line') {
+    for (const line of geometry.lines) traceLine(line)
+  } else if (geometry.kind === 'polygon') {
+    for (const ring of geometry.rings) traceLine(ring, true)
+  } else {
+    for (const polygon of geometry.polygons) {
+      for (const ring of polygon) traceLine(ring, true)
+    }
+  }
 }
 
 export function canvasCompositeOperation(mode: GeoLayer['blendMode']): GlobalCompositeOperation {
