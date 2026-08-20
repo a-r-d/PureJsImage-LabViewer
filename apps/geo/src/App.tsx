@@ -103,6 +103,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [diagnostics, setDiagnostics] = useState<WorkerDiagnostics | null>(null)
   const [settled, setSettled] = useState(true)
   const [viewBbox, setViewBbox] = useState<StacBbox | undefined>()
+  const [blinkInterval, setBlinkInterval] = useState(750)
 
   const semanticCatalogService = useMemo(
     () => createSemanticCatalogService(controller, rawCatalogService),
@@ -116,6 +117,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       snapshot.project.layers.filter((layer): layer is GeoRasterLayer => layer.kind === 'raster'),
     [snapshot.project.layers],
   )
+  const comparisonPair = rasterLayers.filter(({ visible }) => visible).slice(0, 2)
   const viewportRasters = useMemo(() => {
     const bindings = new Map(
       controller.runtimeBindings().map((binding) => [binding.semanticSourceId, binding]),
@@ -128,12 +130,10 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     })
   }, [controller, snapshot.project.sources])
   const onOverview = useCallback(
-    (level: number) => {
-      if (snapshot.selectedSourceId !== undefined) {
-        controller.setActiveOverview(snapshot.selectedSourceId, level)
-      }
+    (sourceId: string, level: number) => {
+      controller.setActiveOverview(sourceId, level)
     },
-    [controller, snapshot.selectedSourceId],
+    [controller],
   )
 
   useEffect(() => {
@@ -296,20 +296,29 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
 
   const onPointer = useCallback(
     (sample: GeoViewportPointer | undefined) => {
-      if (sample === undefined || selectedBinding === undefined) {
+      if (sample === undefined) {
         setReadout('Move the pointer over the raster')
         return
       }
+      const sampledBinding = controller.bindingForSource(sample.sourceId)
       setReadout(
         formatGeoCursorReadout({
           pixel: sample.pixel,
-          world: sample.world,
-          crs: selectedBinding.dataset.dataset.spatialReference?.crs ?? { kind: 'unknown' },
+          world: sample.projectMapCoordinate,
+          crs: sampledBinding?.dataset.dataset.spatialReference?.crs ?? { kind: 'unknown' },
           bands: sample.bands,
         }),
       )
     },
-    [selectedBinding],
+    [controller],
+  )
+
+  const onComparisonChange = useCallback(
+    (next: typeof snapshot.project.comparison) => {
+      const input = next.mode === 'single' ? {} : next
+      void controller.executeAction(`geo.comparison.set_${next.mode}`, input).catch(() => undefined)
+    },
+    [controller],
   )
 
   const xray =
@@ -390,6 +399,64 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               <Icon name="search" size={16} />
               Catalog
             </Button>
+            {comparisonPair.length === 2 ? (
+              <fieldset className="geo-compare-controls">
+                <legend className="visually-hidden">Compare visible layers</legend>
+                <Button onClick={() => onComparisonChange({ mode: 'single' })}>Single</Button>
+                <Button
+                  onClick={() =>
+                    onComparisonChange({
+                      mode: 'overlay',
+                      overlayLayerIds: comparisonPair.map(({ id }) => id),
+                    })
+                  }
+                >
+                  Overlay
+                </Button>
+                <Button
+                  onClick={() => {
+                    const [left, right] = comparisonPair
+                    if (left === undefined || right === undefined) return
+                    onComparisonChange({
+                      mode: 'swipe',
+                      leftLayerId: left.id,
+                      rightLayerId: right.id,
+                      swipePosition: 0.5,
+                    })
+                  }}
+                >
+                  Swipe
+                </Button>
+                <Button
+                  onClick={() => {
+                    const [first, second] = comparisonPair
+                    if (first === undefined || second === undefined) return
+                    onComparisonChange({
+                      mode: 'blink',
+                      firstLayerId: first.id,
+                      secondLayerId: second.id,
+                      intervalMilliseconds: blinkInterval,
+                    })
+                  }}
+                >
+                  Blink
+                </Button>
+                <label>
+                  Blink interval
+                  <select
+                    aria-label="Blink interval"
+                    onChange={(event) => setBlinkInterval(Number(event.currentTarget.value))}
+                    value={blinkInterval}
+                  >
+                    <option value={250}>0.25 s</option>
+                    <option value={500}>0.5 s</option>
+                    <option value={750}>0.75 s</option>
+                    <option value={1000}>1 s</option>
+                    <option value={2000}>2 s</option>
+                  </select>
+                </label>
+              </fieldset>
+            ) : null}
           </div>
           {urlOpen ? (
             <form
@@ -441,12 +508,18 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                   .map(({ semanticSourceId }) => semanticSourceId)
                   .join('|')}
                 client={runtime}
+                comparison={snapshot.project.comparison}
                 layers={rasterLayers}
+                onComparisonChange={onComparisonChange}
                 onOverview={onOverview}
                 onPointer={onPointer}
                 onSettled={setSettled}
                 onViewBbox={onViewBbox}
                 rasters={viewportRasters}
+                sources={snapshot.project.sources}
+                {...(snapshot.selectedLayerId === undefined
+                  ? {}
+                  : { selectedLayerId: snapshot.selectedLayerId })}
               />
             </div>
           ) : busy ? (

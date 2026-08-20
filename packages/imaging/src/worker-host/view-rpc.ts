@@ -22,22 +22,32 @@ export function mappedTileTransfer(mapped: MappedTile): Transferable[] {
   return transfer
 }
 
+export function mappedDisplayTileTransfer(rgba: Uint8ClampedArray): Transferable[] {
+  return [rgba.buffer]
+}
+
 export function mapTile(
   tile: NumericTile,
   component: number,
   mapping: Extract<WorkerRequest, { kind: 'tile.request' }>['payload']['mapping'],
 ): MappedTile {
   const channels = displayChannels(tile.componentCount, component, mapping)
-  const primary = collectChannel(tile, channels.primary)
+  const primary = collectChannel(
+    tile,
+    channels.primary,
+    mapping.componentTransforms?.[String(channels.primary)],
+  )
   const extras =
     channels.extra.length === 0
       ? undefined
-      : channels.extra.map((channel) => collectChannel(tile, channel))
+      : channels.extra.map((channel) =>
+          collectChannel(tile, channel, mapping.componentTransforms?.[String(channel)]),
+        )
   const nodata = mapping.nodata
   const transparent = mapping.nodataTransparent === true ? nodata : undefined
   const { minimum, maximum } = finiteRange(primary, nodata)
   const automatic = mapping.range === 'auto'
-  const stretched = stretchRange(primary, mapping, minimum, maximum, nodata)
+  const stretched = stretchRange(primary, mapping, minimum, maximum, nodata, channels.primary)
   const histogram = buildHistogram(primary, stretched.low, stretched.high, nodata)
   const rgba = new Uint8ClampedArray(primary.length * 4)
   const gamma = mapping.gamma !== undefined && mapping.gamma !== 1 ? mapping.gamma : undefined
@@ -53,8 +63,20 @@ export function mapTile(
   const red = primary
   const green = extras[0] ?? primary
   const blue = extras[1] ?? extras[0] ?? primary
-  const greenRange = stretchRange(green, mapping, ...rangeTuple(finiteRange(green, nodata)), nodata)
-  const blueRange = stretchRange(blue, mapping, ...rangeTuple(finiteRange(blue, nodata)), nodata)
+  const greenRange = stretchRange(
+    green,
+    mapping,
+    ...rangeTuple(finiteRange(green, nodata)),
+    nodata,
+    channels.extra[0] ?? channels.primary,
+  )
+  const blueRange = stretchRange(
+    blue,
+    mapping,
+    ...rangeTuple(finiteRange(blue, nodata)),
+    nodata,
+    channels.extra[1] ?? channels.extra[0] ?? channels.primary,
+  )
   paintRgb(rgba, red, green, blue, stretched, greenRange, blueRange, gamma, transparent)
   return {
     rgba,
@@ -94,12 +116,18 @@ function assertChannel(channel: number, componentCount: number): void {
   if (channel >= componentCount) throw new RangeError('Selected component is unavailable')
 }
 
-function collectChannel(tile: NumericTile, channel: number): Float32Array {
+function collectChannel(
+  tile: NumericTile,
+  channel: number,
+  transform?: Readonly<{ scale: number; offset: number }>,
+): Float32Array {
   const length = tile.width * tile.height
   const values = new Float32Array(length)
   for (let y = 0; y < tile.height; y += 1) {
     for (let x = 0; x < tile.width; x += 1) {
-      values[y * tile.width + x] = numericValue(tile, x, y, channel)
+      const raw = numericValue(tile, x, y, channel)
+      values[y * tile.width + x] =
+        transform === undefined ? raw : raw * transform.scale + transform.offset
     }
   }
   return values
@@ -131,7 +159,10 @@ function stretchRange(
   dataMinimum: number,
   dataMaximum: number,
   nodata?: number,
+  component?: number,
 ): Readonly<{ low: number; high: number }> {
+  const fixed = component === undefined ? undefined : mapping.channelRanges?.[String(component)]
+  if (fixed !== undefined) return { low: fixed.minimum, high: fixed.maximum }
   if (mapping.range === 'manual') {
     const low = mapping.minimum ?? dataMinimum
     const highCandidate = mapping.maximum ?? dataMaximum

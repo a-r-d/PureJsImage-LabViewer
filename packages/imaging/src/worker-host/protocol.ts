@@ -65,6 +65,12 @@ export function structuredError(
   if (code === 'LIMIT_EXCEEDED') return { code: 'LIMIT_EXCEEDED', message, retryable: false }
   if (code === 'STALE_ID') return { code: 'STALE_ID', message, retryable: false }
   if (
+    code === 'TRUNCATED_INPUT' ||
+    (code === 'INVALID_INPUT' && !/HTTP range (?:probe|request)/iu.test(combined))
+  ) {
+    return { code: 'MALFORMED_METADATA', message, retryable: false }
+  }
+  if (
     code === 'UNSUPPORTED_FORMAT' ||
     code === 'UNSUPPORTED_FEATURE' ||
     code === 'UNSUPPORTED_OPERATION'

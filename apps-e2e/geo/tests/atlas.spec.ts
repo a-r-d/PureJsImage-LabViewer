@@ -52,6 +52,34 @@ test('opens a remote COG from a local range-capable fixture server', async ({ pa
   expect(Number(requests)).toBeGreaterThan(0)
 })
 
+test('supports keyboard navigation, swipe adjustment, and blink timing', async ({ page }) => {
+  test.setTimeout(60_000)
+  await openRemoteFixture(page)
+  await page.getByRole('button', { name: 'Open URL' }).click()
+  await page.getByLabel('HTTPS COG URL').fill('http://127.0.0.1:4175/north-up-later.tif')
+  await page.getByRole('button', { name: 'Load' }).click()
+
+  const viewport = page.getByRole('img', { name: /Geo raster viewport/u })
+  await expect(page.getByRole('button', { name: 'Swipe' })).toBeVisible()
+  await page.getByRole('button', { name: 'Swipe' }).click()
+  await expect(viewport).toHaveAttribute('data-comparison-mode', 'swipe')
+  await expect(viewport).toHaveAttribute('data-swipe-position', '0.5')
+
+  await viewport.focus()
+  await viewport.press('Shift+ArrowRight')
+  await expect(viewport).toHaveAttribute('data-swipe-position', '0.52')
+  await viewport.press('ArrowLeft')
+  await viewport.press('+')
+  await viewport.press('0')
+  await viewport.press('f')
+  await viewport.press('1')
+
+  await page.getByLabel('Blink interval').selectOption('250')
+  await page.getByRole('button', { name: 'Blink' }).click()
+  await expect(viewport).toHaveAttribute('data-comparison-mode', 'blink')
+  await expect(page.locator('[data-atlas-settled="true"]')).toBeVisible({ timeout: 45_000 })
+})
+
 test('@visual atlas inspector and rendered raster', async ({ browserName, page }) => {
   test.skip(browserName !== 'chromium', 'Chromium owns the deterministic visual baselines.')
   test.setTimeout(60_000)

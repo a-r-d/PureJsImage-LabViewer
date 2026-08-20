@@ -26,7 +26,7 @@ const server = http.createServer((request, response) => {
     response.end()
     return
   }
-  if (url.pathname !== '/north-up.tif') {
+  if (url.pathname !== '/north-up.tif' && url.pathname !== '/north-up-later.tif') {
     response.writeHead(404, cors)
     response.end()
     return
@@ -51,7 +51,10 @@ const server = http.createServer((request, response) => {
     'content-type': 'image/tiff',
     'content-range': `bytes ${start}-${end}/${bytes.byteLength}`,
     'content-length': String(slice.byteLength),
-    etag: '"atlas-e2e-north-up-v1"',
+    etag:
+      url.pathname === '/north-up-later.tif'
+        ? '"atlas-e2e-north-up-later-v1"'
+        : '"atlas-e2e-north-up-v1"',
   })
   response.end(slice)
 })

@@ -72,6 +72,8 @@ export type DisplayMapping = Readonly<{
   nodata?: number
   nodataTransparent?: boolean
   bands?: DisplayBandMapping
+  channelRanges?: Readonly<Record<string, Readonly<{ minimum: number; maximum: number }>>>
+  componentTransforms?: Readonly<Record<string, Readonly<{ scale: number; offset: number }>>>
 }>
 
 /** JSON-safe PureJsImage `inspectCog` report attached to opened TIFF/COG sources. */
@@ -283,6 +285,112 @@ export interface RenderTile {
   readonly elapsedMilliseconds: number
 }
 
+export const DISPLAY_STATISTICS_ALGORITHM_VERSION = 'atlas-display-statistics-v1' as const
+
+export interface DisplayStatisticsRequest {
+  readonly datasetHandleId: DatasetHandleId
+  readonly generation: number
+  readonly sourceIdentity: string
+  readonly sourceRevision: string
+  readonly componentIndices: readonly number[]
+  readonly displayAxes: readonly [string, string]
+  readonly fixedIndices: readonly AxisIndex[]
+  readonly resolutionPolicy: Readonly<{
+    readonly kind: 'reduced-overview' | 'level'
+    readonly level?: number
+  }>
+  readonly nodataPolicy: Readonly<{ readonly kind: 'exclude' | 'include'; readonly value?: number }>
+  readonly sampleBudget: Readonly<{
+    readonly maxSamples: number
+    readonly maxBytes: number
+    readonly maxTiles: number
+  }>
+  readonly percentilePolicy: Readonly<{ readonly low: number; readonly high: number }>
+  readonly scaleOffsetPolicy: Readonly<{
+    readonly kind: 'raw' | 'physical'
+    readonly components: readonly Readonly<{ readonly scale: number; readonly offset: number }>[]
+  }>
+}
+
+export interface DisplayStatisticsComponent {
+  readonly component: number
+  readonly minimum: number
+  readonly maximum: number
+  readonly percentileLow: number
+  readonly percentileHigh: number
+  readonly validSamples: number
+  readonly excludedSamples: number
+}
+
+export interface DisplayStatistics {
+  readonly algorithmVersion: typeof DISPLAY_STATISTICS_ALGORITHM_VERSION
+  readonly statisticsRevision: string
+  readonly cacheKey: string
+  readonly cached: boolean
+  readonly sourceIdentity: string
+  readonly sourceRevision: string
+  readonly datasetHandleId: DatasetHandleId
+  readonly overview: number
+  readonly sampledTiles: number
+  readonly sampledValues: number
+  readonly sampleCoverage: number
+  readonly components: readonly DisplayStatisticsComponent[]
+}
+
+export interface DisplayTileRequest extends RenderTileRequest {
+  readonly sourceIdentity: string
+  readonly sourceRevision: string
+  readonly layerId: string
+  readonly styleRevision: string
+  readonly statisticsRevision: string
+}
+
+/** Display-only tile. Native scientific samples remain in the Worker. */
+export interface DisplayTile {
+  readonly tileId: string
+  readonly datasetHandleId: DatasetHandleId
+  readonly generation: number
+  readonly sourceIdentity: string
+  readonly sourceRevision: string
+  readonly layerId: string
+  readonly styleRevision: string
+  readonly statisticsRevision: string
+  readonly region: Region
+  readonly overview: number
+  readonly width: number
+  readonly height: number
+  readonly rgba: Uint8ClampedArray
+  readonly elapsedMilliseconds: number
+}
+
+export interface RasterPointSampleRequest {
+  readonly datasetHandleId: DatasetHandleId
+  readonly generation: number
+  readonly sourceIdentity: string
+  readonly layerId: string
+  readonly displayAxes: readonly [string, string]
+  readonly fixedIndices: readonly AxisIndex[]
+  readonly pixel: Readonly<{ readonly x: number; readonly y: number }>
+  readonly projectMapCoordinate: Readonly<{ readonly x: number; readonly y: number }>
+}
+
+export interface RasterPointSample {
+  readonly sourceIdentity: string
+  readonly datasetHandleId: DatasetHandleId
+  readonly layerId: string
+  readonly pixel: Readonly<{ readonly x: number; readonly y: number }>
+  readonly sourceMapCoordinate: Readonly<{ readonly x: number; readonly y: number }>
+  readonly projectMapCoordinate: Readonly<{ readonly x: number; readonly y: number }>
+  readonly nodata: boolean
+  readonly components: readonly Readonly<{
+    readonly index: number
+    readonly name: string
+    readonly unit?: string
+    readonly value: number | null
+    readonly nodata: boolean
+  }>[]
+}
+
 export interface ReaderDescriptor {
   readonly id: string
   readonly version: string
@@ -408,6 +516,13 @@ export type WorkerRequest =
       Readonly<{ handleId: DatasetHandleId; generation: number; selection: PlaneSelection }>
     >
   | RpcRequest<'tile.request', RenderTileRequest>
+  | RpcRequest<'display.tile.request', DisplayTileRequest>
+  | RpcRequest<'display.statistics.request', DisplayStatisticsRequest>
+  | RpcRequest<
+      'display.statistics.invalidate',
+      Readonly<{ sourceIdentity?: string; datasetHandleId?: DatasetHandleId }>
+    >
+  | RpcRequest<'raster.sample_point', RasterPointSampleRequest>
   | RpcRequest<'analysis.catalog', AnalysisDatasetRequest>
   | RpcRequest<'analysis.normalize-parameters', AnalysisNormalizeRequest>
   | RpcRequest<'analysis.normalize-roi', AnalysisNormalizeRoiRequest>
@@ -448,6 +563,10 @@ export type WorkerResponse =
   | RpcSuccess<'dataset.closed', Readonly<{ handleId: DatasetHandleId }>>
   | RpcSuccess<'plane.selected', Readonly<{ handleId: DatasetHandleId; selection: PlaneSelection }>>
   | RpcSuccess<'tile.ready', RenderTile>
+  | RpcSuccess<'display.tile.ready', DisplayTile>
+  | RpcSuccess<'display.statistics.ready', DisplayStatistics>
+  | RpcSuccess<'display.statistics.invalidated', Readonly<{ removed: number }>>
+  | RpcSuccess<'raster.point_sampled', RasterPointSample>
   | RpcSuccess<'analysis.catalog', AnalysisCatalog>
   | RpcSuccess<'analysis.parameters-normalized', AnalysisParameterNormalization>
   | RpcSuccess<'analysis.roi-normalized', AnalysisRoiNormalization>
@@ -489,6 +608,10 @@ const REQUEST_KINDS = new Set<string>([
   'dataset.close',
   'plane.set',
   'tile.request',
+  'display.tile.request',
+  'display.statistics.request',
+  'display.statistics.invalidate',
+  'raster.sample_point',
   'analysis.catalog',
   'analysis.normalize-parameters',
   'analysis.normalize-roi',
@@ -713,7 +836,7 @@ function assertTile(payload: PayloadCandidate): void {
   if (mapping.range !== 'auto' && mapping.range !== 'manual') {
     throw new RpcValidationError('INVALID_PAYLOAD', 'mapping range must be auto or manual')
   }
-  if (mapping.range === 'manual') {
+  if (mapping.range === 'manual' && mapping['channelRanges'] === undefined) {
     assertFinite(mapping.minimum, 'mapping minimum')
     assertFinite(mapping.maximum, 'mapping maximum')
     if (mapping.maximum <= mapping.minimum) {
@@ -787,6 +910,48 @@ function assertTile(payload: PayloadCandidate): void {
       throw new RpcValidationError('INVALID_PAYLOAD', 'mapping bands require gray or RGB channels')
     }
   }
+  if (mapping['channelRanges'] !== undefined) {
+    if (!isRecord(mapping['channelRanges'])) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'mapping channelRanges must be an object')
+    }
+    if (Object.keys(mapping['channelRanges']).length === 0) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'mapping channelRanges must not be empty')
+    }
+    for (const [channel, value] of Object.entries(mapping['channelRanges'])) {
+      if (!isRecord(value)) {
+        throw new RpcValidationError(
+          'INVALID_PAYLOAD',
+          `mapping range ${channel} must be an object`,
+        )
+      }
+      assertFinite(value['minimum'], `mapping range ${channel} minimum`)
+      assertFinite(value['maximum'], `mapping range ${channel} maximum`)
+      if (Number(value['maximum']) <= Number(value['minimum'])) {
+        throw new RpcValidationError(
+          'INVALID_PAYLOAD',
+          `mapping range ${channel} maximum must exceed minimum`,
+        )
+      }
+    }
+  }
+  if (mapping['componentTransforms'] !== undefined) {
+    if (!isRecord(mapping['componentTransforms'])) {
+      throw new RpcValidationError(
+        'INVALID_PAYLOAD',
+        'mapping componentTransforms must be an object',
+      )
+    }
+    for (const [channel, value] of Object.entries(mapping['componentTransforms'])) {
+      if (!isRecord(value)) {
+        throw new RpcValidationError(
+          'INVALID_PAYLOAD',
+          `mapping transform ${channel} must be an object`,
+        )
+      }
+      assertFinite(value['scale'], `mapping transform ${channel} scale`)
+      assertFinite(value['offset'], `mapping transform ${channel} offset`)
+    }
+  }
   if (!isRecord(payload.region))
     throw new RpcValidationError('INVALID_PAYLOAD', 'region is required')
   const region = payload.region as PayloadCandidate
@@ -799,6 +964,99 @@ function assertTile(payload: PayloadCandidate): void {
   }
   if (!['visible', 'near-visible', 'background'].includes(String(payload.priority))) {
     throw new RpcValidationError('INVALID_PAYLOAD', 'tile priority is invalid')
+  }
+}
+
+function assertDisplayStatistics(payload: PayloadCandidate): void {
+  assertGeneration(payload)
+  assertString(payload.datasetHandleId, 'datasetHandleId')
+  assertString(payload['sourceIdentity'], 'sourceIdentity')
+  assertString(payload['sourceRevision'], 'sourceRevision')
+  assertPlaneSelection({ ...payload, resolutionLevel: 0 })
+  const componentIndices = payload['componentIndices']
+  if (!Array.isArray(componentIndices) || componentIndices.length === 0) {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'componentIndices must not be empty')
+  }
+  if (componentIndices.length > 8) {
+    throw new RpcValidationError('LIMIT_EXCEEDED', 'too many display statistics components')
+  }
+  for (const component of componentIndices) assertInteger(component, 'component index')
+  const resolutionPolicy = payload['resolutionPolicy']
+  if (!isRecord(resolutionPolicy)) {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'resolutionPolicy must be an object')
+  }
+  if (resolutionPolicy['kind'] !== 'reduced-overview' && resolutionPolicy['kind'] !== 'level') {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'resolution policy is invalid')
+  }
+  if (resolutionPolicy['level'] !== undefined)
+    assertInteger(resolutionPolicy['level'], 'statistics resolution level')
+  const nodataPolicy = payload['nodataPolicy']
+  if (!isRecord(nodataPolicy)) {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'nodataPolicy must be an object')
+  }
+  if (nodataPolicy['kind'] !== 'exclude' && nodataPolicy['kind'] !== 'include') {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'nodata policy is invalid')
+  }
+  if (nodataPolicy['value'] !== undefined) assertFinite(nodataPolicy['value'], 'nodata value')
+  const sampleBudget = payload['sampleBudget']
+  if (!isRecord(sampleBudget)) {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'sampleBudget must be an object')
+  }
+  assertInteger(sampleBudget['maxSamples'], 'maxSamples', 1)
+  assertInteger(sampleBudget['maxBytes'], 'maxBytes', 4)
+  assertInteger(sampleBudget['maxTiles'], 'maxTiles', 1)
+  if (Number(sampleBudget['maxSamples']) > 262_144) {
+    throw new RpcValidationError('LIMIT_EXCEEDED', 'statistics sample budget is too large')
+  }
+  const percentilePolicy = payload['percentilePolicy']
+  if (!isRecord(percentilePolicy)) {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'percentilePolicy must be an object')
+  }
+  assertFinite(percentilePolicy['low'], 'percentile low')
+  assertFinite(percentilePolicy['high'], 'percentile high')
+  const low = Number(percentilePolicy['low'])
+  const high = Number(percentilePolicy['high'])
+  if (low < 0 || high > 100 || high <= low) {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'statistics percentiles are invalid')
+  }
+  const scaleOffsetPolicy = payload['scaleOffsetPolicy']
+  if (!isRecord(scaleOffsetPolicy)) {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'scaleOffsetPolicy must be an object')
+  }
+  if (scaleOffsetPolicy['kind'] !== 'raw' && scaleOffsetPolicy['kind'] !== 'physical') {
+    throw new RpcValidationError('INVALID_PAYLOAD', 'scale/offset policy is invalid')
+  }
+  const transforms = scaleOffsetPolicy['components']
+  if (!Array.isArray(transforms) || transforms.length !== componentIndices.length) {
+    throw new RpcValidationError(
+      'INVALID_PAYLOAD',
+      'scale/offset components must match componentIndices',
+    )
+  }
+  for (const transform of transforms) {
+    if (!isRecord(transform)) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'scale/offset component must be an object')
+    }
+    assertFinite(transform['scale'], 'component scale')
+    assertFinite(transform['offset'], 'component offset')
+  }
+}
+
+function assertRasterPointSample(payload: PayloadCandidate): void {
+  assertGeneration(payload)
+  assertString(payload.datasetHandleId, 'datasetHandleId')
+  assertString(payload['sourceIdentity'], 'sourceIdentity')
+  assertString(payload['layerId'], 'layerId')
+  assertPlaneSelection({ ...payload, resolutionLevel: 0 })
+  for (const [label, point] of [
+    ['pixel', payload['pixel']],
+    ['projectMapCoordinate', payload['projectMapCoordinate']],
+  ] as const) {
+    if (!isRecord(point)) {
+      throw new RpcValidationError('INVALID_PAYLOAD', `${label} must be an object`)
+    }
+    assertFinite(point['x'], `${label} x`)
+    assertFinite(point['y'], `${label} y`)
   }
 }
 
@@ -1045,7 +1303,24 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
       assertString(payload.handleId, 'handleId')
       assertPlaneSelection(payload.selection)
     }
-    if (kind === 'tile.request') assertTile(payload)
+    if (kind === 'tile.request' || kind === 'display.tile.request') {
+      assertTile(payload)
+      if (kind === 'display.tile.request') {
+        assertString(payload['sourceIdentity'], 'sourceIdentity')
+        assertString(payload['sourceRevision'], 'sourceRevision')
+        assertString(payload['layerId'], 'layerId')
+        assertString(payload['styleRevision'], 'styleRevision')
+        assertString(payload['statisticsRevision'], 'statisticsRevision')
+      }
+    }
+    if (kind === 'display.statistics.request') assertDisplayStatistics(payload)
+    if (kind === 'display.statistics.invalidate') {
+      if (payload['sourceIdentity'] !== undefined)
+        assertString(payload['sourceIdentity'], 'sourceIdentity')
+      if (payload['datasetHandleId'] !== undefined)
+        assertString(payload['datasetHandleId'], 'datasetHandleId')
+    }
+    if (kind === 'raster.sample_point') assertRasterPointSample(payload)
     if (kind === 'analysis.catalog') assertAnalysisDataset(payload)
     if (kind === 'analysis.normalize-parameters') {
       assertAnalysisDataset(payload)

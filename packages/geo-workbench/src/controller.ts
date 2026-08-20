@@ -184,7 +184,10 @@ export class GeoWorkbenchController {
       sourceCount: this.#snapshot.project.sources.length,
       sourceLimit: GEO_PROJECT_LIMITS.maxSources,
       hasLocalResources: this.#resources.hasAny(),
-      comparisonEnabled: false,
+      comparisonEnabled:
+        this.#snapshot.project.layers.filter(
+          (layer): layer is GeoRasterLayer => layer.kind === 'raster' && layer.visible,
+        ).length >= 2,
       viewportAvailable: this.#viewport !== undefined,
     }
   }
@@ -903,18 +906,40 @@ export class GeoWorkbenchController {
       this.#viewportAction({ kind: 'fit-layer', layerId: stringField(input, 'layerId') }),
     )
     set('geo.comparison.read', () => json(this.#snapshot.project.comparison))
-    for (const id of [
-      'geo.comparison.set_single',
-      'geo.comparison.set_overlay',
-      'geo.comparison.set_swipe',
-      'geo.comparison.set_blink',
-    ] as const)
-      set(id, () => {
-        throw new GeoControllerError(
-          'UNAVAILABLE',
-          'Comparison rendering is not available in this Atlas build.',
-        )
+    set('geo.comparison.set_single', () => {
+      this.#replaceProject({ comparison: { mode: 'single' } })
+      return { updated: true }
+    })
+    set('geo.comparison.set_overlay', (input) => {
+      const record = recordInput(input)
+      const layerIds = stringArrayField(record, 'overlayLayerIds') as readonly GeoLayerId[]
+      this.#replaceProject({ comparison: { mode: 'overlay', overlayLayerIds: layerIds } })
+      return { updated: true }
+    })
+    set('geo.comparison.set_swipe', (input) => {
+      const record = recordInput(input)
+      this.#replaceProject({
+        comparison: {
+          mode: 'swipe',
+          leftLayerId: stringField(record, 'leftLayerId') as GeoLayerId,
+          rightLayerId: stringField(record, 'rightLayerId') as GeoLayerId,
+          swipePosition: numberField(record, 'swipePosition'),
+        },
       })
+      return { updated: true }
+    })
+    set('geo.comparison.set_blink', (input) => {
+      const record = recordInput(input)
+      this.#replaceProject({
+        comparison: {
+          mode: 'blink',
+          firstLayerId: stringField(record, 'firstLayerId') as GeoLayerId,
+          secondLayerId: stringField(record, 'secondLayerId') as GeoLayerId,
+          intervalMilliseconds: numberField(record, 'intervalMilliseconds'),
+        },
+      })
+      return { updated: true }
+    })
     set('geo.viewport.read', () => this.#viewport?.read() ?? unavailableViewport())
     for (const id of [
       'geo.viewport.fit_source',
@@ -1191,6 +1216,18 @@ function stringField(value: unknown, key: string): string {
 function optionalStringField(value: unknown, key: string): string | undefined {
   const field = recordInput(value)[key]
   return typeof field === 'string' && field.length > 0 ? field : undefined
+}
+
+function stringArrayField(value: unknown, key: string): readonly string[] {
+  const field = recordInput(value)[key]
+  if (
+    !Array.isArray(field) ||
+    field.length === 0 ||
+    field.some((item) => typeof item !== 'string')
+  ) {
+    throw new GeoControllerError('INVALID_ACTION_INPUT', `${key} must be a non-empty string array.`)
+  }
+  return field
 }
 
 function numberField(value: unknown, key: string): number {

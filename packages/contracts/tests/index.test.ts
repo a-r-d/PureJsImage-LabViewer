@@ -53,6 +53,43 @@ describe('imaging RPC validation', () => {
     expect(validateWorkerRequest(request)).toEqual(request)
   })
 
+  it('validates bounded Atlas display statistics and point-sample requests', () => {
+    const statistics = rpcRequest('stats-1', 'display.statistics.request', {
+      datasetHandleId: 'dataset-1' as never,
+      generation: 1,
+      sourceIdentity: 'source-stable-id',
+      sourceRevision: 'etag-v1',
+      componentIndices: [0, 1, 2],
+      displayAxes: ['x', 'y'],
+      fixedIndices: [],
+      resolutionPolicy: { kind: 'reduced-overview' },
+      nodataPolicy: { kind: 'exclude', value: -9999 },
+      sampleBudget: { maxSamples: 65_536, maxBytes: 1_048_576, maxTiles: 16 },
+      percentilePolicy: { low: 2, high: 98 },
+      scaleOffsetPolicy: {
+        kind: 'physical',
+        components: [
+          { scale: 0.1, offset: 1 },
+          { scale: 0.1, offset: 1 },
+          { scale: 0.1, offset: 1 },
+        ],
+      },
+    })
+    expect(validateWorkerRequest(statistics)).toEqual(statistics)
+
+    const point = rpcRequest('point-1', 'raster.sample_point', {
+      datasetHandleId: 'dataset-1' as never,
+      generation: 1,
+      sourceIdentity: 'source-stable-id',
+      layerId: 'layer-1',
+      displayAxes: ['x', 'y'],
+      fixedIndices: [],
+      pixel: { x: 4.25, y: 8.5 },
+      projectMapCoordinate: { x: 100, y: 200 },
+    })
+    expect(validateWorkerRequest(point)).toEqual(point)
+  })
+
   it('rejects unknown versions, message kinds, oversized strings, and oversized tiles', () => {
     expect(
       isRpcEnvelope({

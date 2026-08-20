@@ -246,6 +246,33 @@ describe('GeoWorkbenchController', () => {
     expect(workbench.getSnapshot().project.sources).toHaveLength(1)
   })
 
+  it('persists swipe and blink comparison through the semantic action host', async () => {
+    const { controller: workbench } = controller()
+    await workbench.openRemote({ url: 'https://example.com/a.tif' })
+    await workbench.openRemote({ url: 'https://example.com/b.tif' })
+    const [first, second] = workbench.getSnapshot().project.layers
+    if (first === undefined || second === undefined) throw new Error('Expected two layers')
+    expect(workbench.actionAvailability('geo.comparison.set_swipe')).toEqual({ available: true })
+    await workbench.executeAction('geo.comparison.set_swipe', {
+      leftLayerId: first.id,
+      rightLayerId: second.id,
+      swipePosition: 0.4,
+    })
+    expect(workbench.getSnapshot().project.comparison).toMatchObject({
+      mode: 'swipe',
+      swipePosition: 0.4,
+    })
+    await workbench.executeAction('geo.comparison.set_blink', {
+      firstLayerId: first.id,
+      secondLayerId: second.id,
+      intervalMilliseconds: 600,
+    })
+    expect(workbench.getSnapshot().project.comparison).toMatchObject({
+      mode: 'blink',
+      intervalMilliseconds: 600,
+    })
+  })
+
   it('refuses mixed and unidentified CRS composition with typed proposals', async () => {
     const { controller: workbench } = controller()
     await workbench.openRemote({ url: 'https://example.com/known.tif' })

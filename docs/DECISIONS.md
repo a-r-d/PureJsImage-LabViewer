@@ -190,3 +190,17 @@ Worker; project replay preserves that identity without a repository path. Existi
 recipes/scripts remain the workflow artifacts, so a gallery action opens the exact same
 approval-gated surface rather than creating a privileged execution path. Range-backed assets are
 never converted into full downloads, and normal CI has no uncontrolled network dependency.
+
+## Atlas display tiles are identity-bound RGBA; scientific samples stay in the Worker
+
+Atlas uses a display-specific Worker protocol instead of retaining the legacy quantitative
+`RenderTile` objects. Layer statistics are deterministic, sampled from a bounded repeatable grid at
+a reduced overview, cached by stable source and policy identity, and reused across tiles and
+overviews. Physical-value display applies declared band scale/offset before the fixed range. The
+explicit `viewport-local` mode remains available for exploration and is never represented as stable.
+
+Canvas 2D remains the audited cross-browser renderer: normal/multiply/screen/lighten/darken map to
+their standard composite operations, resampling controls image smoothing, and stable z-index ties
+retain project order. The display cache owns only canvases and metadata under hard byte/tile limits.
+All-band native point reads are separate cancellable Worker requests. Same-CRS swipe and blink are
+render modes over already-loaded tiles; Atlas does not reproject or reload a source to compare it.

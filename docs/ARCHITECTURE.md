@@ -234,9 +234,18 @@ interface ViewportRenderer {
 
 Use transferable buffers or `ImageBitmap` only where ownership and measured performance justify them. Do not copy an entire plane to the main thread.
 
-Atlas currently composites native-CRS tiles with a Canvas 2D renderer. It still copies only
-bounded RGBA tiles onto the main thread; quantitative values stay on those same tile objects,
-not in React state.
+Atlas composites native-CRS display tiles with a Canvas 2D renderer. Its display protocol transfers
+RGBA plus source/dataset/layer/style/statistics/overview/region identity only; native numeric planes
+remain in the imaging Worker. Deterministic bounded overview sampling establishes one fixed range per
+layer unless the user explicitly selects `viewport-local` exploratory stretch. The main-thread
+display cache is an explicitly disposed, byte- and count-bounded LRU; its key includes every display
+revision that can make a resolved tile stale.
+
+Atlas tile settlement is requirement-based rather than request-count-based. Every current tile is
+pending, ready, visibly failed, or superseded. Retryable failures use bounded backoff; permanent
+decoder/metadata failures remain visible. Same-CRS overlay, swipe, and blink reuse the same loaded
+display tiles and synchronized camera. Blink pauses while the document is hidden. Atlas refuses
+comparison across CRSs and does not imply reprojection.
 
 Keep an experimental OffscreenCanvas worker renderer possible, but do not make it a skeleton dependency because browser/debugging behavior varies and input latency must be measured.
 

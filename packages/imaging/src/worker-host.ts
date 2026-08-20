@@ -2,6 +2,7 @@ import {
   type AnalysisResultHandleId,
   COG_INSPECTION_METADATA_KEY,
   type DatasetHandleId,
+  type DisplayStatistics,
   type DocumentId,
   type ImagingResourceLimits,
   type OpenedDatasetDescriptor,
@@ -61,6 +62,11 @@ import {
   tryInspectTiffSource,
 } from './worker-host/cog-inspect.js'
 import {
+  computeDisplayStatistics,
+  displayStatisticsCacheKey,
+  sampleRasterPoint,
+} from './worker-host/display-rpc.js'
+import {
   abortError,
   errorResult,
   structuredError,
@@ -86,7 +92,12 @@ import {
   sampleValues,
   sourceName,
 } from './worker-host/source-rpc.js'
-import { mappedTileTransfer, mapTile, numericValue } from './worker-host/view-rpc.js'
+import {
+  mappedDisplayTileTransfer,
+  mappedTileTransfer,
+  mapTile,
+  numericValue,
+} from './worker-host/view-rpc.js'
 import { loadReadersForSource, SUPPORTED_READERS } from './worker-readers.js'
 
 export type { WorkerHostResult } from './worker-host/protocol.js'
@@ -233,6 +244,14 @@ async function readExactResponse(
 export class ImagingWorkerHost {
   readonly #sources = new Map<SourceId, SourceRecord>()
   readonly #datasets = new Map<DatasetHandleId, { sourceId: SourceId; record: DatasetRecord }>()
+  readonly #displayStatistics = new Map<
+    string,
+    Readonly<{
+      sourceIdentity: string
+      datasetHandleId: DatasetHandleId
+      value: DisplayStatistics
+    }>
+  >()
   #pending = new Map<string, PendingRequest>()
   #nextId = 1
   #epoch = 1
@@ -304,6 +323,7 @@ export class ImagingWorkerHost {
     for (const { controller } of this.#pending.values())
       controller.abort(abortError('Worker disposed'))
     this.#pending.clear()
+    this.#displayStatistics.clear()
     await this.#releaseAllSources()
     this.#epoch += 1
   }
@@ -337,6 +357,14 @@ export class ImagingWorkerHost {
         return this.#setPlane(request)
       case 'tile.request':
         return this.#requestTile(request, signal)
+      case 'display.tile.request':
+        return this.#requestDisplayTile(request, signal)
+      case 'display.statistics.request':
+        return this.#requestDisplayStatistics(request, signal)
+      case 'display.statistics.invalidate':
+        return this.#invalidateDisplayStatistics(request)
+      case 'raster.sample_point':
+        return this.#sampleRasterPoint(request, signal)
       case 'analysis.catalog':
         return this.#analysisCatalog(request)
       case 'analysis.normalize-parameters':
@@ -911,6 +939,141 @@ export class ImagingWorkerHost {
         tile.release()
         this.#releases.tiles += 1
       }
+    }
+  }
+
+  async #requestDisplayTile(
+    request: Extract<WorkerRequest, { kind: 'display.tile.request' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    const started = performance.now()
+    let tile: NumericTile | undefined
+    try {
+      const { source, record } = this.#datasetByHandle(
+        request.payload.datasetHandleId,
+        request.payload.generation,
+      )
+      this.#touch(source)
+      tile = await record.runtime.request(record.tileSource, {
+        address: {
+          cacheClass: 'source',
+          namespace: `atlas-display:${record.handleId}`,
+          dataset: record.tileIdentity,
+          displayAxes: request.payload.displayAxes,
+          fixedIndices: request.payload.fixedIndices,
+          resolutionLevel: request.payload.resolutionLevel,
+          ...request.payload.region,
+        },
+        priority: request.payload.priority,
+        signal,
+        target: { sampleType: 'float32' },
+      })
+      signal.throwIfAborted()
+      const { rgba } = mapTile(tile, request.payload.component, request.payload.mapping)
+      const response: Extract<WorkerResponse, { kind: 'display.tile.ready' }> = {
+        schemaVersion: RPC_SCHEMA_VERSION,
+        requestId: request.requestId,
+        ok: true,
+        kind: 'display.tile.ready',
+        payload: {
+          tileId: request.payload.tileId,
+          datasetHandleId: request.payload.datasetHandleId,
+          generation: request.payload.generation,
+          sourceIdentity: request.payload.sourceIdentity,
+          sourceRevision: request.payload.sourceRevision,
+          layerId: request.payload.layerId,
+          styleRevision: request.payload.styleRevision,
+          statisticsRevision: request.payload.statisticsRevision,
+          region: request.payload.region,
+          overview: request.payload.resolutionLevel,
+          width: tile.width,
+          height: tile.height,
+          rgba,
+          elapsedMilliseconds: performance.now() - started,
+        },
+      }
+      return { response, transfer: mappedDisplayTileTransfer(rgba) }
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
+    } finally {
+      if (tile !== undefined) {
+        tile.release()
+        this.#releases.tiles += 1
+      }
+    }
+  }
+
+  async #requestDisplayStatistics(
+    request: Extract<WorkerRequest, { kind: 'display.statistics.request' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    try {
+      const { source, record } = this.#datasetByHandle(
+        request.payload.datasetHandleId,
+        request.payload.generation,
+      )
+      this.#touch(source)
+      const key = displayStatisticsCacheKey(request.payload)
+      const cached = this.#displayStatistics.get(key)
+      if (cached !== undefined) {
+        this.#displayStatistics.delete(key)
+        this.#displayStatistics.set(key, cached)
+        return success(request.requestId, 'display.statistics.ready', {
+          ...cached.value,
+          cached: true,
+        })
+      }
+      const value = await computeDisplayStatistics(record, request.payload, signal)
+      this.#releases.tiles += value.sampledTiles
+      this.#displayStatistics.set(key, {
+        sourceIdentity: request.payload.sourceIdentity,
+        datasetHandleId: request.payload.datasetHandleId,
+        value,
+      })
+      while (this.#displayStatistics.size > 128) {
+        const oldest = this.#displayStatistics.keys().next().value
+        if (oldest === undefined) break
+        this.#displayStatistics.delete(oldest)
+      }
+      return success(request.requestId, 'display.statistics.ready', value)
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
+    }
+  }
+
+  #invalidateDisplayStatistics(
+    request: Extract<WorkerRequest, { kind: 'display.statistics.invalidate' }>,
+  ): WorkerHostResult {
+    let removed = 0
+    for (const [key, cached] of this.#displayStatistics) {
+      if (
+        (request.payload.sourceIdentity === undefined ||
+          cached.sourceIdentity === request.payload.sourceIdentity) &&
+        (request.payload.datasetHandleId === undefined ||
+          cached.datasetHandleId === request.payload.datasetHandleId)
+      ) {
+        this.#displayStatistics.delete(key)
+        removed += 1
+      }
+    }
+    return success(request.requestId, 'display.statistics.invalidated', { removed })
+  }
+
+  async #sampleRasterPoint(
+    request: Extract<WorkerRequest, { kind: 'raster.sample_point' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    try {
+      const { source, record } = this.#datasetByHandle(
+        request.payload.datasetHandleId,
+        request.payload.generation,
+      )
+      this.#touch(source)
+      const sample = await sampleRasterPoint(record, request.payload, signal)
+      this.#releases.tiles += 1
+      return success(request.requestId, 'raster.point_sampled', sample)
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
     }
   }
 
@@ -1552,6 +1715,9 @@ export class ImagingWorkerHost {
   async #releaseDataset(source: SourceRecord, record: DatasetRecord): Promise<void> {
     if (record.closed) return
     record.closed = true
+    for (const [key, cached] of this.#displayStatistics) {
+      if (cached.datasetHandleId === record.handleId) this.#displayStatistics.delete(key)
+    }
     for (const pending of this.#pending.values()) {
       if (pending.datasetHandleId === record.handleId) {
         pending.controller.abort(abortError('Dataset closed'))
@@ -1615,6 +1781,9 @@ export class ImagingWorkerHost {
       kind === 'source.open-remote' ||
       kind === 'dataset.open' ||
       kind === 'tile.request' ||
+      kind === 'display.tile.request' ||
+      kind === 'display.statistics.request' ||
+      kind === 'raster.sample_point' ||
       kind === 'analysis.dry-run' ||
       kind === 'analysis.execute' ||
       kind === 'analysis.overlay-tile' ||

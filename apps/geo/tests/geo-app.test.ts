@@ -30,7 +30,12 @@ describe('geo application', () => {
     )
     expect(viewportSource).toContain('datasetHandleId: context.raster.handleId')
     expect(viewportSource).toContain('rasters: readonly OpenedDatasetDescriptor[]')
-    expect(viewportSource).toContain('renderer.upload(layerPlan.layerId, tile, context.adapter)')
+    expect(viewportSource).toContain('.requestDisplayTile(')
+    expect(viewportSource).toContain(
+      'renderer.upload(context.layer.id, tile, context.adapter, required)',
+    )
+    expect(viewportSource).not.toContain('.requestTile(')
+    expect(viewportSource).not.toContain('bandValues')
     expect(viewportSource).toContain('cached.adapter.pixelToWorld')
     expect(viewportSource).toContain('pixelToWorldForOverview')
     expect(viewportSource).toContain('cameraLimitsForWorldLayer')

@@ -37,14 +37,12 @@ export interface BandMapping {
   readonly red?: number
   readonly green?: number
   readonly blue?: number
-  readonly alpha?: number
 }
 
 export type RasterStretch = 'minmax' | 'percentile'
 
 export interface RasterStyle {
   readonly mapping: BandMapping
-  readonly palette?: string
   readonly minimum?: number
   readonly maximum?: number
   readonly stretch?: RasterStretch
@@ -53,6 +51,9 @@ export interface RasterStyle {
   readonly gamma?: number
   readonly nodataTransparent?: boolean
   readonly resample?: 'nearest' | 'bilinear'
+  /** Stable uses deterministic layer statistics; viewport-local is explicitly exploratory. */
+  readonly rangeMode?: 'stable' | 'viewport-local'
+  readonly valueMode?: 'raw' | 'physical'
 }
 
 export interface GeoCatalogReference {
@@ -178,7 +179,7 @@ export interface DerivedGeoRasterLayer {
 
 export type GeoLayer = GeoRasterLayer | DerivedGeoRasterLayer
 
-export type GeoComparisonMode = 'single' | 'swipe' | 'overlay'
+export type GeoComparisonMode = 'single' | 'swipe' | 'overlay' | 'blink'
 
 export type GeoComparisonState =
   | Readonly<{ mode: 'single' }>
@@ -191,6 +192,12 @@ export type GeoComparisonState =
   | Readonly<{
       mode: 'overlay'
       overlayLayerIds: readonly GeoLayerId[]
+    }>
+  | Readonly<{
+      mode: 'blink'
+      firstLayerId: GeoLayerId
+      secondLayerId: GeoLayerId
+      intervalMilliseconds: number
     }>
 
 export type GeoMapGeometry =
@@ -456,7 +463,7 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
   }
   validateDerivedLayerCycles(layers)
   const comparison = input.comparison ?? { mode: 'single' }
-  validateComparison(comparison, layers)
+  validateComparison(comparison, layers, sources)
   for (const roi of rois) {
     if (roi.coordinateSpace !== 'map') {
       throw new GeoValidationError('INVALID_PROJECT', 'Geo ROIs must use map coordinates')
@@ -495,7 +502,11 @@ function sameKnownCrs(left: CrsReference, right: CrsReference): boolean {
   )
 }
 
-function validateComparison(comparison: GeoComparisonState, layers: readonly GeoLayer[]): void {
+function validateComparison(
+  comparison: GeoComparisonState,
+  layers: readonly GeoLayer[],
+  sources: readonly GeoRasterSource[],
+): void {
   const layerIds = new Set(layers.map(({ id }) => id))
   switch (comparison.mode) {
     case 'single':
@@ -508,6 +519,7 @@ function validateComparison(comparison: GeoComparisonState, layers: readonly Geo
       if (comparison.leftLayerId === comparison.rightLayerId) {
         throw new GeoValidationError('INVALID_PROJECT', 'Swipe comparison requires two layers')
       }
+      requireComparisonCrs(comparison.leftLayerId, comparison.rightLayerId, layers, sources)
       unitInterval(comparison.swipePosition, 'swipe position')
       return
     case 'overlay':
@@ -517,6 +529,28 @@ function validateComparison(comparison: GeoComparisonState, layers: readonly Geo
       for (const layerId of comparison.overlayLayerIds)
         requireVisibleLayer(layerId, layers, 'overlay layer')
       uniqueIds(comparison.overlayLayerIds, 'overlay layer id')
+      for (const layerId of comparison.overlayLayerIds.slice(1)) {
+        const first = comparison.overlayLayerIds[0]
+        if (first !== undefined) requireComparisonCrs(first, layerId, layers, sources)
+      }
+      return
+    case 'blink':
+      requireVisibleLayer(comparison.firstLayerId, layers, 'blink first layer')
+      requireVisibleLayer(comparison.secondLayerId, layers, 'blink second layer')
+      if (comparison.firstLayerId === comparison.secondLayerId) {
+        throw new GeoValidationError('INVALID_PROJECT', 'Blink comparison requires two layers')
+      }
+      if (
+        !Number.isFinite(comparison.intervalMilliseconds) ||
+        comparison.intervalMilliseconds < 100 ||
+        comparison.intervalMilliseconds > 10_000
+      ) {
+        throw new GeoValidationError(
+          'INVALID_PROJECT',
+          'Blink interval must be between 100 and 10000 milliseconds',
+        )
+      }
+      requireComparisonCrs(comparison.firstLayerId, comparison.secondLayerId, layers, sources)
       return
     default: {
       const unexpected: never = comparison
@@ -525,6 +559,28 @@ function validateComparison(comparison: GeoComparisonState, layers: readonly Geo
         `Unsupported comparison ${(unexpected as GeoComparisonState).mode}`,
       )
     }
+  }
+}
+
+function requireComparisonCrs(
+  leftLayerId: GeoLayerId,
+  rightLayerId: GeoLayerId,
+  layers: readonly GeoLayer[],
+  sources: readonly GeoRasterSource[],
+): void {
+  const leftLayer = layers.find(({ id }) => id === leftLayerId)
+  const rightLayer = layers.find(({ id }) => id === rightLayerId)
+  const left = sources.find(({ id }) => id === leftLayer?.sourceId)
+  const right = sources.find(({ id }) => id === rightLayer?.sourceId)
+  if (
+    left === undefined ||
+    right === undefined ||
+    !sameKnownCrs(left.spatialReference.crs, right.spatialReference.crs)
+  ) {
+    throw new GeoValidationError(
+      'INVALID_PROJECT',
+      'Comparison requires two sources with the same known CRS',
+    )
   }
 }
 
@@ -582,11 +638,20 @@ function requireLayer(id: string, layerIds: ReadonlySet<string>, label: string):
 
 function normalizeRasterStyle(style: RasterStyle): RasterStyle {
   const mapping = normalizeBandMapping(style.mapping)
-  const palette =
-    style.palette === undefined ? undefined : boundedString(style.palette, 'style palette')
   const resample = style.resample ?? 'nearest'
   if (resample !== 'nearest' && resample !== 'bilinear') {
     throw new GeoValidationError('INVALID_PROJECT', 'Style resample must be nearest or bilinear')
+  }
+  const rangeMode = style.rangeMode ?? 'stable'
+  if (rangeMode !== 'stable' && rangeMode !== 'viewport-local') {
+    throw new GeoValidationError(
+      'INVALID_PROJECT',
+      'Style rangeMode must be stable or viewport-local',
+    )
+  }
+  const valueMode = style.valueMode ?? 'raw'
+  if (valueMode !== 'raw' && valueMode !== 'physical') {
+    throw new GeoValidationError('INVALID_PROJECT', 'Style valueMode must be raw or physical')
   }
   const minimum =
     style.minimum === undefined ? undefined : finiteNumber(style.minimum, 'style minimum')
@@ -620,7 +685,6 @@ function normalizeRasterStyle(style: RasterStyle): RasterStyle {
   }
   return {
     mapping,
-    ...(palette === undefined ? {} : { palette }),
     ...(minimum === undefined ? {} : { minimum }),
     ...(maximum === undefined ? {} : { maximum }),
     stretch,
@@ -629,6 +693,8 @@ function normalizeRasterStyle(style: RasterStyle): RasterStyle {
     ...(gamma === undefined ? {} : { gamma }),
     nodataTransparent: style.nodataTransparent ?? true,
     resample,
+    rangeMode,
+    valueMode,
   }
 }
 
@@ -637,7 +703,6 @@ function normalizeBandMapping(mapping: BandMapping): BandMapping {
   const red = mapping.red === undefined ? undefined : bandIndex(mapping.red, 'red band')
   const green = mapping.green === undefined ? undefined : bandIndex(mapping.green, 'green band')
   const blue = mapping.blue === undefined ? undefined : bandIndex(mapping.blue, 'blue band')
-  const alpha = mapping.alpha === undefined ? undefined : bandIndex(mapping.alpha, 'alpha band')
   const hasGray = gray !== undefined
   const hasRgb = red !== undefined || green !== undefined || blue !== undefined
   if (hasGray && hasRgb) {
@@ -651,7 +716,6 @@ function normalizeBandMapping(mapping: BandMapping): BandMapping {
     ...(red === undefined ? {} : { red }),
     ...(green === undefined ? {} : { green }),
     ...(blue === undefined ? {} : { blue }),
-    ...(alpha === undefined ? {} : { alpha }),
   }
 }
 

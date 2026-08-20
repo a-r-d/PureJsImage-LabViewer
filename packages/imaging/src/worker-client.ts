@@ -15,10 +15,16 @@ import {
   type AnalysisTablePage,
   type AnalysisTablePageRequest,
   type DatasetHandleId,
+  type DisplayStatistics,
+  type DisplayStatisticsRequest,
+  type DisplayTile,
+  type DisplayTileRequest,
   type DocumentId,
   type OpenedDatasetDescriptor,
   type OpenedSourceDescriptor,
   type PlaneSelection,
+  type RasterPointSample,
+  type RasterPointSampleRequest,
   type RenderTile,
   type RenderTileRequest,
   RPC_SCHEMA_VERSION,
@@ -217,6 +223,40 @@ export class ImagingWorkerClient {
   requestTile(request: RenderTileRequest, signal?: AbortSignal): Promise<RenderTile> {
     return this.#call('tile.request', request, signal).then((response) =>
       this.#payload(response, 'tile.ready'),
+    )
+  }
+
+  requestDisplayTile(request: DisplayTileRequest, signal?: AbortSignal): Promise<DisplayTile> {
+    return this.#call('display.tile.request', request, signal).then((response) =>
+      this.#payload(response, 'display.tile.ready'),
+    )
+  }
+
+  requestDisplayStatistics(
+    request: DisplayStatisticsRequest,
+    signal?: AbortSignal,
+  ): Promise<DisplayStatistics> {
+    return this.#call('display.statistics.request', request, signal).then((response) =>
+      this.#payload(response, 'display.statistics.ready'),
+    )
+  }
+
+  async invalidateDisplayStatistics(
+    input: Readonly<{
+      sourceIdentity?: string
+      datasetHandleId?: DatasetHandleId
+    }> = {},
+  ): Promise<number> {
+    const response = await this.#call('display.statistics.invalidate', input)
+    return this.#payload(response, 'display.statistics.invalidated').removed
+  }
+
+  sampleRasterPoint(
+    request: RasterPointSampleRequest,
+    signal?: AbortSignal,
+  ): Promise<RasterPointSample> {
+    return this.#call('raster.sample_point', request, signal).then((response) =>
+      this.#payload(response, 'raster.point_sampled'),
     )
   }
 

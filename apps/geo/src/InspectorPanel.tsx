@@ -284,6 +284,55 @@ function DisplayControls({
           <option value="percentile">Percentile</option>
         </select>
       </label>
+      <label>
+        Range scope
+        <select
+          aria-label="Range scope"
+          onChange={(event) =>
+            onChange({
+              ...layer.style,
+              rangeMode:
+                event.currentTarget.value === 'viewport-local' ? 'viewport-local' : 'stable',
+            })
+          }
+          value={layer.style.rangeMode ?? 'stable'}
+        >
+          <option value="stable">Stable layer statistics</option>
+          <option value="viewport-local">Viewport-local (exploratory)</option>
+        </select>
+      </label>
+      <label>
+        Values
+        <select
+          aria-label="Value mode"
+          onChange={(event) =>
+            onChange({
+              ...layer.style,
+              valueMode: event.currentTarget.value === 'physical' ? 'physical' : 'raw',
+            })
+          }
+          value={layer.style.valueMode ?? 'raw'}
+        >
+          <option value="raw">Raw source values</option>
+          <option value="physical">Physical scale and offset</option>
+        </select>
+      </label>
+      <label>
+        Resampling
+        <select
+          aria-label="Resampling"
+          onChange={(event) =>
+            onChange({
+              ...layer.style,
+              resample: event.currentTarget.value === 'bilinear' ? 'bilinear' : 'nearest',
+            })
+          }
+          value={layer.style.resample ?? 'nearest'}
+        >
+          <option value="nearest">Nearest</option>
+          <option value="bilinear">Bilinear</option>
+        </select>
+      </label>
       <div className="geo-band-grid">
         <label>
           Minimum
@@ -420,8 +469,9 @@ function mergeStyle(style: RasterStyle, patch: StylePatch): RasterStyle {
     mapping: patch.mapping ?? style.mapping,
     stretch: patch.stretch ?? style.stretch ?? 'minmax',
     nodataTransparent: patch.nodataTransparent ?? style.nodataTransparent ?? true,
-    ...(style.palette === undefined ? {} : { palette: style.palette }),
     ...(style.resample === undefined ? {} : { resample: style.resample }),
+    ...(style.rangeMode === undefined ? {} : { rangeMode: style.rangeMode }),
+    ...(style.valueMode === undefined ? {} : { valueMode: style.valueMode }),
     ...(minimum === undefined ? {} : { minimum }),
     ...(maximum === undefined ? {} : { maximum }),
     ...(percentileLow === undefined ? {} : { percentileLow }),

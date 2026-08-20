@@ -1,14 +1,20 @@
 import type {
   DatasetDescriptor,
+  DisplayMapping,
+  DisplayStatistics,
+  DisplayTile,
   OpenedDatasetDescriptor,
-  RenderTile,
+  RasterPointSample,
   SpatialReference,
+  StructuredRpcError,
 } from '@pji-workbench/contracts'
 import {
   CRS_EPSG_4326,
   canTransformCrs,
   displayMappingFromStyle,
+  type GeoComparisonState,
   type GeoRasterLayer,
+  type GeoRasterSource,
   scalarNodata,
   transformMapPoint,
 } from '@pji-workbench/domain-geo'
@@ -26,44 +32,104 @@ import {
   planMultiLayerTiles,
   resizeCamera,
   type Size,
-  sampleViewportPointer,
   selectOverviewLevel,
   type TileLayerPlanInput,
   visibleWorldBounds,
   zoomCameraAtScreenPointInSpace,
 } from '@pji-workbench/viewport'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+
+import { DisplayTileCache, type DisplayTileCacheDiagnostics } from './display-tile-cache.js'
 
 const TILE_SIZE = 256
 const PREFETCH_TILES = 1
+const DISPLAY_CACHE_BYTES = 64 * 1_024 * 1_024
+const DISPLAY_CACHE_TILES = 256
+const SAMPLE_DELAY_MS = 100
+const RETRY_DELAYS_MS = [250, 1_000, 4_000] as const
 
 export interface GeoViewportPointer {
+  readonly sourceId: string
+  readonly datasetHandleId: string
+  readonly layerId: string
   readonly pixel: Point
-  readonly world: Point
-  readonly bands: readonly Readonly<{ name: string; value: number | undefined }>[]
+  readonly sourceMapCoordinate: Point
+  readonly projectMapCoordinate: Point
+  readonly nodata: boolean
+  readonly bands: readonly Readonly<{
+    name: string
+    unit?: string
+    value: number | undefined
+    nodata: boolean
+  }>[]
+}
+
+export interface GeoViewportStatus {
+  readonly message: string
+  readonly pending: number
+  readonly transientFailures: number
+  readonly permanentFailures: number
+  readonly retryableFailures: number
+  readonly errors: readonly string[]
+  readonly cache: DisplayTileCacheDiagnostics
 }
 
 export interface GeoViewportProps {
   readonly client: ImagingWorkerClient
   readonly rasters: readonly OpenedDatasetDescriptor[]
+  readonly sources: readonly GeoRasterSource[]
   readonly layers: readonly GeoRasterLayer[]
+  readonly comparison: GeoComparisonState
+  readonly selectedLayerId?: string
+  readonly onComparisonChange: (comparison: GeoComparisonState) => void
   readonly onPointer: (sample: GeoViewportPointer | undefined) => void
-  readonly onOverview: (level: number) => void
+  readonly onOverview: (sourceId: string, level: number) => void
   readonly onSettled: (settled: boolean) => void
+  readonly onStatus?: (status: GeoViewportStatus) => void
   readonly onViewBbox?: (bbox: readonly [number, number, number, number] | undefined) => void
 }
 
 interface CachedTile {
-  readonly tile: RenderTile
   readonly canvas: HTMLCanvasElement
   readonly layerId: string
+  readonly region: Readonly<{ x: number; y: number; width: number; height: number }>
+  readonly width: number
+  readonly height: number
   readonly adapter: CoordinateSpaceAdapter
 }
+
+interface LayerContext {
+  readonly layer: GeoRasterLayer
+  readonly source: GeoRasterSource
+  readonly raster: OpenedDatasetDescriptor
+  readonly overview: number
+  readonly adapter: CoordinateSpaceAdapter
+  readonly mapping: DisplayMapping
+  readonly sourceRevision: string
+  readonly styleRevision: string
+  readonly statisticsRevision: string
+}
+
+interface FailedTile {
+  readonly tileId: string
+  readonly layerId: string
+  readonly region: Readonly<{ x: number; y: number; width: number; height: number }>
+  readonly adapter: CoordinateSpaceAdapter
+  readonly transient: boolean
+  readonly message: string
+}
+
+type TileState =
+  | Readonly<{ kind: 'pending' }>
+  | Readonly<{ kind: 'ready' }>
+  | Readonly<{ kind: 'failed-transient'; failure: FailedTile }>
+  | Readonly<{ kind: 'failed-permanent'; failure: FailedTile }>
+  | Readonly<{ kind: 'superseded' }>
 
 class CanvasGeoRenderer {
   readonly #canvas: HTMLCanvasElement
   #context: CanvasRenderingContext2D
-  readonly #tiles = new Map<string, CachedTile>()
+  readonly #cache = new DisplayTileCache<CachedTile>(DISPLAY_CACHE_BYTES, DISPLAY_CACHE_TILES)
   #viewport: Size = { width: 1, height: 1 }
   #ratio = 1
 
@@ -82,14 +148,22 @@ class CanvasGeoRenderer {
     this.#canvas.style.width = `${viewport.width}px`
     this.#canvas.style.height = `${viewport.height}px`
     this.#context = this.#canvas.getContext('2d', { alpha: false }) ?? this.#context
-    this.#context.setTransform(this.#ratio, 0, 0, this.#ratio, 0, 0)
   }
 
   has(tileId: string): boolean {
-    return this.#tiles.has(tileId)
+    return this.#cache.has(tileId)
   }
 
-  upload(layerId: string, tile: RenderTile, adapter: CoordinateSpaceAdapter): void {
+  touch(tileId: string): void {
+    this.#cache.get(tileId)
+  }
+
+  upload(
+    layerId: string,
+    tile: DisplayTile,
+    adapter: CoordinateSpaceAdapter,
+    protectedKeys: ReadonlySet<string>,
+  ): void {
     const canvas = document.createElement('canvas')
     canvas.width = tile.width
     canvas.height = tile.height
@@ -98,80 +172,141 @@ class CanvasGeoRenderer {
     const pixels = new Uint8ClampedArray(tile.rgba.length)
     pixels.set(tile.rgba)
     context.putImageData(new ImageData(pixels, tile.width, tile.height), 0, 0)
-    this.#tiles.set(tile.tileId, { tile, canvas, layerId, adapter })
-  }
-
-  retain(tileIds: ReadonlySet<string>): void {
-    for (const key of this.#tiles.keys()) {
-      if (!tileIds.has(key)) this.#tiles.delete(key)
+    const cached: CachedTile = {
+      canvas,
+      layerId,
+      region: tile.region,
+      width: tile.width,
+      height: tile.height,
+      adapter,
     }
+    this.#cache.set(
+      tile.tileId,
+      {
+        value: cached,
+        bytes: tile.width * tile.height * 4,
+        dispose: ({ canvas: disposable }) => {
+          disposable.width = 0
+          disposable.height = 0
+        },
+      },
+      protectedKeys,
+    )
   }
 
-  sample(layerId: string, pixel: Point): readonly number[] | undefined {
-    for (const cached of this.#tiles.values()) {
-      if (cached.layerId !== layerId) continue
-      const { region } = cached.tile
-      if (
-        pixel.x < region.x ||
-        pixel.y < region.y ||
-        pixel.x >= region.x + cached.tile.width ||
-        pixel.y >= region.y + cached.tile.height
-      ) {
-        continue
-      }
-      const x = Math.floor(pixel.x - region.x)
-      const y = Math.floor(pixel.y - region.y)
-      const offset = y * cached.tile.width + x
-      if (cached.tile.bandValues !== undefined) {
-        return cached.tile.bandValues.map((band) => band[offset] ?? Number.NaN)
-      }
-      const value = cached.tile.values[offset]
-      return value === undefined ? undefined : [value]
-    }
-    return undefined
-  }
-
-  render(camera: Camera, adapter: CoordinateSpaceAdapter, layers: readonly GeoRasterLayer[]): void {
+  render(
+    camera: Camera,
+    projectAdapter: CoordinateSpaceAdapter,
+    layers: readonly GeoRasterLayer[],
+    sources: readonly GeoRasterSource[],
+    comparison: GeoComparisonState,
+    blinkPhase: 0 | 1,
+    required: ReadonlySet<string>,
+    failures: readonly FailedTile[],
+  ): void {
     const context = this.#context
     context.setTransform(this.#ratio, 0, 0, this.#ratio, 0, 0)
+    context.globalAlpha = 1
+    context.globalCompositeOperation = 'source-over'
     context.fillStyle = '#050709'
     context.fillRect(0, 0, this.#viewport.width, this.#viewport.height)
-    const ordered = [...layers].sort((left, right) => left.zIndex - right.zIndex)
-    for (const layer of ordered) {
-      if (!layer.visible) continue
-      for (const cached of this.#tiles.values()) {
-        if (cached.layerId !== layer.id) continue
-        this.#drawTile(cached, adapter, camera, layer.opacity)
+    const ordered = orderedDisplayLayers(layers)
+    if (comparison.mode === 'swipe') {
+      this.#drawLayers(
+        camera,
+        projectAdapter,
+        ordered.filter(({ id }) => id === comparison.leftLayerId),
+        required,
+        { x: 0, width: this.#viewport.width * comparison.swipePosition },
+      )
+      this.#drawLayers(
+        camera,
+        projectAdapter,
+        ordered.filter(({ id }) => id === comparison.rightLayerId),
+        required,
+        {
+          x: this.#viewport.width * comparison.swipePosition,
+          width: this.#viewport.width * (1 - comparison.swipePosition),
+        },
+      )
+      this.#drawSwipeAdornment(comparison, layers, sources)
+    } else if (comparison.mode === 'blink') {
+      const active = blinkPhase === 0 ? comparison.firstLayerId : comparison.secondLayerId
+      this.#drawLayers(
+        camera,
+        projectAdapter,
+        ordered.filter(({ id }) => id === active),
+        required,
+      )
+      this.#drawLabel(labelForLayer(active, layers, sources), 12, 12, 'left')
+    } else {
+      const visibleLayers =
+        comparison.mode === 'overlay'
+          ? ordered.filter(({ id }) => comparison.overlayLayerIds.includes(id))
+          : ordered
+      this.#drawLayers(camera, projectAdapter, visibleLayers, required)
+    }
+    this.#drawFailures(camera, projectAdapter, failures)
+  }
+
+  diagnostics(): DisplayTileCacheDiagnostics {
+    return this.#cache.diagnostics()
+  }
+
+  dispose(): void {
+    this.#cache.clear()
+  }
+
+  #drawLayers(
+    camera: Camera,
+    projectAdapter: CoordinateSpaceAdapter,
+    layers: readonly GeoRasterLayer[],
+    required: ReadonlySet<string>,
+    clip?: Readonly<{ x: number; width: number }>,
+  ): void {
+    this.#context.save()
+    if (clip !== undefined) {
+      this.#context.beginPath()
+      this.#context.rect(clip.x, 0, clip.width, this.#viewport.height)
+      this.#context.clip()
+    }
+    for (const layer of layers) {
+      for (const tileId of required) {
+        const cached = this.#cache.peek(tileId)
+        if (cached?.layerId !== layer.id) continue
+        this.#drawTile(cached, projectAdapter, camera, layer)
       }
     }
+    this.#context.restore()
   }
 
   #drawTile(
     cached: CachedTile,
     adapter: CoordinateSpaceAdapter,
     camera: Camera,
-    opacity: number,
+    layer: GeoRasterLayer,
   ): void {
-    const { region } = cached.tile
+    const { region } = cached
     const origin = adapter.worldToScreen(
       cached.adapter.pixelToWorld({ x: region.x, y: region.y }),
       camera,
       this.#viewport,
     )
     const xAxis = adapter.worldToScreen(
-      cached.adapter.pixelToWorld({ x: region.x + cached.tile.width, y: region.y }),
+      cached.adapter.pixelToWorld({ x: region.x + cached.width, y: region.y }),
       camera,
       this.#viewport,
     )
     const yAxis = adapter.worldToScreen(
-      cached.adapter.pixelToWorld({ x: region.x, y: region.y + cached.tile.height }),
+      cached.adapter.pixelToWorld({ x: region.x, y: region.y + cached.height }),
       camera,
       this.#viewport,
     )
     const ratio = this.#ratio
     this.#context.save()
-    this.#context.globalAlpha = opacity
-    this.#context.imageSmoothingEnabled = camera.zoom < 1
+    this.#context.globalAlpha = layer.opacity
+    this.#context.globalCompositeOperation = canvasCompositeOperation(layer.blendMode)
+    this.#context.imageSmoothingEnabled = canvasSmoothingEnabled(layer.style.resample)
     this.#context.setTransform(
       (ratio * (xAxis.x - origin.x)) / cached.canvas.width,
       (ratio * (xAxis.y - origin.y)) / cached.canvas.width,
@@ -184,43 +319,128 @@ class CanvasGeoRenderer {
     this.#context.restore()
   }
 
-  dispose(): void {
-    this.#tiles.clear()
+  #drawFailures(
+    camera: Camera,
+    adapter: CoordinateSpaceAdapter,
+    failures: readonly FailedTile[],
+  ): void {
+    for (const failure of failures) {
+      const origin = adapter.worldToScreen(
+        failure.adapter.pixelToWorld({ x: failure.region.x, y: failure.region.y }),
+        camera,
+        this.#viewport,
+      )
+      const opposite = adapter.worldToScreen(
+        failure.adapter.pixelToWorld({
+          x: failure.region.x + failure.region.width,
+          y: failure.region.y + failure.region.height,
+        }),
+        camera,
+        this.#viewport,
+      )
+      this.#context.save()
+      this.#context.setTransform(this.#ratio, 0, 0, this.#ratio, 0, 0)
+      this.#context.fillStyle = failure.transient ? '#ffb02033' : '#ff4d5e44'
+      this.#context.strokeStyle = failure.transient ? '#ffb020' : '#ff4d5e'
+      this.#context.lineWidth = 2
+      const x = Math.min(origin.x, opposite.x)
+      const y = Math.min(origin.y, opposite.y)
+      const width = Math.abs(opposite.x - origin.x)
+      const height = Math.abs(opposite.y - origin.y)
+      this.#context.fillRect(x, y, width, height)
+      this.#context.strokeRect(x, y, width, height)
+      this.#context.restore()
+    }
+  }
+
+  #drawSwipeAdornment(
+    comparison: Extract<GeoComparisonState, { mode: 'swipe' }>,
+    layers: readonly GeoRasterLayer[],
+    sources: readonly GeoRasterSource[],
+  ): void {
+    const x = this.#viewport.width * comparison.swipePosition
+    this.#context.save()
+    this.#context.setTransform(this.#ratio, 0, 0, this.#ratio, 0, 0)
+    this.#context.strokeStyle = '#f7fbff'
+    this.#context.lineWidth = 2
+    this.#context.beginPath()
+    this.#context.moveTo(x, 0)
+    this.#context.lineTo(x, this.#viewport.height)
+    this.#context.stroke()
+    this.#context.restore()
+    this.#drawLabel(labelForLayer(comparison.leftLayerId, layers, sources), 12, 12, 'left')
+    this.#drawLabel(
+      labelForLayer(comparison.rightLayerId, layers, sources),
+      this.#viewport.width - 12,
+      12,
+      'right',
+    )
+  }
+
+  #drawLabel(label: string, x: number, y: number, align: CanvasTextAlign): void {
+    this.#context.save()
+    this.#context.setTransform(this.#ratio, 0, 0, this.#ratio, 0, 0)
+    this.#context.font = '12px system-ui, sans-serif'
+    this.#context.textAlign = align
+    this.#context.textBaseline = 'top'
+    const width = this.#context.measureText(label).width + 12
+    const left = align === 'right' ? x - width : x
+    this.#context.fillStyle = '#071018cc'
+    this.#context.fillRect(left, y, width, 24)
+    this.#context.fillStyle = '#f7fbff'
+    this.#context.fillText(label, align === 'right' ? x - 6 : x + 6, y + 5)
+    this.#context.restore()
   }
 }
 
 export function GeoViewport({
   client,
   rasters,
+  sources,
   layers,
+  comparison,
+  selectedLayerId,
+  onComparisonChange,
   onPointer,
   onOverview,
   onSettled,
+  onStatus,
   onViewBbox,
 }: GeoViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const layersRef = useRef(layers)
-  layersRef.current = layers
   const rastersRef = useRef(rasters)
-  rastersRef.current = rasters
+  const sourcesRef = useRef(sources)
+  const comparisonRef = useRef(comparison)
+  const selectedLayerRef = useRef(selectedLayerId)
   const onViewBboxRef = useRef(onViewBbox)
+  const onStatusRef = useRef(onStatus)
+  const onComparisonChangeRef = useRef(onComparisonChange)
+  layersRef.current = layers
+  rastersRef.current = rasters
+  sourcesRef.current = sources
+  comparisonRef.current = comparison
+  selectedLayerRef.current = selectedLayerId
   onViewBboxRef.current = onViewBbox
+  onStatusRef.current = onStatus
+  onComparisonChangeRef.current = onComparisonChange
   const scheduleRef = useRef<() => void>(() => undefined)
+  const retryFailedRef = useRef<() => void>(() => undefined)
+  const [status, setStatus] = useState<GeoViewportStatus | undefined>()
   const rastersIdentity = rasters
     .map((raster) => `${raster.handleId}:${raster.generation}`)
     .join('|')
-  const layersKey = [
+  const sceneKey = JSON.stringify({
     rastersIdentity,
-    ...layers.map(
-      (layer) =>
-        `${layer.id}:${layer.sourceId}:${layer.visible}:${layer.opacity}:${JSON.stringify(layer.style)}`,
-    ),
-  ].join('|')
-  // biome-ignore lint/correctness/useExhaustiveDependencies: layersKey is the refetch signal; the effect only calls the latest scheduler.
-  useEffect(() => {
-    scheduleRef.current()
-  }, [layersKey])
+    sources: sources.map(({ id, locator }) => [id, locator]),
+    layers,
+    comparison,
+    selectedLayerId,
+  })
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sceneKey is the revision signal; refs hold the latest scene.
+  useEffect(() => scheduleRef.current(), [sceneKey])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: raster handle identity remounts the runtime while scene revisions flow through refs.
   useEffect(() => {
     const canvas = canvasRef.current
     if (canvas === null) return
@@ -256,147 +476,273 @@ export function GeoViewport({
     let camera: Camera = fitCameraToLayer(cameraAdapter, viewport, 24, limits)
     let fitted = false
     let frameRequest = 0
-    const requestGeneration = 1
-    let overview = 0
-    const adapter = cameraAdapter
+    let required = new Set<string>()
+    let comparisonState = comparisonRef.current
+    let blinkPhase: 0 | 1 = 0
+    let blinkTimer: number | undefined
+    let blinkTimerKey: string | undefined
+    let samplingTimer: number | undefined
+    let samplingController: AbortController | undefined
+    let dragPoint: Point | undefined
+    let swipeDragging = false
     const pending = new Map<string, AbortController>()
+    const tileStates = new Map<string, TileState>()
+    const retryCounts = new Map<string, number>()
+    const statistics = new Map<string, DisplayStatistics>()
+    const statisticsPending = new Map<string, AbortController>()
+    const statisticsErrors = new Map<string, string>()
+    const overviewBySource = new Map<string, number>()
+
+    const failures = (): FailedTile[] =>
+      [...required].flatMap((tileId) => {
+        const state = tileStates.get(tileId)
+        return state?.kind === 'failed-transient' || state?.kind === 'failed-permanent'
+          ? [state.failure]
+          : []
+      })
 
     const draw = (): void => {
       cancelAnimationFrame(frameRequest)
       frameRequest = requestAnimationFrame(() => {
-        renderer.render(camera, adapter, layersRef.current)
+        renderer.render(
+          camera,
+          cameraAdapter,
+          layersRef.current,
+          sourcesRef.current,
+          comparisonState,
+          blinkPhase,
+          required,
+          failures(),
+        )
       })
     }
 
-    const scheduleTiles = (): void => {
-      const nextOverview = selectOverviewLevel(
-        overviewSizes(primary.dataset, full),
-        camera,
-        viewport,
-        cameraAdapter.worldBounds(),
-      )
-      if (nextOverview !== overview) {
-        overview = nextOverview
-        onOverview(overview)
+    const reportStatus = (): void => {
+      const states = [...required].map((tileId) => tileStates.get(tileId))
+      const pendingCount = states.filter(
+        (state) => state?.kind === 'pending' || state === undefined,
+      ).length
+      const transientFailures = states.filter((state) => state?.kind === 'failed-transient').length
+      const permanentFailures = states.filter((state) => state?.kind === 'failed-permanent').length
+      const statsFailures = statisticsErrors.size
+      const settled = pendingCount === 0 && statisticsPending.size === 0
+      const problemCount = transientFailures + permanentFailures + statsFailures
+      const loadingCount = pendingCount + statisticsPending.size
+      const next: GeoViewportStatus = {
+        message:
+          problemCount > 0
+            ? `${problemCount} display problem${problemCount === 1 ? '' : 's'}`
+            : loadingCount > 0
+              ? `Loading ${loadingCount} display item${loadingCount === 1 ? '' : 's'}`
+              : 'Viewport ready',
+        pending: loadingCount,
+        transientFailures,
+        permanentFailures: permanentFailures + statsFailures,
+        retryableFailures: transientFailures + statsFailures,
+        errors: [
+          ...new Set([...failures().map(({ message }) => message), ...statisticsErrors.values()]),
+        ],
+        cache: renderer.diagnostics(),
       }
-      const visible = visibleWorldBounds(camera, viewport, cameraAdapter)
-      const required = new Set<string>()
-      const planInputs: TileLayerPlanInput[] = []
-      const contexts = new Map<
-        string,
-        {
-          readonly raster: OpenedDatasetDescriptor
-          readonly overview: number
-          readonly mapping: ReturnType<typeof displayMappingFromStyle>
-          readonly adapter: CoordinateSpaceAdapter
-        }
-      >()
+      setStatus(next)
+      onStatusRef.current?.(next)
+      onSettled(settled)
+    }
+
+    const ensureStatistics = (
+      context: Omit<LayerContext, 'mapping' | 'statisticsRevision'>,
+    ): void => {
+      const indices = mappedComponents(context.layer)
+      const key = statisticsKey(context.layer, context.source, context.raster, indices)
+      if (statistics.has(key) || statisticsPending.has(key) || statisticsErrors.has(key)) return
+      const controller = new AbortController()
+      statisticsPending.set(key, controller)
+      reportStatus()
+      const nodata = scalarNodata(context.raster.dataset.spatialReference)
+      void client
+        .requestDisplayStatistics(
+          {
+            datasetHandleId: context.raster.handleId,
+            generation: context.raster.generation,
+            sourceIdentity: context.source.id,
+            sourceRevision: context.sourceRevision,
+            componentIndices: indices,
+            displayAxes: context.raster.selection.displayAxes,
+            fixedIndices: context.raster.selection.fixedIndices,
+            resolutionPolicy: { kind: 'reduced-overview' },
+            nodataPolicy: { kind: 'exclude', ...(nodata === undefined ? {} : { value: nodata }) },
+            sampleBudget: { maxSamples: 65_536, maxBytes: 1_048_576, maxTiles: 16 },
+            percentilePolicy: {
+              low: context.layer.style.percentileLow ?? 2,
+              high: context.layer.style.percentileHigh ?? 98,
+            },
+            scaleOffsetPolicy: {
+              kind: context.layer.style.valueMode ?? 'raw',
+              components: indices.map((index) => bandTransform(context.source, index)),
+            },
+          },
+          controller.signal,
+        )
+        .then((value) => {
+          if (controller.signal.aborted) return
+          statistics.set(key, value)
+          statisticsErrors.delete(key)
+        })
+        .catch((error: unknown) => {
+          if (!isAbort(error, controller)) statisticsErrors.set(key, errorMessage(error))
+        })
+        .finally(() => {
+          statisticsPending.delete(key)
+          scheduleRef.current()
+          reportStatus()
+        })
+    }
+
+    const contextsForScene = (): Map<string, LayerContext> => {
+      const contexts = new Map<string, LayerContext>()
       for (const layer of layersRef.current) {
         if (!layer.visible) continue
         const raster = rastersRef.current.find(
           (candidate) => String(candidate.sourceId) === String(layer.sourceId),
         )
-        if (raster === undefined) continue
+        const source = sourcesRef.current.find(({ id }) => id === layer.sourceId)
+        if (raster === undefined || source === undefined) continue
         const rasterSpatial = raster.dataset.spatialReference
         const rasterAffine = rasterSpatial?.pixelToModel
-        if (rasterSpatial === undefined || rasterAffine === undefined) continue
+        if (
+          rasterSpatial === undefined ||
+          rasterAffine === undefined ||
+          !sameCrs(spatial, rasterSpatial)
+        )
+          continue
         const rasterFull = rasterSize(raster.dataset)
-        const rasterWorld = createWorldSpaceAffineAdapter({
-          pixelToWorld: rasterAffine,
-          ...(rasterSpatial.modelToPixel === undefined
-            ? {}
-            : { worldToPixel: rasterSpatial.modelToPixel }),
-          width: rasterFull.width,
-          height: rasterFull.height,
-          pixelInterpretation: rasterSpatial.pixelInterpretation,
-        })
-        const layerOverview = selectOverviewLevel(
+        const rasterWorld = worldAdapterForDataset(raster)
+        if (rasterWorld === undefined) continue
+        const overview = selectOverviewLevel(
           overviewSizes(raster.dataset, rasterFull),
           camera,
           viewport,
           rasterWorld.worldBounds(),
         )
+        if (overviewBySource.get(source.id) !== overview) {
+          overviewBySource.set(source.id, overview)
+          onOverview(source.id, overview)
+        }
         const layerAdapter = adapterForOverview(
           rasterSpatial,
           rasterAffine,
           rasterFull,
           raster.dataset,
-          layerOverview,
+          overview,
         )
-        const mapping = displayMappingFromStyle(layer.style, scalarNodata(rasterSpatial))
-        planInputs.push({
-          layerId: layer.id,
-          sourceId: layer.sourceId,
-          visible: true,
+        const sourceRevision = revisionForSource(source)
+        const styleRevision = displayStyleRevision(layer)
+        const base = {
+          layer,
+          source,
+          raster,
+          overview,
           adapter: layerAdapter,
-        })
-        contexts.set(layer.id, { raster, overview: layerOverview, mapping, adapter: layerAdapter })
-      }
-      const plan = planMultiLayerTiles(planInputs, visible, TILE_SIZE, PREFETCH_TILES)
-      let issued = 0
-      for (const layerPlan of plan.layers) {
-        const context = contexts.get(layerPlan.layerId)
-        if (context === undefined) continue
-        const mappingKey = JSON.stringify(context.mapping)
-        const component = context.mapping.bands?.gray ?? context.mapping.bands?.red ?? 0
-        for (const candidate of layerPlan.regions) {
-          const tileId = `${context.raster.handleId}:${layerPlan.layerId}:${context.overview}:${mappingKey}:${candidate.column}:${candidate.row}`
-          required.add(tileId)
-          if (renderer.has(tileId) || pending.has(tileId)) continue
-          issued += 1
-          const controller = new AbortController()
-          pending.set(tileId, controller)
-          const currentGeneration = requestGeneration
-          void client
-            .requestTile(
-              {
-                tileId,
-                datasetHandleId: context.raster.handleId,
-                generation: context.raster.generation,
-                displayAxes: context.raster.selection.displayAxes,
-                fixedIndices: context.raster.selection.fixedIndices,
-                resolutionLevel: context.overview,
-                component,
-                mapping: context.mapping,
-                region: {
-                  x: candidate.x,
-                  y: candidate.y,
-                  width: candidate.width,
-                  height: candidate.height,
-                },
-                priority: candidate.priority,
-              },
-              controller.signal,
-            )
-            .then((tile) => {
-              if (currentGeneration !== requestGeneration || controller.signal.aborted) return
-              renderer.upload(layerPlan.layerId, tile, context.adapter)
-              draw()
-              if (pending.size === 0) onSettled(true)
-            })
-            .catch((error: unknown) => {
-              if (
-                !controller.signal.aborted &&
-                error instanceof ImagingRpcError &&
-                error.detail.code === 'ABORTED'
-              ) {
-                window.setTimeout(() => scheduleRef.current(), 0)
-              }
-            })
-            .finally(() => {
-              pending.delete(tileId)
-              if (pending.size === 0 && currentGeneration === requestGeneration) onSettled(true)
-            })
+          sourceRevision,
+          styleRevision,
         }
+        const indices = mappedComponents(layer)
+        const stats = statistics.get(statisticsKey(layer, source, raster, indices))
+        const manual = layer.style.minimum !== undefined && layer.style.maximum !== undefined
+        if ((layer.style.rangeMode ?? 'stable') === 'stable' && !manual && stats === undefined) {
+          ensureStatistics(base)
+          continue
+        }
+        const { mapping, statisticsRevision } = mappingForLayer(layer, source, raster, stats)
+        contexts.set(layer.id, { ...base, mapping, statisticsRevision })
       }
-      for (const [tileId, controller] of pending) {
-        if (!required.has(tileId)) controller.abort()
-      }
-      renderer.retain(required)
-      draw()
-      if (issued > 0) onSettled(false)
-      else if (pending.size === 0) onSettled(true)
-      emitViewBbox()
+      return contexts
+    }
+
+    const requestTile = (
+      context: LayerContext,
+      candidate: Readonly<{
+        x: number
+        y: number
+        width: number
+        height: number
+        priority: 'visible' | 'near-visible' | 'background'
+      }>,
+      tileId: string,
+    ): void => {
+      const controller = new AbortController()
+      pending.set(tileId, controller)
+      tileStates.set(tileId, { kind: 'pending' })
+      reportStatus()
+      void client
+        .requestDisplayTile(
+          {
+            tileId,
+            datasetHandleId: context.raster.handleId,
+            generation: context.raster.generation,
+            sourceIdentity: context.source.id,
+            sourceRevision: context.sourceRevision,
+            layerId: context.layer.id,
+            styleRevision: context.styleRevision,
+            statisticsRevision: context.statisticsRevision,
+            displayAxes: context.raster.selection.displayAxes,
+            fixedIndices: context.raster.selection.fixedIndices,
+            resolutionLevel: context.overview,
+            component: context.mapping.bands?.gray ?? context.mapping.bands?.red ?? 0,
+            mapping: context.mapping,
+            region: {
+              x: candidate.x,
+              y: candidate.y,
+              width: candidate.width,
+              height: candidate.height,
+            },
+            priority: candidate.priority,
+          },
+          controller.signal,
+        )
+        .then((tile) => {
+          if (controller.signal.aborted || !required.has(tileId) || tile.tileId !== tileId) return
+          renderer.upload(context.layer.id, tile, context.adapter, required)
+          tileStates.set(tileId, { kind: 'ready' })
+          retryCounts.delete(tileId)
+          draw()
+        })
+        .catch((error: unknown) => {
+          if (isAbort(error, controller) || !required.has(tileId)) return
+          const transient = isTransient(error)
+          const failure: FailedTile = {
+            tileId,
+            layerId: context.layer.id,
+            region: {
+              x: candidate.x,
+              y: candidate.y,
+              width: candidate.width,
+              height: candidate.height,
+            },
+            adapter: context.adapter,
+            transient,
+            message: errorMessage(error),
+          }
+          tileStates.set(tileId, {
+            kind: transient ? 'failed-transient' : 'failed-permanent',
+            failure,
+          })
+          draw()
+          const attempt = retryCounts.get(tileId) ?? 0
+          const delay = RETRY_DELAYS_MS[attempt]
+          if (transient && delay !== undefined) {
+            retryCounts.set(tileId, attempt + 1)
+            window.setTimeout(() => {
+              if (!required.has(tileId)) return
+              tileStates.delete(tileId)
+              scheduleRef.current()
+            }, delay)
+          }
+        })
+        .finally(() => {
+          pending.delete(tileId)
+          reportStatus()
+        })
     }
 
     const emitViewBbox = (): void => {
@@ -415,15 +761,86 @@ export function GeoViewport({
           { x: visible.x + visible.width, y: visible.y + visible.height },
           { x: visible.x, y: visible.y + visible.height },
         ].map((point) => transformMapPoint(point, crs, CRS_EPSG_4326))
-        const xs = corners.map((corner) => corner.x)
-        const ys = corners.map((corner) => corner.y)
+        const xs = corners.map(({ x }) => x)
+        const ys = corners.map(({ y }) => y)
         reportBbox([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)])
       } catch {
         reportBbox(undefined)
       }
     }
 
+    const syncBlinkTimer = (): void => {
+      const nextKey =
+        comparisonState.mode === 'blink' && !document.hidden
+          ? `${comparisonState.firstLayerId}:${comparisonState.secondLayerId}:${comparisonState.intervalMilliseconds}`
+          : undefined
+      if (nextKey === blinkTimerKey && (nextKey === undefined || blinkTimer !== undefined)) return
+      if (blinkTimer !== undefined) window.clearInterval(blinkTimer)
+      blinkTimer = undefined
+      blinkTimerKey = nextKey
+      if (comparisonState.mode !== 'blink' || nextKey === undefined) return
+      blinkTimer = window.setInterval(() => {
+        blinkPhase = blinkPhase === 0 ? 1 : 0
+        draw()
+      }, comparisonState.intervalMilliseconds)
+    }
+
+    const scheduleTiles = (): void => {
+      comparisonState = comparisonRef.current
+      syncBlinkTimer()
+      const visible = visibleWorldBounds(camera, viewport, cameraAdapter)
+      const contexts = contextsForScene()
+      const planInputs: TileLayerPlanInput[] = [...contexts.values()].map((context) => ({
+        layerId: context.layer.id,
+        sourceId: context.layer.sourceId,
+        visible: true,
+        adapter: context.adapter,
+      }))
+      const plan = planMultiLayerTiles(planInputs, visible, TILE_SIZE, PREFETCH_TILES)
+      const nextRequired = new Set<string>()
+      const requests: Array<
+        readonly [LayerContext, (typeof plan.layers)[number]['regions'][number], string]
+      > = []
+      for (const layerPlan of plan.layers) {
+        const context = contexts.get(layerPlan.layerId)
+        if (context === undefined) continue
+        for (const candidate of layerPlan.regions) {
+          const tileId = displayTileId(context, candidate)
+          nextRequired.add(tileId)
+          if (renderer.has(tileId)) {
+            renderer.touch(tileId)
+            tileStates.set(tileId, { kind: 'ready' })
+          } else if (
+            !pending.has(tileId) &&
+            tileStates.get(tileId)?.kind !== 'failed-permanent' &&
+            tileStates.get(tileId)?.kind !== 'failed-transient'
+          )
+            requests.push([context, candidate, tileId])
+        }
+      }
+      for (const tileId of required) {
+        if (nextRequired.has(tileId)) continue
+        pending.get(tileId)?.abort()
+        tileStates.set(tileId, { kind: 'superseded' })
+      }
+      required = nextRequired
+      for (const [context, candidate, tileId] of requests) requestTile(context, candidate, tileId)
+      draw()
+      reportStatus()
+      emitViewBbox()
+    }
+
     scheduleRef.current = scheduleTiles
+    retryFailedRef.current = () => {
+      for (const tileId of required) {
+        if (tileStates.get(tileId)?.kind === 'failed-transient') {
+          tileStates.delete(tileId)
+          retryCounts.delete(tileId)
+        }
+      }
+      statisticsErrors.clear()
+      scheduleTiles()
+    }
 
     const resizeObserver = new ResizeObserver(([entry]) => {
       const box = entry?.contentRect
@@ -439,130 +856,514 @@ export function GeoViewport({
       if (!fitted) {
         camera = fitCameraToLayer(cameraAdapter, viewport, 24, limits)
         fitted = viewport.width > 32 && viewport.height > 32
-      } else {
-        camera = resizeCamera(camera, previous, viewport, cameraAdapter.worldBounds(), limits)
-      }
+      } else camera = resizeCamera(camera, previous, viewport, cameraAdapter.worldBounds(), limits)
       scheduleTiles()
     })
     resizeObserver.observe(canvas.parentElement ?? canvas)
-    scheduleTiles()
 
-    const pointer = (event: PointerEvent): void => {
+    const queuePointSample = (event: PointerEvent): void => {
+      if (samplingTimer !== undefined) window.clearTimeout(samplingTimer)
+      samplingController?.abort()
       const bounds = canvas.getBoundingClientRect()
-      const screen = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
-      const sample = sampleViewportPointer(screen, camera, viewport, cameraAdapter)
-      const visibleLayer = [...layersRef.current]
-        .sort((left, right) => right.zIndex - left.zIndex)
-        .find((layer) => layer.visible)
-      const sampledRaster =
-        visibleLayer === undefined
-          ? primary
-          : (rastersRef.current.find(
-              (candidate) => String(candidate.sourceId) === String(visibleLayer.sourceId),
-            ) ?? primary)
-      const sampledWorld = worldAdapterForDataset(sampledRaster) ?? cameraAdapter
-      const sampledSpatial = sampledRaster.dataset.spatialReference
-      const sampledAffine = sampledSpatial?.pixelToModel
-      const sampledFull = rasterSize(sampledRaster.dataset)
-      const sampledOverview =
-        sampledSpatial === undefined || sampledAffine === undefined
-          ? 0
-          : selectOverviewLevel(
-              overviewSizes(sampledRaster.dataset, sampledFull),
-              camera,
-              viewport,
-              sampledWorld.worldBounds(),
-            )
-      const sampledOverviewAdapter =
-        sampledSpatial === undefined || sampledAffine === undefined
-          ? sampledWorld
-          : adapterForOverview(
-              sampledSpatial,
-              sampledAffine,
-              sampledFull,
-              sampledRaster.dataset,
-              sampledOverview,
-            )
-      const bands =
-        visibleLayer === undefined
-          ? []
-          : (
-              renderer.sample(visibleLayer.id, sampledOverviewAdapter.worldToPixel(sample.world)) ??
-              []
-            ).map((value, index) => ({
-              name: `B${index}`,
-              value,
-            }))
-      onPointer({
-        pixel: sampledWorld.worldToPixel(sample.world),
-        world: sample.world,
-        bands,
-      })
+      const world = cameraAdapter.screenToWorld(
+        { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+        camera,
+        viewport,
+      )
+      samplingTimer = window.setTimeout(() => {
+        const layer = selectedSampleLayer(layersRef.current, selectedLayerRef.current)
+        if (layer === undefined) return
+        const raster = rastersRef.current.find(
+          (candidate) => String(candidate.sourceId) === String(layer.sourceId),
+        )
+        if (raster === undefined) return
+        const sourceAdapter = worldAdapterForDataset(raster)
+        if (sourceAdapter === undefined) return
+        const pixel = sourceAdapter.worldToPixel(world)
+        const controller = new AbortController()
+        samplingController = controller
+        void client
+          .sampleRasterPoint(
+            {
+              datasetHandleId: raster.handleId,
+              generation: raster.generation,
+              sourceIdentity: String(layer.sourceId),
+              layerId: layer.id,
+              displayAxes: raster.selection.displayAxes,
+              fixedIndices: raster.selection.fixedIndices,
+              pixel,
+              projectMapCoordinate: world,
+            },
+            controller.signal,
+          )
+          .then((sample) => {
+            if (!controller.signal.aborted) onPointer(toViewportPointer(layer, raster, sample))
+          })
+          .catch((error: unknown) => {
+            if (!isAbort(error, controller)) onPointer(undefined)
+          })
+      }, SAMPLE_DELAY_MS)
     }
 
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault()
       const bounds = canvas.getBoundingClientRect()
-      const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15
       camera = zoomCameraAtScreenPointInSpace(
         camera,
         { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
-        factor,
+        event.deltaY < 0 ? 1.15 : 1 / 1.15,
         viewport,
         cameraAdapter,
         limits,
       )
       scheduleTiles()
     }
-    let last: Point | undefined
+    const updateSwipe = (clientX: number): void => {
+      if (comparisonState.mode !== 'swipe') return
+      const bounds = canvas.getBoundingClientRect()
+      const swipePosition = Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width))
+      comparisonState = { ...comparisonState, swipePosition }
+      comparisonRef.current = comparisonState
+      onComparisonChangeRef.current(comparisonState)
+      draw()
+    }
+    const endPointerInteraction = (): void => {
+      dragPoint = undefined
+      swipeDragging = false
+    }
     const onPointerDown = (event: PointerEvent): void => {
       if (event.button !== 0) return
-      last = { x: event.clientX, y: event.clientY }
+      const bounds = canvas.getBoundingClientRect()
+      const divider =
+        comparisonState.mode === 'swipe'
+          ? bounds.left + bounds.width * comparisonState.swipePosition
+          : Number.NEGATIVE_INFINITY
+      swipeDragging = Math.abs(event.clientX - divider) <= 12
+      dragPoint = { x: event.clientX, y: event.clientY }
       canvas.setPointerCapture(event.pointerId)
+      if (swipeDragging) updateSwipe(event.clientX)
     }
     const onPointerMove = (event: PointerEvent): void => {
-      pointer(event)
-      if (last === undefined) return
-      camera = panCameraInSpace(
-        camera,
-        { x: event.clientX - last.x, y: event.clientY - last.y },
-        viewport,
-        cameraAdapter,
-        limits,
-      )
-      last = { x: event.clientX, y: event.clientY }
-      scheduleTiles()
+      queuePointSample(event)
+      if (dragPoint === undefined) return
+      if (swipeDragging) updateSwipe(event.clientX)
+      else {
+        camera = panCameraInSpace(
+          camera,
+          { x: event.clientX - dragPoint.x, y: event.clientY - dragPoint.y },
+          viewport,
+          cameraAdapter,
+          limits,
+        )
+        dragPoint = { x: event.clientX, y: event.clientY }
+        scheduleTiles()
+      }
     }
-    const onPointerUp = (): void => {
-      last = undefined
+    const onPointerLeave = (): void => {
+      samplingController?.abort()
+      if (samplingTimer !== undefined) window.clearTimeout(samplingTimer)
+      onPointer(undefined)
     }
-    const onPointerLeave = (): void => onPointer(undefined)
+    const onVisibility = (): void => syncBlinkTimer()
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const pan = 32
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        if (comparisonState.mode === 'swipe' && event.shiftKey) {
+          const delta = event.key === 'ArrowLeft' ? -0.02 : 0.02
+          comparisonState = {
+            ...comparisonState,
+            swipePosition: Math.min(1, Math.max(0, comparisonState.swipePosition + delta)),
+          }
+          comparisonRef.current = comparisonState
+          onComparisonChangeRef.current(comparisonState)
+          draw()
+        } else {
+          camera = panCameraInSpace(
+            camera,
+            { x: event.key === 'ArrowLeft' ? pan : -pan, y: 0 },
+            viewport,
+            cameraAdapter,
+            limits,
+          )
+          scheduleTiles()
+        }
+        event.preventDefault()
+      } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        camera = panCameraInSpace(
+          camera,
+          { x: 0, y: event.key === 'ArrowUp' ? pan : -pan },
+          viewport,
+          cameraAdapter,
+          limits,
+        )
+        scheduleTiles()
+        event.preventDefault()
+      } else if (event.key === '+' || event.key === '=') {
+        camera = zoomCameraAtScreenPointInSpace(
+          camera,
+          { x: viewport.width / 2, y: viewport.height / 2 },
+          1.25,
+          viewport,
+          cameraAdapter,
+          limits,
+        )
+        scheduleTiles()
+        event.preventDefault()
+      } else if (event.key === '-' || event.key === '_') {
+        camera = zoomCameraAtScreenPointInSpace(
+          camera,
+          { x: viewport.width / 2, y: viewport.height / 2 },
+          0.8,
+          viewport,
+          cameraAdapter,
+          limits,
+        )
+        scheduleTiles()
+        event.preventDefault()
+      } else if (event.key === '0') {
+        camera = fitCameraToLayer(cameraAdapter, viewport, 24, limits)
+        scheduleTiles()
+        event.preventDefault()
+      } else if (event.key.toLowerCase() === 'f') {
+        const layer = layersRef.current.find(({ id }) => id === selectedLayerRef.current)
+        const raster = rastersRef.current.find(
+          ({ sourceId }) => String(sourceId) === String(layer?.sourceId),
+        )
+        const selectedAdapter = raster === undefined ? undefined : worldAdapterForDataset(raster)
+        if (selectedAdapter !== undefined)
+          camera = fitCameraToLayer(selectedAdapter, viewport, 24, limits)
+        scheduleTiles()
+        event.preventDefault()
+      } else if (event.key === '1') {
+        const world = cameraAdapter.worldBounds()
+        const pixels = cameraAdapter.pixelBounds()
+        const nativeZoom = Math.min(pixels.width / world.width, pixels.height / world.height)
+        camera = zoomCameraAtScreenPointInSpace(
+          camera,
+          { x: viewport.width / 2, y: viewport.height / 2 },
+          nativeZoom / camera.zoom,
+          viewport,
+          cameraAdapter,
+          limits,
+        )
+        scheduleTiles()
+        event.preventDefault()
+      }
+    }
 
     canvas.addEventListener('pointermove', onPointerMove)
     canvas.addEventListener('pointerdown', onPointerDown)
-    canvas.addEventListener('pointerup', onPointerUp)
+    canvas.addEventListener('pointerup', endPointerInteraction)
+    canvas.addEventListener('pointercancel', endPointerInteraction)
+    canvas.addEventListener('lostpointercapture', endPointerInteraction)
     canvas.addEventListener('pointerleave', onPointerLeave)
     canvas.addEventListener('wheel', onWheel, { passive: false })
-    onOverview(overview)
+    canvas.addEventListener('keydown', onKeyDown)
+    document.addEventListener('visibilitychange', onVisibility)
+    scheduleTiles()
     return () => {
       scheduleRef.current = () => undefined
+      retryFailedRef.current = () => undefined
       resizeObserver.disconnect()
       canvas.removeEventListener('pointermove', onPointerMove)
       canvas.removeEventListener('pointerdown', onPointerDown)
-      canvas.removeEventListener('pointerup', onPointerUp)
+      canvas.removeEventListener('pointerup', endPointerInteraction)
+      canvas.removeEventListener('pointercancel', endPointerInteraction)
+      canvas.removeEventListener('lostpointercapture', endPointerInteraction)
       canvas.removeEventListener('pointerleave', onPointerLeave)
       canvas.removeEventListener('wheel', onWheel)
+      canvas.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('visibilitychange', onVisibility)
       for (const controller of pending.values()) controller.abort()
+      for (const controller of statisticsPending.values()) controller.abort()
+      samplingController?.abort()
+      if (samplingTimer !== undefined) window.clearTimeout(samplingTimer)
+      if (blinkTimer !== undefined) window.clearInterval(blinkTimer)
       renderer.dispose()
       cancelAnimationFrame(frameRequest)
     }
-  }, [client, rasters, onOverview, onPointer, onSettled])
+  }, [client, rastersIdentity, onOverview, onPointer, onSettled])
 
   return (
     <div className="geo-viewport">
-      <canvas aria-label="Geo raster viewport" ref={canvasRef} role="img" tabIndex={0} />
+      <canvas
+        aria-describedby="geo-viewport-status"
+        aria-label="Geo raster viewport. Arrow keys pan, plus and minus zoom, 0 fits the project, F fits the selected layer, and 1 shows native resolution. Shift plus left or right arrow adjusts a swipe divider."
+        data-comparison-mode={comparison.mode}
+        data-swipe-position={comparison.mode === 'swipe' ? comparison.swipePosition : undefined}
+        ref={canvasRef}
+        role="img"
+        tabIndex={0}
+      />
+      <div
+        aria-live="polite"
+        className="geo-viewport-status"
+        id="geo-viewport-status"
+        role="status"
+      >
+        <span title={status?.errors.join('\n')}>{status?.message ?? 'Preparing viewport'}</span>
+        {status?.errors[0] === undefined ? null : (
+          <span className="geo-viewport-status__detail">{status.errors[0]}</span>
+        )}
+        {(status?.retryableFailures ?? 0) > 0 ? (
+          <button onClick={() => retryFailedRef.current()} type="button">
+            Retry failed display requests
+          </button>
+        ) : null}
+      </div>
     </div>
   )
+}
+
+function mappingForLayer(
+  layer: GeoRasterLayer,
+  source: GeoRasterSource,
+  raster: OpenedDatasetDescriptor,
+  statistics: DisplayStatistics | undefined,
+): Readonly<{ mapping: DisplayMapping; statisticsRevision: string }> {
+  const base = displayMappingFromStyle(layer.style, scalarNodata(raster.dataset.spatialReference))
+  const indices = mappedComponents(layer)
+  const transforms =
+    (layer.style.valueMode ?? 'raw') === 'physical'
+      ? Object.fromEntries(indices.map((index) => [String(index), bandTransform(source, index)]))
+      : undefined
+  const primaryTransform = transforms?.[String(indices[0] ?? 0)]
+  const rawNodata = scalarNodata(raster.dataset.spatialReference)
+  const nodata =
+    rawNodata === undefined || primaryTransform === undefined
+      ? rawNodata
+      : rawNodata * primaryTransform.scale + primaryTransform.offset
+  if (layer.style.minimum !== undefined && layer.style.maximum !== undefined) {
+    return {
+      mapping: {
+        ...base,
+        range: 'manual',
+        minimum: layer.style.minimum,
+        maximum: layer.style.maximum,
+        ...(nodata === undefined ? {} : { nodata }),
+        ...(transforms === undefined ? {} : { componentTransforms: transforms }),
+      },
+      statisticsRevision: stableHash(`manual:${layer.style.minimum}:${layer.style.maximum}`),
+    }
+  }
+  if ((layer.style.rangeMode ?? 'stable') === 'viewport-local') {
+    return {
+      mapping: {
+        ...base,
+        range: 'auto',
+        ...(nodata === undefined ? {} : { nodata }),
+        ...(transforms === undefined ? {} : { componentTransforms: transforms }),
+      },
+      statisticsRevision: 'viewport-local-exploratory',
+    }
+  }
+  const ranges = Object.fromEntries(
+    (statistics?.components ?? []).map((component) => [
+      String(component.component),
+      layer.style.stretch === 'percentile'
+        ? { minimum: component.percentileLow, maximum: component.percentileHigh }
+        : { minimum: component.minimum, maximum: component.maximum },
+    ]),
+  )
+  return {
+    mapping: {
+      ...base,
+      range: 'manual',
+      channelRanges: ranges,
+      ...(nodata === undefined ? {} : { nodata }),
+      ...(transforms === undefined ? {} : { componentTransforms: transforms }),
+    },
+    statisticsRevision: statistics?.statisticsRevision ?? 'statistics-pending',
+  }
+}
+
+function mappedComponents(layer: GeoRasterLayer): readonly number[] {
+  const mapping = layer.style.mapping
+  const values =
+    mapping.gray !== undefined
+      ? [mapping.gray]
+      : [
+          mapping.red ?? 0,
+          mapping.green ?? mapping.red ?? 0,
+          mapping.blue ?? mapping.green ?? mapping.red ?? 0,
+        ]
+  return [...new Set(values)]
+}
+
+function statisticsKey(
+  layer: GeoRasterLayer,
+  source: GeoRasterSource,
+  raster: OpenedDatasetDescriptor,
+  indices: readonly number[],
+): string {
+  return stableHash(
+    JSON.stringify({
+      source: source.id,
+      revision: revisionForSource(source),
+      dataset: raster.dataset.id,
+      indices,
+      nodata: scalarNodata(raster.dataset.spatialReference),
+      scaleOffset: indices.map((index) => bandTransform(source, index)),
+      valueMode: layer.style.valueMode ?? 'raw',
+      stretch: layer.style.stretch ?? 'minmax',
+      percentileLow: layer.style.percentileLow ?? 2,
+      percentileHigh: layer.style.percentileHigh ?? 98,
+      algorithm: 'atlas-display-statistics-v1',
+      budget: [65_536, 1_048_576, 16],
+    }),
+  )
+}
+
+function bandTransform(
+  source: GeoRasterSource,
+  index: number,
+): Readonly<{ scale: number; offset: number }> {
+  const band = source.bands.find((candidate) => candidate.index === index)
+  return { scale: band?.scale ?? 1, offset: band?.offset ?? 0 }
+}
+
+function displayTileId(
+  context: LayerContext,
+  candidate: Readonly<{ x: number; y: number; width: number; height: number }>,
+): string {
+  return stableHash(
+    JSON.stringify({
+      source: context.source.id,
+      sourceRevision: context.sourceRevision,
+      dataset: context.raster.dataset.id,
+      handle: context.raster.handleId,
+      generation: context.raster.generation,
+      layer: context.layer.id,
+      styleRevision: context.styleRevision,
+      statisticsRevision: context.statisticsRevision,
+      overview: context.overview,
+      region: candidate,
+    }),
+  )
+}
+
+function revisionForSource(source: GeoRasterSource): string {
+  return stableHash(JSON.stringify(source.locator))
+}
+
+function selectedSampleLayer(
+  layers: readonly GeoRasterLayer[],
+  selectedLayerId: string | undefined,
+): GeoRasterLayer | undefined {
+  const selected = layers.find(({ id, visible }) => visible && id === selectedLayerId)
+  if (selected !== undefined) return selected
+  return layers
+    .map((layer, index) => ({ layer, index }))
+    .filter(({ layer }) => layer.visible)
+    .sort((left, right) => right.layer.zIndex - left.layer.zIndex || right.index - left.index)[0]
+    ?.layer
+}
+
+function toViewportPointer(
+  layer: GeoRasterLayer,
+  raster: OpenedDatasetDescriptor,
+  sample: RasterPointSample,
+): GeoViewportPointer {
+  return {
+    sourceId: String(layer.sourceId),
+    datasetHandleId: String(raster.handleId),
+    layerId: layer.id,
+    pixel: sample.pixel,
+    sourceMapCoordinate: sample.sourceMapCoordinate,
+    projectMapCoordinate: sample.projectMapCoordinate,
+    nodata: sample.nodata,
+    bands: sample.components.map(({ name, unit, value, nodata }) => ({
+      name,
+      ...(unit === undefined ? {} : { unit }),
+      value: value ?? undefined,
+      nodata,
+    })),
+  }
+}
+
+export function orderedDisplayLayers(layers: readonly GeoRasterLayer[]): readonly GeoRasterLayer[] {
+  return layers
+    .map((layer, index) => ({ layer, index }))
+    .filter(({ layer }) => layer.visible)
+    .sort((left, right) => left.layer.zIndex - right.layer.zIndex || left.index - right.index)
+    .map(({ layer }) => layer)
+}
+
+export function displayStyleRevision(layer: GeoRasterLayer): string {
+  return stableHash(
+    JSON.stringify({
+      style: layer.style,
+      opacity: layer.opacity,
+      blendMode: layer.blendMode,
+      zIndex: layer.zIndex,
+    }),
+  )
+}
+
+export function canvasSmoothingEnabled(resample: GeoRasterLayer['style']['resample']): boolean {
+  return resample === 'bilinear'
+}
+
+export function canvasCompositeOperation(
+  mode: GeoRasterLayer['blendMode'],
+): GlobalCompositeOperation {
+  switch (mode) {
+    case 'normal':
+      return 'source-over'
+    case 'multiply':
+    case 'screen':
+    case 'lighten':
+    case 'darken':
+      return mode
+  }
+}
+
+function isTransient(error: unknown): boolean {
+  if (!(error instanceof ImagingRpcError)) return true
+  return error.detail.retryable && !permanentErrorCodes.has(error.detail.code)
+}
+
+const permanentErrorCodes = new Set<StructuredRpcError['code']>([
+  'INVALID_PAYLOAD',
+  'MALFORMED_METADATA',
+  'UNSUPPORTED',
+  'UNSUPPORTED_COMPRESSION',
+  'UNSUPPORTED_LAYOUT',
+])
+
+function isAbort(error: unknown, controller: AbortController): boolean {
+  return (
+    controller.signal.aborted ||
+    (error instanceof ImagingRpcError && error.detail.code === 'ABORTED') ||
+    (error instanceof DOMException && error.name === 'AbortError')
+  )
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof ImagingRpcError) return error.detail.message
+  return error instanceof Error ? error.message : 'Unknown display failure'
+}
+
+function labelForLayer(
+  layerId: string,
+  layers: readonly GeoRasterLayer[],
+  sources: readonly GeoRasterSource[],
+): string {
+  const layer = layers.find(({ id }) => id === layerId)
+  const source = sources.find(({ id }) => id === layer?.sourceId)
+  const locator = source?.locator
+  const datetime =
+    locator?.kind === 'stac-asset' || locator?.kind === 'tnm-product' ? locator.datetime : undefined
+  return `${layer?.label ?? layerId}${datetime === undefined ? '' : ` · ${datetime}`}`
+}
+
+function stableHash(value: string): string {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return `atlas-${(hash >>> 0).toString(16).padStart(8, '0')}`
 }
 
 function rasterSize(dataset: DatasetDescriptor): Size {
@@ -573,9 +1374,7 @@ function rasterSize(dataset: DatasetDescriptor): Size {
 }
 
 function overviewSizes(dataset: DatasetDescriptor, full: Size) {
-  if (dataset.levels.length === 0) {
-    return [{ level: 0, width: full.width, height: full.height }]
-  }
+  if (dataset.levels.length === 0) return [{ level: 0, width: full.width, height: full.height }]
   return dataset.levels.map((level) => ({
     level: level.level,
     width: level.axisLengths.find((axis) => axis.axisId === 'x')?.length ?? full.width,
@@ -640,9 +1439,7 @@ function crsKey(spatial: SpatialReference | undefined): string {
 
 function unionWorldBounds(bounds: readonly Bounds[]): Bounds {
   const first = bounds[0]
-  if (first === undefined) {
-    return { x: 0, y: 0, width: 1, height: 1 }
-  }
+  if (first === undefined) return { x: 0, y: 0, width: 1, height: 1 }
   let minX = first.x
   let minY = first.y
   let maxX = first.x + first.width

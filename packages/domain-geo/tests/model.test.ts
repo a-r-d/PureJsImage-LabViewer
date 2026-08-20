@@ -23,7 +23,7 @@ const wgs84NorthUp: SpatialReference = {
   bounds: { minX: 100, minY: 160, maxX: 140, maxY: 200 },
 }
 
-function source(id: string, spatialReference: SpatialReference = wgs84NorthUp) {
+function source(id: string, spatialReference: SpatialReference = wgs84NorthUp, datetime?: string) {
   return createGeoRasterSource({
     id,
     label: id,
@@ -31,7 +31,23 @@ function source(id: string, spatialReference: SpatialReference = wgs84NorthUp) {
     height: 2,
     componentCount: 1,
     spatialReference,
-    locator: { kind: 'bundled-example', scenarioId: `test.${id}` },
+    locator:
+      datetime === undefined
+        ? { kind: 'bundled-example', scenarioId: `test.${id}` }
+        : {
+            kind: 'stac-asset',
+            catalog: {
+              catalogId: 'dated-fixture',
+              catalogTitle: 'Dated fixture catalog',
+              collectionId: 'same-crs-series',
+              itemId: id,
+              assetKey: 'data',
+              href: `https://fixtures.invalid/${id}.tif`,
+            },
+            datetime,
+            roles: ['data'],
+            bands: [],
+          },
   })
 }
 
@@ -179,9 +195,51 @@ describe('raster style and cursor readout', () => {
       stretch: 'percentile',
       percentileLow: 2,
       percentileHigh: 98,
+      rangeMode: 'stable',
+      valueMode: 'raw',
       gamma: 1.4,
       nodataTransparent: true,
     })
+  })
+
+  it('validates same-CRS blink comparison and its bounded interval', () => {
+    const first = source('dated-first', wgs84NorthUp, '2020-01-01T00:00:00Z')
+    const second = source('dated-second', wgs84NorthUp, '2025-01-01T00:00:00Z')
+    const firstLayer = createGeoRasterLayer({ id: 'first', sourceId: first.id, label: 'First' })
+    const secondLayer = createGeoRasterLayer({ id: 'second', sourceId: second.id, label: 'Second' })
+    const project = createGeoProject({
+      title: 'Blink',
+      crs: CRS_EPSG_4326,
+      sources: [first, second],
+      layers: [firstLayer, secondLayer],
+      comparison: {
+        mode: 'blink',
+        firstLayerId: firstLayer.id,
+        secondLayerId: secondLayer.id,
+        intervalMilliseconds: 750,
+      },
+    })
+    expect(project.comparison).toEqual({
+      mode: 'blink',
+      firstLayerId: 'first',
+      secondLayerId: 'second',
+      intervalMilliseconds: 750,
+    })
+    expect(project.sources.map(({ locator }) => locator)).toMatchObject([
+      { kind: 'stac-asset', datetime: '2020-01-01T00:00:00Z' },
+      { kind: 'stac-asset', datetime: '2025-01-01T00:00:00Z' },
+    ])
+    expect(() =>
+      createGeoProject({
+        ...project,
+        comparison: {
+          mode: 'blink',
+          firstLayerId: firstLayer.id,
+          secondLayerId: secondLayer.id,
+          intervalMilliseconds: 20,
+        },
+      }),
+    ).toThrow(GeoValidationError)
   })
 
   it('rejects out-of-range mapped bands and unidentified multi-source CRS', () => {
