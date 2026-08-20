@@ -44,6 +44,20 @@ export type GeoActionId =
   | 'geo.raster.sample_point'
   | 'geo.raster.describe_bands'
   | 'geo.raster.describe_statistics'
+  | 'geo.analysis.describe'
+  | 'geo.analysis.dry_run'
+  | 'geo.analysis.band_math'
+  | 'geo.analysis.normalized_difference'
+  | 'geo.analysis.virtual_band_stack'
+  | 'geo.analysis.hillshade'
+  | 'geo.analysis.slope'
+  | 'geo.analysis.aspect'
+  | 'geo.analysis.raster_difference'
+  | 'geo.analysis.region_statistics'
+  | 'geo.analysis.line_profile'
+  | 'geo.analysis.cancel'
+  | 'geo.analysis.release'
+  | 'geo.derived_layer.remove'
 
 export interface GeoActionContext {
   readonly hasSource: boolean
@@ -127,6 +141,19 @@ const requiresRasterSampling = () => ({
 const requiresRasterStatistics = () => ({
   available: false,
   reason: 'Statistics are not implemented for Atlas yet.',
+})
+
+const DERIVED_RECIPE = objectInput({ recipe: OBJECT, label: ID }, ['recipe'])
+
+const analysisMutation = (id: GeoActionId, title: string): ActionDefinition<GeoActionContext> => ({
+  descriptor: descriptor(id, title, 'analysis', {
+    input: DERIVED_RECIPE,
+    mutability: 'mutation',
+    cost: 'expensive',
+    permissions: ['workspace.propose', 'source.read-pixels'],
+    cancellable: true,
+  }),
+  availability: requiresSource,
 })
 
 const catalogRead = (
@@ -344,5 +371,74 @@ export const geoActionDefinitions: readonly ActionDefinition<GeoActionContext>[]
       },
     ),
     availability: requiresRasterStatistics,
+  },
+  {
+    descriptor: descriptor(
+      'geo.analysis.describe',
+      'Describe derived raster analysis',
+      'analysis',
+      {
+        input: objectInput({ layerId: ID }, ['layerId']),
+        cost: 'interactive',
+      },
+    ),
+    availability: requiresSource,
+  },
+  {
+    descriptor: descriptor('geo.analysis.dry_run', 'Plan derived raster analysis', 'analysis', {
+      input: objectInput({ recipe: OBJECT }, ['recipe']),
+      cost: 'interactive',
+      permissions: ['source.read-metadata'],
+      cancellable: true,
+    }),
+    availability: requiresSource,
+  },
+  analysisMutation('geo.analysis.band_math', 'Create band-math layer'),
+  analysisMutation('geo.analysis.normalized_difference', 'Create normalized-difference layer'),
+  analysisMutation('geo.analysis.virtual_band_stack', 'Create virtual band stack'),
+  analysisMutation('geo.analysis.hillshade', 'Create hillshade layer'),
+  analysisMutation('geo.analysis.slope', 'Create slope layer'),
+  analysisMutation('geo.analysis.aspect', 'Create aspect layer'),
+  analysisMutation('geo.analysis.raster_difference', 'Create raster-difference layer'),
+  {
+    descriptor: descriptor('geo.analysis.region_statistics', 'Analyze raster region', 'analysis', {
+      input: OBJECT,
+      cost: 'expensive',
+      permissions: ['source.read-pixels'],
+      cancellable: true,
+    }),
+    availability: requiresSource,
+  },
+  {
+    descriptor: descriptor('geo.analysis.line_profile', 'Sample raster line profile', 'analysis', {
+      input: OBJECT,
+      cost: 'expensive',
+      permissions: ['source.read-pixels'],
+      cancellable: true,
+    }),
+    availability: requiresSource,
+  },
+  ...(['cancel', 'release'] as const).map((name) => ({
+    descriptor: descriptor(
+      `geo.analysis.${name}`,
+      `${name[0]?.toUpperCase() ?? ''}${name.slice(1)} derived analysis`,
+      'analysis',
+      {
+        input: objectInput({ layerId: ID }, ['layerId']),
+        mutability: 'mutation',
+        cost: 'interactive',
+        permissions: ['workspace.propose'],
+      },
+    ),
+    availability: requiresSource,
+  })),
+  {
+    descriptor: descriptor('geo.derived_layer.remove', 'Remove derived layer', 'analysis', {
+      input: objectInput({ layerId: ID }, ['layerId']),
+      mutability: 'mutation',
+      cost: 'interactive',
+      permissions: ['workspace.propose'],
+    }),
+    availability: requiresSource,
   },
 ])

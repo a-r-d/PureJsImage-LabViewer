@@ -13,7 +13,7 @@ handles do not cross the boundary.
 
 ## Public PureJsImage imports
 
-The integration uses these documented `purejsimage@0.13.0` paths and symbols:
+The integration uses these documented `purejsimage@0.14.0` paths and symbols:
 
 | Package path | Symbols |
 | --- | --- |

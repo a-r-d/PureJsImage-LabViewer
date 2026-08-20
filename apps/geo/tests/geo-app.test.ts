@@ -28,9 +28,12 @@ describe('geo application', () => {
       new URL('../src/GeoViewport.tsx', import.meta.url),
       'utf8',
     )
-    expect(viewportSource).toContain('datasetHandleId: context.raster.handleId')
+    expect(viewportSource).toContain(
+      "datasetHandleId: requiredValue(context.raster, 'source raster').handleId",
+    )
     expect(viewportSource).toContain('rasters: readonly OpenedDatasetDescriptor[]')
     expect(viewportSource).toContain('.requestDisplayTile(')
+    expect(viewportSource).toContain('.requestDerivedDisplayTile(')
     expect(viewportSource).toContain(
       'renderer.upload(context.layer.id, tile, context.adapter, required)',
     )

@@ -44,9 +44,22 @@ import type {
   AnalysisTablePage,
   AnalysisTablePageRequest,
 } from './analysis.js'
+import type {
+  DerivedDisplayTile,
+  DerivedDisplayTileRequest,
+  DerivedRasterDryRunReport,
+  DerivedRasterDryRunRequest,
+  DerivedRasterLineProfileRequest,
+  DerivedRasterLineProfileResponse,
+  DerivedRasterRecipeV1,
+  DerivedRasterReleaseRequest,
+  DerivedRasterStatisticsRequest,
+  DerivedRasterStatisticsResponse,
+} from './geo-analysis.js'
 import type { SpatialReference } from './spatial-reference.js'
 
 export * from './analysis.js'
+export * from './geo-analysis.js'
 export * from './spatial-reference.js'
 
 export type SourceKind = 'bundled' | 'local' | 'remote' | 'sample'
@@ -523,6 +536,11 @@ export type WorkerRequest =
       Readonly<{ sourceIdentity?: string; datasetHandleId?: DatasetHandleId }>
     >
   | RpcRequest<'raster.sample_point', RasterPointSampleRequest>
+  | RpcRequest<'geo.analysis.dry_run', DerivedRasterDryRunRequest>
+  | RpcRequest<'geo.analysis.tile', DerivedDisplayTileRequest>
+  | RpcRequest<'geo.analysis.region_statistics', DerivedRasterStatisticsRequest>
+  | RpcRequest<'geo.analysis.line_profile', DerivedRasterLineProfileRequest>
+  | RpcRequest<'geo.analysis.release', DerivedRasterReleaseRequest>
   | RpcRequest<'analysis.catalog', AnalysisDatasetRequest>
   | RpcRequest<'analysis.normalize-parameters', AnalysisNormalizeRequest>
   | RpcRequest<'analysis.normalize-roi', AnalysisNormalizeRoiRequest>
@@ -567,6 +585,11 @@ export type WorkerResponse =
   | RpcSuccess<'display.statistics.ready', DisplayStatistics>
   | RpcSuccess<'display.statistics.invalidated', Readonly<{ removed: number }>>
   | RpcSuccess<'raster.point_sampled', RasterPointSample>
+  | RpcSuccess<'geo.analysis.dry_run', DerivedRasterDryRunReport>
+  | RpcSuccess<'geo.analysis.tile', DerivedDisplayTile>
+  | RpcSuccess<'geo.analysis.region_statistics', DerivedRasterStatisticsResponse>
+  | RpcSuccess<'geo.analysis.line_profile', DerivedRasterLineProfileResponse>
+  | RpcSuccess<'geo.analysis.released', Readonly<{ layerId: string }>>
   | RpcSuccess<'analysis.catalog', AnalysisCatalog>
   | RpcSuccess<'analysis.parameters-normalized', AnalysisParameterNormalization>
   | RpcSuccess<'analysis.roi-normalized', AnalysisRoiNormalization>
@@ -612,6 +635,11 @@ const REQUEST_KINDS = new Set<string>([
   'display.statistics.request',
   'display.statistics.invalidate',
   'raster.sample_point',
+  'geo.analysis.dry_run',
+  'geo.analysis.tile',
+  'geo.analysis.region_statistics',
+  'geo.analysis.line_profile',
+  'geo.analysis.release',
   'analysis.catalog',
   'analysis.normalize-parameters',
   'analysis.normalize-roi',
@@ -1175,6 +1203,249 @@ function assertAnalysisCalibration(value: unknown): void {
   assertString(candidate['unit'], 'calibration unit')
 }
 
+function assertRasterNoData(value: unknown, label: string): void {
+  if (!isRecord(value))
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} must be an object`)
+  if (value['kind'] === 'none' || value['kind'] === 'nan') return
+  if (value['kind'] !== 'value')
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} kind is invalid`)
+  assertFinite(value['value'], `${label} value`)
+}
+
+function assertRasterGrid(value: unknown, label: string): void {
+  if (!isRecord(value))
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} must be an object`)
+  if (value['schemaVersion'] !== 1)
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} schema version is invalid`)
+  assertString(value['crs'], `${label} CRS`)
+  assertInteger(value['width'], `${label} width`, 1)
+  assertInteger(value['height'], `${label} height`, 1)
+  if (!Array.isArray(value['affine']) || value['affine'].length !== 6)
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} affine must contain six values`)
+  for (const entry of value['affine']) assertFinite(entry, `${label} affine value`)
+  const affine = value['affine'] as readonly number[]
+  if ((affine[0] ?? 0) * (affine[4] ?? 0) - (affine[1] ?? 0) * (affine[3] ?? 0) === 0)
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} affine must be invertible`)
+  if (!Array.isArray(value['extent']) || value['extent'].length !== 4)
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} extent must contain four values`)
+  for (const entry of value['extent']) assertFinite(entry, `${label} extent value`)
+  const extent = value['extent'] as readonly number[]
+  if ((extent[2] ?? 0) <= (extent[0] ?? 0) || (extent[3] ?? 0) <= (extent[1] ?? 0))
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} extent must be ordered`)
+  if (value['pixelInterpretation'] !== 'area' && value['pixelInterpretation'] !== 'point')
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} pixel interpretation is invalid`)
+  if (value['resampling'] !== 'nearest' && value['resampling'] !== 'bilinear')
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} resampling is invalid`)
+  if (
+    ![
+      'uint8',
+      'uint16',
+      'uint32',
+      'uint64',
+      'int8',
+      'int16',
+      'int32',
+      'float32',
+      'float64',
+    ].includes(String(value['sampleType']))
+  )
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} sample type is invalid`)
+  assertRasterNoData(value['noData'], `${label} nodata`)
+}
+
+function assertTransformDescriptor(value: unknown, label: string): void {
+  if (!isRecord(value))
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} must be an object`)
+  assertString(value['id'], `${label} id`)
+  assertString(value['version'], `${label} version`)
+  const accuracy = value['accuracy']
+  if (!isRecord(accuracy))
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} accuracy must be an object`)
+  if (accuracy['kind'] === 'exact') return
+  if (accuracy['kind'] !== 'estimated')
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} accuracy is invalid`)
+  assertFinite(accuracy['maximumError'], `${label} maximum error`)
+  if (Number(accuracy['maximumError']) < 0)
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} maximum error must be non-negative`)
+  assertString(accuracy['unit'], `${label} accuracy unit`)
+}
+
+export function assertDerivedRasterRecipe(value: unknown): asserts value is DerivedRasterRecipeV1 {
+  const recipe = value
+  if (!isRecord(recipe))
+    throw new RpcValidationError('INVALID_PAYLOAD', 'derived recipe must be an object')
+  assertJsonValue(recipe, 'derived recipe')
+  if (recipe['schemaVersion'] !== 1)
+    throw new RpcValidationError('INVALID_PAYLOAD', 'derived recipe schema version is invalid')
+  if (recipe['operationVersion'] !== 1)
+    throw new RpcValidationError('INVALID_PAYLOAD', 'derived operation version is invalid')
+  if (recipe['alignment'] !== 'exact' && recipe['alignment'] !== 'resample')
+    throw new RpcValidationError('INVALID_PAYLOAD', 'derived alignment policy is invalid')
+  assertRasterGrid(recipe['targetGrid'], 'derived target grid')
+  assertRasterNoData(recipe['outputNoData'], 'derived output nodata')
+  assertFinite(recipe['minimumValidWeight'], 'minimumValidWeight')
+  if (Number(recipe['minimumValidWeight']) <= 0 || Number(recipe['minimumValidWeight']) > 1)
+    throw new RpcValidationError('INVALID_PAYLOAD', 'minimumValidWeight must be in (0, 1]')
+  const recipeInputs = recipe['inputs']
+  if (!Array.isArray(recipeInputs) || recipeInputs.length < 1)
+    throw new RpcValidationError('INVALID_PAYLOAD', 'derived recipe requires inputs')
+  if (recipeInputs.length > 16)
+    throw new RpcValidationError('LIMIT_EXCEEDED', 'derived recipe exceeds the input limit')
+  const inputNames = new Set<string>()
+  for (const input of recipeInputs) {
+    if (!isRecord(input))
+      throw new RpcValidationError('INVALID_PAYLOAD', 'derived recipe input is invalid')
+    assertString(input['name'], 'derived input name')
+    if (inputNames.has(input['name'] as string))
+      throw new RpcValidationError('INVALID_PAYLOAD', 'derived input names must be unique')
+    inputNames.add(input['name'] as string)
+    assertString(input['layerId'], 'derived input layerId')
+    assertInteger(input['component'], 'derived input component')
+    if (input['valueMode'] !== 'raw' && input['valueMode'] !== 'scaled')
+      throw new RpcValidationError('INVALID_PAYLOAD', 'derived input value mode is invalid')
+    assertFinite(input['scale'], 'derived input scale')
+    assertFinite(input['offset'], 'derived input offset')
+    assertRasterNoData(input['noData'], 'derived input nodata')
+    if (input['transform'] !== undefined)
+      assertTransformDescriptor(input['transform'], 'derived input transform')
+  }
+  const limits = recipe['limits']
+  if (!isRecord(limits))
+    throw new RpcValidationError('INVALID_PAYLOAD', 'derived limits must be an object')
+  assertInteger(limits['maxTilePixels'], 'derived maxTilePixels', 1)
+  assertInteger(limits['maxOutputBytes'], 'derived maxOutputBytes', 1)
+  assertInteger(limits['maxWorkingBytes'], 'derived maxWorkingBytes', 1)
+  assertDerivedRasterOperation(recipe['operation'], inputNames)
+}
+
+function assertDerivedRasterOperation(value: unknown, inputNames: ReadonlySet<string>): void {
+  if (!isRecord(value))
+    throw new RpcValidationError('INVALID_PAYLOAD', 'derived operation must be an object')
+  const requireInput = (name: unknown, label: string): void => {
+    assertString(name, label)
+    if (!inputNames.has(name as string))
+      throw new RpcValidationError('INVALID_PAYLOAD', `${label} does not name an input`)
+  }
+  switch (value['kind']) {
+    case 'band-math': {
+      assertString(value['expression'], 'band-math expression')
+      if (value['divideByZero'] !== 'nodata' && value['divideByZero'] !== 'zero')
+        throw new RpcValidationError('INVALID_PAYLOAD', 'band-math divideByZero is invalid')
+      if (value['nonFinite'] !== 'nodata' && value['nonFinite'] !== 'allow')
+        throw new RpcValidationError('INVALID_PAYLOAD', 'band-math nonFinite is invalid')
+      const clamp = value['clamp']
+      if (clamp !== undefined) {
+        if (!Array.isArray(clamp) || clamp.length !== 2)
+          throw new RpcValidationError('INVALID_PAYLOAD', 'band-math clamp is invalid')
+        assertFinite(clamp[0], 'band-math clamp minimum')
+        assertFinite(clamp[1], 'band-math clamp maximum')
+        if (Number(clamp[1]) < Number(clamp[0]))
+          throw new RpcValidationError('INVALID_PAYLOAD', 'band-math clamp is reversed')
+      }
+      return
+    }
+    case 'normalized-difference':
+      requireInput(value['left'], 'normalized-difference left')
+      requireInput(value['right'], 'normalized-difference right')
+      return
+    case 'linear-combination': {
+      const terms = value['terms']
+      if (!Array.isArray(terms) || terms.length < 1 || terms.length > 16)
+        throw new RpcValidationError('INVALID_PAYLOAD', 'linear-combination terms are invalid')
+      for (const term of terms) {
+        if (!isRecord(term))
+          throw new RpcValidationError('INVALID_PAYLOAD', 'linear-combination term is invalid')
+        requireInput(term['input'], 'linear-combination input')
+        assertFinite(term['coefficient'], 'linear-combination coefficient')
+      }
+      assertFinite(value['constant'], 'linear-combination constant')
+      return
+    }
+    case 'raster-difference':
+      requireInput(value['minuend'], 'raster-difference minuend')
+      requireInput(value['subtrahend'], 'raster-difference subtrahend')
+      return
+    case 'virtual-band-stack': {
+      const bands = value['bands']
+      if (!Array.isArray(bands) || bands.length < 1 || bands.length > 16)
+        throw new RpcValidationError('INVALID_PAYLOAD', 'virtual stack bands are invalid')
+      for (const band of bands) requireInput(band, 'virtual stack band')
+      return
+    }
+    case 'terrain':
+      requireInput(value['input'], 'terrain input')
+      if (!['hillshade', 'slope', 'aspect'].includes(String(value['operation'])))
+        throw new RpcValidationError('INVALID_PAYLOAD', 'terrain operation is invalid')
+      for (const name of ['xSpacing', 'ySpacing', 'azimuthDegrees', 'altitudeDegrees'] as const)
+        assertFinite(value[name], `terrain ${name}`)
+      if (Number(value['xSpacing']) <= 0 || Number(value['ySpacing']) <= 0)
+        throw new RpcValidationError('INVALID_PAYLOAD', 'terrain spacing must be positive')
+      for (const name of ['xUnit', 'yUnit', 'verticalUnit'] as const) {
+        assertRasterLengthUnit(value[name], `terrain ${name}`)
+      }
+      if (value['rowDirection'] !== 'north' && value['rowDirection'] !== 'south')
+        throw new RpcValidationError('INVALID_PAYLOAD', 'terrain rowDirection is invalid')
+      if (value['edge'] !== 'clamp' && value['edge'] !== 'nodata')
+        throw new RpcValidationError('INVALID_PAYLOAD', 'terrain edge is invalid')
+      if (!['degrees', 'radians', 'percent'].includes(String(value['slopeUnit'])))
+        throw new RpcValidationError('INVALID_PAYLOAD', 'terrain slopeUnit is invalid')
+      return
+    default:
+      throw new RpcValidationError('INVALID_PAYLOAD', 'derived operation kind is invalid')
+  }
+}
+
+function assertRasterLengthUnit(value: unknown, label: string): void {
+  if (!isRecord(value)) throw new RpcValidationError('INVALID_PAYLOAD', `${label} is invalid`)
+  if (
+    value['kind'] === 'metre' ||
+    value['kind'] === 'international-foot' ||
+    value['kind'] === 'us-survey-foot'
+  )
+    return
+  if (value['kind'] !== 'custom')
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} kind is invalid`)
+  assertString(value['name'], `${label} name`)
+  assertFinite(value['metresPerUnit'], `${label} metresPerUnit`)
+  if (Number(value['metresPerUnit']) <= 0)
+    throw new RpcValidationError('INVALID_PAYLOAD', `${label} metresPerUnit must be positive`)
+}
+
+function assertDerivedRasterBase(payload: PayloadCandidate): void {
+  assertString(payload['layerId'], 'layerId')
+  const recipe = payload['recipe']
+  assertDerivedRasterRecipe(recipe)
+  const recipeInputs = recipe.inputs
+  const runtimeInputs = payload['inputs']
+  if (!Array.isArray(runtimeInputs) || runtimeInputs.length !== recipeInputs.length)
+    throw new RpcValidationError(
+      'INVALID_PAYLOAD',
+      'derived runtime inputs must match the recipe inputs',
+    )
+  for (const input of runtimeInputs) {
+    if (!isRecord(input))
+      throw new RpcValidationError('INVALID_PAYLOAD', 'derived runtime input is invalid')
+    assertString(input['layerId'], 'derived runtime layerId')
+    assertString(input['datasetHandleId'], 'derived runtime datasetHandleId')
+    assertInteger(input['generation'], 'derived runtime generation')
+    assertString(input['sourceIdentity'], 'derived source identity')
+    assertString(input['sourceRevision'], 'derived source revision')
+    assertRasterGrid(input['grid'], 'derived source grid')
+  }
+}
+
+function assertDerivedRegion(payload: PayloadCandidate): void {
+  if (!isRecord(payload['region']))
+    throw new RpcValidationError('INVALID_PAYLOAD', 'derived region is required')
+  const region = payload['region'] as PayloadCandidate
+  assertInteger(region.x, 'derived region x')
+  assertInteger(region.y, 'derived region y')
+  assertInteger(region.width, 'derived region width', 1)
+  assertInteger(region.height, 'derived region height', 1)
+  if (Number(region.width) * Number(region.height) > RPC_LIMITS.maxTilePixels)
+    throw new RpcValidationError('LIMIT_EXCEEDED', 'derived region exceeds the tile limit')
+}
+
 function utf8Bytes(value: string): number {
   let bytes = 0
   for (const character of value) {
@@ -1321,6 +1592,62 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
         assertString(payload['datasetHandleId'], 'datasetHandleId')
     }
     if (kind === 'raster.sample_point') assertRasterPointSample(payload)
+    if (
+      kind === 'geo.analysis.dry_run' ||
+      kind === 'geo.analysis.tile' ||
+      kind === 'geo.analysis.region_statistics' ||
+      kind === 'geo.analysis.line_profile'
+    ) {
+      assertDerivedRasterBase(payload)
+    }
+    if (kind === 'geo.analysis.tile') {
+      assertDerivedRegion(payload)
+      assertString(payload['tileId'], 'derived tileId')
+      assertString(payload['styleRevision'], 'derived styleRevision')
+      assertString(payload['statisticsRevision'], 'derived statisticsRevision')
+      const runtimeInputs = payload['inputs'] as readonly Record<string, unknown>[]
+      const first = runtimeInputs[0]
+      assertTile({
+        ...payload,
+        generation: first?.['generation'],
+        datasetHandleId: first?.['datasetHandleId'],
+        displayAxes: ['x', 'y'],
+        fixedIndices: [],
+        resolutionLevel: 0,
+        component: 0,
+      })
+    }
+    if (kind === 'geo.analysis.region_statistics') {
+      assertDerivedRegion(payload)
+      assertInteger(payload['component'], 'derived statistics component')
+      const histogram = payload['histogram']
+      if (histogram !== undefined) {
+        if (!isRecord(histogram))
+          throw new RpcValidationError('INVALID_PAYLOAD', 'derived histogram is invalid')
+        assertInteger(histogram['bins'], 'derived histogram bins', 1)
+        assertFinite(histogram['minimum'], 'derived histogram minimum')
+        assertFinite(histogram['maximum'], 'derived histogram maximum')
+        if (Number(histogram['maximum']) <= Number(histogram['minimum']))
+          throw new RpcValidationError(
+            'INVALID_PAYLOAD',
+            'derived histogram maximum must exceed minimum',
+          )
+      }
+    }
+    if (kind === 'geo.analysis.line_profile') {
+      for (const name of ['start', 'end'] as const) {
+        const point = payload[name]
+        if (!isRecord(point))
+          throw new RpcValidationError('INVALID_PAYLOAD', `derived ${name} point is invalid`)
+        assertFinite(point['x'], `derived ${name} x`)
+        assertFinite(point['y'], `derived ${name} y`)
+      }
+      assertInteger(payload['sampleCount'], 'derived line sampleCount', 1)
+      assertInteger(payload['component'], 'derived line component')
+      if (payload['resampling'] !== 'nearest' && payload['resampling'] !== 'bilinear')
+        throw new RpcValidationError('INVALID_PAYLOAD', 'derived line resampling is invalid')
+    }
+    if (kind === 'geo.analysis.release') assertString(payload['layerId'], 'layerId')
     if (kind === 'analysis.catalog') assertAnalysisDataset(payload)
     if (kind === 'analysis.normalize-parameters') {
       assertAnalysisDataset(payload)

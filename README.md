@@ -2,7 +2,7 @@
 
 This repository is the **product showcase** for [PureJsImage](https://www.npmjs.com/package/purejsimage): browser-native, local-first imaging apps. It is not the library itself.
 
-The library (`purejsimage@0.13.0`) owns codecs, scientific rasters, GeoTIFF/COG reading, and analysis. These apps consume it only through public package exports and turn that into end-user workflows. Original files stay in the browser unless you deliberately choose a network action.
+The library (`purejsimage@0.14.0`) owns codecs, scientific rasters, GeoTIFF/COG reading, and analysis. These apps consume it only through public package exports and turn that into end-user workflows. Original files stay in the browser unless you deliberately choose a network action.
 
 | What | Link |
 | --- | --- |
@@ -19,7 +19,7 @@ Each app is a **separate Vite build and Cloudflare deploy**. They do not share o
 | App | Live URL | Local command | What it is |
 | --- | --- | --- | --- |
 | Science (Materials Workbench) | [lab.purejsimage.com](https://lab.purejsimage.com) | `pnpm dev` or `pnpm dev:science` | Electron microscopy and materials imaging: open a local file, inspect calibration, draw ROIs, filter/segment/analyze, save and replay work. |
-| Geo (PureJsImage Atlas) | [geo.purejsimage.com](https://geo.purejsimage.com) | `pnpm dev:geo` | Geospatial rasters: search Kentucky From Above, click a catalog tile to open a Cloud Optimized GeoTIFF, or open a local/remote COG. The map stays in the source CRS and fetches only the HTTP ranges for the current view. |
+| Geo (PureJsImage Atlas) | [geo.purejsimage.com](https://geo.purejsimage.com) | `pnpm dev:geo` | Geospatial rasters: search Kentucky From Above, open a local/remote COG, and evaluate virtual band math, band stacks, terrain, statistics, and profiles as bounded Worker tiles. See [geo raster analysis](docs/GEO_RASTER_ANALYSIS.md). |
 | Gallery | local only | `pnpm dev:gallery` | Lightweight linker to the domain apps. It does not load imaging Workers. Not bound to `purejsimage.com`. |
 
 `purejsimage.com` is the **library homepage**, published from the core-library repo (GitHub Pages), not from this monorepo.

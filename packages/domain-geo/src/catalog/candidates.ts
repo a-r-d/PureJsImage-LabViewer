@@ -7,6 +7,12 @@ import type {
   CatalogStory,
 } from './types.js'
 import { providerName } from './types.js'
+import {
+  LANDSAT_SR_OFFSET,
+  LANDSAT_SR_SCALE,
+  USGS_LANDSAT_CATALOG_ID,
+  USGS_LANDSAT_SR_COLLECTION_ID,
+} from './usgs-landsat.js'
 
 export function candidatesFromItem(
   entry: CatalogRegistryEntry,
@@ -67,7 +73,14 @@ export function candidateFromAsset(
   },
 ): CatalogSourceCandidate {
   const bands = asset.eoBands.length > 0 ? asset.eoBands : item.eoBands
-  const bandCount = bands.length > 0 ? bands.length : asset.rasterBands.length
+  const bandCount =
+    bands.length > 0
+      ? bands.length
+      : asset.rasterBands.length > 0
+        ? asset.rasterBands.length
+        : isLandsatSurfaceReflectanceAsset(entry.id, collectionId, asset.key)
+          ? 1
+          : 0
   return {
     catalogId: entry.id,
     catalogTitle: entry.title,
@@ -84,6 +97,14 @@ export function candidateFromAsset(
     bands: Array.from({ length: bandCount }, (_, index) => {
       const eo = bands[index]
       const raster = asset.rasterBands[index]
+      const landsatFallback = landsatSurfaceReflectanceFallback(
+        entry.id,
+        collectionId,
+        asset.key,
+        raster,
+      )
+      const scale = raster?.scale ?? landsatFallback?.scale
+      const offset = raster?.offset ?? landsatFallback?.offset
       return {
         index,
         ...(eo?.name === undefined ? {} : { name: eo.name }),
@@ -92,8 +113,8 @@ export function candidateFromAsset(
         ...(eo?.wavelength === undefined ? {} : { wavelength: eo.wavelength }),
         ...(raster?.dataType === undefined ? {} : { dataType: raster.dataType }),
         ...(raster?.nodata === undefined ? {} : { nodata: raster.nodata }),
-        ...(raster?.scale === undefined ? {} : { scale: raster.scale }),
-        ...(raster?.offset === undefined ? {} : { offset: raster.offset }),
+        ...(scale === undefined ? {} : { scale }),
+        ...(offset === undefined ? {} : { offset }),
         ...(raster?.unit === undefined ? {} : { unit: raster.unit }),
         ...(raster?.colorInterpretation === undefined
           ? {}
@@ -115,6 +136,32 @@ export function candidateFromAsset(
     ...(extra.sourceUrl === undefined ? {} : { sourceUrl: extra.sourceUrl }),
     ...(extra.style === undefined ? {} : { style: extra.style }),
   }
+}
+
+function landsatSurfaceReflectanceFallback(
+  catalogId: string,
+  collectionId: string,
+  assetKey: string,
+  raster: StacAsset['rasterBands'][number] | undefined,
+): Readonly<{ scale: number; offset: number }> | undefined {
+  if (
+    !isLandsatSurfaceReflectanceAsset(catalogId, collectionId, assetKey) ||
+    (raster?.scale !== undefined && raster.offset !== undefined)
+  )
+    return undefined
+  return { scale: LANDSAT_SR_SCALE, offset: LANDSAT_SR_OFFSET }
+}
+
+function isLandsatSurfaceReflectanceAsset(
+  catalogId: string,
+  collectionId: string,
+  assetKey: string,
+): boolean {
+  return (
+    catalogId === USGS_LANDSAT_CATALOG_ID &&
+    collectionId === USGS_LANDSAT_SR_COLLECTION_ID &&
+    /^(?:coastal|blue|green|red|nir08|swir16|swir22)$/u.test(assetKey)
+  )
 }
 
 function collectionAttributionText(collection: StacCollection | undefined): string | undefined {

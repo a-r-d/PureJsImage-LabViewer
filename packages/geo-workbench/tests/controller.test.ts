@@ -108,6 +108,51 @@ class FakeRuntime implements GeoImagingRuntime {
     }
   }
 
+  async dryRunDerivedRaster(request: Parameters<GeoImagingRuntime['dryRunDerivedRaster']>[0]) {
+    return {
+      valid: true,
+      cacheKey: `derived:${request.layerId}`,
+      sources: request.inputs.map((input) => ({
+        layerId: input.layerId,
+        sourceIdentity: input.sourceIdentity,
+        sourceRevision: input.sourceRevision,
+        grid: input.grid,
+      })),
+      targetGrid: request.recipe.targetGrid,
+      estimatedTiles: 1,
+      estimatedTransferredBytes: 1_024,
+      estimatedManagedMemory: 2_048,
+      transformRequirements: [],
+      resampling: request.recipe.targetGrid.resampling,
+      nodataPolicy: request.recipe.outputNoData,
+      expectedOutput: { sampleType: 'float32' as const, componentCount: 1 },
+      warnings: [],
+    }
+  }
+
+  async requestDerivedStatistics() {
+    return {
+      cacheKey: 'derived:statistics',
+      count: 1,
+      invalidCount: 0,
+      minimum: 0.5,
+      maximum: 0.5,
+      mean: 0.5,
+      variance: 0,
+    }
+  }
+
+  async requestDerivedLineProfile() {
+    return {
+      cacheKey: 'derived:line',
+      distances: Float64Array.of(0, 1),
+      values: Float64Array.of(0.25, 0.5),
+      valid: Uint8Array.of(1, 1),
+    }
+  }
+
+  async releaseDerivedRaster() {}
+
   dispose() {
     this.disposed = true
   }
@@ -168,6 +213,78 @@ function controller(runtime = new FakeRuntime()) {
 }
 
 describe('GeoWorkbenchController', () => {
+  it('dry-runs and persists a replayable normalized-difference derived layer', async () => {
+    const { controller: workbench } = controller()
+    await workbench.executeAction('geo.source.open_remote', { url: 'https://example.com/a.tif' })
+    await workbench.executeAction('geo.source.open_remote', { url: 'https://example.com/b.tif' })
+    const [left, right] = workbench.getSnapshot().project.layers
+    if (left === undefined || right === undefined) throw new Error('Expected two source layers')
+    const recipe = {
+      schemaVersion: 1,
+      operationVersion: 1,
+      operation: { kind: 'normalized-difference', left: 'nir', right: 'red' },
+      inputs: [
+        {
+          name: 'nir',
+          layerId: left.id,
+          component: 0,
+          valueMode: 'scaled',
+          scale: 0.0000275,
+          offset: -0.2,
+          noData: { kind: 'value', value: 0 },
+        },
+        {
+          name: 'red',
+          layerId: right.id,
+          component: 0,
+          valueMode: 'scaled',
+          scale: 0.0000275,
+          offset: -0.2,
+          noData: { kind: 'value', value: 0 },
+        },
+      ],
+      targetGrid: {
+        schemaVersion: 1,
+        crs: 'EPSG:4326',
+        width: 16,
+        height: 8,
+        affine: [1, 0, 0, 0, -1, 8],
+        pixelInterpretation: 'area',
+        extent: [0, 0, 16, 8],
+        sampleType: 'float32',
+        noData: { kind: 'nan' },
+        resampling: 'nearest',
+      },
+      alignment: 'exact',
+      outputNoData: { kind: 'nan' },
+      minimumValidWeight: 0.5,
+      limits: {
+        maxTilePixels: 65_536,
+        maxOutputBytes: 4_194_304,
+        maxWorkingBytes: 16_777_216,
+      },
+    } as const
+
+    const planned = await workbench.executeAction('geo.analysis.dry_run', { recipe })
+    expect(planned).toMatchObject({ valid: true, estimatedTiles: 1 })
+    const created = (await workbench.executeAction('geo.analysis.normalized_difference', {
+      label: 'Landsat NDVI',
+      recipe,
+    })) as { readonly layerId: string }
+    const layer = workbench.getSnapshot().project.layers.find(({ id }) => id === created.layerId)
+    expect(layer).toMatchObject({
+      kind: 'derived',
+      label: 'Landsat NDVI',
+      inputLayerIds: [left.id, right.id],
+      recipe,
+    })
+    expect(workbench.getSnapshot().project.provenance).toHaveLength(1)
+
+    await workbench.executeAction('geo.derived_layer.remove', { layerId: created.layerId })
+    expect(workbench.getSnapshot().project.layers).toHaveLength(2)
+    expect(workbench.getSnapshot().project.provenance).toHaveLength(0)
+  })
+
   it('replays semantic actions and duplicates the selected layer, not the final layer', async () => {
     const { controller: workbench } = controller()
     await workbench.executeAction('geo.source.open_remote', { url: 'https://example.com/a.tif' })

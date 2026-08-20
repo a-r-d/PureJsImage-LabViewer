@@ -1,8 +1,10 @@
 import type {
   CoordinateReferenceSystem,
+  DerivedRasterRecipeV1,
   PixelInterpretation,
   SpatialReference,
 } from '@pji-workbench/contracts'
+import { assertDerivedRasterRecipe } from '@pji-workbench/contracts'
 
 export const GEO_PROJECT_SCHEMA_VERSION = 1 as const
 
@@ -174,6 +176,7 @@ export interface DerivedGeoRasterLayer {
   readonly blendMode: GeoBlendMode
   readonly zIndex: number
   readonly style: RasterStyle
+  readonly recipe: DerivedRasterRecipeV1
   readonly provenance: GeoProvenanceReference
 }
 
@@ -269,6 +272,7 @@ export interface CreateDerivedGeoRasterLayerInput {
   readonly blendMode?: GeoBlendMode
   readonly zIndex?: number
   readonly style?: RasterStyle
+  readonly recipe: DerivedRasterRecipeV1
   readonly provenance: GeoProvenanceReference
 }
 
@@ -343,6 +347,7 @@ export function createDerivedGeoRasterLayer(
   if (input.inputLayerIds.length > GEO_PROJECT_LIMITS.maxInputLayers) {
     throw new GeoValidationError('LIMIT_EXCEEDED', 'A derived layer exceeds the input-layer limit')
   }
+  assertDerivedRasterRecipe(input.recipe)
   return {
     kind: 'derived',
     id: boundedId(input.id, 'layer id') as GeoLayerId,
@@ -356,6 +361,7 @@ export function createDerivedGeoRasterLayer(
     blendMode: blendMode(input.blendMode ?? 'normal'),
     zIndex: finiteNumber(input.zIndex ?? 0, 'layer zIndex'),
     style: normalizeRasterStyle(input.style ?? { mapping: { gray: 0 } }),
+    recipe: input.recipe,
     provenance: normalizeProvenance(input.provenance),
   }
 }
@@ -430,6 +436,16 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
       )
     }
     if (layer.kind === 'derived') {
+      assertDerivedRasterRecipe(layer.recipe)
+      if (
+        layer.recipe.inputs.length !== layer.inputLayerIds.length ||
+        layer.recipe.inputs.some((input, index) => input.layerId !== layer.inputLayerIds[index])
+      ) {
+        throw new GeoValidationError(
+          'INVALID_PROJECT',
+          `Layer ${layer.id} recipe inputs do not match its input layers`,
+        )
+      }
       if (layer.sourceId !== undefined && !sourceIds.has(layer.sourceId)) {
         throw new GeoValidationError(
           'INVALID_PROJECT',

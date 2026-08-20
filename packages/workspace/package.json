@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@pji-workbench/contracts": "workspace:*",
-    "purejsimage": "0.13.0"
+    "purejsimage": "0.14.0"
   },
   "devDependencies": {
     "typescript": "7.0.2",

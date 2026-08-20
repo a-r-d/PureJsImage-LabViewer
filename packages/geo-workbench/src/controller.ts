@@ -7,20 +7,32 @@ import {
 } from '@pji-workbench/actions'
 import type {
   DatasetHandleId,
+  DerivedRasterDryRunReport,
+  DerivedRasterDryRunRequest,
+  DerivedRasterLineProfileRequest,
+  DerivedRasterLineProfileResponse,
+  DerivedRasterRecipeV1,
+  DerivedRasterStatisticsRequest,
+  DerivedRasterStatisticsResponse,
   OpenedDatasetDescriptor,
   OpenedSourceDescriptor,
+  RasterSampleType,
   SourceId,
   WorkerDiagnostics,
 } from '@pji-workbench/contracts'
+import { assertDerivedRasterRecipe } from '@pji-workbench/contracts'
 import {
   CATALOG_REGISTRY,
   type CatalogRegistryEntry,
   type CatalogSearchRequest,
   type CatalogService,
   type CatalogSourceCandidate,
+  createDerivedGeoRasterLayer,
   createGeoProject,
   createGeoRasterLayer,
   createGeoRasterSource,
+  crsKey,
+  type DerivedGeoRasterLayer,
   GEO_PROJECT_LIMITS,
   type GeoActionContext,
   type GeoActionId,
@@ -28,6 +40,7 @@ import {
   type GeoLayer,
   type GeoLayerId,
   type GeoProject,
+  type GeoProvenanceId,
   type GeoRasterLayer,
   type GeoRasterLocator,
   type GeoRasterSource,
@@ -35,6 +48,7 @@ import {
   geoActionDefinitions,
   type RasterStyle,
   sameCrs,
+  scalarNodata,
 } from '@pji-workbench/domain-geo'
 
 import { GeoLocalResourceRegistry } from './resource-registry.js'
@@ -57,6 +71,19 @@ export interface GeoImagingRuntime {
   closeDataset(handleId: DatasetHandleId, generation: number): Promise<void>
   closeSource(sourceId: SourceId, generation: number): Promise<void>
   diagnostics(): Promise<WorkerDiagnostics>
+  dryRunDerivedRaster(
+    request: DerivedRasterDryRunRequest,
+    signal?: AbortSignal,
+  ): Promise<DerivedRasterDryRunReport>
+  requestDerivedStatistics(
+    request: DerivedRasterStatisticsRequest,
+    signal?: AbortSignal,
+  ): Promise<DerivedRasterStatisticsResponse>
+  requestDerivedLineProfile(
+    request: DerivedRasterLineProfileRequest,
+    signal?: AbortSignal,
+  ): Promise<DerivedRasterLineProfileResponse>
+  releaseDerivedRaster(request: Readonly<{ layerId: string }>): Promise<void>
   dispose(): void
 }
 
@@ -351,20 +378,39 @@ export class GeoWorkbenchController {
     })
   }
 
-  updateLayer(layerId: string, patch: Partial<GeoRasterLayer>): void {
-    const target = this.#requireRasterLayer(layerId)
+  updateLayer(
+    layerId: string,
+    patch: Partial<
+      Pick<GeoLayer, 'label' | 'visible' | 'opacity' | 'blendMode' | 'zIndex' | 'style'>
+    >,
+  ): void {
+    const target = this.#requireLayer(layerId)
     const layers = this.#snapshot.project.layers.map((layer) =>
       layer.id === target.id
-        ? createGeoRasterLayer({
-            id: layer.id,
-            sourceId: target.sourceId,
-            label: patch.label ?? target.label,
-            visible: patch.visible ?? target.visible,
-            opacity: patch.opacity ?? target.opacity,
-            blendMode: patch.blendMode ?? target.blendMode,
-            zIndex: patch.zIndex ?? target.zIndex,
-            style: patch.style ?? target.style,
-          })
+        ? target.kind === 'raster'
+          ? createGeoRasterLayer({
+              id: layer.id,
+              sourceId: target.sourceId,
+              label: patch.label ?? target.label,
+              visible: patch.visible ?? target.visible,
+              opacity: patch.opacity ?? target.opacity,
+              blendMode: patch.blendMode ?? target.blendMode,
+              zIndex: patch.zIndex ?? target.zIndex,
+              style: patch.style ?? target.style,
+            })
+          : createDerivedGeoRasterLayer({
+              id: layer.id,
+              ...(target.sourceId === undefined ? {} : { sourceId: target.sourceId }),
+              inputLayerIds: target.inputLayerIds,
+              label: patch.label ?? target.label,
+              visible: patch.visible ?? target.visible,
+              opacity: patch.opacity ?? target.opacity,
+              blendMode: patch.blendMode ?? target.blendMode,
+              zIndex: patch.zIndex ?? target.zIndex,
+              style: patch.style ?? target.style,
+              recipe: target.recipe,
+              provenance: target.provenance,
+            })
         : layer,
     )
     this.#replaceProject({ layers })
@@ -396,7 +442,7 @@ export class GeoWorkbenchController {
   }
 
   removeLayer(layerId: string): void {
-    this.#requireLayer(layerId)
+    const removed = this.#requireLayer(layerId)
     const dependent = this.#snapshot.project.layers.filter(
       (layer) => layer.kind === 'derived' && layer.inputLayerIds.includes(layerId as GeoLayerId),
     )
@@ -408,7 +454,14 @@ export class GeoWorkbenchController {
     const layers = this.#snapshot.project.layers.filter(({ id }) => id !== layerId)
     const fallback = layers.at(-1)
     this.#replaceProject(
-      { layers, comparison: { mode: 'single' } },
+      {
+        layers,
+        comparison: { mode: 'single' },
+        provenance:
+          removed.kind === 'derived'
+            ? this.#snapshot.project.provenance.filter(({ id }) => id !== removed.provenance.id)
+            : this.#snapshot.project.provenance,
+      },
       fallback === undefined
         ? { selectedLayerId: undefined, selectedSourceId: undefined }
         : { selectedLayerId: fallback.id, selectedSourceId: fallback.sourceId },
@@ -717,6 +770,107 @@ export class GeoWorkbenchController {
     }
   }
 
+  #derivedRequest(recipeValue: unknown, layerId: string): DerivedRasterDryRunRequest {
+    assertDerivedRasterRecipe(recipeValue)
+    const recipe = recipeValue
+    const inputs = recipe.inputs.map((input) => {
+      const layer = this.#requireRasterLayer(input.layerId)
+      const source = this.#requireSource(layer.sourceId)
+      const binding = this.#bindings.get(source.id)
+      if (binding === undefined) {
+        throw new GeoControllerError(
+          'UNAVAILABLE',
+          `Source ${source.id} must be open before running analysis.`,
+        )
+      }
+      if (input.component >= source.componentCount) {
+        throw new GeoControllerError(
+          'INVALID_ACTION_INPUT',
+          `Input ${input.name} selects unavailable band ${input.component}.`,
+        )
+      }
+      return {
+        layerId: layer.id,
+        datasetHandleId: binding.dataset.handleId,
+        generation: binding.dataset.generation,
+        sourceIdentity: JSON.stringify(binding.source.identity),
+        sourceRevision: sourceRevision(source),
+        grid: targetGridForSource(source, binding.dataset.dataset.sampleType),
+      }
+    })
+    return { layerId, recipe, inputs }
+  }
+
+  async #createDerivedLayer(
+    recipeValue: unknown,
+    operationKind: DerivedRasterRecipeV1['operation']['kind'],
+    terrainOperation: 'hillshade' | 'slope' | 'aspect' | undefined,
+    label: string | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<GeoLayerId> {
+    const id = this.#uniqueId(
+      `geo-${operationKind}`,
+      this.#snapshot.project.layers.map(({ id }) => id),
+    ) as GeoLayerId
+    const request = this.#derivedRequest(recipeValue, id)
+    if (request.recipe.operation.kind !== operationKind) {
+      throw new GeoControllerError(
+        'INVALID_ACTION_INPUT',
+        `Action requires a ${operationKind} recipe.`,
+      )
+    }
+    if (
+      terrainOperation !== undefined &&
+      (request.recipe.operation.kind !== 'terrain' ||
+        request.recipe.operation.operation !== terrainOperation)
+    ) {
+      throw new GeoControllerError(
+        'INVALID_ACTION_INPUT',
+        `Action requires a ${terrainOperation} terrain recipe.`,
+      )
+    }
+    await this.#runtime.dryRunDerivedRaster(request, signal)
+    signal?.throwIfAborted()
+    const inputLayers = request.recipe.inputs.map((input) =>
+      this.#requireRasterLayer(input.layerId),
+    )
+    const sourceIds = [...new Set(inputLayers.map(({ sourceId }) => sourceId))]
+    const provenance = {
+      id: this.#uniqueId(
+        `${id}-provenance`,
+        this.#snapshot.project.provenance.map(({ id }) => id),
+      ) as GeoProvenanceId,
+      sourceIds,
+      recipe: { recipeId: `geo.analysis.${operationKind}`, recipeVersion: '1' },
+      createdAt: this.#now(),
+    }
+    const derived = createDerivedGeoRasterLayer({
+      id,
+      inputLayerIds: request.recipe.inputs.map(({ layerId }) => layerId),
+      label: label ?? derivedLayerLabel(operationKind),
+      zIndex:
+        this.#snapshot.project.layers.reduce((max, layer) => Math.max(max, layer.zIndex), -1) + 1,
+      style: derivedLayerStyle(request.recipe.operation),
+      recipe: request.recipe,
+      provenance,
+    })
+    this.#replaceProject(
+      {
+        layers: [...this.#snapshot.project.layers, derived],
+        provenance: [...this.#snapshot.project.provenance, provenance],
+      },
+      { selectedLayerId: id, selectedSourceId: sourceIds[0] },
+    )
+    return id
+  }
+
+  #requireDerivedLayer(layerId: string): DerivedGeoRasterLayer {
+    const layer = this.#requireLayer(layerId)
+    if (layer.kind !== 'derived')
+      throw new GeoControllerError('PROJECT_INVALID', `Layer ${layerId} is not derived.`)
+    return layer
+  }
+
   #replaceProject(
     patch: Partial<Pick<GeoProject, 'sources' | 'layers' | 'comparison' | 'provenance'>>,
     selection: {
@@ -958,6 +1112,107 @@ export class GeoWorkbenchController {
     set('geo.raster.describe_statistics', () => {
       throw new GeoControllerError('UNAVAILABLE', 'Statistics are not implemented for Atlas yet.')
     })
+    set('geo.analysis.describe', (input) => {
+      const layer = this.#requireDerivedLayer(stringField(input, 'layerId'))
+      return json({ recipe: layer.recipe, provenance: layer.provenance })
+    })
+    set('geo.analysis.dry_run', async (input, _context, signal) => {
+      const record = recordInput(input)
+      return json(
+        await this.#runtime.dryRunDerivedRaster(
+          this.#derivedRequest(record['recipe'], 'geo-analysis-dry-run'),
+          nativeSignal(signal),
+        ),
+      )
+    })
+    const createAnalysis = (
+      id: GeoActionId,
+      kind: DerivedRasterRecipeV1['operation']['kind'],
+      terrainOperation?: 'hillshade' | 'slope' | 'aspect',
+    ): void => {
+      set(id, async (input, _context, signal) => {
+        const record = recordInput(input)
+        const layerId = await this.#createDerivedLayer(
+          record['recipe'],
+          kind,
+          terrainOperation,
+          optionalStringField(record, 'label'),
+          nativeSignal(signal),
+        )
+        return { layerId }
+      })
+    }
+    createAnalysis('geo.analysis.band_math', 'band-math')
+    createAnalysis('geo.analysis.normalized_difference', 'normalized-difference')
+    createAnalysis('geo.analysis.virtual_band_stack', 'virtual-band-stack')
+    createAnalysis('geo.analysis.raster_difference', 'raster-difference')
+    createAnalysis('geo.analysis.hillshade', 'terrain', 'hillshade')
+    createAnalysis('geo.analysis.slope', 'terrain', 'slope')
+    createAnalysis('geo.analysis.aspect', 'terrain', 'aspect')
+    set('geo.analysis.region_statistics', async (input, _context, signal) => {
+      const record = recordInput(input)
+      const layer = this.#requireDerivedLayer(stringField(record, 'layerId'))
+      const histogramValue = record['histogram']
+      const histogram =
+        histogramValue === undefined
+          ? undefined
+          : {
+              bins: integerField(histogramValue, 'bins'),
+              minimum: numberField(histogramValue, 'minimum'),
+              maximum: numberField(histogramValue, 'maximum'),
+            }
+      const result = await this.#runtime.requestDerivedStatistics(
+        {
+          ...this.#derivedRequest(layer.recipe, layer.id),
+          region: regionField(record, 'region'),
+          component: optionalIntegerField(record, 'component') ?? 0,
+          ...(histogram === undefined ? {} : { histogram }),
+        },
+        nativeSignal(signal),
+      )
+      return json({
+        ...result,
+        ...(result.histogram === undefined
+          ? {}
+          : { histogram: { ...result.histogram, counts: [...result.histogram.counts] } }),
+      })
+    })
+    set('geo.analysis.line_profile', async (input, _context, signal) => {
+      const record = recordInput(input)
+      const layer = this.#requireDerivedLayer(stringField(record, 'layerId'))
+      const result = await this.#runtime.requestDerivedLineProfile(
+        {
+          ...this.#derivedRequest(layer.recipe, layer.id),
+          start: pointField(record, 'start'),
+          end: pointField(record, 'end'),
+          sampleCount: integerField(record, 'sampleCount'),
+          component: optionalIntegerField(record, 'component') ?? 0,
+          resampling: record['resampling'] === 'bilinear' ? 'bilinear' : 'nearest',
+        },
+        nativeSignal(signal),
+      )
+      return json({
+        cacheKey: result.cacheKey,
+        distances: [...result.distances],
+        values: [...result.values],
+        valid: [...result.valid],
+      })
+    })
+    for (const id of ['geo.analysis.cancel', 'geo.analysis.release'] as const) {
+      set(id, async (input) => {
+        const layerId = stringField(input, 'layerId')
+        this.#requireDerivedLayer(layerId)
+        await this.#runtime.releaseDerivedRaster({ layerId })
+        return { released: true }
+      })
+    }
+    set('geo.derived_layer.remove', async (input) => {
+      const layerId = stringField(input, 'layerId')
+      this.#requireDerivedLayer(layerId)
+      await this.#runtime.releaseDerivedRaster({ layerId })
+      this.removeLayer(layerId)
+      return { removed: true }
+    })
     return handlers
   }
 
@@ -1165,6 +1420,126 @@ function defaultStyleFor(dataset: OpenedDatasetDescriptor): RasterStyle {
   }
 }
 
+function targetGridForSource(
+  source: GeoRasterSource,
+  sampleType: OpenedDatasetDescriptor['dataset']['sampleType'],
+): DerivedRasterRecipeV1['targetGrid'] {
+  const affine = source.spatialReference.pixelToModel
+  const crs = crsKey(source.spatialReference.crs)
+  if (affine === undefined || crs === undefined)
+    throw new GeoControllerError(
+      'CRS_INCOMPATIBLE',
+      `Source ${source.id} needs an identified CRS and affine grid for analysis.`,
+    )
+  const corners = [
+    modelPoint(affine, 0, 0),
+    modelPoint(affine, source.width, 0),
+    modelPoint(affine, source.width, source.height),
+    modelPoint(affine, 0, source.height),
+  ]
+  const xs = corners.map(({ x }) => x)
+  const ys = corners.map(({ y }) => y)
+  const nodata = scalarNodata(source.spatialReference)
+  return {
+    schemaVersion: 1,
+    crs,
+    width: source.width,
+    height: source.height,
+    affine,
+    pixelInterpretation:
+      source.spatialReference.pixelInterpretation === 'pixel-is-point' ? 'point' : 'area',
+    extent: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
+    sampleType: rasterSampleType(sampleType),
+    noData: nodata === undefined ? { kind: 'none' } : { kind: 'value', value: nodata },
+    resampling: 'nearest',
+  }
+}
+
+function rasterSampleType(value: string): RasterSampleType {
+  const supported = new Set<RasterSampleType>([
+    'uint8',
+    'uint16',
+    'uint32',
+    'uint64',
+    'int8',
+    'int16',
+    'int32',
+    'float32',
+    'float64',
+  ])
+  if (!supported.has(value as RasterSampleType))
+    throw new GeoControllerError(
+      'INVALID_ACTION_INPUT',
+      `Raster sample type ${value} is unsupported for analysis.`,
+    )
+  return value as RasterSampleType
+}
+
+function modelPoint(
+  affine: readonly [number, number, number, number, number, number],
+  column: number,
+  row: number,
+): Readonly<{ x: number; y: number }> {
+  return {
+    x: affine[0] * column + affine[1] * row + affine[2],
+    y: affine[3] * column + affine[4] * row + affine[5],
+  }
+}
+
+function sourceRevision(source: GeoRasterSource): string {
+  const locator = source.locator
+  if (locator.kind === 'stac-asset' || locator.kind === 'tnm-product')
+    return locator.checksum ?? locator.validator ?? JSON.stringify(locator.catalog)
+  if (locator.kind === 'local-file') return JSON.stringify(locator.fingerprint)
+  if (locator.kind === 'bundled-example') return `${locator.scenarioId}:${locator.assetId ?? ''}`
+  return locator.url
+}
+
+function derivedLayerLabel(kind: DerivedRasterRecipeV1['operation']['kind']): string {
+  return kind
+    .split('-')
+    .map((part) => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
+    .join(' ')
+}
+
+function derivedLayerStyle(operation: DerivedRasterRecipeV1['operation']): RasterStyle {
+  if (operation.kind === 'virtual-band-stack') {
+    return {
+      mapping:
+        operation.bands.length >= 3
+          ? { red: 0, green: 1, blue: 2 }
+          : operation.bands.length === 2
+            ? { red: 0, green: 1, blue: 1 }
+            : { gray: 0 },
+      stretch: 'percentile',
+      rangeMode: 'viewport-local',
+      nodataTransparent: true,
+    }
+  }
+  if (operation.kind === 'normalized-difference')
+    return { mapping: { gray: 0 }, minimum: -1, maximum: 1, nodataTransparent: true }
+  if (operation.kind === 'terrain') {
+    const range =
+      operation.operation === 'hillshade'
+        ? ([0, 255] as const)
+        : operation.operation === 'aspect'
+          ? ([0, 360] as const)
+          : ([0, operation.slopeUnit === 'percent' ? 100 : 90] as const)
+    return {
+      mapping: { gray: 0 },
+      minimum: range[0],
+      maximum: range[1],
+      nodataTransparent: true,
+    }
+  }
+  return {
+    mapping: { gray: 0 },
+    stretch: 'percentile',
+    rangeMode: 'viewport-local',
+    nodataTransparent: true,
+  }
+}
+
 function styleFits(style: RasterStyle, componentCount: number): boolean {
   return Object.values(style.mapping).every(
     (value) => value === undefined || value < componentCount,
@@ -1235,6 +1610,36 @@ function numberField(value: unknown, key: string): number {
   if (typeof field !== 'number' || !Number.isFinite(field))
     throw new GeoControllerError('INVALID_ACTION_INPUT', `${key} must be finite.`)
   return field
+}
+
+function integerField(value: unknown, key: string): number {
+  const number = numberField(value, key)
+  if (!Number.isInteger(number))
+    throw new GeoControllerError('INVALID_ACTION_INPUT', `${key} must be an integer.`)
+  return number
+}
+
+function optionalIntegerField(value: unknown, key: string): number | undefined {
+  const field = recordInput(value)[key]
+  return field === undefined ? undefined : integerField(value, key)
+}
+
+function pointField(value: unknown, key: string): Readonly<{ x: number; y: number }> {
+  const point = recordInput(value)[key]
+  return { x: numberField(point, 'x'), y: numberField(point, 'y') }
+}
+
+function regionField(
+  value: unknown,
+  key: string,
+): Readonly<{ x: number; y: number; width: number; height: number }> {
+  const region = recordInput(value)[key]
+  return {
+    x: integerField(region, 'x'),
+    y: integerField(region, 'y'),
+    width: integerField(region, 'width'),
+    height: integerField(region, 'height'),
+  }
 }
 
 function booleanField(value: unknown, key: string): boolean {

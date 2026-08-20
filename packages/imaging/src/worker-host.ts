@@ -62,6 +62,15 @@ import {
   tryInspectTiffSource,
 } from './worker-host/cog-inspect.js'
 import {
+  type BoundDerivedRasterInput,
+  computeDerivedRasterStatistics,
+  type DerivedRasterTransformProvider,
+  derivedRasterCacheKey,
+  dryRunDerivedRaster,
+  evaluateDerivedRasterTile,
+  sampleDerivedRasterLine,
+} from './worker-host/derived-raster.js'
+import {
   computeDisplayStatistics,
   displayStatisticsCacheKey,
   sampleRasterPoint,
@@ -110,6 +119,33 @@ function wrapNumericSource(
 }
 
 const MAX_SERIES_EXPORT_CELLS = 1_000_000
+
+function derivedRequestDatasetHandles(
+  request: WorkerRequest,
+): readonly DatasetHandleId[] | undefined {
+  switch (request.kind) {
+    case 'geo.analysis.dry_run':
+    case 'geo.analysis.tile':
+    case 'geo.analysis.region_statistics':
+    case 'geo.analysis.line_profile':
+      return request.payload.inputs.map(({ datasetHandleId }) => datasetHandleId)
+    default:
+      return undefined
+  }
+}
+
+function derivedRequestLayerId(request: WorkerRequest): string | undefined {
+  switch (request.kind) {
+    case 'geo.analysis.dry_run':
+    case 'geo.analysis.tile':
+    case 'geo.analysis.region_statistics':
+    case 'geo.analysis.line_profile':
+    case 'geo.analysis.release':
+      return request.payload.layerId
+    default:
+      return undefined
+  }
+}
 
 function boundedSeriesRows(requested: number, available: number, columns: number): number {
   if (columns < 1 || columns > RPC_LIMITS.maxTablePageColumns)
@@ -193,6 +229,7 @@ export interface ImagingWorkerHostOptions {
   readonly analysisExtensions?: readonly PureJsImageExtension[]
   readonly analysisCatalog?: ImagingAnalysisCatalogExtras
   readonly limits?: Partial<ImagingResourceLimits>
+  readonly rasterTransforms?: DerivedRasterTransformProvider
 }
 
 const MiB = 1_024 * 1_024
@@ -261,6 +298,7 @@ export class ImagingWorkerHost {
   readonly #baseUrl: string | undefined
   readonly #analysisExtensions: readonly PureJsImageExtension[]
   readonly #catalogExtras: ImagingAnalysisCatalogExtras
+  readonly #rasterTransforms: DerivedRasterTransformProvider | undefined
 
   constructor(options: Readonly<ImagingWorkerHostOptions> = {}) {
     this.#fetch = options.fetch
@@ -271,6 +309,7 @@ export class ImagingWorkerHost {
         : new URL('/', globalThis.location.href).href)
     this.#analysisExtensions = options.analysisExtensions ?? []
     this.#catalogExtras = options.analysisCatalog ?? { documentation: [], presets: [] }
+    this.#rasterTransforms = options.rasterTransforms
     this.#limits = resolveImagingResourceLimits(options.limits)
   }
 
@@ -303,10 +342,16 @@ export class ImagingWorkerHost {
       const sourceId =
         payloadSourceId ??
         (datasetHandleId === undefined ? undefined : this.#datasets.get(datasetHandleId)?.sourceId)
+      const derivedDatasetHandleIds = derivedRequestDatasetHandles(request)
+      const derivedLayerId = derivedRequestLayerId(request)
       this.#pending.set(request.requestId, {
         controller,
         ...(datasetHandleId === undefined ? {} : { datasetHandleId }),
+        ...(derivedDatasetHandleIds === undefined
+          ? {}
+          : { datasetHandleIds: derivedDatasetHandleIds }),
         ...(sourceId === undefined ? {} : { sourceId }),
+        ...(derivedLayerId === undefined ? {} : { derivedLayerId }),
       })
       try {
         return await this.#dispatch(request, controller.signal)
@@ -365,6 +410,16 @@ export class ImagingWorkerHost {
         return this.#invalidateDisplayStatistics(request)
       case 'raster.sample_point':
         return this.#sampleRasterPoint(request, signal)
+      case 'geo.analysis.dry_run':
+        return this.#dryRunDerivedRaster(request)
+      case 'geo.analysis.tile':
+        return this.#requestDerivedRasterTile(request, signal)
+      case 'geo.analysis.region_statistics':
+        return this.#derivedRasterStatistics(request, signal)
+      case 'geo.analysis.line_profile':
+        return this.#derivedRasterLineProfile(request, signal)
+      case 'geo.analysis.release':
+        return this.#releaseDerivedRaster(request)
       case 'analysis.catalog':
         return this.#analysisCatalog(request)
       case 'analysis.normalize-parameters':
@@ -1077,6 +1132,151 @@ export class ImagingWorkerHost {
     }
   }
 
+  #derivedBindings(
+    payload: Extract<WorkerRequest, { kind: 'geo.analysis.dry_run' }>['payload'],
+  ): readonly BoundDerivedRasterInput[] {
+    return payload.recipe.inputs.map((recipe, index) => {
+      const runtime = payload.inputs[index]
+      if (runtime === undefined)
+        throw new RpcValidationError('INVALID_PAYLOAD', 'Derived runtime input is missing')
+      const { source, record } = this.#datasetByHandle(runtime.datasetHandleId, runtime.generation)
+      this.#touch(source)
+      return { recipe, runtime, record }
+    })
+  }
+
+  #dryRunDerivedRaster(
+    request: Extract<WorkerRequest, { kind: 'geo.analysis.dry_run' }>,
+  ): WorkerHostResult {
+    try {
+      return success(
+        request.requestId,
+        'geo.analysis.dry_run',
+        dryRunDerivedRaster(
+          request.payload,
+          this.#derivedBindings(request.payload),
+          this.#rasterTransforms,
+        ),
+      )
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INVALID_PAYLOAD'))
+    }
+  }
+
+  async #requestDerivedRasterTile(
+    request: Extract<WorkerRequest, { kind: 'geo.analysis.tile' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    const started = performance.now()
+    let tile: NumericTile | undefined
+    try {
+      tile = await evaluateDerivedRasterTile(
+        request.payload,
+        this.#derivedBindings(request.payload),
+        request.payload.region,
+        request.payload.priority,
+        signal,
+        this.#rasterTransforms,
+      )
+      signal.throwIfAborted()
+      const { rgba } = mapTile(tile, 0, request.payload.mapping)
+      const target = request.payload.recipe.targetGrid
+      const totalTiles = Math.ceil(target.width / 256) * Math.ceil(target.height / 256)
+      const response: Extract<WorkerResponse, { kind: 'geo.analysis.tile' }> = {
+        schemaVersion: RPC_SCHEMA_VERSION,
+        requestId: request.requestId,
+        ok: true,
+        kind: 'geo.analysis.tile',
+        payload: {
+          tileId: request.payload.tileId,
+          layerId: request.payload.layerId,
+          cacheKey: derivedRasterCacheKey(request.payload),
+          styleRevision: request.payload.styleRevision,
+          statisticsRevision: request.payload.statisticsRevision,
+          region: request.payload.region,
+          overview: 0,
+          width: tile.width,
+          height: tile.height,
+          rgba,
+          elapsedMilliseconds: performance.now() - started,
+          progress: { completedTiles: 1, totalTiles },
+        },
+      }
+      return { response, transfer: mappedDisplayTileTransfer(rgba) }
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
+    } finally {
+      if (tile !== undefined) {
+        tile.release()
+        this.#releases.tiles += 1
+      }
+    }
+  }
+
+  async #derivedRasterStatistics(
+    request: Extract<WorkerRequest, { kind: 'geo.analysis.region_statistics' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    try {
+      const result = await computeDerivedRasterStatistics(
+        request.payload,
+        this.#derivedBindings(request.payload),
+        signal,
+        this.#rasterTransforms,
+      )
+      return {
+        response: {
+          schemaVersion: RPC_SCHEMA_VERSION,
+          requestId: request.requestId,
+          ok: true,
+          kind: 'geo.analysis.region_statistics',
+          payload: result,
+        },
+        transfer: result.histogram === undefined ? [] : [result.histogram.counts.buffer],
+      }
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
+    }
+  }
+
+  async #derivedRasterLineProfile(
+    request: Extract<WorkerRequest, { kind: 'geo.analysis.line_profile' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    try {
+      const result = await sampleDerivedRasterLine(
+        request.payload,
+        this.#derivedBindings(request.payload),
+        signal,
+        this.#rasterTransforms,
+      )
+      return {
+        response: {
+          schemaVersion: RPC_SCHEMA_VERSION,
+          requestId: request.requestId,
+          ok: true,
+          kind: 'geo.analysis.line_profile',
+          payload: result,
+        },
+        transfer: [result.distances.buffer, result.values.buffer, result.valid.buffer],
+      }
+    } catch (error) {
+      return errorResult(request.requestId, structuredError(error, 'INTERNAL_ERROR'))
+    }
+  }
+
+  #releaseDerivedRaster(
+    request: Extract<WorkerRequest, { kind: 'geo.analysis.release' }>,
+  ): WorkerHostResult {
+    for (const pending of this.#pending.values()) {
+      if (pending.derivedLayerId === request.payload.layerId)
+        pending.controller.abort(abortError('Derived raster released'))
+    }
+    return success(request.requestId, 'geo.analysis.released', {
+      layerId: request.payload.layerId,
+    })
+  }
+
   #analysisRecord(payload: {
     readonly datasetHandleId: DatasetHandleId
     readonly generation: number
@@ -1719,7 +1919,10 @@ export class ImagingWorkerHost {
       if (cached.datasetHandleId === record.handleId) this.#displayStatistics.delete(key)
     }
     for (const pending of this.#pending.values()) {
-      if (pending.datasetHandleId === record.handleId) {
+      if (
+        pending.datasetHandleId === record.handleId ||
+        pending.datasetHandleIds?.includes(record.handleId) === true
+      ) {
         pending.controller.abort(abortError('Dataset closed'))
       }
     }
@@ -1784,6 +1987,10 @@ export class ImagingWorkerHost {
       kind === 'display.tile.request' ||
       kind === 'display.statistics.request' ||
       kind === 'raster.sample_point' ||
+      kind === 'geo.analysis.dry_run' ||
+      kind === 'geo.analysis.tile' ||
+      kind === 'geo.analysis.region_statistics' ||
+      kind === 'geo.analysis.line_profile' ||
       kind === 'analysis.dry-run' ||
       kind === 'analysis.execute' ||
       kind === 'analysis.overlay-tile' ||

@@ -67,5 +67,7 @@ export interface AnalysisExecutionRecord {
 export interface PendingRequest {
   readonly controller: AbortController
   readonly datasetHandleId?: DatasetHandleId
+  readonly datasetHandleIds?: readonly DatasetHandleId[]
   readonly sourceId?: SourceId
+  readonly derivedLayerId?: string
 }

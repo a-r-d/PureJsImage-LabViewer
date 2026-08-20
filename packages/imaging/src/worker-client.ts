@@ -15,6 +15,15 @@ import {
   type AnalysisTablePage,
   type AnalysisTablePageRequest,
   type DatasetHandleId,
+  type DerivedDisplayTile,
+  type DerivedDisplayTileRequest,
+  type DerivedRasterDryRunReport,
+  type DerivedRasterDryRunRequest,
+  type DerivedRasterLineProfileRequest,
+  type DerivedRasterLineProfileResponse,
+  type DerivedRasterReleaseRequest,
+  type DerivedRasterStatisticsRequest,
+  type DerivedRasterStatisticsResponse,
   type DisplayStatistics,
   type DisplayStatisticsRequest,
   type DisplayTile,
@@ -258,6 +267,46 @@ export class ImagingWorkerClient {
     return this.#call('raster.sample_point', request, signal).then((response) =>
       this.#payload(response, 'raster.point_sampled'),
     )
+  }
+
+  dryRunDerivedRaster(
+    request: DerivedRasterDryRunRequest,
+    signal?: AbortSignal,
+  ): Promise<DerivedRasterDryRunReport> {
+    return this.#call('geo.analysis.dry_run', request, signal).then((response) =>
+      this.#payload(response, 'geo.analysis.dry_run'),
+    )
+  }
+
+  requestDerivedDisplayTile(
+    request: DerivedDisplayTileRequest,
+    signal?: AbortSignal,
+  ): Promise<DerivedDisplayTile> {
+    return this.#call('geo.analysis.tile', request, signal).then((response) =>
+      this.#payload(response, 'geo.analysis.tile'),
+    )
+  }
+
+  requestDerivedStatistics(
+    request: DerivedRasterStatisticsRequest,
+    signal?: AbortSignal,
+  ): Promise<DerivedRasterStatisticsResponse> {
+    return this.#call('geo.analysis.region_statistics', request, signal).then((response) =>
+      this.#payload(response, 'geo.analysis.region_statistics'),
+    )
+  }
+
+  requestDerivedLineProfile(
+    request: DerivedRasterLineProfileRequest,
+    signal?: AbortSignal,
+  ): Promise<DerivedRasterLineProfileResponse> {
+    return this.#call('geo.analysis.line_profile', request, signal).then((response) =>
+      this.#payload(response, 'geo.analysis.line_profile'),
+    )
+  }
+
+  async releaseDerivedRaster(request: DerivedRasterReleaseRequest): Promise<void> {
+    await this.#call('geo.analysis.release', request)
   }
 
   analysisCatalog(

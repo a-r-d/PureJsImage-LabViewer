@@ -9,6 +9,15 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Added
 
+- Atlas virtual raster analysis through the shared semantic action host: normalized band math,
+  explicit virtual band stacks, hillshade/slope/aspect, raster difference, bounded region
+  statistics, and line profiles. Derived layers persist normalized recipes and provenance, render
+  as on-demand Worker tiles, include source revisions and grids in cache identity, and abort with
+  their input datasets. Exact alignment is the default; same-CRS resampling is explicit and
+  cross-CRS work requires the versioned EPSG:4326/EPSG:3857 inverse-transform provider. Dry-run
+  reports source/target grids, byte and memory estimates, transforms, resampling, no-data, output,
+  and accuracy warnings. See `docs/GEO_RASTER_ANALYSIS.md`.
+
 - Atlas catalog adapters for STAC API, static STAC, and USGS TNMAccess. The registry lists NOAA
   Digital Coast, USGS 3DEP, USGS Landsat, and Kentucky From Above. CatalogPanel talks only to
   `CatalogService`. Imaging raster preflight uses bounded streaming and advances through
@@ -106,7 +115,7 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Changed
 
-- The workbench consumes `purejsimage@0.13.0`. Remote `HttpRangeSource.open` uses `openSignal` for
+- The workbench consumes `purejsimage@0.14.0`. Remote `HttpRangeSource.open` uses `openSignal` for
   the probe and `lifetimeSignal` for subsequent reads; aborting the per-source lifetime controller
   releases in-flight range work. The imaging RPC schema version is 2.
 - Browser CI runs science and geo Playwright in `mcr.microsoft.com/playwright:v1.62.1-noble` with a

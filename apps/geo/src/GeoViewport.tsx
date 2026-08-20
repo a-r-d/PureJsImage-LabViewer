@@ -1,5 +1,7 @@
 import type {
   DatasetDescriptor,
+  DerivedDisplayTile,
+  DerivedRasterRuntimeInputV1,
   DisplayMapping,
   DisplayStatistics,
   DisplayTile,
@@ -11,8 +13,11 @@ import type {
 import {
   CRS_EPSG_4326,
   canTransformCrs,
+  type DerivedGeoRasterLayer,
   displayMappingFromStyle,
+  crsKey as domainCrsKey,
   type GeoComparisonState,
+  type GeoLayer,
   type GeoRasterLayer,
   type GeoRasterSource,
   scalarNodata,
@@ -78,7 +83,7 @@ export interface GeoViewportProps {
   readonly client: ImagingWorkerClient
   readonly rasters: readonly OpenedDatasetDescriptor[]
   readonly sources: readonly GeoRasterSource[]
-  readonly layers: readonly GeoRasterLayer[]
+  readonly layers: readonly GeoLayer[]
   readonly comparison: GeoComparisonState
   readonly selectedLayerId?: string
   readonly onComparisonChange: (comparison: GeoComparisonState) => void
@@ -99,9 +104,10 @@ interface CachedTile {
 }
 
 interface LayerContext {
-  readonly layer: GeoRasterLayer
-  readonly source: GeoRasterSource
-  readonly raster: OpenedDatasetDescriptor
+  readonly layer: GeoLayer
+  readonly source?: GeoRasterSource
+  readonly raster?: OpenedDatasetDescriptor
+  readonly derivedInputs?: readonly DerivedRasterRuntimeInputV1[]
   readonly overview: number
   readonly adapter: CoordinateSpaceAdapter
   readonly mapping: DisplayMapping
@@ -160,7 +166,7 @@ class CanvasGeoRenderer {
 
   upload(
     layerId: string,
-    tile: DisplayTile,
+    tile: DisplayTile | DerivedDisplayTile,
     adapter: CoordinateSpaceAdapter,
     protectedKeys: ReadonlySet<string>,
   ): void {
@@ -197,7 +203,7 @@ class CanvasGeoRenderer {
   render(
     camera: Camera,
     projectAdapter: CoordinateSpaceAdapter,
-    layers: readonly GeoRasterLayer[],
+    layers: readonly GeoLayer[],
     sources: readonly GeoRasterSource[],
     comparison: GeoComparisonState,
     blinkPhase: 0 | 1,
@@ -260,7 +266,7 @@ class CanvasGeoRenderer {
   #drawLayers(
     camera: Camera,
     projectAdapter: CoordinateSpaceAdapter,
-    layers: readonly GeoRasterLayer[],
+    layers: readonly GeoLayer[],
     required: ReadonlySet<string>,
     clip?: Readonly<{ x: number; width: number }>,
   ): void {
@@ -284,7 +290,7 @@ class CanvasGeoRenderer {
     cached: CachedTile,
     adapter: CoordinateSpaceAdapter,
     camera: Camera,
-    layer: GeoRasterLayer,
+    layer: GeoLayer,
   ): void {
     const { region } = cached
     const origin = adapter.worldToScreen(
@@ -355,7 +361,7 @@ class CanvasGeoRenderer {
 
   #drawSwipeAdornment(
     comparison: Extract<GeoComparisonState, { mode: 'swipe' }>,
-    layers: readonly GeoRasterLayer[],
+    layers: readonly GeoLayer[],
     sources: readonly GeoRasterSource[],
   ): void {
     const x = this.#viewport.width * comparison.swipePosition
@@ -552,23 +558,26 @@ export function GeoViewport({
     const ensureStatistics = (
       context: Omit<LayerContext, 'mapping' | 'statisticsRevision'>,
     ): void => {
+      if (context.layer.kind !== 'raster') return
+      const source = requiredValue(context.source, 'statistics source')
+      const raster = requiredValue(context.raster, 'statistics raster')
       const indices = mappedComponents(context.layer)
-      const key = statisticsKey(context.layer, context.source, context.raster, indices)
+      const key = statisticsKey(context.layer, source, raster, indices)
       if (statistics.has(key) || statisticsPending.has(key) || statisticsErrors.has(key)) return
       const controller = new AbortController()
       statisticsPending.set(key, controller)
       reportStatus()
-      const nodata = scalarNodata(context.raster.dataset.spatialReference)
+      const nodata = scalarNodata(raster.dataset.spatialReference)
       void client
         .requestDisplayStatistics(
           {
-            datasetHandleId: context.raster.handleId,
-            generation: context.raster.generation,
-            sourceIdentity: context.source.id,
+            datasetHandleId: raster.handleId,
+            generation: raster.generation,
+            sourceIdentity: source.id,
             sourceRevision: context.sourceRevision,
             componentIndices: indices,
-            displayAxes: context.raster.selection.displayAxes,
-            fixedIndices: context.raster.selection.fixedIndices,
+            displayAxes: raster.selection.displayAxes,
+            fixedIndices: raster.selection.fixedIndices,
             resolutionPolicy: { kind: 'reduced-overview' },
             nodataPolicy: { kind: 'exclude', ...(nodata === undefined ? {} : { value: nodata }) },
             sampleBudget: { maxSamples: 65_536, maxBytes: 1_048_576, maxTiles: 16 },
@@ -578,7 +587,7 @@ export function GeoViewport({
             },
             scaleOffsetPolicy: {
               kind: context.layer.style.valueMode ?? 'raw',
-              components: indices.map((index) => bandTransform(context.source, index)),
+              components: indices.map((index) => bandTransform(source, index)),
             },
           },
           controller.signal,
@@ -602,6 +611,39 @@ export function GeoViewport({
       const contexts = new Map<string, LayerContext>()
       for (const layer of layersRef.current) {
         if (!layer.visible) continue
+        if (layer.kind === 'derived') {
+          const target = layer.recipe.targetGrid
+          if (domainCrsKey(spatial.crs) !== target.crs) continue
+          const derivedInputs = runtimeInputsForDerived(
+            layer,
+            layersRef.current,
+            sourcesRef.current,
+            rastersRef.current,
+          )
+          if (derivedInputs === undefined) continue
+          const adapter = createWorldSpaceAffineAdapter({
+            pixelToWorld: target.affine,
+            width: target.width,
+            height: target.height,
+            pixelInterpretation:
+              target.pixelInterpretation === 'point' ? 'pixel-is-point' : 'pixel-is-area',
+          })
+          const styleRevision = displayStyleRevision(layer)
+          const mapped = mappingForDerivedLayer(layer)
+          contexts.set(layer.id, {
+            layer,
+            derivedInputs,
+            overview: 0,
+            adapter,
+            mapping: mapped.mapping,
+            sourceRevision: stableHash(
+              JSON.stringify({ recipe: layer.recipe, inputs: derivedInputs }),
+            ),
+            styleRevision,
+            statisticsRevision: mapped.statisticsRevision,
+          })
+          continue
+        }
         const raster = rastersRef.current.find(
           (candidate) => String(candidate.sourceId) === String(layer.sourceId),
         )
@@ -674,32 +716,53 @@ export function GeoViewport({
       pending.set(tileId, controller)
       tileStates.set(tileId, { kind: 'pending' })
       reportStatus()
-      void client
-        .requestDisplayTile(
-          {
-            tileId,
-            datasetHandleId: context.raster.handleId,
-            generation: context.raster.generation,
-            sourceIdentity: context.source.id,
-            sourceRevision: context.sourceRevision,
-            layerId: context.layer.id,
-            styleRevision: context.styleRevision,
-            statisticsRevision: context.statisticsRevision,
-            displayAxes: context.raster.selection.displayAxes,
-            fixedIndices: context.raster.selection.fixedIndices,
-            resolutionLevel: context.overview,
-            component: context.mapping.bands?.gray ?? context.mapping.bands?.red ?? 0,
-            mapping: context.mapping,
-            region: {
-              x: candidate.x,
-              y: candidate.y,
-              width: candidate.width,
-              height: candidate.height,
-            },
-            priority: candidate.priority,
-          },
-          controller.signal,
-        )
+      const tileRequest =
+        context.layer.kind === 'derived'
+          ? client.requestDerivedDisplayTile(
+              {
+                tileId,
+                layerId: context.layer.id,
+                recipe: context.layer.recipe,
+                inputs: context.derivedInputs ?? [],
+                styleRevision: context.styleRevision,
+                statisticsRevision: context.statisticsRevision,
+                mapping: context.mapping,
+                region: {
+                  x: candidate.x,
+                  y: candidate.y,
+                  width: candidate.width,
+                  height: candidate.height,
+                },
+                priority: candidate.priority,
+              },
+              controller.signal,
+            )
+          : client.requestDisplayTile(
+              {
+                tileId,
+                datasetHandleId: requiredValue(context.raster, 'source raster').handleId,
+                generation: requiredValue(context.raster, 'source raster').generation,
+                sourceIdentity: requiredValue(context.source, 'source').id,
+                sourceRevision: context.sourceRevision,
+                layerId: context.layer.id,
+                styleRevision: context.styleRevision,
+                statisticsRevision: context.statisticsRevision,
+                displayAxes: requiredValue(context.raster, 'source raster').selection.displayAxes,
+                fixedIndices: requiredValue(context.raster, 'source raster').selection.fixedIndices,
+                resolutionLevel: context.overview,
+                component: context.mapping.bands?.gray ?? context.mapping.bands?.red ?? 0,
+                mapping: context.mapping,
+                region: {
+                  x: candidate.x,
+                  y: candidate.y,
+                  width: candidate.width,
+                  height: candidate.height,
+                },
+                priority: candidate.priority,
+              },
+              controller.signal,
+            )
+      void tileRequest
         .then((tile) => {
           if (controller.signal.aborted || !required.has(tileId) || tile.tileId !== tileId) return
           renderer.upload(context.layer.id, tile, context.adapter, required)
@@ -792,7 +855,7 @@ export function GeoViewport({
       const contexts = contextsForScene()
       const planInputs: TileLayerPlanInput[] = [...contexts.values()].map((context) => ({
         layerId: context.layer.id,
-        sourceId: context.layer.sourceId,
+        sourceId: context.layer.sourceId ?? `derived:${context.layer.id}`,
         visible: true,
         adapter: context.adapter,
       }))
@@ -1115,6 +1178,119 @@ export function GeoViewport({
   )
 }
 
+function runtimeInputsForDerived(
+  layer: DerivedGeoRasterLayer,
+  layers: readonly GeoLayer[],
+  sources: readonly GeoRasterSource[],
+  rasters: readonly OpenedDatasetDescriptor[],
+): readonly DerivedRasterRuntimeInputV1[] | undefined {
+  const inputs: DerivedRasterRuntimeInputV1[] = []
+  for (const input of layer.recipe.inputs) {
+    const sourceLayer = layers.find(
+      (candidate): candidate is GeoRasterLayer =>
+        candidate.kind === 'raster' && candidate.id === input.layerId,
+    )
+    if (sourceLayer === undefined) return undefined
+    const source = sources.find(({ id }) => id === sourceLayer.sourceId)
+    const raster = rasters.find(
+      (candidate) => String(candidate.sourceId) === String(sourceLayer.sourceId),
+    )
+    const affine = source?.spatialReference.pixelToModel
+    const sourceCrs = source === undefined ? undefined : domainCrsKey(source.spatialReference.crs)
+    if (
+      source === undefined ||
+      raster === undefined ||
+      affine === undefined ||
+      sourceCrs === undefined
+    )
+      return undefined
+    const corners = [
+      affinePoint(affine, 0, 0),
+      affinePoint(affine, source.width, 0),
+      affinePoint(affine, source.width, source.height),
+      affinePoint(affine, 0, source.height),
+    ]
+    const xs = corners.map(({ x }) => x)
+    const ys = corners.map(({ y }) => y)
+    const nodata = scalarNodata(source.spatialReference)
+    inputs.push({
+      layerId: sourceLayer.id,
+      datasetHandleId: raster.handleId,
+      generation: raster.generation,
+      sourceIdentity: JSON.stringify({ id: source.id, locator: source.locator }),
+      sourceRevision: revisionForSource(source),
+      grid: {
+        schemaVersion: 1,
+        crs: sourceCrs,
+        width: source.width,
+        height: source.height,
+        affine,
+        pixelInterpretation:
+          source.spatialReference.pixelInterpretation === 'pixel-is-point' ? 'point' : 'area',
+        extent: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
+        sampleType: sourceRasterSampleType(raster.dataset.sampleType),
+        noData: nodata === undefined ? { kind: 'none' } : { kind: 'value', value: nodata },
+        resampling: 'nearest',
+      },
+    })
+  }
+  return inputs
+}
+
+function sourceRasterSampleType(
+  sampleType: string,
+): DerivedRasterRuntimeInputV1['grid']['sampleType'] {
+  if (
+    ![
+      'uint8',
+      'uint16',
+      'uint32',
+      'uint64',
+      'int8',
+      'int16',
+      'int32',
+      'float32',
+      'float64',
+    ].includes(sampleType)
+  )
+    throw new Error(`Raster sample type ${sampleType} cannot be analyzed.`)
+  return sampleType as DerivedRasterRuntimeInputV1['grid']['sampleType']
+}
+
+function affinePoint(
+  affine: readonly [number, number, number, number, number, number],
+  column: number,
+  row: number,
+): Readonly<{ x: number; y: number }> {
+  return {
+    x: affine[0] * column + affine[1] * row + affine[2],
+    y: affine[3] * column + affine[4] * row + affine[5],
+  }
+}
+
+function mappingForDerivedLayer(
+  layer: DerivedGeoRasterLayer,
+): Readonly<{ mapping: DisplayMapping; statisticsRevision: string }> {
+  const outputNoData = layer.recipe.outputNoData
+  const nodata = outputNoData.kind === 'value' ? outputNoData.value : undefined
+  const mapping = displayMappingFromStyle(layer.style, nodata)
+  if (layer.style.minimum !== undefined && layer.style.maximum !== undefined) {
+    return {
+      mapping: { ...mapping, range: 'manual' },
+      statisticsRevision: stableHash(`manual:${layer.style.minimum}:${layer.style.maximum}`),
+    }
+  }
+  return {
+    mapping: { ...mapping, range: 'auto' },
+    statisticsRevision: 'viewport-local-exploratory',
+  }
+}
+
+function requiredValue<T>(value: T | undefined, label: string): T {
+  if (value === undefined) throw new Error(`Missing ${label}.`)
+  return value
+}
+
 function mappingForLayer(
   layer: GeoRasterLayer,
   source: GeoRasterSource,
@@ -1228,11 +1404,11 @@ function displayTileId(
 ): string {
   return stableHash(
     JSON.stringify({
-      source: context.source.id,
+      source: context.source?.id ?? `derived:${context.layer.id}`,
       sourceRevision: context.sourceRevision,
-      dataset: context.raster.dataset.id,
-      handle: context.raster.handleId,
-      generation: context.raster.generation,
+      dataset: context.raster?.dataset.id ?? 'derived',
+      handle: context.raster?.handleId ?? context.layer.id,
+      generation: context.raster?.generation ?? 0,
       layer: context.layer.id,
       styleRevision: context.styleRevision,
       statisticsRevision: context.statisticsRevision,
@@ -1247,12 +1423,13 @@ function revisionForSource(source: GeoRasterSource): string {
 }
 
 function selectedSampleLayer(
-  layers: readonly GeoRasterLayer[],
+  layers: readonly GeoLayer[],
   selectedLayerId: string | undefined,
 ): GeoRasterLayer | undefined {
-  const selected = layers.find(({ id, visible }) => visible && id === selectedLayerId)
+  const rasterLayers = layers.filter((layer): layer is GeoRasterLayer => layer.kind === 'raster')
+  const selected = rasterLayers.find(({ id, visible }) => visible && id === selectedLayerId)
   if (selected !== undefined) return selected
-  return layers
+  return rasterLayers
     .map((layer, index) => ({ layer, index }))
     .filter(({ layer }) => layer.visible)
     .sort((left, right) => right.layer.zIndex - left.layer.zIndex || right.index - left.index)[0]
@@ -1281,7 +1458,7 @@ function toViewportPointer(
   }
 }
 
-export function orderedDisplayLayers(layers: readonly GeoRasterLayer[]): readonly GeoRasterLayer[] {
+export function orderedDisplayLayers(layers: readonly GeoLayer[]): readonly GeoLayer[] {
   return layers
     .map((layer, index) => ({ layer, index }))
     .filter(({ layer }) => layer.visible)
@@ -1289,7 +1466,7 @@ export function orderedDisplayLayers(layers: readonly GeoRasterLayer[]): readonl
     .map(({ layer }) => layer)
 }
 
-export function displayStyleRevision(layer: GeoRasterLayer): string {
+export function displayStyleRevision(layer: GeoLayer): string {
   return stableHash(
     JSON.stringify({
       style: layer.style,
@@ -1300,13 +1477,11 @@ export function displayStyleRevision(layer: GeoRasterLayer): string {
   )
 }
 
-export function canvasSmoothingEnabled(resample: GeoRasterLayer['style']['resample']): boolean {
+export function canvasSmoothingEnabled(resample: GeoLayer['style']['resample']): boolean {
   return resample === 'bilinear'
 }
 
-export function canvasCompositeOperation(
-  mode: GeoRasterLayer['blendMode'],
-): GlobalCompositeOperation {
+export function canvasCompositeOperation(mode: GeoLayer['blendMode']): GlobalCompositeOperation {
   switch (mode) {
     case 'normal':
       return 'source-over'
@@ -1346,7 +1521,7 @@ function errorMessage(error: unknown): string {
 
 function labelForLayer(
   layerId: string,
-  layers: readonly GeoRasterLayer[],
+  layers: readonly GeoLayer[],
   sources: readonly GeoRasterSource[],
 ): string {
   const layer = layers.find(({ id }) => id === layerId)

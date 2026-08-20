@@ -509,7 +509,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                   .join('|')}
                 client={runtime}
                 comparison={snapshot.project.comparison}
-                layers={rasterLayers}
+                layers={snapshot.project.layers}
                 onComparisonChange={onComparisonChange}
                 onOverview={onOverview}
                 onPointer={onPointer}

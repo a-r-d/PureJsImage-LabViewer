@@ -51,7 +51,7 @@ const reader = (
   })
 
 /**
- * Portable initialize-time catalog. Values match the live 0.13.0 reader
+ * Portable initialize-time catalog. Values match the live 0.14.0 reader
  * descriptors so the Worker does not import every codec at startup.
  */
 export const SUPPORTED_READERS = Object.freeze([

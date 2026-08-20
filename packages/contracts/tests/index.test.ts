@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  assertDerivedRasterRecipe,
   isRpcEnvelope,
   RPC_LIMITS,
   RPC_SCHEMA_VERSION,
@@ -10,6 +11,67 @@ import {
 } from '../src/index.js'
 
 describe('imaging RPC validation', () => {
+  it('validates derived recipes, operation inputs, and invertible target grids', () => {
+    const recipe = {
+      schemaVersion: 1,
+      operationVersion: 1,
+      operation: { kind: 'normalized-difference', left: 'nir', right: 'red' },
+      inputs: [
+        {
+          name: 'nir',
+          layerId: 'nir-layer',
+          component: 0,
+          valueMode: 'scaled',
+          scale: 0.0000275,
+          offset: -0.2,
+          noData: { kind: 'value', value: 0 },
+        },
+        {
+          name: 'red',
+          layerId: 'red-layer',
+          component: 0,
+          valueMode: 'raw',
+          scale: 1,
+          offset: 0,
+          noData: { kind: 'none' },
+        },
+      ],
+      targetGrid: {
+        schemaVersion: 1,
+        crs: 'EPSG:32618',
+        width: 256,
+        height: 256,
+        affine: [1, 0, 0, 0, -1, 256],
+        pixelInterpretation: 'area',
+        extent: [0, 0, 256, 256],
+        sampleType: 'float32',
+        noData: { kind: 'nan' },
+        resampling: 'nearest',
+      },
+      alignment: 'exact',
+      outputNoData: { kind: 'nan' },
+      minimumValidWeight: 0.5,
+      limits: {
+        maxTilePixels: 65_536,
+        maxOutputBytes: 1_048_576,
+        maxWorkingBytes: 4_194_304,
+      },
+    }
+    expect(() => assertDerivedRasterRecipe(recipe)).not.toThrow()
+    expect(() =>
+      assertDerivedRasterRecipe({
+        ...recipe,
+        operation: { kind: 'normalized-difference', left: 'missing', right: 'red' },
+      }),
+    ).toThrow(RpcValidationError)
+    expect(() =>
+      assertDerivedRasterRecipe({
+        ...recipe,
+        targetGrid: { ...recipe.targetGrid, affine: [1, 2, 0, 2, 4, 0] },
+      }),
+    ).toThrow(RpcValidationError)
+  })
+
   it('accepts every field of a bounded tile request', () => {
     const request = rpcRequest('tile-1', 'tile.request', {
       tileId: 'visible-0-0',

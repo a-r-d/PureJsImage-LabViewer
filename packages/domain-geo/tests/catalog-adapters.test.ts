@@ -357,5 +357,9 @@ describe('HTTPS alternate preference', () => {
     const item = parseStacItem(await fixture('./fixtures/stac-api/landsat-s3-item.json'))
     const candidates = candidatesFromItem(USGS_LANDSAT_CATALOG, item)
     expect(candidates[0]?.href.startsWith('s3://')).toBe(true)
+    expect(candidates[0]?.bands[0]).toMatchObject({ scale: 0.0000275, offset: -0.2 })
+    expect(
+      candidatesFromItem({ ...USGS_LANDSAT_CATALOG, id: 'generic-stac' }, item)[0]?.bands,
+    ).toEqual([])
   })
 })

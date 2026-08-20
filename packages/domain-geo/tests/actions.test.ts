@@ -42,6 +42,20 @@ describe('Atlas semantic action catalog', () => {
       'geo.raster.sample_point',
       'geo.raster.describe_bands',
       'geo.raster.describe_statistics',
+      'geo.analysis.describe',
+      'geo.analysis.dry_run',
+      'geo.analysis.band_math',
+      'geo.analysis.normalized_difference',
+      'geo.analysis.virtual_band_stack',
+      'geo.analysis.hillshade',
+      'geo.analysis.slope',
+      'geo.analysis.aspect',
+      'geo.analysis.raster_difference',
+      'geo.analysis.region_statistics',
+      'geo.analysis.line_profile',
+      'geo.analysis.cancel',
+      'geo.analysis.release',
+      'geo.derived_layer.remove',
     ])
     for (const { descriptor } of geoActionDefinitions) {
       expect(descriptor.version).toBe(1)
