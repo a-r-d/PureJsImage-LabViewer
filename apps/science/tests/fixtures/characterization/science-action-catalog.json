@@ -108,6 +108,10 @@
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
+          },
+          "operationVersion": {
+            "minimum": 1,
+            "type": "integer"
           }
         },
         "required": ["operationId"],
@@ -129,7 +133,19 @@
       "description": "Return a bounded resource plan without execution.",
       "id": "analysis.dry-run",
       "inputSchema": {
-        "additionalProperties": true,
+        "additionalProperties": false,
+        "properties": {
+          "graph": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "roiId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["graph"],
         "type": "object"
       },
       "mutability": "read",
@@ -187,7 +203,23 @@
       "description": "Normalize bounded operation parameters.",
       "id": "analysis.normalize",
       "inputSchema": {
-        "additionalProperties": true,
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "operationVersion": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": ["operationId", "operationVersion", "parameters"],
         "type": "object"
       },
       "mutability": "read",
@@ -203,7 +235,343 @@
       "cancellable": true,
       "category": "analysis",
       "cost": "expensive",
-      "description": "Create a reviewed execution proposal without bypassing approval.",
+      "description": "Validate, execute, and visibly commit the complete particle workflow for a bounded settings patch.",
+      "id": "analysis.particle.execute",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "planId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "settings": {
+            "additionalProperties": false,
+            "properties": {
+              "backgroundRadius": {
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "clearBorder": {
+                "type": "boolean"
+              },
+              "closeRadius": {
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "component": {
+                "maximum": 4095,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "connectivity": {
+                "enum": [4, 8],
+                "type": "integer"
+              },
+              "dynamicRange": {
+                "minimum": 0.000001,
+                "type": "number"
+              },
+              "edgePolicy": {
+                "enum": ["include", "exclude"],
+                "type": "string"
+              },
+              "fillHoles": {
+                "type": "boolean"
+              },
+              "histogramBins": {
+                "maximum": 65536,
+                "minimum": 16,
+                "type": "integer"
+              },
+              "lower": {
+                "type": "number"
+              },
+              "maximumArea": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "maximumAspectRatio": {
+                "minimum": 1,
+                "type": "number"
+              },
+              "maximumCircularity": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maximumSolidity": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "minimumArea": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "minimumAspectRatio": {
+                "minimum": 1,
+                "type": "number"
+              },
+              "minimumCircularity": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "minimumObjectPixels": {
+                "maximum": 1000000000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "minimumPeakDistance": {
+                "maximum": 4096,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "minimumSolidity": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "noDataPolicy": {
+                "enum": ["background", "foreground", "propagate"],
+                "type": "string"
+              },
+              "openRadius": {
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "overlayView": {
+                "enum": ["labels", "mask", "outline", "numbered", "centroids", "ellipses"],
+                "type": "string"
+              },
+              "polarity": {
+                "enum": ["light", "dark"],
+                "type": "string"
+              },
+              "roiId": {
+                "maxLength": 256,
+                "type": "string"
+              },
+              "sauvolaK": {
+                "maximum": 1,
+                "minimum": -1,
+                "type": "number"
+              },
+              "thresholdMethod": {
+                "enum": ["manual", "otsu", "triangle", "yen", "li", "mean", "sauvola"],
+                "type": "string"
+              },
+              "upper": {
+                "type": "number"
+              },
+              "watershed": {
+                "type": "boolean"
+              },
+              "windowRadius": {
+                "maximum": 128,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": ["planId", "settings"],
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Execute particle analysis settings",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "interactive",
+      "description": "Merge a bounded settings patch, validate the complete particle workflow, and return resource estimates without execution.",
+      "id": "analysis.particle.plan",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "settings": {
+            "additionalProperties": false,
+            "properties": {
+              "backgroundRadius": {
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "clearBorder": {
+                "type": "boolean"
+              },
+              "closeRadius": {
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "component": {
+                "maximum": 4095,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "connectivity": {
+                "enum": [4, 8],
+                "type": "integer"
+              },
+              "dynamicRange": {
+                "minimum": 0.000001,
+                "type": "number"
+              },
+              "edgePolicy": {
+                "enum": ["include", "exclude"],
+                "type": "string"
+              },
+              "fillHoles": {
+                "type": "boolean"
+              },
+              "histogramBins": {
+                "maximum": 65536,
+                "minimum": 16,
+                "type": "integer"
+              },
+              "lower": {
+                "type": "number"
+              },
+              "maximumArea": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "maximumAspectRatio": {
+                "minimum": 1,
+                "type": "number"
+              },
+              "maximumCircularity": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maximumSolidity": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "minimumArea": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "minimumAspectRatio": {
+                "minimum": 1,
+                "type": "number"
+              },
+              "minimumCircularity": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "minimumObjectPixels": {
+                "maximum": 1000000000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "minimumPeakDistance": {
+                "maximum": 4096,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "minimumSolidity": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "noDataPolicy": {
+                "enum": ["background", "foreground", "propagate"],
+                "type": "string"
+              },
+              "openRadius": {
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "overlayView": {
+                "enum": ["labels", "mask", "outline", "numbered", "centroids", "ellipses"],
+                "type": "string"
+              },
+              "polarity": {
+                "enum": ["light", "dark"],
+                "type": "string"
+              },
+              "roiId": {
+                "maxLength": 256,
+                "type": "string"
+              },
+              "sauvolaK": {
+                "maximum": 1,
+                "minimum": -1,
+                "type": "number"
+              },
+              "thresholdMethod": {
+                "enum": ["manual", "otsu", "triangle", "yen", "li", "mean", "sauvola"],
+                "type": "string"
+              },
+              "upper": {
+                "type": "number"
+              },
+              "watershed": {
+                "type": "boolean"
+              },
+              "windowRadius": {
+                "maximum": 128,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": ["settings"],
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.dry-run"],
+      "schemaVersion": 1,
+      "title": "Plan particle analysis settings",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "analysis",
+      "cost": "trivial",
+      "description": "Read the current bounded particle-analysis parameters and tuning guidance.",
+      "id": "analysis.particle.settings.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.read"],
+      "schemaVersion": 1,
+      "title": "Read particle analysis settings",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "expensive",
+      "description": "Run a reviewed preview or applied operation without bypassing approval.",
       "id": "analysis.request-execute",
       "inputSchema": {
         "additionalProperties": false,
@@ -229,7 +597,7 @@
         "required": ["operationId", "operationVersion", "parameters", "mode"],
         "type": "object"
       },
-      "mutability": "proposal",
+      "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
@@ -346,7 +714,7 @@
       "cancellable": false,
       "category": "ui",
       "cost": "trivial",
-      "description": "Open the disabled future-agent surface.",
+      "description": "Open the approval-gated scientific agent surface.",
       "id": "panel.agent",
       "inputSchema": {
         "additionalProperties": false,
@@ -379,7 +747,7 @@
         "required": ["panel"],
         "type": "object"
       },
-      "mutability": "proposal",
+      "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
@@ -396,11 +764,19 @@
       "id": "pipeline.node.remove",
       "inputSchema": {
         "additionalProperties": false,
+        "properties": {
+          "nodeId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["nodeId"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
-        "type": "null"
+        "type": "object"
       },
       "permissions": ["workspace.propose"],
       "schemaVersion": 1,
@@ -453,6 +829,18 @@
       "id": "result.page.read",
       "inputSchema": {
         "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": ["offset"],
         "type": "object"
       },
       "mutability": "read",
@@ -497,7 +885,7 @@
             "type": "number"
           },
           "kind": {
-            "enum": ["rectangle", "ellipse", "line", "polygon"],
+            "enum": ["rectangle", "ellipse"],
             "type": "string"
           },
           "label": {
@@ -516,7 +904,7 @@
             "type": "number"
           }
         },
-        "required": ["kind", "label"],
+        "required": ["kind", "label", "x", "y", "width", "height"],
         "type": "object"
       },
       "mutability": "mutation",
@@ -556,11 +944,19 @@
       "id": "roi.remove",
       "inputSchema": {
         "additionalProperties": false,
+        "properties": {
+          "roiId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["roiId"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
-        "type": "null"
+        "type": "object"
       },
       "permissions": ["roi.propose"],
       "schemaVersion": 1,
@@ -575,11 +971,19 @@
       "id": "roi.select",
       "inputSchema": {
         "additionalProperties": false,
+        "properties": {
+          "roiId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["roiId"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
-        "type": "null"
+        "type": "object"
       },
       "permissions": ["roi.propose"],
       "schemaVersion": 1,
@@ -590,13 +994,21 @@
       "cancellable": false,
       "category": "roi",
       "cost": "trivial",
-      "description": "Validate a bounded ROI update proposal without applying it.",
+      "description": "Apply a bounded name update to an existing ROI through project history.",
       "id": "roi.update",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "patch": {
-            "additionalProperties": true,
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": ["name"],
             "type": "object"
           },
           "roiId": {
@@ -608,13 +1020,13 @@
         "required": ["roiId", "patch"],
         "type": "object"
       },
-      "mutability": "proposal",
+      "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
       "permissions": ["roi.propose"],
       "schemaVersion": 1,
-      "title": "Propose ROI update",
+      "title": "Update ROI name",
       "version": 1
     },
     {
@@ -1012,6 +1424,42 @@
       "permissions": ["viewport.propose"],
       "schemaVersion": 1,
       "title": "Set viewport to 1:1",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "viewport",
+      "cost": "interactive",
+      "description": "Create an approved bounded image of the rendered specimen viewport or a user-selected browser screen.",
+      "id": "viewport.preview.create",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "maximum": 1024,
+            "minimum": 64,
+            "type": "integer"
+          },
+          "scope": {
+            "enum": ["viewport", "screen"],
+            "type": "string"
+          },
+          "width": {
+            "maximum": 1024,
+            "minimum": 64,
+            "type": "integer"
+          }
+        },
+        "required": ["scope", "width", "height"],
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["model.preview"],
+      "schemaVersion": 1,
+      "title": "Create bounded model preview",
       "version": 1
     },
     {

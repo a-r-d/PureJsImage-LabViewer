@@ -1,4 +1,4 @@
-import type { ActionHandler, JsonValue } from '@pji-workbench/actions'
+import type { ActionAbortSignal, ActionHandler, JsonValue } from '@pji-workbench/actions'
 import type {
   AnalysisCatalog,
   AnalysisOverlayView,
@@ -6,15 +6,16 @@ import type {
   PlaneSelection,
   RpcJsonObject,
 } from '@pji-workbench/contracts'
-import {
-  commandAction,
-  executeOnlyAction,
-  fixtureAction,
-  rpcObject,
-} from '@pji-workbench/workbench-core'
+import { commandAction, executeOnlyAction, rpcObject } from '@pji-workbench/workbench-core'
 import type { WorkspaceSnapshot } from '@pji-workbench/workspace'
 
 import type { CommandContext } from './actions.js'
+
+function symmetricAction<Context>(
+  execute: (input: JsonValue) => JsonValue | Promise<JsonValue>,
+): ActionHandler<Context> {
+  return { dryRun: execute, execute }
+}
 
 export interface ScienceActionPorts {
   openSample(): Promise<void> | void
@@ -40,7 +41,6 @@ export interface ScienceActionPorts {
   openedDataset(): OpenedDatasetDescriptor | undefined
   currentSelection(): PlaneSelection | undefined
   calibratedDataset(): OpenedDatasetDescriptor | undefined
-  particleOverlayView(): AnalysisOverlayView
   analysisCatalog(): AnalysisCatalog | undefined
   resolveCatalogOperation(
     catalog: AnalysisCatalog | undefined,
@@ -55,6 +55,8 @@ export interface ScienceActionPorts {
       readonly overlayView?: AnalysisOverlayView
       readonly overlayTableOutput?: string
       readonly commit?: boolean
+      readonly signal?: ActionAbortSignal
+      readonly throwOnError?: boolean
     },
   ): Promise<unknown>
   wholePlaneRoi(
@@ -65,7 +67,30 @@ export interface ScienceActionPorts {
     operation: { readonly id: string; readonly version: number },
     parameters: RpcJsonObject,
     mode: 'preview' | 'apply',
+    signal?: ActionAbortSignal,
   ): Promise<void>
+  workspaceSummary(): JsonValue
+  sourceList(): JsonValue
+  datasetList(): JsonValue
+  datasetDescription(input: JsonValue): JsonValue
+  roiList(): JsonValue
+  analysisCatalogSummary(): JsonValue
+  analysisDescription(input: JsonValue): JsonValue
+  resultSummary(): JsonValue
+  resultPage(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
+  viewportState(): JsonValue
+  particleSettings(): JsonValue
+  planParticleAnalysis(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
+  executeParticleAnalysis(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
+  createModelPreview(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
+  normalizeAnalysis(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
+  dryRunAnalysis(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
+  selectRoi(input: JsonValue): JsonValue
+  removeRoi(input: JsonValue): JsonValue
+  removePipelineNode(input: JsonValue): JsonValue
+  selectPanel(input: JsonValue): JsonValue
+  createRoi(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
+  updateRoi(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
 }
 
 export function createScienceActionHandlers(
@@ -80,97 +105,36 @@ export function createScienceActionHandlers(
     ],
     ['source.open-local@1', commandAction(() => ports.requestLocalFiles())],
     ['source.open-remote@1', commandAction(() => ports.requestRemoteUrl())],
-    [
-      'workspace.summary.read@1',
-      fixtureAction(() => ({
-        id: 'workspace:generated-particles',
-        title: 'Generated calibrated particles',
-        revision: 1,
-        sourceCount: 1,
-        datasetCount: 1,
-        roiCount: 1,
-      })),
-    ],
-    [
-      'source.list@1',
-      fixtureAction(() => [
-        { id: 'source:generated-particles', label: 'Generated particles', kind: 'generated' },
-      ]),
-    ],
-    [
-      'dataset.list@1',
-      fixtureAction(() => [
-        { id: 'dataset:particles', name: 'Calibrated particles', axes: ['y', 'x'] },
-      ]),
-    ],
-    [
-      'dataset.describe@1',
-      fixtureAction(() => ({
-        id: 'dataset:particles',
-        name: 'Calibrated particles',
-        shape: [512, 512],
-        components: 1,
-        calibration: { x: 2.5, y: 2.5, unit: 'nm', source: 'generated fixture' },
-      })),
-    ],
-    [
-      'roi.list@1',
-      fixtureAction(() => [
-        {
-          id: 'roi:known-region',
-          kind: 'rectangle',
-          label: 'Known particles',
-          bounds: { x: 32, y: 40, width: 224, height: 192 },
-        },
-      ]),
-    ],
+    ['workspace.summary.read@1', symmetricAction(() => ports.workspaceSummary())],
+    ['source.list@1', symmetricAction(() => ports.sourceList())],
+    ['dataset.list@1', symmetricAction(() => ports.datasetList())],
+    ['dataset.describe@1', symmetricAction((input) => ports.datasetDescription(input))],
+    ['roi.list@1', symmetricAction(() => ports.roiList())],
     [
       'roi.create@1',
-      fixtureAction((input) => ({
-        proposalId: 'proposal:roi-1',
-        status: 'requires-approval',
-        normalized: input,
-      })),
+      {
+        execute: (input, _context, signal) => ports.createRoi(input, signal),
+      },
     ],
     [
       'roi.update@1',
-      fixtureAction((input) => ({
-        proposalId: 'proposal:roi-update',
-        status: 'requires-approval',
-        normalized: input,
-      })),
+      {
+        execute: (input, _context, signal) => ports.updateRoi(input, signal),
+      },
     ],
-    [
-      'analysis.catalog.read@1',
-      fixtureAction(() => ({
-        operations: [
-          { id: 'threshold.manual', version: 1, title: 'Manual threshold' },
-          { id: 'measure.statistics', version: 1, title: 'ROI statistics' },
-        ],
-      })),
-    ],
-    [
-      'analysis.describe@1',
-      fixtureAction(() => ({
-        id: 'threshold.manual',
-        version: 1,
-        acceptedDatasets: ['scalar-2d'],
-        deterministic: true,
-      })),
-    ],
+    ['analysis.catalog.read@1', symmetricAction(() => ports.analysisCatalogSummary())],
+    ['analysis.describe@1', symmetricAction((input) => ports.analysisDescription(input))],
     [
       'analysis.normalize@1',
-      fixtureAction((input) => ({ normalized: input, operationVersion: 1 })),
+      {
+        execute: (input, _context, signal) => ports.normalizeAnalysis(input, signal),
+      },
     ],
     [
       'analysis.dry-run@1',
-      fixtureAction((input) => ({
-        planId: 'plan:threshold-1',
-        normalized: input,
-        estimatedPeakBytes: 1_048_576,
-        estimatedTiles: 4,
-        status: 'reviewed-fixture-plan',
-      })),
+      {
+        execute: (input, _context, signal) => ports.dryRunAnalysis(input, signal),
+      },
     ],
     [
       'analysis.graph.request-execute@1',
@@ -199,10 +163,9 @@ export function createScienceActionHandlers(
             graph as unknown as WorkspaceSnapshot['analysis']['graph'],
             {
               roi,
-              overlay: 'labels',
-              overlayView: ports.particleOverlayView(),
-              overlayTableOutput: 'objects',
               commit: true,
+              signal,
+              throwOnError: true,
             },
           )
           return { status: 'completed' }
@@ -235,7 +198,7 @@ export function createScienceActionHandlers(
           if (operation === undefined) {
             throw new Error('Analysis operation is unavailable.')
           }
-          await ports.runToolboxOperation(operation, parameters, mode)
+          await ports.runToolboxOperation(operation, parameters, mode, signal)
           return {
             operationId,
             operationVersion,
@@ -247,12 +210,25 @@ export function createScienceActionHandlers(
     ],
     [
       'analysis.batch.request-execute@1',
-      fixtureAction((input) => ({
+      symmetricAction((input) => ({
         proposalId: 'proposal:batch',
         status: 'requires-approval',
         bounded: true,
         request: input,
       })),
+    ],
+    ['analysis.particle.settings.read@1', symmetricAction(() => ports.particleSettings())],
+    [
+      'analysis.particle.plan@1',
+      {
+        execute: (input, _context, signal) => ports.planParticleAnalysis(input, signal),
+      },
+    ],
+    [
+      'analysis.particle.execute@1',
+      {
+        execute: (input, _context, signal) => ports.executeParticleAnalysis(input, signal),
+      },
     ],
     [
       'analysis.cancel@1',
@@ -261,39 +237,41 @@ export function createScienceActionHandlers(
         return { status: 'cancel-requested' }
       }),
     ],
-    [
-      'result.summary.read@1',
-      fixtureAction(() => ({ resultId: 'result:fixture', rowCount: 12, bounded: true })),
-    ],
+    ['result.summary.read@1', symmetricAction(() => ports.resultSummary())],
     [
       'result.page.read@1',
-      fixtureAction(() => ({ resultId: 'result:fixture', offset: 0, rows: [] })),
+      {
+        execute: (input, _context, signal) => ports.resultPage(input, signal),
+      },
     ],
     [
       'pipeline.read@1',
-      fixtureAction(() => ports.currentWorkspace().analysis.graph as unknown as JsonValue),
+      symmetricAction(() => ports.currentWorkspace().analysis.graph as unknown as JsonValue),
     ],
+    ['pipeline.node.remove@1', executeOnlyAction((input) => ports.removePipelineNode(input))],
     [
       'result.export.propose@1',
-      fixtureAction((input) => ({
+      symmetricAction((input) => ({
         proposalId: 'proposal:result-export',
         status: 'requires-approval',
         format: 'csv',
         request: input,
       })),
     ],
+    ['viewport.state.read@1', symmetricAction(() => ports.viewportState())],
     [
-      'viewport.state.read@1',
-      fixtureAction(() => ({ center: [256, 256], zoom: 1, datasetId: 'dataset:particles' })),
+      'viewport.preview.create@1',
+      {
+        execute: (input, _context, signal) => ports.createModelPreview(input, signal),
+      },
     ],
     [
       'viewport.state.propose@1',
-      fixtureAction((input) => ({ proposalId: 'proposal:viewport-1', state: input })),
+      symmetricAction((input) => ({ proposalId: 'proposal:viewport-1', state: input })),
     ],
-    [
-      'panel.select@1',
-      fixtureAction((input) => ({ proposalId: 'proposal:panel-1', panel: input })),
-    ],
+    ['panel.select@1', executeOnlyAction((input) => ports.selectPanel(input))],
+    ['roi.select@1', executeOnlyAction((input) => ports.selectRoi(input))],
+    ['roi.remove@1', executeOnlyAction((input) => ports.removeRoi(input))],
     ['workspace.new@1', commandAction(() => ports.newProject())],
     ['workspace.openProject@1', commandAction(() => ports.openProjectBrowser())],
     ['workspace.save@1', commandAction(ports.saveProject)],

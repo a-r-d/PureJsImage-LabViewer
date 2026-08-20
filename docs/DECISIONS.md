@@ -242,3 +242,19 @@ and normal CI uses deterministic transports. Completed conversation turns are re
 bounded memory. Model-visible imagery exists only through the bounded, approval-gated
 `geo.preview.create` artifact path; browser-screen scope also requires the native display-share
 picker. See `docs/ATLAS_AGENT.md`.
+
+## The Materials Workbench agent tunes analyses through the same science actions
+
+The science application composes the shared `packages/agent` runtime with its current
+`WorkbenchActionHost`; it does not maintain a model-only tool catalog or analysis executor. Agent
+reads now return bounded live workspace, source, dataset, ROI, operation, viewport, and result
+summaries instead of characterization fixtures. Particle tuning has explicit settings-read,
+dry-run, and approved-execute actions so a model does not need to invent internal graph structure.
+
+Model-visible imagery is limited to `viewport.preview.create`. Viewport scope downsizes the already
+rendered specimen canvas; screen scope invokes the browser display-share picker, captures one
+bounded frame, and stops every media track. Both require dedicated approval and an image-capable
+model. Analysis execution remains cancellable, swaps result handles only after bounded result
+preparation succeeds, and commits the visible graph through normal project history. A deterministic
+fake-model test covers iterative planning, approval, execution, result interpretation, preview, and
+cross-turn follow-up without OpenRouter or a key.

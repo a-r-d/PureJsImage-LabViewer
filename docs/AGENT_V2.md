@@ -158,8 +158,9 @@ parallel tool calls: false
 ```
 
 Read supported parameters from model metadata where possible and fail clearly when the selected model cannot support required tools or schemas.
-Atlas also recommends `google/gemini-3.7-flash` and permits a custom OpenRouter model ID after the
-same live tool-capability validation. Image previews additionally require advertised image input.
+Atlas and the Materials Workbench also recommend `google/gemini-3.7-flash` and permit a custom
+OpenRouter model ID after the same live tool-capability validation. Image previews additionally
+require advertised image input.
 
 ## Testing
 

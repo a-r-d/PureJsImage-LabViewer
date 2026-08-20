@@ -200,10 +200,23 @@ describe('model-independent agent runtime', () => {
     expect(runtime.getSnapshot()).toMatchObject({
       conversationTurnCount: 2,
       finalText: 'Second turn complete.',
+      conversation: [
+        {
+          request: 'First request',
+          answer: 'First turn complete.',
+          model: 'fake/atlas',
+        },
+        {
+          request: 'Follow up',
+          answer: 'Second turn complete.',
+          model: 'fake/atlas',
+        },
+      ],
     })
     runtime.resetConversation()
     expect(runtime.getSnapshot()).toMatchObject({
       status: 'idle',
+      conversation: [],
       conversationTurnCount: 0,
       conversationMessageCount: 0,
     })
@@ -239,6 +252,9 @@ describe('model-independent agent runtime', () => {
     await runtime.start('Replacement request', 'fake/atlas')
     await runtime.start('Final request', 'fake/atlas')
     expect(runtime.getSnapshot().conversationTurnCount).toBe(1)
+    expect(runtime.getSnapshot().conversation).toEqual([
+      expect.objectContaining({ request: 'Final request', answer: 'Final answer.' }),
+    ])
   })
 
   it('executes only through the gateway, records a plan, and bounds table results', async () => {
@@ -520,6 +536,30 @@ describe('OpenRouter transport', () => {
     expect(JSON.stringify(requests)).not.toContain('sk-or-session-fixture')
     credentials.clear()
     expect(credentials.has()).toBe(false)
+  })
+
+  it('invokes a browser fetch implementation with the global receiver', async () => {
+    const credentials = new MemoryOpenRouterCredentialStore()
+    credentials.set('sk-or-session-fixture')
+    const fetcher = function (this: unknown): Promise<Response> {
+      if (this !== globalThis) throw new TypeError('Illegal invocation')
+      return Promise.resolve(
+        Response.json({
+          data: [
+            {
+              id: 'fixture/tools',
+              supported_parameters: ['tools'],
+              architecture: { input_modalities: ['text'] },
+            },
+          ],
+        }),
+      )
+    } as typeof fetch
+    const transport = new OpenRouterTransport({ credentials, fetch: fetcher })
+
+    await expect(transport.listModels()).resolves.toEqual([
+      expect.objectContaining({ id: 'fixture/tools' }),
+    ])
   })
 
   it('rejects models that do not advertise tool calling', async () => {

@@ -70,7 +70,7 @@ export class OpenRouterTransport implements AgentModelTransport {
     }>,
   ) {
     this.#credentials = options.credentials
-    this.#fetch = options.fetch ?? fetch
+    this.#fetch = (options.fetch ?? globalThis.fetch).bind(globalThis)
     this.#referer = options.referer
     this.#title = options.title ?? 'PureJsImage Workbench'
   }

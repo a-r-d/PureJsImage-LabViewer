@@ -5,7 +5,7 @@ import {
   type PlaneSelection,
   spatialReferenceFacts,
 } from '@pji-workbench/contracts'
-import { Button, type TabItem } from '@pji-workbench/ui'
+import type { TabItem } from '@pji-workbench/ui'
 import type { WorkspaceHistoryEntry } from '@pji-workbench/workspace'
 import type { ReactNode } from 'react'
 
@@ -34,6 +34,7 @@ export interface InspectorContentProps {
   readonly history: readonly WorkspaceHistoryEntry[]
   readonly roiContent: ReactNode
   readonly analysisContent: ReactNode
+  readonly agentContent: ReactNode
 }
 
 export function InspectorContent({
@@ -49,22 +50,9 @@ export function InspectorContent({
   history,
   roiContent,
   analysisContent,
+  agentContent,
 }: InspectorContentProps) {
-  if (tab === 'agent') {
-    return (
-      <div className="inspector-content agent-panel" data-testid="agent-panel">
-        <p className="panel-kicker">User-approved tool client</p>
-        <div className="agent-message">
-          The workbench can run the same approved analysis actions as the rest of the UI. Connect a
-          model key when you want the agent to propose those actions.
-        </div>
-        <Button disabled variant="primary">
-          Review proposed plan
-        </Button>
-        <p className="panel-note">No model or network request has been made.</p>
-      </div>
-    )
-  }
+  if (tab === 'agent') return agentContent
   if (source === undefined || opened === undefined || selection === undefined) {
     const emptyCopy: Readonly<Record<InspectorTab, string>> = {
       info: 'Open a dataset to inspect calibration, axes, and file metadata.',

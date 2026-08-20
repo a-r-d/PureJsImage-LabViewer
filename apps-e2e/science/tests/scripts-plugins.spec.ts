@@ -1,6 +1,7 @@
 import { scenarioArtifact } from '@pji-workbench/test-corpus'
 import { expect, test } from '@playwright/test'
 import { attachScenarioEvidence } from './support/scenario-evidence.js'
+import { openSample } from './support/workbench.js'
 
 test.afterEach(async ({ page }, testInfo) => {
   await attachScenarioEvidence(page, testInfo, scenarioArtifact('generated.touching-particles'), {
@@ -25,6 +26,7 @@ test('authors, typechecks, tests, reviews, and runs a built-in script through la
   expect(runtimeRequests).toEqual([])
   expect(languageRequests).toEqual([])
 
+  await openSample(page)
   await page.getByRole('button', { name: 'Script Studio' }).click()
   const dialog = page.getByRole('dialog', { name: 'Script Studio' })
   await expect(dialog).toBeVisible()

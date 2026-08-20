@@ -103,6 +103,6 @@ export const SCIENCE_WORKFLOW_RECIPES: readonly DomainWorkflowRecipe[] = Object.
 
 export const scienceAgentPolicy = {
   enabled: true,
-  liveModelEnabled: false,
+  liveModelEnabled: true,
   decisionFor: defaultAgentDecision,
 } as const

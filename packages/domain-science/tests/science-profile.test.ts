@@ -28,7 +28,7 @@ describe('science domain profile', () => {
     expect(profile.deploymentHostname).toBe('lab.purejsimage.com')
     expect(profile.sourceAdapters).toEqual(['local', 'remote', 'sample', 'bundled'])
     expect(profile.capabilities.analysis.particle).toBe(true)
-    expect(profile.agentPolicy.liveModelEnabled).toBe(false)
+    expect(profile.agentPolicy.liveModelEnabled).toBe(true)
     expect(profile.agentPolicy.decisionFor('workspace.read')).toBe('allow')
     expect(profile.agentPolicy.decisionFor('analysis.execute')).toBe('require-approval')
     expect(profile.readerIds.join(' ')).not.toMatch(/geo|titiler|cog/i)
@@ -87,44 +87,69 @@ describe('science domain profile', () => {
     const requestLocalFiles = vi.fn()
     const saveProject = vi.fn(async () => undefined)
     const cancelAnalysis = vi.fn()
-    const host = new WorkbenchActionHost(
-      workbenchActionRegistry,
-      createScienceActionHandlers({
-        openSample,
-        requestLocalFiles,
-        requestRemoteUrl: vi.fn(),
-        newProject: vi.fn(),
-        openProjectBrowser: vi.fn(),
-        saveProject,
-        exportProject: vi.fn(),
-        undo: vi.fn(),
-        redo: vi.fn(),
-        fitViewport: vi.fn(),
-        oneToOneViewport: vi.fn(),
-        openAgentPanel: vi.fn(),
-        previewThreshold: vi.fn(),
-        commitThreshold: vi.fn(),
-        planConnectedComponents: vi.fn(),
-        runConnectedComponents: vi.fn(),
-        toggleTheme: vi.fn(),
-        openPalette: vi.fn(),
-        cancelAnalysis,
-        currentWorkspace: () => {
-          throw new Error('workspace not needed')
-        },
-        openedDataset: () => undefined,
-        currentSelection: () => undefined,
-        calibratedDataset: () => undefined,
-        particleOverlayView: () => 'labels',
-        analysisCatalog: () => undefined,
-        resolveCatalogOperation: () => undefined,
-        executeAnalysisGraph: async () => true,
-        wholePlaneRoi: () => {
-          throw new Error('roi not needed')
-        },
-        runToolboxOperation: async () => undefined,
-      }),
-    )
+    const handlers = createScienceActionHandlers({
+      openSample,
+      requestLocalFiles,
+      requestRemoteUrl: vi.fn(),
+      newProject: vi.fn(),
+      openProjectBrowser: vi.fn(),
+      saveProject,
+      exportProject: vi.fn(),
+      undo: vi.fn(),
+      redo: vi.fn(),
+      fitViewport: vi.fn(),
+      oneToOneViewport: vi.fn(),
+      openAgentPanel: vi.fn(),
+      previewThreshold: vi.fn(),
+      commitThreshold: vi.fn(),
+      planConnectedComponents: vi.fn(),
+      runConnectedComponents: vi.fn(),
+      toggleTheme: vi.fn(),
+      openPalette: vi.fn(),
+      cancelAnalysis,
+      currentWorkspace: () => {
+        throw new Error('workspace not needed')
+      },
+      openedDataset: () => undefined,
+      currentSelection: () => undefined,
+      calibratedDataset: () => undefined,
+      analysisCatalog: () => undefined,
+      resolveCatalogOperation: () => undefined,
+      executeAnalysisGraph: async () => true,
+      wholePlaneRoi: () => {
+        throw new Error('roi not needed')
+      },
+      runToolboxOperation: async () => undefined,
+      workspaceSummary: () => ({ revision: 0 }),
+      sourceList: () => [],
+      datasetList: () => [],
+      datasetDescription: () => ({}),
+      roiList: () => [],
+      analysisCatalogSummary: () => ({ operations: [{}, {}] }),
+      analysisDescription: () => ({}),
+      resultSummary: () => ({ available: false }),
+      resultPage: async () => ({ rows: [] }),
+      viewportState: () => ({ mounted: false }),
+      particleSettings: () => ({ settings: {} }),
+      planParticleAnalysis: async () => ({ valid: true }),
+      executeParticleAnalysis: async () => ({ status: 'completed' }),
+      createModelPreview: async () => ({ scope: 'viewport' }),
+      normalizeAnalysis: async () => ({ valid: true }),
+      dryRunAnalysis: async () => ({ valid: true }),
+      selectRoi: () => ({ selected: true }),
+      removeRoi: () => ({ removed: true }),
+      removePipelineNode: () => ({ removed: true }),
+      selectPanel: () => ({ selected: true }),
+      createRoi: async () => ({ created: true }),
+      updateRoi: async () => ({ updated: true }),
+    })
+    const host = new WorkbenchActionHost(workbenchActionRegistry, handlers)
+    expect(
+      workbenchActionRegistry
+        .list()
+        .filter(({ id }) => !id.startsWith('script.'))
+        .every(({ id, version }) => handlers.has(`${id}@${version}`)),
+    ).toBe(true)
     const signal = { aborted: false, throwIfAborted: () => undefined }
     const context = { hasDataset: true }
     await host.execute('workspace.openSample', 1, {}, context, signal)

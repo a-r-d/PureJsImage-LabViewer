@@ -632,6 +632,107 @@ canvas:focus-visible,
   border-color: var(--wb-accent);
   background: var(--wb-accent-surface);
 }
+.science-agent {
+  display: grid;
+  gap: 16px;
+}
+.science-agent section + section {
+  padding-top: 14px;
+  border-top: 1px solid var(--wb-border);
+}
+.science-agent h3,
+.science-agent p,
+.science-agent ol,
+.science-agent figure {
+  margin: 0;
+}
+.science-agent h3 {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.science-agent label {
+  display: grid;
+  gap: 5px;
+  color: var(--wb-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.science-agent input,
+.science-agent select,
+.science-agent textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.science-agent textarea {
+  min-height: 112px;
+  padding: 8px;
+  resize: vertical;
+  font: inherit;
+}
+.science-agent__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.science-agent__status {
+  color: var(--wb-text-muted);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+.science-agent__approval {
+  padding: 10px;
+  border: 1px solid var(--wb-accent);
+  border-radius: 5px;
+  background: var(--wb-surface-raised);
+}
+.science-agent__approval pre {
+  max-height: 220px;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--wb-border);
+  background: var(--wb-background);
+  font: 10px / 1.45 var(--wb-font-mono);
+  white-space: pre-wrap;
+}
+.science-agent__list,
+.science-agent__conversation {
+  display: grid;
+  gap: 7px;
+  padding-left: 20px;
+}
+.science-agent__list li {
+  display: grid;
+  gap: 2px;
+}
+.science-agent__list code {
+  overflow-wrap: anywhere;
+}
+.science-agent__conversation {
+  padding: 0;
+  list-style: none;
+}
+.science-agent__conversation li {
+  display: grid;
+  gap: 6px;
+}
+.science-agent__artifacts {
+  display: grid;
+  gap: 8px;
+}
+.science-agent__artifacts img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--wb-border);
+}
+.science-agent__artifacts figcaption {
+  margin-top: 4px;
+  color: var(--wb-text-muted);
+  font-size: 10px;
+}
+.science-agent__error {
+  color: var(--wb-danger);
+}
 
 .bottom-panel {
   display: grid;

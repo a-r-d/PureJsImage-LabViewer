@@ -147,3 +147,9 @@ Atlas keeps its required deterministic task and failure catalogs in
 `packages/geo-workbench/src/agent-evals.ts`. Those cases execute against the current geo action
 registry during normal package tests; they do not make OpenRouter or catalog network requests. See
 `docs/ATLAS_AGENT.md` for the runtime boundary and Atlas-specific policy.
+
+The Materials Workbench keeps its deterministic multi-turn tuning evaluation in
+`packages/domain-science/tests/science-agent.test.ts`. It proves that the generated live manifest
+can read particle settings, dry-run a bounded patch, pause for execution approval, read the compact
+result, pause for preview approval, deliver only the bounded rendered image, and retain a redacted
+follow-up turn without any live provider request.

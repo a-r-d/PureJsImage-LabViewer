@@ -7,6 +7,7 @@ import type {
   AgentApprovalRequest,
   AgentArtifact,
   AgentAuditRecord,
+  AgentConversationTurn,
   AgentModelMessage,
   AgentModelResponse,
   AgentModelTransport,
@@ -72,6 +73,7 @@ export class AgentRuntime {
     status: 'idle',
     trace: [],
     artifacts: [],
+    conversation: [],
     conversationTurnCount: 0,
     conversationMessageCount: 0,
   }
@@ -85,6 +87,7 @@ export class AgentRuntime {
   #currentAudit: MutableAudit | undefined
   #artifacts: AgentArtifact[] = []
   #conversation: AgentModelMessage[][] = []
+  #completedTurns: AgentConversationTurn[] = []
   #sequence = 0
 
   constructor(
@@ -134,11 +137,13 @@ export class AgentRuntime {
         `Cannot reset the ${this.#productName} conversation while a task is active.`,
       )
     this.#conversation = []
+    this.#completedTurns = []
     this.#artifacts = []
     this.#snapshot = {
       status: 'idle',
       trace: [],
       artifacts: [],
+      conversation: [],
       conversationTurnCount: 0,
       conversationMessageCount: 0,
     }
@@ -233,8 +238,14 @@ export class AgentRuntime {
         messages.push(assistantMessage)
         turnMessages.push(assistantMessage)
         if (response.toolCalls.length === 0) {
-          this.#rememberTurn(turnMessages)
           audit.completedAt = this.#now()
+          this.#rememberTurn(turnMessages, {
+            id: audit.id,
+            request,
+            answer: response.content,
+            model: selectedModel,
+            completedAt: audit.completedAt,
+          })
           const completed = immutableAudit(audit)
           this.#publish({
             status: 'completed',
@@ -647,15 +658,21 @@ export class AgentRuntime {
     return { result: compactJson(value, this.#limits.maximumResultArrayItems) }
   }
 
-  #rememberTurn(messages: readonly AgentModelMessage[]): void {
+  #rememberTurn(
+    messages: readonly AgentModelMessage[],
+    completedTurn: AgentConversationTurn,
+  ): void {
     const sanitized = messages.map(sanitizeConversationMessage)
     this.#conversation.push(sanitized)
+    this.#completedTurns.push(Object.freeze({ ...completedTurn }))
     while (
       this.#conversation.length > 0 &&
       (this.#conversation.flat().length > this.#limits.maximumConversationMessages ||
         conversationBytes(this.#conversation) > this.#limits.maximumConversationBytes)
-    )
+    ) {
       this.#conversation.shift()
+      this.#completedTurns.shift()
+    }
   }
 
   #publish(patch: Partial<AgentRuntimeSnapshot> & Pick<AgentRuntimeSnapshot, 'status'>): void {
@@ -672,6 +689,7 @@ export class AgentRuntime {
       ...(patch.finalText === undefined ? {} : { finalText: patch.finalText }),
       ...(patch.error === undefined ? {} : { error: patch.error }),
       ...(patch.audit === undefined ? {} : { audit: patch.audit }),
+      conversation: [...this.#completedTurns],
       conversationTurnCount: this.#conversation.length,
       conversationMessageCount: this.#conversation.flat().length,
     }

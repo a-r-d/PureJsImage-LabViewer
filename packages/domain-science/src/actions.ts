@@ -27,6 +27,9 @@ export type WorkbenchActionId =
   | 'analysis.describe'
   | 'analysis.dry-run'
   | 'analysis.normalize'
+  | 'analysis.particle.execute'
+  | 'analysis.particle.plan'
+  | 'analysis.particle.settings.read'
   | 'analysis.graph.request-execute'
   | 'analysis.request-execute'
   | 'analysis.batch.request-execute'
@@ -59,10 +62,12 @@ export type WorkbenchActionId =
   | 'script.typecheck'
   | 'viewport.state.read'
   | 'viewport.state.propose'
+  | 'viewport.preview.create'
   | 'workspace.summary.read'
 
 export interface CommandContext {
   readonly hasDataset: boolean
+  readonly hasResult?: boolean
   readonly canUndo?: boolean
   readonly canRedo?: boolean
 }
@@ -80,6 +85,63 @@ const EMPTY_INPUT = { type: 'object', additionalProperties: false } as const
 const NULL_OUTPUT = { type: 'null' } as const
 const SCRIPT_ID = { type: 'string', minLength: 1, maxLength: 128 } as const
 const SCRIPT_DIGEST = { type: 'string', minLength: 64, maxLength: 64 } as const
+const PARTICLE_SETTINGS = {
+  type: 'object',
+  properties: {
+    roiId: { type: 'string', maxLength: 256 },
+    component: { type: 'integer', minimum: 0, maximum: 4_095 },
+    thresholdMethod: {
+      type: 'string',
+      enum: ['manual', 'otsu', 'triangle', 'yen', 'li', 'mean', 'sauvola'],
+    },
+    polarity: { type: 'string', enum: ['light', 'dark'] },
+    lower: { type: 'number' },
+    upper: { type: 'number' },
+    histogramBins: { type: 'integer', minimum: 16, maximum: 65_536 },
+    windowRadius: { type: 'integer', minimum: 1, maximum: 128 },
+    sauvolaK: { type: 'number', minimum: -1, maximum: 1 },
+    dynamicRange: { type: 'number', minimum: 0.000001 },
+    noDataPolicy: { type: 'string', enum: ['background', 'foreground', 'propagate'] },
+    backgroundRadius: { type: 'integer', minimum: 0, maximum: 64 },
+    openRadius: { type: 'integer', minimum: 0, maximum: 64 },
+    closeRadius: { type: 'integer', minimum: 0, maximum: 64 },
+    fillHoles: { type: 'boolean' },
+    clearBorder: { type: 'boolean' },
+    minimumObjectPixels: { type: 'integer', minimum: 1, maximum: 1_000_000_000 },
+    watershed: { type: 'boolean' },
+    minimumPeakDistance: { type: 'integer', minimum: 1, maximum: 4_096 },
+    connectivity: { type: 'integer', enum: [4, 8] },
+    edgePolicy: { type: 'string', enum: ['include', 'exclude'] },
+    minimumArea: { type: 'number', minimum: 0 },
+    maximumArea: { type: 'number', minimum: 0 },
+    minimumCircularity: { type: 'number', minimum: 0, maximum: 1 },
+    maximumCircularity: { type: 'number', minimum: 0, maximum: 1 },
+    minimumAspectRatio: { type: 'number', minimum: 1 },
+    maximumAspectRatio: { type: 'number', minimum: 1 },
+    minimumSolidity: { type: 'number', minimum: 0, maximum: 1 },
+    maximumSolidity: { type: 'number', minimum: 0, maximum: 1 },
+    overlayView: {
+      type: 'string',
+      enum: ['labels', 'mask', 'outline', 'numbered', 'centroids', 'ellipses'],
+    },
+  },
+  additionalProperties: false,
+} as const
+const PARTICLE_PLAN_REQUEST = {
+  type: 'object',
+  properties: { settings: PARTICLE_SETTINGS },
+  required: ['settings'],
+  additionalProperties: false,
+} as const
+const PARTICLE_EXECUTE_REQUEST = {
+  type: 'object',
+  properties: {
+    planId: { type: 'string', minLength: 1, maxLength: 128 },
+    settings: PARTICLE_SETTINGS,
+  },
+  required: ['planId', 'settings'],
+  additionalProperties: false,
+} as const
 
 function scriptActionInput(id: Extract<WorkbenchActionId, `script.${string}`>) {
   if (id === 'script.create_draft')
@@ -152,6 +214,10 @@ const requiresUndo = ({ canUndo }: CommandContext) =>
   canUndo === true ? { available: true } : { available: false, reason: 'Nothing to undo.' }
 const requiresRedo = ({ canRedo }: CommandContext) =>
   canRedo === true ? { available: true } : { available: false, reason: 'Nothing to redo.' }
+const requiresResult = ({ hasResult }: CommandContext) =>
+  hasResult === true
+    ? { available: true }
+    : { available: false, reason: 'Run an analysis with a table result first.' }
 
 export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>[] = [
   {
@@ -351,14 +417,14 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
         inputSchema: {
           type: 'object',
           properties: {
-            kind: { type: 'string', enum: ['rectangle', 'ellipse', 'line', 'polygon'] },
+            kind: { type: 'string', enum: ['rectangle', 'ellipse'] },
             label: { type: 'string', minLength: 1, maxLength: 256 },
             x: { type: 'number' },
             y: { type: 'number' },
             width: { type: 'number', minimum: 0 },
             height: { type: 'number', minimum: 0 },
           },
-          required: ['kind', 'label'],
+          required: ['kind', 'label', 'x', 'y', 'width', 'height'],
           additionalProperties: false,
         },
         outputSchema: { type: 'object' },
@@ -382,17 +448,22 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
   {
     descriptor: descriptor(
       'roi.update',
-      'Propose ROI update',
-      'Validate a bounded ROI update proposal without applying it.',
+      'Update ROI name',
+      'Apply a bounded name update to an existing ROI through project history.',
       'roi',
       {
-        mutability: 'proposal',
+        mutability: 'mutation',
         permissions: ['roi.propose'],
         inputSchema: {
           type: 'object',
           properties: {
             roiId: { type: 'string', minLength: 1, maxLength: 256 },
-            patch: { type: 'object', additionalProperties: true },
+            patch: {
+              type: 'object',
+              properties: { name: { type: 'string', minLength: 1, maxLength: 256 } },
+              required: ['name'],
+              additionalProperties: false,
+            },
           },
           required: ['roiId', 'patch'],
           additionalProperties: false,
@@ -404,6 +475,13 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
   {
     descriptor: descriptor('roi.select', 'Select ROI', 'Select a workspace ROI.', 'roi', {
       permissions: ['roi.propose'],
+      inputSchema: {
+        type: 'object',
+        properties: { roiId: { type: 'string', minLength: 1, maxLength: 256 } },
+        required: ['roiId'],
+        additionalProperties: false,
+      },
+      outputSchema: { type: 'object' },
     }),
     availability: requiresDataset,
   },
@@ -413,7 +491,16 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
       'Remove ROI',
       'Remove a workspace ROI through project history.',
       'roi',
-      { permissions: ['roi.propose'] },
+      {
+        permissions: ['roi.propose'],
+        inputSchema: {
+          type: 'object',
+          properties: { roiId: { type: 'string', minLength: 1, maxLength: 256 } },
+          required: ['roiId'],
+          additionalProperties: false,
+        },
+        outputSchema: { type: 'object' },
+      },
     ),
     availability: requiresDataset,
   },
@@ -437,7 +524,10 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
         permissions: ['analysis.catalog'],
         inputSchema: {
           type: 'object',
-          properties: { operationId: { type: 'string', minLength: 1, maxLength: 256 } },
+          properties: {
+            operationId: { type: 'string', minLength: 1, maxLength: 256 },
+            operationVersion: { type: 'integer', minimum: 1 },
+          },
           required: ['operationId'],
           additionalProperties: false,
         },
@@ -454,7 +544,16 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
       {
         mutability: 'read',
         permissions: ['analysis.dry-run'],
-        inputSchema: { type: 'object', additionalProperties: true },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            operationId: { type: 'string', minLength: 1, maxLength: 256 },
+            operationVersion: { type: 'integer', minimum: 1 },
+            parameters: { type: 'object', additionalProperties: true },
+          },
+          required: ['operationId', 'operationVersion', 'parameters'],
+          additionalProperties: false,
+        },
         outputSchema: { type: 'object' },
       },
     ),
@@ -470,7 +569,15 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
         cost: 'interactive',
         cancellable: true,
         permissions: ['analysis.dry-run'],
-        inputSchema: { type: 'object', additionalProperties: true },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            graph: { type: 'object', additionalProperties: true },
+            roiId: { type: 'string', minLength: 1, maxLength: 256 },
+          },
+          required: ['graph'],
+          additionalProperties: false,
+        },
         outputSchema: { type: 'object' },
       },
     ),
@@ -507,12 +614,60 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
   },
   {
     descriptor: descriptor(
-      'analysis.request-execute',
-      'Request analysis execution',
-      'Create a reviewed execution proposal without bypassing approval.',
+      'analysis.particle.settings.read',
+      'Read particle analysis settings',
+      'Read the current bounded particle-analysis parameters and tuning guidance.',
       'analysis',
       {
-        mutability: 'proposal',
+        mutability: 'read',
+        permissions: ['workspace.read'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.particle.plan',
+      'Plan particle analysis settings',
+      'Merge a bounded settings patch, validate the complete particle workflow, and return resource estimates without execution.',
+      'analysis',
+      {
+        mutability: 'read',
+        cost: 'interactive',
+        cancellable: true,
+        permissions: ['analysis.dry-run'],
+        inputSchema: PARTICLE_PLAN_REQUEST,
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.particle.execute',
+      'Execute particle analysis settings',
+      'Validate, execute, and visibly commit the complete particle workflow for a bounded settings patch.',
+      'analysis',
+      {
+        mutability: 'mutation',
+        cost: 'expensive',
+        cancellable: true,
+        permissions: ['analysis.execute'],
+        inputSchema: PARTICLE_EXECUTE_REQUEST,
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.request-execute',
+      'Request analysis execution',
+      'Run a reviewed preview or applied operation without bypassing approval.',
+      'analysis',
+      {
+        mutability: 'mutation',
         cost: 'expensive',
         cancellable: true,
         permissions: ['analysis.execute'],
@@ -631,10 +786,19 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
         cost: 'interactive',
         cancellable: true,
         permissions: ['result.read-page'],
+        inputSchema: {
+          type: 'object',
+          properties: {
+            offset: { type: 'integer', minimum: 0 },
+            limit: { type: 'integer', minimum: 1, maximum: 50 },
+          },
+          required: ['offset'],
+          additionalProperties: false,
+        },
         outputSchema: { type: 'object' },
       },
     ),
-    availability: requiresDataset,
+    availability: requiresResult,
   },
   {
     descriptor: descriptor(
@@ -642,6 +806,15 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
       'Remove pipeline node',
       'Remove an unconsumed operation node.',
       'pipeline',
+      {
+        inputSchema: {
+          type: 'object',
+          properties: { nodeId: { type: 'string', minLength: 1, maxLength: 256 } },
+          required: ['nodeId'],
+          additionalProperties: false,
+        },
+        outputSchema: { type: 'object' },
+      },
     ),
     availability: requiresDataset,
   },
@@ -675,12 +848,37 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
   },
   {
     descriptor: descriptor(
+      'viewport.preview.create',
+      'Create bounded model preview',
+      'Create an approved bounded image of the rendered specimen viewport or a user-selected browser screen.',
+      'viewport',
+      {
+        mutability: 'read',
+        cost: 'interactive',
+        cancellable: true,
+        permissions: ['model.preview'],
+        inputSchema: {
+          type: 'object',
+          properties: {
+            scope: { type: 'string', enum: ['viewport', 'screen'] },
+            width: { type: 'integer', minimum: 64, maximum: 1_024 },
+            height: { type: 'integer', minimum: 64, maximum: 1_024 },
+          },
+          required: ['scope', 'width', 'height'],
+          additionalProperties: false,
+        },
+        outputSchema: { type: 'object' },
+      },
+    ),
+  },
+  {
+    descriptor: descriptor(
       'panel.select',
       'Select workbench panel',
       'Open a named workbench surface.',
       'ui',
       {
-        mutability: 'proposal',
+        mutability: 'mutation',
         permissions: ['ui.propose'],
         inputSchema: {
           type: 'object',
@@ -778,7 +976,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'panel.agent',
       'Show agent panel',
-      'Open the disabled future-agent surface.',
+      'Open the approval-gated scientific agent surface.',
       'ui',
       { permissions: ['ui.propose'] },
     ),

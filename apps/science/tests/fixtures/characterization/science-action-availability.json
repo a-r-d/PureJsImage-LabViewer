@@ -28,6 +28,15 @@
     "analysis.normalize@1": {
       "available": true
     },
+    "analysis.particle.execute@1": {
+      "available": true
+    },
+    "analysis.particle.plan@1": {
+      "available": true
+    },
+    "analysis.particle.settings.read@1": {
+      "available": true
+    },
     "analysis.request-execute@1": {
       "available": true
     },
@@ -62,7 +71,8 @@
       "available": true
     },
     "result.page.read@1": {
-      "available": true
+      "available": false,
+      "reason": "Run an analysis with a table result first."
     },
     "result.summary.read@1": {
       "available": true
@@ -125,6 +135,9 @@
       "available": true
     },
     "viewport.oneToOne@1": {
+      "available": true
+    },
+    "viewport.preview.create@1": {
       "available": true
     },
     "viewport.state.propose@1": {
@@ -189,6 +202,18 @@
     "analysis.normalize@1": {
       "available": true
     },
+    "analysis.particle.execute@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.particle.plan@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.particle.settings.read@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
     "analysis.request-execute@1": {
       "available": false,
       "reason": "Open a dataset first."
@@ -228,7 +253,7 @@
     },
     "result.page.read@1": {
       "available": false,
-      "reason": "Open a dataset first."
+      "reason": "Run an analysis with a table result first."
     },
     "result.summary.read@1": {
       "available": false,
@@ -298,6 +323,9 @@
     "viewport.oneToOne@1": {
       "available": false,
       "reason": "Open a dataset first."
+    },
+    "viewport.preview.create@1": {
+      "available": true
     },
     "viewport.state.propose@1": {
       "available": true

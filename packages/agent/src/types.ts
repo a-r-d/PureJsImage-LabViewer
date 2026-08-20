@@ -225,6 +225,14 @@ export interface AgentAuditRecord {
   readonly completedAt?: string
 }
 
+export interface AgentConversationTurn {
+  readonly id: string
+  readonly request: string
+  readonly answer: string
+  readonly model: string
+  readonly completedAt: string
+}
+
 export interface AgentRuntimeSnapshot {
   readonly status: AgentRunStatus
   readonly activeTaskId?: string
@@ -236,6 +244,7 @@ export interface AgentRuntimeSnapshot {
   readonly finalText?: string
   readonly error?: Readonly<{ code: string; message: string }>
   readonly audit?: AgentAuditRecord
+  readonly conversation: readonly AgentConversationTurn[]
   readonly conversationTurnCount: number
   readonly conversationMessageCount: number
 }

@@ -24,6 +24,13 @@ export {
   workbenchCommands,
 } from './actions.js'
 export {
+  createScienceAgentGateway,
+  createScienceAgentPolicy,
+  type ScienceAgentGatewayPorts,
+  type ScienceAgentPolicySettings,
+  ScienceParticlePlanGate,
+} from './agent.js'
+export {
   ANALYSIS_OPERATIONS,
   appendDatasetAnalysisGraph,
   connectedComponentsGraph,

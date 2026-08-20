@@ -112,7 +112,27 @@ export async function createBuiltInScriptStudioExamples(): Promise<
       `import { lab } from '@lab/api'
 
 export async function main() {
-  const plan = await lab.analysis.dryRun({ workflow: 'particle', segmentation: 'watershed', fixtureId: 'generated.touching-particles' })
+  const plan = await lab.analysis.dryRun({
+    graph: {
+      schemaVersion: 1,
+      inputs: [{ name: 'source', valueType: { id: 'purejsimage.scientific.dataset', version: 1 } }],
+      nodes: [
+        {
+          id: 'threshold',
+          operation: { id: 'purejsimage.analysis.threshold', version: 1 },
+          inputs: [{ port: 'dataset', source: { kind: 'input', input: 'source' } }],
+          parameters: { mode: 'greater-than', component: 0, threshold: 128 },
+        },
+        {
+          id: 'watershed',
+          operation: { id: 'pji-workbench.materials.segmentation.watershed', version: 1 },
+          inputs: [{ port: 'dataset', source: { kind: 'node', nodeId: 'threshold', output: 'dataset' } }],
+          parameters: { displayAxes: ['y', 'x'], fixedIndices: [], component: 0, minimumPeakDistance: 3 },
+        },
+      ],
+      outputs: [{ name: 'mask', source: { kind: 'node', nodeId: 'watershed', output: 'dataset' } }],
+    },
+  })
   return { workflow: 'watershed-particles', planned: true, plan }
 }
 

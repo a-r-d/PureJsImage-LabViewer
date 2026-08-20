@@ -1,4 +1,9 @@
 import type { ActionAbortSignal, JsonValue, WorkbenchActionHost } from '@pji-workbench/actions'
+import {
+  AgentRuntime,
+  MemoryOpenRouterCredentialStore,
+  OpenRouterTransport,
+} from '@pji-workbench/agent'
 import type {
   AnalysisCatalog,
   AnalysisDryRunResponse,
@@ -26,6 +31,8 @@ import {
   type CommandContext,
   type CommandId,
   connectedComponentsGraph,
+  createScienceAgentGateway,
+  createScienceAgentPolicy,
   DEFAULT_PARTICLE_WORKFLOW,
   DEFAULT_SCIENCE_PROJECT_TITLE,
   type FftWorkspaceSettings,
@@ -42,6 +49,7 @@ import {
   particleThresholdGraph,
   RoiInspector,
   resolveShortcut,
+  ScienceParticlePlanGate,
   type StackWorkspaceSettings,
   type SurfaceWorkspaceSettings,
   scienceDomainProfile,
@@ -103,6 +111,10 @@ import {
   sourceRebindMutation,
 } from '@pji-workbench/workbench-core'
 import {
+  captureBoundedScreenPreview,
+  createBoundedPngPreview,
+} from '@pji-workbench/workbench-react'
+import {
   type CalibrationOverride,
   importWorkspaceProject,
   type ProjectId,
@@ -125,6 +137,7 @@ import {
   useState,
 } from 'react'
 import type { PublicEnvironment } from '../environment.js'
+import { ScienceAgentPanel } from '../features/agent/ScienceAgentPanel.js'
 import { ExampleGallery } from '../features/examples/ExampleGallery.js'
 import {
   InspectorContent,
@@ -203,6 +216,139 @@ interface ToolboxOperation {
   readonly inputs: readonly RpcJsonObject[]
   readonly outputs: readonly RpcJsonObject[]
   readonly parameters: RpcJsonObject
+}
+
+interface AnalysisGraphOutcome {
+  readonly dryRun: AnalysisDryRunResponse
+  readonly execution: AnalysisExecutionResponse
+  readonly table?: AnalysisTablePage
+  readonly tableOutput?: string
+  readonly message: string
+}
+
+function json(value: unknown): JsonValue {
+  return JSON.parse(JSON.stringify(value)) as JsonValue
+}
+
+function abortSignal(signal: ActionAbortSignal | undefined): AbortSignal | undefined {
+  if (
+    signal !== undefined &&
+    'addEventListener' in signal &&
+    typeof (signal as Partial<AbortSignal>).addEventListener === 'function'
+  )
+    return signal as AbortSignal
+  return undefined
+}
+
+function boundedResultSummary(state: MaterialsPanelState): JsonValue {
+  const execution = state.execution
+  if (execution === undefined)
+    return json({ available: false, busy: state.busy, message: state.message ?? 'No result yet.' })
+  return json({
+    available: true,
+    busy: state.busy,
+    message: state.message ?? null,
+    elapsedMilliseconds: execution.elapsedMilliseconds,
+    outputs: execution.outputs.slice(0, 32),
+    dryRun:
+      state.dryRun === undefined
+        ? null
+        : {
+            valid: state.dryRun.valid,
+            issues: state.dryRun.issues.slice(0, 32),
+            warnings: state.dryRun.warnings.slice(0, 32),
+            plan: state.dryRun.plan,
+          },
+    table:
+      state.table === undefined
+        ? null
+        : {
+            output: state.tableOutput ?? null,
+            offset: state.table.offset,
+            rowCount: state.table.rowCount,
+            totalRows: state.table.totalRows,
+            columns: state.table.columns.map(({ name, kind, unit }) => ({
+              name,
+              kind,
+              unit: unit ?? null,
+            })),
+          },
+  })
+}
+
+function boundedOutcomeSummary(outcome: AnalysisGraphOutcome): JsonValue {
+  return json({
+    status: 'completed',
+    message: outcome.message,
+    elapsedMilliseconds: outcome.execution.elapsedMilliseconds,
+    outputs: outcome.execution.outputs.slice(0, 32),
+    dryRun: {
+      valid: outcome.dryRun.valid,
+      warnings: outcome.dryRun.warnings.slice(0, 32),
+      plan: outcome.dryRun.plan,
+    },
+    table:
+      outcome.table === undefined
+        ? null
+        : {
+            output: outcome.tableOutput ?? null,
+            rowCount: outcome.table.rowCount,
+            totalRows: outcome.table.totalRows,
+            columns: outcome.table.columns.map(({ name, kind, unit }) => ({
+              name,
+              kind,
+              unit: unit ?? null,
+            })),
+          },
+  })
+}
+
+function modelSourceLocator(locator: WorkspaceSourceReference['locator']): JsonValue {
+  switch (locator.kind) {
+    case 'sample':
+      return { kind: locator.kind, sampleId: locator.sampleId }
+    case 'bundled':
+      return {
+        kind: locator.kind,
+        name: locator.name,
+        size: locator.size,
+        mediaType: locator.mediaType,
+        sha256: locator.sha256,
+      }
+    case 'local':
+      return {
+        kind: locator.kind,
+        name: locator.name,
+        size: locator.size,
+        lastModified: locator.lastModified,
+        companionNames: locator.companionNames.slice(0, 32),
+      }
+    case 'remote': {
+      const url = new URL(locator.url)
+      return { kind: locator.kind, origin: url.origin, path: url.pathname.slice(0, 1_024) }
+    }
+  }
+}
+
+function modelDatasetSummary(dataset: WorkspaceSnapshot['datasets'][number]): JsonValue {
+  return json({
+    id: dataset.id,
+    sourceId: dataset.sourceId,
+    datasetId: dataset.datasetId,
+    name: dataset.descriptor.name ?? dataset.datasetId,
+    axes: dataset.descriptor.axes.map(({ id, name, length, unit }) => ({
+      id,
+      name: name ?? null,
+      length,
+      unit: unit ?? null,
+    })),
+    components: dataset.descriptor.components.map(({ id, name }) => ({
+      id,
+      name: name ?? null,
+    })),
+    sampleType: dataset.descriptor.sampleType,
+    spatialReference: dataset.descriptor.spatialReference ?? null,
+  })
 }
 
 function catalogOperation(
@@ -434,6 +580,10 @@ function WorkbenchRuntime({
   const batchCancelItem = useRef<((itemId: string) => boolean) | undefined>(undefined)
   const previewResult = useRef<AnalysisResultHandleId | undefined>(undefined)
   const activeResult = useRef<AnalysisResultHandleId | undefined>(undefined)
+  const particleAgentPlanRef = useRef<ScienceParticlePlanGate | null>(null)
+  if (particleAgentPlanRef.current === null)
+    particleAgentPlanRef.current = new ScienceParticlePlanGate()
+  const particleAgentPlan = particleAgentPlanRef.current
   const viewportApi = useRef<ScientificViewportApi | null>(null)
   const workbenchRoot = useRef<HTMLDivElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -566,7 +716,7 @@ function WorkbenchRuntime({
     [appendLog, client, opened],
   )
 
-  const cancelPreview = useCallback((): void => {
+  const cancelPreview = useCallback(async (): Promise<void> => {
     setPreviewEnabled(false)
     activity.current.analysis?.abort(new DOMException('Threshold preview cancelled', 'AbortError'))
     activity.current.analysis = undefined
@@ -574,7 +724,7 @@ function WorkbenchRuntime({
     previewResult.current = undefined
     setAnalysisOverlay((current) => (current?.resultHandleId === handle ? undefined : current))
     setAnalysisDataset((current) => (current?.resultHandleId === handle ? undefined : current))
-    void releaseAnalysisHandle(handle)
+    await releaseAnalysisHandle(handle)
     setAnalysisState((current) => ({
       ...current,
       busy: false,
@@ -763,14 +913,25 @@ function WorkbenchRuntime({
         readonly surface?: 'general' | 'particle' | 'advanced'
         readonly dataset?: OpenedDatasetDescriptor
         readonly workerClient?: ImagingWorkerClient
+        readonly signal?: ActionAbortSignal
       } = {},
-    ): Promise<boolean> => {
+    ): Promise<AnalysisGraphOutcome | undefined> => {
       const target = options.dataset ?? opened
       const targetClient = options.workerClient ?? client
-      if (target === undefined) return false
-      cancelPreview()
+      if (target === undefined) {
+        if (options.throwOnError === true)
+          throw new Error('No opened dataset is available for analysis.')
+        return undefined
+      }
+      await cancelPreview()
       const controller = new AbortController()
+      const externalSignal = abortSignal(options.signal)
+      externalSignal?.throwIfAborted()
+      const abortFromExternal = (): void =>
+        controller.abort(externalSignal?.reason ?? new DOMException('Aborted', 'AbortError'))
+      externalSignal?.addEventListener('abort', abortFromExternal, { once: true })
       activity.current.analysis = controller
+      let uncommittedResult: AnalysisResultHandleId | undefined
       const reportParticleMessage = (message: string): void => {
         if (options.surface === 'particle') setParticleMessage(message)
         if (options.surface === 'advanced') setAdvancedMessage(message)
@@ -788,20 +949,19 @@ function WorkbenchRuntime({
         const dryRun = await targetClient.dryRunAnalysis(request, controller.signal)
         setAnalysisState((current) => ({ ...current, dryRun }))
         if (!dryRun.valid) {
-          reportParticleMessage('Analysis validation failed. The committed project is unchanged.')
+          const validationMessage =
+            'Analysis validation failed. The committed project is unchanged.'
+          reportParticleMessage(validationMessage)
           setAnalysisState((current) => ({
             ...current,
             busy: false,
-            message: 'Analysis validation failed. The committed project is unchanged.',
+            message: validationMessage,
           }))
-          return false
+          if (options.throwOnError === true) throw new Error(validationMessage)
+          return undefined
         }
         const execution = await targetClient.executeAnalysis(request, controller.signal)
-        const previous = options.preview === true ? previewResult.current : activeResult.current
-        if (options.preview === true) previewResult.current = execution.resultHandleId
-        else activeResult.current = execution.resultHandleId
-        if (previous !== undefined) await releaseAnalysisHandle(previous, target, targetClient)
-        if (options.commit === true) applyProjectMutation({ kind: 'analysis.set-graph', graph })
+        uncommittedResult = execution.resultHandleId
         const table = await loadTablePage(execution, 0, undefined, undefined, target, targetClient)
         const tableOutput = execution.outputs.find(
           (candidate) => candidate.kind === 'result' && candidate.summary['kind'] === 'table',
@@ -838,6 +998,12 @@ function WorkbenchRuntime({
         const distribution = seriesExports.find(
           ({ name }) => name === 'sizeDistribution' || name === 'distribution',
         )?.data
+        const previous = options.preview === true ? previewResult.current : activeResult.current
+        if (options.preview === true) previewResult.current = execution.resultHandleId
+        else activeResult.current = execution.resultHandleId
+        uncommittedResult = undefined
+        if (previous !== undefined) await releaseAnalysisHandle(previous, target, targetClient)
+        if (options.commit === true) applyProjectMutation({ kind: 'analysis.set-graph', graph })
         const derivedDataset =
           options.overlay === undefined
             ? execution.outputs.find(({ kind }) => kind === 'dataset')
@@ -903,8 +1069,16 @@ function WorkbenchRuntime({
         appendLog(
           `Executed ${graph.nodes.map(({ label, operation }) => label ?? operation.id).join(' → ')}`,
         )
-        return true
+        return {
+          dryRun,
+          execution,
+          ...(table === undefined ? {} : { table }),
+          ...(tableOutput === undefined ? {} : { tableOutput }),
+          message: completionMessage,
+        }
       } catch (executionError) {
+        if (uncommittedResult !== undefined)
+          await releaseAnalysisHandle(uncommittedResult, target, targetClient)
         if (!controller.signal.aborted) {
           const failureMessage = `${executionError instanceof Error ? executionError.message : 'Analysis failed.'} The previous committed project remains intact.`
           reportParticleMessage(failureMessage)
@@ -915,7 +1089,9 @@ function WorkbenchRuntime({
           }))
         }
         if (options.throwOnError === true) throw executionError
-        return false
+        return undefined
+      } finally {
+        externalSignal?.removeEventListener('abort', abortFromExternal)
       }
     },
     [
@@ -935,6 +1111,7 @@ function WorkbenchRuntime({
       operation: ToolboxOperation,
       parameters: RpcJsonObject,
       mode: 'preview' | 'apply',
+      signal?: ActionAbortSignal,
     ): Promise<void> => {
       if (selection === undefined) throw new Error('No dataset plane is selected.')
       try {
@@ -947,6 +1124,8 @@ function WorkbenchRuntime({
         await executeAnalysisGraph(graph, {
           preview: mode === 'preview',
           commit: mode === 'apply',
+          throwOnError: true,
+          ...(signal === undefined ? {} : { signal }),
         })
       } catch (operationError) {
         setAnalysisState((current) => ({
@@ -960,50 +1139,64 @@ function WorkbenchRuntime({
   )
 
   const createRoi = useCallback(
-    async (geometry: ViewportRoi['geometry']): Promise<void> => {
-      if (opened === undefined || selection === undefined) return
+    async (
+      geometry: ViewportRoi['geometry'],
+      name = `${geometry.kind} ROI`,
+      signal?: AbortSignal,
+    ): Promise<ViewportRoi | undefined> => {
+      if (opened === undefined || selection === undefined) return undefined
       const id = `roi-${crypto.randomUUID()}`
-      const normalized = await client.normalizeRoi({
-        datasetHandleId: opened.handleId,
-        generation: opened.generation,
-        roi: {
-          schemaVersion: 1,
-          id,
-          name: `${geometry.kind} ROI`,
-          axisIds: selection.displayAxes,
-          fixedIndices: selection.fixedIndices,
-          coordinateSpace: 'pixel',
-          geometry,
-          presentation: { style: { visible: true } },
-        } as unknown as RpcJsonObject,
-      })
+      const normalized = await client.normalizeRoi(
+        {
+          datasetHandleId: opened.handleId,
+          generation: opened.generation,
+          roi: {
+            schemaVersion: 1,
+            id,
+            name,
+            axisIds: selection.displayAxes,
+            fixedIndices: selection.fixedIndices,
+            coordinateSpace: 'pixel',
+            geometry,
+            presentation: { style: { visible: true } },
+          } as unknown as RpcJsonObject,
+        },
+        signal,
+      )
       if (!normalized.valid || normalized.roi === undefined) {
         setError(String(normalized.issues[0]?.['message'] ?? 'The ROI is invalid.'))
-        return
+        return undefined
       }
       const roi = normalized.roi as unknown as ViewportRoi
       applyProjectMutation({ kind: 'roi.add', roi })
       applyProjectMutation({ kind: 'roi.select', roiId: roi.id })
       setRoiTool('select')
+      return roi
     },
     [applyProjectMutation, client, opened, selection],
   )
 
   const updateRoi = useCallback(
-    async (roi: ViewportRoi): Promise<void> => {
-      if (opened === undefined) return
-      const normalized = await client.normalizeRoi({
-        datasetHandleId: opened.handleId,
-        generation: opened.generation,
-        roi: roi as unknown as RpcJsonObject,
-      })
+    async (roi: ViewportRoi, signal?: AbortSignal): Promise<ViewportRoi | undefined> => {
+      if (opened === undefined) return undefined
+      const normalized = await client.normalizeRoi(
+        {
+          datasetHandleId: opened.handleId,
+          generation: opened.generation,
+          roi: roi as unknown as RpcJsonObject,
+        },
+        signal,
+      )
       if (normalized.valid && normalized.roi !== undefined) {
+        const nextRoi = normalized.roi as unknown as ViewportRoi
         applyProjectMutation({
           kind: 'roi.update',
           roiId: roi.id,
-          roi: normalized.roi as unknown as ViewportRoi,
+          roi: nextRoi,
         })
+        return nextRoi
       }
+      return undefined
     },
     [applyProjectMutation, client, opened],
   )
@@ -1036,6 +1229,9 @@ function WorkbenchRuntime({
     measureUxNextPaint('threshold.commit')
     const finishUxTask = beginUxTask('threshold.commit')
     try {
+      // Stop preview tile work before asking the Worker to validate the committed graph.
+      // A fully populated preview can otherwise occupy the entire bounded request budget.
+      await cancelPreview()
       const graph = thresholdGraph({ component, threshold, mode: thresholdMode })
       const dryRun = await client.dryRunAnalysis({
         datasetHandleId: opened.handleId,
@@ -1051,7 +1247,6 @@ function WorkbenchRuntime({
         }))
         return
       }
-      cancelPreview()
       applyProjectMutation({ kind: 'analysis.set-graph', graph })
       setAnalysisState((current) => ({
         ...current,
@@ -1186,6 +1381,134 @@ function WorkbenchRuntime({
   )
   const currentParticleDryRun =
     particleDryRunIdentity === particlePlanIdentity ? particleDryRun : undefined
+
+  const particleSettingsForAction = useCallback(
+    (input: JsonValue): ParticleWorkflowSettings => {
+      const request = rpcObject(input)
+      const patch = rpcObject(request?.['settings'])
+      if (patch === undefined) throw new Error('Particle settings must be an object.')
+      const merged = json({ ...particleSettings, ...patch }) as unknown as ParticleWorkflowSettings
+      if (opened === undefined || merged.component >= opened.dataset.components.length)
+        throw new Error('The selected particle component is unavailable.')
+      if (merged.minimumArea > merged.maximumArea)
+        throw new Error('Minimum particle area cannot exceed maximum particle area.')
+      if (merged.minimumCircularity > merged.maximumCircularity)
+        throw new Error('Minimum circularity cannot exceed maximum circularity.')
+      if (merged.minimumAspectRatio > merged.maximumAspectRatio)
+        throw new Error('Minimum aspect ratio cannot exceed maximum aspect ratio.')
+      if (merged.minimumSolidity > merged.maximumSolidity)
+        throw new Error('Minimum solidity cannot exceed maximum solidity.')
+      if (merged.roiId !== undefined) {
+        const roi = workspace.analysis.roiSet.rois.find(({ id }) => id === merged.roiId)
+        if (roi === undefined) throw new Error('The requested particle ROI is unavailable.')
+        if (
+          roi.geometry.kind === 'point' ||
+          roi.geometry.kind === 'line-segment' ||
+          roi.geometry.kind === 'polyline'
+        )
+          throw new Error('Particle analysis requires an area ROI or the whole plane.')
+      }
+      return merged
+    },
+    [opened, particleSettings, workspace.analysis.roiSet.rois],
+  )
+
+  const particleRequestForAction = useCallback(
+    (input: JsonValue) => {
+      if (opened === undefined || selection === undefined)
+        throw new Error('Open a dataset before planning particle analysis.')
+      const settings = particleSettingsForAction(input)
+      const { roiId: _roiId, overlayView: _overlayView, ...graphSettings } = settings
+      const graph = particleAnalysisGraph({ ...graphSettings, selection })
+      const selected = workspace.analysis.roiSet.rois.find(({ id }) => id === settings.roiId)
+      const roi = selected ?? wholePlaneRoi(calibratedOpened ?? opened, selection)
+      const identity = JSON.stringify({
+        projectRevision: workspace.revision,
+        datasetHandleId: opened.handleId,
+        generation: opened.generation,
+        graph,
+        roi,
+        calibration: analysisCalibration ?? null,
+      })
+      return { settings, graph, roi, identity }
+    },
+    [
+      calibratedOpened,
+      opened,
+      particleSettingsForAction,
+      selection,
+      workspace.analysis.roiSet.rois,
+      workspace.revision,
+      analysisCalibration,
+    ],
+  )
+
+  const planParticleAnalysisForAction = useCallback(
+    async (input: JsonValue, actionSignal: ActionAbortSignal): Promise<JsonValue> => {
+      const target = opened
+      if (target === undefined) throw new Error('Open a dataset before planning particle analysis.')
+      const { settings, graph, roi, identity } = particleRequestForAction(input)
+      const dryRun = await client.dryRunAnalysis(
+        {
+          datasetHandleId: target.handleId,
+          generation: target.generation,
+          graph: graph as unknown as RpcJsonObject,
+          roi: roi as unknown as RpcJsonObject,
+          ...(analysisCalibration === undefined ? {} : { calibration: analysisCalibration }),
+        },
+        abortSignal(actionSignal),
+      )
+      const planId = particleAgentPlan.review(identity, dryRun.valid)
+      return json({
+        planId,
+        valid: dryRun.valid,
+        settings,
+        roi: { id: roi.id, name: roi.name ?? null, kind: roi.geometry.kind },
+        graphSteps: graph.nodes.map(({ id, label, operation }) => ({
+          id,
+          label: label ?? id,
+          operation,
+        })),
+        issues: dryRun.issues.slice(0, 32),
+        warnings: dryRun.warnings.slice(0, 32),
+        plan: dryRun.plan,
+      })
+    },
+    [analysisCalibration, client, opened, particleRequestForAction, particleAgentPlan.review],
+  )
+
+  const executeParticleAnalysisForAction = useCallback(
+    async (input: JsonValue, actionSignal: ActionAbortSignal): Promise<JsonValue> => {
+      const request = rpcObject(input)
+      const planId = request?.['planId']
+      const { settings, graph, roi, identity } = particleRequestForAction(input)
+      if (typeof planId !== 'string')
+        throw new Error('Particle execution requires the current valid dry-run plan.')
+      particleAgentPlan.assertCurrent(planId, identity)
+      const outcome = await executeAnalysisGraph(graph, {
+        roi,
+        overlay: 'labels',
+        overlayView: settings.overlayView,
+        overlayTableOutput: 'objects',
+        commit: true,
+        surface: 'particle',
+        throwOnError: true,
+        signal: actionSignal,
+      })
+      if (outcome === undefined) throw new Error('Particle analysis did not produce a result.')
+      particleAgentPlan.consume()
+      setParticleSettings(settings)
+      setParticleDryRun(outcome.dryRun)
+      setParticleDryRunIdentity(undefined)
+      return boundedOutcomeSummary(outcome)
+    },
+    [
+      executeAnalysisGraph,
+      particleRequestForAction,
+      particleAgentPlan.assertCurrent,
+      particleAgentPlan.consume,
+    ],
+  )
 
   const previewParticleThreshold = useCallback((): void => {
     if (selection === undefined || particleRoi === undefined) return
@@ -2073,7 +2396,7 @@ function WorkbenchRuntime({
           await waitForFirstUsefulTile(signal)
           signal.throwIfAborted()
           setInspectorTab('analysis')
-          const runPreset = (): Promise<boolean> =>
+          const runPreset = (): Promise<AnalysisGraphOutcome | undefined> =>
             preset.kind === 'histogram'
               ? executeAnalysisGraph(histogramGraph(openedExample.selection, preset.component), {
                   roi: wholePlaneRoi(openedExample, openedExample.selection),
@@ -2100,13 +2423,13 @@ function WorkbenchRuntime({
                 )
           let succeeded = false
           try {
-            succeeded = await runPreset()
+            succeeded = (await runPreset()) !== undefined
           } catch (presetError) {
             const aborted = presetError instanceof DOMException && presetError.name === 'AbortError'
             if (!aborted) throw presetError
             await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
             signal.throwIfAborted()
-            succeeded = await runPreset()
+            succeeded = (await runPreset()) !== undefined
           }
           if (!succeeded)
             throw new Error(`${preset.title} could not be applied to ${scenario.title}.`)
@@ -2621,13 +2944,101 @@ function WorkbenchRuntime({
     )
   }, [appendLog, mapping.mode])
 
+  const createModelPreview = useCallback(
+    async (input: JsonValue, actionSignal: ActionAbortSignal): Promise<JsonValue> => {
+      const request = rpcObject(input)
+      const scope = request?.['scope']
+      const width = request?.['width']
+      const height = request?.['height']
+      if (
+        (scope !== 'viewport' && scope !== 'screen') ||
+        typeof width !== 'number' ||
+        typeof height !== 'number'
+      )
+        throw new Error('Model preview input is invalid.')
+      const nativeSignal = abortSignal(actionSignal)
+      const preview =
+        scope === 'screen'
+          ? await captureBoundedScreenPreview({ width, height }, nativeSignal)
+          : await (async () => {
+              const api = viewportApi.current
+              if (api === null) throw new Error('The specimen viewport is not mounted.')
+              return createBoundedPngPreview(await api.exportPng(), { width, height }, nativeSignal)
+            })()
+      const attribution =
+        scope === 'screen'
+          ? ['User-approved browser screen capture']
+          : source === undefined
+            ? ['Local scientific viewport']
+            : [`Rendered from ${source.source.name}`]
+      return json({
+        scope,
+        mapping,
+        overlay: analysisOverlay?.output ?? null,
+        agentArtifact: {
+          kind: 'image',
+          ...preview,
+          attribution,
+          projectRevision: workspace.revision,
+        },
+      })
+    },
+    [analysisOverlay?.output, mapping, source, workspace.revision],
+  )
+
+  const readResultPage = useCallback(
+    async (input: JsonValue, actionSignal: ActionAbortSignal): Promise<JsonValue> => {
+      const request = rpcObject(input)
+      const offset = request?.['offset']
+      const limit = request?.['limit'] ?? 50
+      const execution = analysisState.execution
+      const target = opened
+      const resultHandleId = activeResult.current
+      const output =
+        analysisState.tableOutput ??
+        execution?.outputs.find(
+          (candidate) => candidate.kind === 'result' && candidate.summary['kind'] === 'table',
+        )?.name
+      if (
+        typeof offset !== 'number' ||
+        typeof limit !== 'number' ||
+        execution === undefined ||
+        target === undefined ||
+        resultHandleId === undefined ||
+        output === undefined
+      )
+        throw new Error('No pageable analysis table is currently available.')
+      const page = await client.requestAnalysisTablePage(
+        {
+          datasetHandleId: target.handleId,
+          generation: target.generation,
+          resultHandleId,
+          output,
+          offset,
+          limit,
+        },
+        abortSignal(actionSignal),
+      )
+      return json({
+        output,
+        offset: page.offset,
+        rowCount: page.rowCount,
+        totalRows: page.totalRows,
+        columns: page.columns,
+        hasMore: page.offset + page.rowCount < page.totalRows,
+      })
+    },
+    [analysisState.execution, analysisState.tableOutput, client, opened],
+  )
+
   const commandContext = useMemo<CommandContext>(
     () => ({
       hasDataset,
+      hasResult: analysisState.execution !== undefined && activeResult.current !== undefined,
       canUndo: historyState.undo.length > 0,
       canRedo: historyState.redo.length > 0,
     }),
-    [hasDataset, historyState.redo.length, historyState.undo.length],
+    [analysisState.execution, hasDataset, historyState.redo.length, historyState.undo.length],
   )
   const actionHostRef = useRef<WorkbenchActionHost<CommandContext> | undefined>(undefined)
   const actionHost = useMemo(
@@ -2661,12 +3072,254 @@ function WorkbenchRuntime({
           openedDataset: () => opened,
           currentSelection: () => selection,
           calibratedDataset: () => calibratedOpened,
-          particleOverlayView: () => particleSettings.overlayView,
           analysisCatalog: () => analysisCatalog,
           resolveCatalogOperation: catalogOperation,
           executeAnalysisGraph,
           wholePlaneRoi,
           runToolboxOperation,
+          workspaceSummary: () =>
+            json({
+              id: workspace.project.id,
+              title: workspace.project.title,
+              revision: workspace.revision,
+              sourceCount: workspace.sources.length,
+              datasetCount: workspace.datasets.length,
+              roiCount: workspace.analysis.roiSet.rois.length,
+              pinnedResultCount: workspace.pinnedResults.length,
+              active: workspace.active ?? null,
+            }),
+          sourceList: () =>
+            json(
+              workspace.sources.slice(0, 32).map((reference) => ({
+                id: reference.id,
+                label: reference.label,
+                bound: reference.bound,
+                reader: reference.reader,
+                locator: modelSourceLocator(reference.locator),
+              })),
+            ),
+          datasetList: () => json(workspace.datasets.slice(0, 128).map(modelDatasetSummary)),
+          datasetDescription: (input) => {
+            const request = rpcObject(input)
+            const datasetId = request?.['datasetId']
+            const dataset = workspace.datasets.find(
+              (candidate) => candidate.id === datasetId || candidate.datasetId === datasetId,
+            )
+            if (dataset === undefined) throw new Error('The requested dataset is unavailable.')
+            return modelDatasetSummary(dataset)
+          },
+          roiList: () =>
+            json(
+              workspace.analysis.roiSet.rois.slice(0, 256).map((roi) => ({
+                id: roi.id,
+                name: roi.name ?? null,
+                kind: roi.geometry.kind,
+                coordinateSpace: roi.coordinateSpace,
+                selected: workspace.workflow.selectedRoiId === roi.id,
+              })),
+            ),
+          analysisCatalogSummary: () =>
+            json(
+              analysisCatalog === undefined
+                ? { available: false, operations: [] }
+                : {
+                    available: true,
+                    capabilities: analysisCatalog.capabilities,
+                    documentation: analysisCatalog.documentation.slice(0, 128),
+                    presets: analysisCatalog.presets.slice(0, 128),
+                  },
+            ),
+          analysisDescription: (input) => {
+            const request = rpcObject(input)
+            const operationId = request?.['operationId']
+            const operationVersion = request?.['operationVersion'] ?? 1
+            if (typeof operationId !== 'string' || typeof operationVersion !== 'number')
+              throw new Error('Analysis operation identity is invalid.')
+            const operation = catalogOperation(analysisCatalog, operationId, operationVersion)
+            if (operation === undefined) throw new Error('Analysis operation is unavailable.')
+            return json(operation)
+          },
+          resultSummary: () => boundedResultSummary(analysisState),
+          resultPage: readResultPage,
+          viewportState: () =>
+            json({
+              mounted: viewportApi.current !== null,
+              datasetId: workspace.active?.datasetReferenceId ?? null,
+              selection: selection ?? null,
+              component,
+              displayMapping: mapping,
+              roiId: workspace.workflow.selectedRoiId ?? null,
+              overlay: analysisOverlay ?? null,
+              camera: { available: false, reason: 'Camera coordinates are viewport-local.' },
+            }),
+          particleSettings: () =>
+            json({
+              settings: particleSettings,
+              guidance: {
+                threshold:
+                  'Try automatic methods first; manual bounds are dataset-value units, not display colors.',
+                missedParticles:
+                  'Inspect the labels preview, then consider polarity, threshold method, morphology, minimum object pixels, edge policy, and watershed.',
+                touchingParticles:
+                  'Watershed and minimum peak distance control separation of touching foreground objects.',
+                reproducibility:
+                  'Dry-run each candidate and use result summaries or table pages before judging only from the preview.',
+              },
+            }),
+          planParticleAnalysis: planParticleAnalysisForAction,
+          executeParticleAnalysis: executeParticleAnalysisForAction,
+          createModelPreview,
+          normalizeAnalysis: async (input, actionSignal) => {
+            const request = rpcObject(input)
+            const operationId = request?.['operationId']
+            const operationVersion = request?.['operationVersion']
+            const parameters = request?.['parameters']
+            if (
+              opened === undefined ||
+              typeof operationId !== 'string' ||
+              typeof operationVersion !== 'number' ||
+              parameters === undefined
+            )
+              throw new Error('Analysis normalization input is invalid.')
+            return json(
+              await client.normalizeAnalysisParameters(
+                {
+                  datasetHandleId: opened.handleId,
+                  generation: opened.generation,
+                  operation: { id: operationId, version: operationVersion },
+                  parameters,
+                },
+                abortSignal(actionSignal),
+              ),
+            )
+          },
+          dryRunAnalysis: async (input, actionSignal) => {
+            const request = rpcObject(input)
+            const graph = rpcObject(request?.['graph'])
+            const roiId = request?.['roiId']
+            if (
+              opened === undefined ||
+              graph === undefined ||
+              (roiId !== undefined && typeof roiId !== 'string')
+            )
+              throw new Error('Analysis dry-run input is invalid.')
+            const roi =
+              typeof roiId === 'string'
+                ? workspace.analysis.roiSet.rois.find(({ id }) => id === roiId)
+                : undefined
+            if (typeof roiId === 'string' && roi === undefined)
+              throw new Error('The requested analysis ROI is unavailable.')
+            return json(
+              await client.dryRunAnalysis(
+                {
+                  datasetHandleId: opened.handleId,
+                  generation: opened.generation,
+                  graph,
+                  ...(roi === undefined ? {} : { roi: roi as unknown as RpcJsonObject }),
+                  ...(analysisCalibration === undefined
+                    ? {}
+                    : { calibration: analysisCalibration }),
+                },
+                abortSignal(actionSignal),
+              ),
+            )
+          },
+          selectRoi: (input) => {
+            const roiId = rpcObject(input)?.['roiId']
+            if (
+              typeof roiId !== 'string' ||
+              !workspace.analysis.roiSet.rois.some(({ id }) => id === roiId)
+            )
+              throw new Error('The requested ROI is unavailable.')
+            selectRoi(roiId)
+            return { selected: true, roiId }
+          },
+          removeRoi: (input) => {
+            const roiId = rpcObject(input)?.['roiId']
+            if (
+              typeof roiId !== 'string' ||
+              !workspace.analysis.roiSet.rois.some(({ id }) => id === roiId)
+            )
+              throw new Error('The requested ROI is unavailable.')
+            deleteRoi(roiId)
+            return { removed: true, roiId }
+          },
+          removePipelineNode: (input) => {
+            const nodeId = rpcObject(input)?.['nodeId']
+            const graph = workspace.analysis.graph
+            if (typeof nodeId !== 'string' || !graph.nodes.some(({ id }) => id === nodeId))
+              throw new Error('The requested analysis node is unavailable.')
+            if (
+              graph.nodes.some((node) =>
+                node.inputs.some(
+                  (candidate) =>
+                    candidate.source.kind === 'node' && candidate.source.nodeId === nodeId,
+                ),
+              )
+            )
+              throw new Error('Delete downstream analysis steps before deleting this step.')
+            deletePipelineNode(nodeId)
+            return { removed: true, nodeId }
+          },
+          selectPanel: (input) => {
+            const panel = rpcObject(input)?.['panel']
+            if (
+              panel !== 'info' &&
+              panel !== 'display' &&
+              panel !== 'roi' &&
+              panel !== 'analysis' &&
+              panel !== 'agent'
+            )
+              throw new Error('The requested inspector panel is unavailable.')
+            setInspectorTab(panel)
+            return { selected: true, panel }
+          },
+          createRoi: async (input, actionSignal) => {
+            actionSignal.throwIfAborted()
+            const request = rpcObject(input)
+            const kind = request?.['kind']
+            const label = request?.['label']
+            const x = request?.['x']
+            const y = request?.['y']
+            const width = request?.['width']
+            const height = request?.['height']
+            if (
+              (kind !== 'rectangle' && kind !== 'ellipse') ||
+              typeof label !== 'string' ||
+              typeof x !== 'number' ||
+              typeof y !== 'number' ||
+              typeof width !== 'number' ||
+              typeof height !== 'number'
+            )
+              throw new Error('ROI creation input is invalid.')
+            const geometry: ViewportRoi['geometry'] =
+              kind === 'rectangle'
+                ? { kind, x, y, width, height }
+                : {
+                    kind,
+                    center: { x: x + width / 2, y: y + height / 2 },
+                    radiusX: width / 2,
+                    radiusY: height / 2,
+                  }
+            const roi = await createRoi(geometry, label, abortSignal(actionSignal))
+            if (roi === undefined) throw new Error('ROI creation failed validation.')
+            return json({
+              created: true,
+              roi: { id: roi.id, name: roi.name ?? null, kind: roi.geometry.kind },
+            })
+          },
+          updateRoi: async (input, actionSignal) => {
+            actionSignal.throwIfAborted()
+            const request = rpcObject(input)
+            const roiId = request?.['roiId']
+            const name = rpcObject(request?.['patch'])?.['name']
+            const roi = workspace.analysis.roiSet.rois.find(({ id }) => id === roiId)
+            if (roi === undefined || typeof name !== 'string')
+              throw new Error('ROI update input is invalid.')
+            if ((await updateRoi({ ...roi, name }, abortSignal(actionSignal))) === undefined)
+              throw new Error('ROI update failed validation.')
+            return { updated: true, roiId: roi.id, name }
+          },
         },
         {
           store: scriptStore,
@@ -2677,22 +3330,38 @@ function WorkbenchRuntime({
       ),
     [
       newProject,
+      analysisCalibration,
+      client,
       openSample,
       applyThreshold,
       analysisCatalog,
       calibratedOpened,
+      analysisOverlay,
+      analysisState,
       executeAnalysisGraph,
+      executeParticleAnalysisForAction,
+      createModelPreview,
       opened,
       openProjectDialog,
       openUrlDialog,
       particleSettings.overlayView,
+      particleSettings,
+      planParticleAnalysisForAction,
       planConnectedComponents,
       performHistory,
       preferences.theme,
       runToolboxOperation,
+      readResultPage,
+      deletePipelineNode,
+      deleteRoi,
+      createRoi,
+      selectRoi,
+      updateRoi,
       runConnectedComponents,
       saveProject,
       selection,
+      component,
+      mapping,
       scriptStore,
       updatePreferences,
       visibleWorkspace,
@@ -2701,18 +3370,113 @@ function WorkbenchRuntime({
   )
   actionHostRef.current = actionHost
 
+  const agentModelContext = useMemo<JsonValue>(
+    () =>
+      json({
+        project: {
+          id: workspace.project.id,
+          title: workspace.project.title,
+          revision: workspace.revision,
+          sources: workspace.sources.slice(0, 32).map((reference) => ({
+            id: reference.id,
+            label: reference.label,
+            bound: reference.bound,
+            locator: modelSourceLocator(reference.locator),
+          })),
+          datasets: workspace.datasets.slice(0, 32).map(modelDatasetSummary),
+          selection: workspace.active ?? null,
+          rois: workspace.analysis.roiSet.rois.slice(0, 128).map((roi) => ({
+            id: roi.id,
+            name: roi.name ?? null,
+            kind: roi.geometry.kind,
+            selected: workspace.workflow.selectedRoiId === roi.id,
+          })),
+          analysisGraph: {
+            nodes: workspace.analysis.graph.nodes.map(({ id, label, operation }) => ({
+              id,
+              label: label ?? id,
+              operation,
+            })),
+            outputs: workspace.analysis.graph.outputs.map(({ name }) => name),
+          },
+        },
+        viewport: {
+          mounted: viewportApi.current !== null,
+          component,
+          mapping,
+          overlay: analysisOverlay?.output ?? null,
+        },
+        particleAnalysis: {
+          settings: particleSettings,
+          result: boundedResultSummary(analysisState),
+        },
+        constraints: {
+          rawPixelsVisibleToModel: false,
+          previewsRequireApproval: true,
+          analysesUseSemanticActions: true,
+        },
+      }),
+    [analysisOverlay?.output, analysisState, component, mapping, particleSettings, workspace],
+  )
+  const agentStateRef = useRef({ actionHost, commandContext, workspace, agentModelContext })
+  agentStateRef.current = { actionHost, commandContext, workspace, agentModelContext }
+  const agentCredentialsRef = useRef<MemoryOpenRouterCredentialStore | null>(null)
+  if (agentCredentialsRef.current === null)
+    agentCredentialsRef.current = new MemoryOpenRouterCredentialStore()
+  const agentCredentials = agentCredentialsRef.current
+  const agentTransportRef = useRef<OpenRouterTransport | null>(null)
+  if (agentTransportRef.current === null)
+    agentTransportRef.current = new OpenRouterTransport({
+      credentials: agentCredentials,
+      referer: window.location.origin,
+      title: 'PureJsImage Materials Workbench',
+    })
+  const agentTransport = agentTransportRef.current
+  const agentRuntimeRef = useRef<AgentRuntime | null>(null)
+  if (agentRuntimeRef.current === null) {
+    const gateway = createScienceAgentGateway({
+      currentHost: () => agentStateRef.current.actionHost,
+      currentContext: () => agentStateRef.current.commandContext,
+      currentWorkspace: () => agentStateRef.current.workspace,
+      modelContext: () => agentStateRef.current.agentModelContext,
+    })
+    agentRuntimeRef.current = new AgentRuntime({
+      transport: agentTransport,
+      gateway,
+      policy: createScienceAgentPolicy(),
+      productName: 'PureJsImage Materials Workbench',
+      limits: {
+        maximumModelSteps: 24,
+        maximumToolCalls: 48,
+        maximumTokens: 8_192,
+        timeoutMilliseconds: 10 * 60_000,
+      },
+      systemInstructions:
+        'Operate only through the current versioned scientific actions. For particle analysis, read the current settings, dry-run a small explicit patch, obtain approval before execution, inspect bounded result summaries and table pages, and request an approved viewport preview when visual evidence is useful. Use quantitative results together with the labels preview to diagnose missed, merged, edge, or noisy detections. You may iteratively tune and re-run, but change one reasoned group of parameters at a time, compare the result, and stop when the user goal is met or the evidence is ambiguous. Never claim visual quality without a preview. Issue at most one project-mutating call per model response so each later call uses the current revision. Preserve calibration and state limitations, refuse guesses, and answer follow-up questions from the bounded retained conversation.',
+    })
+  }
+  const agentRuntime = agentRuntimeRef.current
+
+  useEffect(
+    () => () => {
+      agentRuntime.cancel()
+      agentCredentials.clear()
+    },
+    [agentCredentials, agentRuntime],
+  )
+
   const scriptInvoker = useMemo<ScriptActionInvoker>(
     () => ({
       invoke: (id, version, input, mode) =>
         mode === 'dry-run'
-          ? actionHost.dryRun(id, version, input, { hasDataset: true }, ACTIVE_ACTION_SIGNAL)
-          : actionHost.execute(id, version, input, { hasDataset: true }, ACTIVE_ACTION_SIGNAL),
+          ? actionHost.dryRun(id, version, input, commandContext, ACTIVE_ACTION_SIGNAL)
+          : actionHost.execute(id, version, input, commandContext, ACTIVE_ACTION_SIGNAL),
       cancel: () =>
         activity.current.analysis?.abort(
           new DOMException('Cancelled with the active sandbox script.', 'AbortError'),
         ),
     }),
-    [actionHost],
+    [actionHost, commandContext],
   )
   const scriptActionManifest = useMemo(() => workbenchActionRegistry.manifest(), [])
 
@@ -2868,7 +3632,7 @@ function WorkbenchRuntime({
           graphSteps={particleGraph.nodes.map(({ label, operation }) => label ?? operation.id)}
           {...(particleMessage === undefined ? {} : { message: particleMessage })}
           onCancel={() => {
-            cancelPreview()
+            void cancelPreview()
             setParticleMessage('Preview cancelled. The committed project is unchanged.')
           }}
           onCancelRun={() => {
@@ -3008,6 +3772,13 @@ function WorkbenchRuntime({
         />
       </details>
     </div>
+  )
+  const agentContent = (
+    <ScienceAgentPanel
+      credentials={agentCredentials}
+      runtime={agentRuntime}
+      transport={agentTransport}
+    />
   )
   const analysisResults = (
     <AnalysisResults
@@ -3257,7 +4028,12 @@ function WorkbenchRuntime({
               >
                 <Icon name="examples" />
               </IconButton>
-              <IconButton className="mode-rail__button" disabled label="Agent mode unavailable">
+              <IconButton
+                aria-pressed={inspectorTab === 'agent'}
+                className="mode-rail__button"
+                label="Agent mode"
+                onClick={() => setInspectorTab('agent')}
+              >
                 <Icon name="agent" />
               </IconButton>
             </nav>
@@ -3596,6 +4372,7 @@ function WorkbenchRuntime({
               />
               <div className="inspector-scroll">
                 <InspectorContent
+                  agentContent={agentContent}
                   analysisContent={analysisContent}
                   component={component}
                   history={historyState.undo}
