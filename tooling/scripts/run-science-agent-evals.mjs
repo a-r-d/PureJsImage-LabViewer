@@ -9,6 +9,19 @@ const DEFAULT_MODEL = 'openai/gpt-5.6-luna'
 const CASES = Object.freeze({
   smoke: ['sem-particle-count'],
   analysis: ['sem-particle-count', 'split-touching-particles'],
+  'ome-zarr': [
+    'ome-zarr-open-v2',
+    'ome-zarr-open-v3-sharded',
+    'ome-zarr-select-plane',
+    'ome-zarr-authored-channels',
+    'ome-zarr-chunks-vs-shards',
+    'ome-zarr-fetch-telemetry',
+    'ome-zarr-label-dataset',
+    'ome-zarr-unsupported-codec',
+    'ome-zarr-cancel-open',
+    'ome-zarr-rebind-directory',
+    'ome-zarr-bounded-preview',
+  ],
 })
 const MAXIMUM_RELAY_REQUEST_BYTES = 6 * 1_024 * 1_024
 

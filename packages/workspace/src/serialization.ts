@@ -1,4 +1,9 @@
-import { WORKSPACE_LIMITS, type WorkspaceSnapshot } from './model.js'
+import {
+  type SourceLocator,
+  sourceLocatorRequiresRebind,
+  WORKSPACE_LIMITS,
+  type WorkspaceSnapshot,
+} from './model.js'
 
 export class WorkspaceSerializationError extends Error {
   constructor(message: string) {
@@ -44,12 +49,28 @@ export function jsonBytes(value: unknown): number {
   return new TextEncoder().encode(deterministicJson(value)).byteLength
 }
 
+function durableLocator(locator: SourceLocator): SourceLocator {
+  if (locator.kind !== 'ome-zarr-remote') return locator
+  const url = new URL(locator.url)
+  url.search = ''
+  url.hash = ''
+  url.username = ''
+  url.password = ''
+  return {
+    ...locator,
+    url: url.href.endsWith('/') ? url.href : `${url.href}/`,
+  }
+}
+
 export function serializeWorkspaceProject(snapshot: WorkspaceSnapshot): string {
   const persistent = {
     ...snapshot,
-    sources: snapshot.sources.map((source) =>
-      source.locator.kind === 'local' ? { ...source, bound: false } : source,
-    ),
+    sources: snapshot.sources.map((source) => {
+      const locator = durableLocator(source.locator)
+      return sourceLocatorRequiresRebind(locator)
+        ? { ...source, locator, bound: false }
+        : { ...source, locator }
+    }),
   }
   const json = deterministicJson(persistent)
   if (new TextEncoder().encode(json).byteLength > WORKSPACE_LIMITS.maxProjectBytes) {

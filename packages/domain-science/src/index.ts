@@ -59,6 +59,14 @@ export {
   shouldShowResultPreview,
 } from './MaterialsPanels.js'
 export {
+  displayChannelsDescription,
+  omeZarrDatasetDescription,
+  omeZarrDatasetList,
+  omeZarrNetworkDescription,
+  omeZarrStorageDescription,
+  omeZarrStoreDescription,
+} from './ome-zarr-actions.js'
+export {
   DEFAULT_PARTICLE_WORKFLOW,
   ParticleAnalysisWorkflow,
   type ParticleOverlayView,

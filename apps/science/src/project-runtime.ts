@@ -79,14 +79,45 @@ export class WorkbenchWorkspaceRuntime implements WorkspaceRuntimePort {
       openedDataset = bundled.dataset
     } else if (source.locator.kind === 'remote') {
       openedSource = await this.client.openRemote(source.locator.url, generation, signal)
+    } else if (source.locator.kind === 'ome-zarr-remote') {
+      openedSource = await this.client.openOmeZarrRemote(source.locator.url, generation, signal)
+      const evidence = openedSource.metadata['omeZarrIdentity']
+      if (
+        typeof evidence === 'object' &&
+        evidence !== null &&
+        !Array.isArray(evidence) &&
+        ((evidence as { rootObjectSize?: unknown }).rootObjectSize !==
+          source.locator.rootObjectSize ||
+          JSON.stringify((evidence as { rootObjectValidator?: unknown }).rootObjectValidator) !==
+            JSON.stringify(source.locator.rootObjectValidator))
+      ) {
+        throw new Error(
+          'The OME-Zarr store changed since this project was saved. Derived results were not replayed.',
+        )
+      }
     } else {
       const locator = source.locator
       const files = this.#localBindings.get(source.id)
-      const primary = files?.find(({ name }) => name === locator.name)
-      if (files === undefined || primary === undefined) {
+      if (files === undefined || files[0] === undefined) {
         throw new Error(`Local source ${source.label} must be rebound before it can be replayed.`)
       }
-      openedSource = await this.client.openLocal(files, primary, generation, signal)
+      if (locator.kind === 'ome-zarr-directory') {
+        openedSource = await this.client.openOmeZarrDirectory(
+          files,
+          locator.name === locator.selectedRootMetadataName ? '' : locator.name,
+          generation,
+          signal,
+        )
+      } else if (locator.kind === 'ome-zarr-zip') {
+        const archive = files.find(({ name }) => name === locator.name) ?? files[0]
+        openedSource = await this.client.openOmeZarrZip(archive, generation, signal)
+      } else {
+        const primary = files.find(({ name }) => name === locator.name)
+        if (primary === undefined) {
+          throw new Error(`Local source ${source.label} must be rebound before it can be replayed.`)
+        }
+        openedSource = await this.client.openLocal(files, primary, generation, signal)
+      }
     }
     openedDataset ??= await this.client.openDataset(
       openedSource.documentId,

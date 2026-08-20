@@ -3,6 +3,7 @@ import {
   type OpenedDatasetDescriptor,
   type OpenedSourceDescriptor,
   type PlaneSelection,
+  type SourceRangeDiagnostics,
   spatialReferenceFacts,
 } from '@pji-workbench/contracts'
 import type { TabItem } from '@pji-workbench/ui'
@@ -24,6 +25,7 @@ export const inspectorTabs: readonly TabItem<InspectorTab>[] = [
 export interface InspectorContentProps {
   readonly tab: InspectorTab
   readonly source: OpenedSourceDescriptor | undefined
+  readonly diagnostics?: SourceRangeDiagnostics
   readonly opened: OpenedDatasetDescriptor | undefined
   readonly selection: PlaneSelection | undefined
   readonly component: number
@@ -51,6 +53,7 @@ export function InspectorContent({
   roiContent,
   analysisContent,
   agentContent,
+  diagnostics,
 }: InspectorContentProps) {
   if (tab === 'agent') return agentContent
   if (source === undefined || opened === undefined || selection === undefined) {
@@ -127,7 +130,7 @@ export function InspectorContent({
             <label key={axis.id}>
               {axis.name ?? axis.id} index
               <input
-                max={axis.length - 1}
+                max={Math.max(0, axis.length - 1)}
                 min={0}
                 type="number"
                 value={fixed.index}
@@ -135,14 +138,8 @@ export function InspectorContent({
                   onSelection({
                     ...selection,
                     fixedIndices: selection.fixedIndices.map((candidate) =>
-                      candidate.axisId === fixed.axisId
-                        ? {
-                            ...candidate,
-                            index: Math.max(
-                              0,
-                              Math.min(axis.length - 1, Number(event.target.value)),
-                            ),
-                          }
+                      candidate.axisId === axis.id
+                        ? { axisId: axis.id, index: Number(event.target.value) }
                         : candidate,
                     ),
                   })
@@ -151,6 +148,113 @@ export function InspectorContent({
             </label>
           )
         })}
+        {mapping.omeZarrChannels === undefined ? null : (
+          <fieldset className="form-stack">
+            <legend>OME-Zarr channels</legend>
+            <label>
+              Color model
+              <select
+                value={mapping.colorModel ?? 'color'}
+                onChange={(event) =>
+                  onMapping({
+                    ...mapping,
+                    colorModel: event.target.value === 'greyscale' ? 'greyscale' : 'color',
+                  })
+                }
+              >
+                <option value="color">Color</option>
+                <option value="greyscale">Greyscale</option>
+              </select>
+            </label>
+            {mapping.omeZarrChannels.map((channel, index) => {
+              const channels = mapping.omeZarrChannels
+              if (channels === undefined) return null
+              return (
+                <fieldset className="form-stack" key={channel.index}>
+                  <legend>{channel.label ?? `Channel ${channel.index}`}</legend>
+                  <label>
+                    <input
+                      checked={channel.active}
+                      onChange={(event) =>
+                        onMapping({
+                          ...mapping,
+                          omeZarrChannels: channels.map((candidate, candidateIndex) =>
+                            candidateIndex === index
+                              ? { ...candidate, active: event.target.checked }
+                              : candidate,
+                          ),
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    Active
+                  </label>
+                  <label>
+                    Color
+                    <input
+                      onChange={(event) => {
+                        const hex = event.target.value.replace('#', '')
+                        const color = Number.parseInt(hex, 16)
+                        if (!Number.isFinite(color)) return
+                        onMapping({
+                          ...mapping,
+                          omeZarrChannels: channels.map((candidate, candidateIndex) =>
+                            candidateIndex === index ? { ...candidate, color } : candidate,
+                          ),
+                        })
+                      }}
+                      type="color"
+                      value={`#${(channel.color ?? 0xffffff).toString(16).padStart(6, '0')}`}
+                    />
+                  </label>
+                  <label>
+                    Coefficient
+                    <input
+                      onChange={(event) =>
+                        onMapping({
+                          ...mapping,
+                          omeZarrChannels: channels.map((candidate, candidateIndex) =>
+                            candidateIndex === index
+                              ? { ...candidate, coefficient: Number(event.target.value) }
+                              : candidate,
+                          ),
+                        })
+                      }
+                      step="0.1"
+                      type="number"
+                      value={channel.coefficient ?? 1}
+                    />
+                  </label>
+                  <label>
+                    <input
+                      checked={channel.inverted === true}
+                      onChange={(event) =>
+                        onMapping({
+                          ...mapping,
+                          omeZarrChannels: channels.map((candidate, candidateIndex) =>
+                            candidateIndex === index
+                              ? { ...candidate, inverted: event.target.checked }
+                              : candidate,
+                          ),
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    Invert
+                  </label>
+                  {channel.window === undefined ? null : (
+                    <p className="panel-note">
+                      Authored window {channel.window.start}–{channel.window.end}
+                    </p>
+                  )}
+                </fieldset>
+              )
+            })}
+            <p className="panel-note">
+              Channel overrides stay in the display mapping. Source OMERO metadata is not mutated.
+            </p>
+          </fieldset>
+        )}
         <label>
           Display range
           <select
@@ -158,8 +262,14 @@ export function InspectorContent({
             onChange={(event) =>
               onMapping(
                 event.target.value === 'auto'
-                  ? { mode: 'linear', range: 'auto' }
-                  : { mode: 'linear', range: 'manual', minimum: 0, maximum: 255 },
+                  ? { ...mapping, mode: 'linear', range: 'auto' }
+                  : {
+                      ...mapping,
+                      mode: 'linear',
+                      range: 'manual',
+                      minimum: mapping.minimum ?? 0,
+                      maximum: mapping.maximum ?? 255,
+                    },
               )
             }
           >
@@ -211,7 +321,11 @@ export function InspectorContent({
       </div>
       <div>
         <dt>Axes</dt>
-        <dd>{opened.dataset.axes.map(({ id, length }) => `${id} ${length}`).join(' × ')}</dd>
+        <dd>
+          {opened.dataset.axes
+            .map(({ id, length, unit }) => `${id} ${length}${unit === undefined ? '' : ` ${unit}`}`)
+            .join(' × ')}
+        </dd>
       </div>
       <div>
         <dt>Calibration</dt>
@@ -229,6 +343,132 @@ export function InspectorContent({
         <dt>Source</dt>
         <dd>{source.reader.format}</dd>
       </div>
+      {typeof source.metadata['omeNgffVersion'] === 'string' ? (
+        <div>
+          <dt>NGFF version</dt>
+          <dd>{source.metadata['omeNgffVersion']}</dd>
+        </div>
+      ) : null}
+      {typeof source.metadata['zarrFormat'] === 'number' ? (
+        <div>
+          <dt>Zarr version</dt>
+          <dd>{String(source.metadata['zarrFormat'])}</dd>
+        </div>
+      ) : null}
+      {typeof opened.dataset.metadata?.['kind'] === 'string' ? (
+        <div>
+          <dt>Dataset kind</dt>
+          <dd>{opened.dataset.metadata['kind']}</dd>
+        </div>
+      ) : null}
+      {source.source.kind.startsWith('ome-zarr') ? (
+        <div>
+          <dt>Selected level</dt>
+          <dd>{String(selection.resolutionLevel)}</dd>
+        </div>
+      ) : null}
+      {Array.isArray(opened.dataset.metadata?.['omeZarrLevels'])
+        ? (opened.dataset.metadata['omeZarrLevels'] as readonly Readonly<Record<string, unknown>>[])
+            .filter((level) => level['level'] === selection.resolutionLevel)
+            .flatMap((level) => [
+              <div key="logical-chunks">
+                <dt>Logical chunks</dt>
+                <dd>{JSON.stringify(level['logicalChunkShape'] ?? [])}</dd>
+              </div>,
+              <div key="outer-shards">
+                <dt>Outer shards</dt>
+                <dd>{JSON.stringify(level['storageChunkShape'] ?? [])}</dd>
+              </div>,
+              <div key="scale">
+                <dt>Scale</dt>
+                <dd>{JSON.stringify(level['scale'] ?? [])}</dd>
+              </div>,
+              <div key="translation">
+                <dt>Translation</dt>
+                <dd>{JSON.stringify(level['translation'] ?? [])}</dd>
+              </div>,
+              <div key="codecs">
+                <dt>Codecs</dt>
+                <dd>{Array.isArray(level['codecs']) ? level['codecs'].join(', ') : 'none'}</dd>
+              </div>,
+              <div key="shard-index">
+                <dt>Shard index</dt>
+                <dd>
+                  {typeof level['shardIndexLocation'] === 'string'
+                    ? level['shardIndexLocation']
+                    : 'n/a'}
+                </dd>
+              </div>,
+            ])
+        : null}
+      {(() => {
+        const display = opened.dataset.metadata?.['omeZarrDisplay']
+        const channels =
+          typeof display === 'object' &&
+          display !== null &&
+          !Array.isArray(display) &&
+          Array.isArray((display as { channels?: unknown }).channels)
+            ? (display as { channels: readonly unknown[] }).channels
+            : undefined
+        if (channels === undefined) return null
+        return channels.map((channel) => {
+          const record =
+            typeof channel === 'object' && channel !== null
+              ? (channel as Readonly<Record<string, unknown>>)
+              : {}
+          const key =
+            typeof record['label'] === 'string'
+              ? record['label']
+              : `channel-${String(record['index'] ?? record['color'] ?? 'omero')}`
+          return (
+            <div key={key}>
+              <dt>OMERO channel {key}</dt>
+              <dd>
+                {typeof record['label'] === 'string' ? record['label'] : key}
+                {typeof record['color'] === 'number'
+                  ? ` #${record['color'].toString(16).padStart(6, '0')}`
+                  : ''}
+              </dd>
+            </div>
+          )
+        })
+      })()}
+      {diagnostics?.omeZarrNetwork === undefined ? null : (
+        <>
+          <div>
+            <dt>Object requests</dt>
+            <dd>{String(diagnostics.omeZarrNetwork.objectRequests)}</dd>
+          </div>
+          <div>
+            <dt>Range requests</dt>
+            <dd>{String(diagnostics.omeZarrNetwork.rangeRequests)}</dd>
+          </div>
+          <div>
+            <dt>Metadata bytes</dt>
+            <dd>{fileSize(diagnostics.omeZarrNetwork.metadataBytesFetched)}</dd>
+          </div>
+          <div>
+            <dt>Array bytes</dt>
+            <dd>{fileSize(diagnostics.omeZarrNetwork.arrayBytesFetched)}</dd>
+          </div>
+          <div>
+            <dt>Unique bytes</dt>
+            <dd>{fileSize(diagnostics.uniqueBytes ?? diagnostics.omeZarrNetwork.uniqueBytes)}</dd>
+          </div>
+          <div>
+            <dt>Cache bytes</dt>
+            <dd>{fileSize(diagnostics.rangeCacheBytes)}</dd>
+          </div>
+          <div>
+            <dt>Cache hits</dt>
+            <dd>{String(diagnostics.rangeCacheHits)}</dd>
+          </div>
+          <div>
+            <dt>Cancelled requests</dt>
+            <dd>{String(diagnostics.omeZarrNetwork.abortedConsumers)}</dd>
+          </div>
+        </>
+      )}
       <div>
         <dt>Data type</dt>
         <dd>{opened.dataset.sampleType}</dd>

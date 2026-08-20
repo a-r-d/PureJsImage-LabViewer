@@ -3,6 +3,7 @@ import type {
   OpenedSourceDescriptor,
   PlaneSelection,
 } from '@pji-workbench/contracts'
+import { durableOmeZarrRootUrl } from '@pji-workbench/imaging'
 import {
   datasetReferenceId,
   type SemanticSourceId,
@@ -44,6 +45,54 @@ export function localSourceLocator(
     size: primary.size,
     lastModified: primary.lastModified,
     companionNames: files.slice(1).map(({ name }) => name),
+  }
+}
+
+export function omeZarrRemoteSourceLocator(
+  url: string,
+  evidence: Readonly<{
+    selectedRootMetadataName: 'zarr.json' | '.zgroup' | '.zattrs'
+    sourceIdentityStrength: 'strong' | 'weak' | 'session'
+    rootObjectSize: number
+    rootObjectValidator?: Readonly<{
+      kind: 'etag' | 'version-id' | 'last-modified'
+      value: string
+    }>
+  }>,
+): Extract<WorkspaceSourceReference['locator'], { readonly kind: 'ome-zarr-remote' }> {
+  return {
+    kind: 'ome-zarr-remote',
+    url: durableOmeZarrRootUrl(url),
+    selectedRootMetadataName: evidence.selectedRootMetadataName,
+    sourceIdentityStrength: evidence.sourceIdentityStrength,
+    rootObjectSize: evidence.rootObjectSize,
+    ...(evidence.rootObjectValidator === undefined
+      ? {}
+      : { rootObjectValidator: evidence.rootObjectValidator }),
+  }
+}
+
+export function omeZarrDirectorySourceLocator(
+  name: string,
+  selectedRootMetadataName: 'zarr.json' | '.zgroup' | '.zattrs',
+  directoryFingerprint: string,
+): Extract<WorkspaceSourceReference['locator'], { readonly kind: 'ome-zarr-directory' }> {
+  return {
+    kind: 'ome-zarr-directory',
+    name,
+    selectedRootMetadataName,
+    directoryFingerprint,
+  }
+}
+
+export function omeZarrZipSourceLocator(
+  file: LocalFileRef,
+): Extract<WorkspaceSourceReference['locator'], { readonly kind: 'ome-zarr-zip' }> {
+  return {
+    kind: 'ome-zarr-zip',
+    name: file.name,
+    size: file.size,
+    lastModified: file.lastModified,
   }
 }
 
@@ -105,6 +154,7 @@ export function sourceRebindMutation(
   sourceId: SemanticSourceId,
   files: readonly LocalFileRef[],
   nextSource: OpenedSourceDescriptor,
+  locator: WorkspaceSourceReference['locator'] = localSourceLocator(files),
 ): Extract<WorkspaceMutation, { readonly kind: 'source.rebind' }> {
   const datasets: readonly WorkspaceDatasetReference[] = nextSource.datasets.map((descriptor) => ({
     id: datasetReferenceId(sourceId, descriptor.id),
@@ -116,7 +166,7 @@ export function sourceRebindMutation(
   return {
     kind: 'source.rebind',
     sourceId,
-    locator: localSourceLocator(files),
+    locator,
     identity: validateSemanticIdentity(nextSource.identity),
     bound: true,
     datasets,

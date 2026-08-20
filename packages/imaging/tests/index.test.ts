@@ -949,8 +949,8 @@ describe('PureJsImage Worker host', () => {
     expect(validation.issues).toEqual([])
   })
 
-  it('pins the package and exposes the thirty-one explicit reader descriptors', async () => {
-    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.14.0')
+  it('pins the package and exposes the thirty-two explicit reader descriptors', async () => {
+    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.15.0')
     expect(SUPPORTED_READERS.map(({ id }) => id)).toEqual([
       'purejsimage/png',
       'purejsimage/jpeg',
@@ -959,6 +959,7 @@ describe('PureJsImage Worker host', () => {
       'purejsimage/jp2',
       'purejsimage/tiff',
       'purejsimage/ome-tiff',
+      'purejsimage/ome-zarr',
       'purejsimage/aperio-svs',
       'purejsimage/digital-micrograph',
       'purejsimage/tia-ser',

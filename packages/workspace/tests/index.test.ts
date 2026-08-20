@@ -406,6 +406,49 @@ describe('history, serialization, migration, and storage', () => {
     ).toThrow('application-owned example path')
   })
 
+  it('persists OME-Zarr locators without files, signed query strings, or worker handles', () => {
+    const directorySource: WorkspaceSourceReference = {
+      ...source,
+      bound: true,
+      locator: {
+        kind: 'ome-zarr-directory',
+        name: 'plate',
+        selectedRootMetadataName: 'zarr.json',
+        directoryFingerprint: 'abc123',
+      },
+    }
+    const remoteSource: WorkspaceSourceReference = {
+      ...source,
+      bound: true,
+      locator: {
+        kind: 'ome-zarr-remote',
+        url: 'https://example.test/store/?token=signed',
+        selectedRootMetadataName: 'zarr.json',
+        sourceIdentityStrength: 'weak',
+        rootObjectSize: 32,
+      },
+    }
+    const directorySnapshot = apply(empty(), {
+      ...sourceAdd,
+      source: directorySource,
+    })
+    const remoteSnapshot = apply(empty(), {
+      ...sourceAdd,
+      source: remoteSource,
+    })
+    const loadedDirectory = importWorkspaceProject(serializeWorkspaceProject(directorySnapshot))
+    const loadedRemote = importWorkspaceProject(serializeWorkspaceProject(remoteSnapshot))
+    expect(loadedDirectory.sources[0]?.bound).toBe(false)
+    expect(loadedDirectory.sources[0]?.locator).toEqual(directorySource.locator)
+    expect(loadedRemote.sources[0]?.locator).toMatchObject({
+      kind: 'ome-zarr-remote',
+      url: 'https://example.test/store/',
+    })
+    expect(serializeWorkspaceProject(directorySnapshot)).not.toMatch(
+      /File|directoryHandle|chunkUrl|decoded/iu,
+    )
+  })
+
   it('persists spatial references on dataset descriptors through project save/load', () => {
     const spatialReference = {
       crs: {

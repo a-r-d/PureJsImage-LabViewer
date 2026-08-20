@@ -101,7 +101,8 @@ export function createScienceAgentPolicy(
         return {
           decision: 'require-approval',
           reason:
-            capability.actionId === 'source.open-remote'
+            capability.actionId === 'source.open-remote' ||
+            capability.actionId === 'source.open-ome-zarr-remote'
               ? 'Opening a network source requires explicit network approval.'
               : 'Selecting or opening a scientific source requires user approval.',
           permissions,

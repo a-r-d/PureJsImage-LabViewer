@@ -141,7 +141,7 @@ describe('Atlas project documents', () => {
     const project = completeProject()
     const exported = exportGeoProjectDocument(project, {
       appVersion: '1.2.3',
-      pureJsImageVersion: '0.14.0',
+      pureJsImageVersion: '0.15.0',
     })
     const imported = importGeoProjectDocument(exported.text)
     expect(imported.checksumVerified).toBe(true)
@@ -159,7 +159,7 @@ describe('Atlas project documents', () => {
   it('removes signed session hrefs from durable source identity', () => {
     const { text } = exportGeoProjectDocument(completeProject(), {
       appVersion: '1',
-      pureJsImageVersion: '0.14.0',
+      pureJsImageVersion: '0.15.0',
     })
     expect(text).not.toContain('temporary=1')
     expect(text).not.toContain('session.invalid')
@@ -206,11 +206,11 @@ describe('Atlas project documents', () => {
       rois: [{ ...roi, properties: { apiKey: 'do-not-persist' } }],
     })
     expect(() =>
-      exportGeoProjectDocument(unsafe, { appVersion: '1', pureJsImageVersion: '0.14.0' }),
+      exportGeoProjectDocument(unsafe, { appVersion: '1', pureJsImageVersion: '0.15.0' }),
     ).toThrow(GeoProjectDocumentError)
     const exported = exportGeoProjectDocument(project, {
       appVersion: '1',
-      pureJsImageVersion: '0.14.0',
+      pureJsImageVersion: '0.15.0',
     })
     const damaged = JSON.parse(exported.text) as { project: { title: string } }
     damaged.project.title = 'tampered'

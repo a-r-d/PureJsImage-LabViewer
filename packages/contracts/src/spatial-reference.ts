@@ -32,7 +32,7 @@ export type SpatialNoData =
   | Readonly<{ kind: 'components'; values: readonly (number | string)[] }>
 
 /**
- * JSON-safe PureJsImage 0.14.0 spatial reference.
+ * JSON-safe PureJsImage 0.15.0 spatial reference.
  * Additive on dataset descriptors; the Worker RPC envelope stays schemaVersion 1.
  */
 export interface SpatialReference {

@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { enabledExampleScenarios } from '@pji-workbench/test-corpus'
 import { describe, expect, it } from 'vitest'
 
@@ -99,6 +99,18 @@ function isScienceRoutes(value: unknown): value is ScienceRouteFixture {
 
 describe('science workbench characterization', () => {
   it('keeps the reviewed semantic action catalog', async () => {
+    const catalog = stableJson({
+      schemaVersion: 1,
+      application: 'science-workbench',
+      actions: workbenchActionRegistry.list(),
+    })
+    const fixtureUrl = new URL(
+      './fixtures/characterization/science-action-catalog.json',
+      import.meta.url,
+    )
+    if (process.env['UPDATE_SCIENCE_CHARACTERIZATION'] === '1') {
+      await writeFile(fixtureUrl, `${JSON.stringify(catalog, null, 2)}\n`)
+    }
     const fixture = await readFixture('science-action-catalog.json')
     expect(isScienceActionCatalog(fixture)).toBe(true)
     if (!isScienceActionCatalog(fixture)) return
@@ -113,6 +125,9 @@ describe('science workbench characterization', () => {
     expect(ids).toEqual(
       expect.arrayContaining([
         'source.open-local',
+        'source.open-ome-zarr-remote',
+        'source.open-ome-zarr-local-resource',
+        'ome-zarr.store.describe',
         'workspace.openSample',
         'workspace.save',
         'analysis.catalog.read',
@@ -123,6 +138,19 @@ describe('science workbench characterization', () => {
   })
 
   it('keeps reviewed action availability for empty and opened-dataset contexts', async () => {
+    const snapshot = stableJson({
+      schemaVersion: 1,
+      application: 'science-workbench',
+      emptyWorkspace: availabilitySnapshot({ hasDataset: false }),
+      datasetOpen: availabilitySnapshot({ hasDataset: true, canUndo: true, canRedo: true }),
+    })
+    const fixtureUrl = new URL(
+      './fixtures/characterization/science-action-availability.json',
+      import.meta.url,
+    )
+    if (process.env['UPDATE_SCIENCE_CHARACTERIZATION'] === '1') {
+      await writeFile(fixtureUrl, `${JSON.stringify(snapshot, null, 2)}\n`)
+    }
     const fixture = await readFixture('science-action-availability.json')
     expect(isScienceActionAvailability(fixture)).toBe(true)
     if (!isScienceActionAvailability(fixture)) return
@@ -192,6 +220,7 @@ describe('science workbench characterization', () => {
     expect(handlersSource).toContain("'workspace.save@1'")
     expect(handlersSource).toContain("'analysis.catalog.read@1'")
     expect(handlersSource).toContain("'source.open-local@1'")
+    expect(handlersSource).toContain("'source.open-ome-zarr-remote@1'")
     const appSource = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
     expect(appSource).toContain('profile={scienceDomainProfile}')
   })

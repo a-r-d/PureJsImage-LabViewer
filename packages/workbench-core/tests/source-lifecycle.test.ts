@@ -8,6 +8,9 @@ import {
   datasetSelectMutation,
   formatOpenSourceError,
   localSourceLocator,
+  omeZarrDirectorySourceLocator,
+  omeZarrRemoteSourceLocator,
+  omeZarrZipSourceLocator,
   remoteSourceLocator,
   sampleSourceLocator,
   sourceRebindMutation,
@@ -67,7 +70,7 @@ function openedDataset(): OpenedDatasetDescriptor {
 }
 
 describe('source lifecycle', () => {
-  it('builds locators for the four science source adapters', () => {
+  it('builds locators for science source adapters including OME-Zarr', () => {
     expect(sampleSourceLocator('generated.calibrated-particles')).toEqual({
       kind: 'sample',
       sampleId: 'generated.calibrated-particles',
@@ -87,6 +90,22 @@ describe('source lifecycle', () => {
       size: 10,
       lastModified: 1,
       companionNames: ['a.xml'],
+    })
+    expect(
+      omeZarrRemoteSourceLocator('https://example.test/store/?X-Amz-Signature=secret', {
+        selectedRootMetadataName: 'zarr.json',
+        sourceIdentityStrength: 'weak',
+        rootObjectSize: 12,
+      }).url,
+    ).toBe('https://example.test/store/')
+    expect(omeZarrDirectorySourceLocator('plate', 'zarr.json', 'abc').kind).toBe(
+      'ome-zarr-directory',
+    )
+    expect(omeZarrZipSourceLocator({ name: 'store.zip', size: 8, lastModified: 1 })).toEqual({
+      kind: 'ome-zarr-zip',
+      name: 'store.zip',
+      size: 8,
+      lastModified: 1,
     })
   })
 

@@ -36,7 +36,11 @@ import {
   IndexedDbGeoProjectStore,
   MemoryGeoProjectStore,
 } from '@pji-workbench/geo-workbench'
-import { preflightRasterAsset, type RasterAssetPreflight } from '@pji-workbench/imaging'
+import {
+  PUREJSIMAGE_PACKAGE_VERSION,
+  preflightRasterAsset,
+  type RasterAssetPreflight,
+} from '@pji-workbench/imaging'
 import { Button, EmptyState, ErrorState, Icon, ThemeRoot } from '@pji-workbench/ui'
 import { WorkbenchShell } from '@pji-workbench/workbench-react'
 import {
@@ -114,7 +118,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const viewportPort = viewportPortRef.current
   const controllerRef = useRef<GeoWorkbenchController | null>(null)
   if (controllerRef.current === null) {
-    const projectVersions = { appVersion: '0.0.0', pureJsImageVersion: '0.14.0' }
+    const projectVersions = { appVersion: '0.0.0', pureJsImageVersion: PUREJSIMAGE_PACKAGE_VERSION }
     controllerRef.current = new GeoWorkbenchController({
       runtime,
       viewport: viewportPort,

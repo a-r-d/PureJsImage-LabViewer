@@ -9,6 +9,10 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Added
 
+- The workbench consumes `purejsimage@0.15.0`. Science opens remote, directory, and ZIP OME-Zarr
+  stores through explicit source kinds on the imaging Worker. Atlas does not gain an OME-Zarr
+  source workflow merely because the format is multiscale.
+
 - Atlas virtual raster analysis through the shared semantic action host: normalized band math,
   explicit virtual band stacks, hillshade/slope/aspect, raster difference, bounded region
   statistics, and line profiles. Derived layers persist normalized recipes and provenance, render

@@ -6,6 +6,7 @@ import type {
   WorkspaceSnapshot,
   WorkspaceSourceReference,
 } from './model.js'
+import { sourceLocatorRequiresRebind } from './model.js'
 import { deterministicJson } from './serialization.js'
 import { semanticIdentityEqual } from './validation.js'
 
@@ -63,7 +64,7 @@ export class WorkspaceRuntimeReconciler {
     const source = current.sources.find(({ id }) => id === current.active?.sourceId)
     const dataset = current.datasets.find(({ id }) => id === current.active?.datasetReferenceId)
     if (source === undefined || dataset === undefined) return { status: 'no-active-dataset' }
-    if (source.locator.kind === 'local' && !source.bound) {
+    if (sourceLocatorRequiresRebind(source.locator) && !source.bound) {
       return { status: 'needs-rebind', source }
     }
     const actual = await this.port.materialize(source, dataset, current.active, controller.signal)

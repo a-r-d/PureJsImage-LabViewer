@@ -1,7 +1,7 @@
 {
   "accept": ".ang,.blo,.bmp,.cbf,.ccp4,.ctf,.dat,.dib,.dm3,.dm4,.emd,.emi,.emsa,.envi,.fit,.fits,.fts,.gsf,.hdr,.ibw,.img,.imgcif,.jp2,.jpe,.jpeg,.jpg,.map,.mha,.mhd,.mib,.mrc,.msa,.nhdr,.nii,.nii.gz,.npy,.nrrd,.ome.tif,.ome.tiff,.png,.pro,.raw,.rpl,.ser,.sur,.svs,.sxm,.tif,.tiff,.webp,.x3p",
   "application": "science-workbench",
-  "pureJsImagePackageVersion": "0.14.0",
+  "pureJsImagePackageVersion": "0.15.0",
   "readers": [
     {
       "extensions": ["png"],
@@ -51,6 +51,13 @@
       "id": "purejsimage/ome-tiff",
       "mediaTypes": ["image/tiff", "image/x-tiff"],
       "version": "1.0.0"
+    },
+    {
+      "extensions": ["zarr", "ozx"],
+      "format": "OME-Zarr",
+      "id": "purejsimage/ome-zarr",
+      "mediaTypes": ["application/vnd.ome.zarr", "application/x-zarr"],
+      "version": "1.1.0"
     },
     {
       "extensions": ["svs"],

@@ -16,6 +16,8 @@ const COMPOUND_ACCEPT_EXTENSIONS = Object.freeze([
   'nii.gz',
 ])
 
+const CATALOG_ONLY_EXTENSIONS = Object.freeze(['gz', 'zarr', 'ozx'])
+
 export function readersForProfile(
   profile: Pick<HeadlessDomainProfile<unknown>, 'readerIds'>,
   catalog: readonly ReaderDescriptor[] = SUPPORTED_READERS,
@@ -33,7 +35,9 @@ export function readersForProfile(
 export function fileAcceptForReaders(readers: readonly ReaderDescriptor[]): string {
   return [
     ...new Set([
-      ...readers.flatMap(({ extensions }) => extensions).filter((extension) => extension !== 'gz'),
+      ...readers
+        .flatMap(({ extensions }) => extensions)
+        .filter((extension) => !CATALOG_ONLY_EXTENSIONS.includes(extension)),
       ...COMPOUND_ACCEPT_EXTENSIONS,
     ]),
   ]

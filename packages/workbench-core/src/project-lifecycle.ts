@@ -1,5 +1,5 @@
 import type { OpenedSourceDescriptor } from '@pji-workbench/contracts'
-import { PUREJSIMAGE_PACKAGE_VERSION } from '@pji-workbench/imaging'
+import { authoredOmeZarrDisplayMapping, PUREJSIMAGE_PACKAGE_VERSION } from '@pji-workbench/imaging'
 import {
   createEmptyWorkspace,
   type DisplayLayerState,
@@ -112,7 +112,10 @@ export function projectSourceMutation(
               label: first.descriptor.name ?? first.datasetId,
               visible: true,
               opacity: 1,
-              mapping: { mode: 'linear', range: 'auto' },
+              mapping: authoredOmeZarrDisplayMapping(first.descriptor.metadata) ?? {
+                mode: 'linear',
+                range: 'auto',
+              },
               palette: 'gray',
             } satisfies DisplayLayerState,
           ],

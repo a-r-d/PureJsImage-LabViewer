@@ -13,6 +13,7 @@ export const SCIENCE_READER_IDS = Object.freeze([
   'purejsimage/jp2',
   'purejsimage/tiff',
   'purejsimage/ome-tiff',
+  'purejsimage/ome-zarr',
   'purejsimage/aperio-svs',
   'purejsimage/digital-micrograph',
   'purejsimage/tia-ser',

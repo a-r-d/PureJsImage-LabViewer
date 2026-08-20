@@ -52,6 +52,30 @@
     "dataset.list@1": {
       "available": true
     },
+    "dataset.select@1": {
+      "available": true
+    },
+    "display.channels.read@1": {
+      "available": true
+    },
+    "display.channels.set@1": {
+      "available": true
+    },
+    "ome-zarr.dataset.describe@1": {
+      "available": true
+    },
+    "ome-zarr.dataset.list@1": {
+      "available": true
+    },
+    "ome-zarr.network.describe@1": {
+      "available": true
+    },
+    "ome-zarr.storage.describe@1": {
+      "available": true
+    },
+    "ome-zarr.store.describe@1": {
+      "available": true
+    },
     "palette.open@1": {
       "available": true
     },
@@ -65,6 +89,9 @@
       "available": true
     },
     "pipeline.read@1": {
+      "available": true
+    },
+    "plane.select@1": {
       "available": true
     },
     "result.export.propose@1": {
@@ -123,6 +150,12 @@
       "available": true
     },
     "source.open-local@1": {
+      "available": true
+    },
+    "source.open-ome-zarr-local-resource@1": {
+      "available": true
+    },
+    "source.open-ome-zarr-remote@1": {
       "available": true
     },
     "source.open-remote@1": {
@@ -232,6 +265,38 @@
     "dataset.list@1": {
       "available": true
     },
+    "dataset.select@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "display.channels.read@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "display.channels.set@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "ome-zarr.dataset.describe@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "ome-zarr.dataset.list@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "ome-zarr.network.describe@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "ome-zarr.storage.describe@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "ome-zarr.store.describe@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
     "palette.open@1": {
       "available": true
     },
@@ -247,6 +312,10 @@
     },
     "pipeline.read@1": {
       "available": true
+    },
+    "plane.select@1": {
+      "available": false,
+      "reason": "Open a dataset first."
     },
     "result.export.propose@1": {
       "available": true
@@ -308,6 +377,12 @@
       "available": true
     },
     "source.open-local@1": {
+      "available": true
+    },
+    "source.open-ome-zarr-local-resource@1": {
+      "available": true
+    },
+    "source.open-ome-zarr-remote@1": {
       "available": true
     },
     "source.open-remote@1": {

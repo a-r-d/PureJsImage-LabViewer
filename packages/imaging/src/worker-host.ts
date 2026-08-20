@@ -52,6 +52,8 @@ import { HttpRangeSource } from 'purejsimage/sources/http-range'
 import { cacheCodecAdapterPlane, usesCodecAdapterReader } from './codec-plane-cache.js'
 import { wrapFetchToExposeContentRange } from './cors-range-fetch.js'
 import { datasetDescriptor, defaultPlaneSelection, openedSourceDescriptor } from './descriptor.js'
+import { omeZarrDirectoryFingerprint } from './ome-zarr-directory.js'
+import { composeOmeZarrDisplayTile } from './ome-zarr-display.js'
 import { PUREJSIMAGE_PACKAGE_VERSION } from './package-version.js'
 import { createAnalysisBindings, isScientificDataset } from './worker-host/analysis-rpc.js'
 import {
@@ -75,6 +77,18 @@ import {
   displayStatisticsCacheKey,
   sampleRasterPoint,
 } from './worker-host/display-rpc.js'
+import {
+  directoryMembersForOpen,
+  directoryOmeZarrIdentity,
+  durableOmeZarrRootUrl,
+  filesFromOmeZarrAttachments,
+  omeZarrIdentityEvidence,
+  omeZarrIdentityMetadata,
+  omeZarrNetworkFromStore,
+  openOmeZarrHttpDocument,
+  openOmeZarrScientificDocument,
+  zipOmeZarrIdentity,
+} from './worker-host/ome-zarr-rpc.js'
 import {
   abortError,
   errorResult,
@@ -392,6 +406,12 @@ export class ImagingWorkerHost {
         return this.#openBundled(request, signal)
       case 'source.open-remote':
         return this.#openRemote(request, signal)
+      case 'source.open-ome-zarr-remote':
+        return this.#openOmeZarrRemote(request, signal)
+      case 'source.open-ome-zarr-directory':
+        return this.#openOmeZarrDirectory(request, signal)
+      case 'source.open-ome-zarr-zip':
+        return this.#openOmeZarrZip(request, signal)
       case 'source.close':
         return this.#closeSource(request)
       case 'dataset.open':
@@ -754,9 +774,166 @@ export class ImagingWorkerHost {
     }
   }
 
+  async #openOmeZarrRemote(
+    request: Extract<WorkerRequest, { kind: 'source.open-ome-zarr-remote' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    const lifetime = new AbortController()
+    let document: ScientificDocument | undefined
+    let store: SourceRecord['omeZarrHttpStore']
+    try {
+      const url = assertRemoteUrl(request.payload.url)
+      const opened = await openOmeZarrHttpDocument(url.href, {
+        ...(this.#fetch === undefined ? {} : { fetch: this.#fetch }),
+        signal,
+        maxCacheBytesPerSource: this.#rangeCacheBudgetForNewSource(),
+        blockBytes: RANGE_BLOCK_BYTES,
+      })
+      document = opened.document
+      const httpStore = opened.store
+      store = httpStore
+      const identity = omeZarrIdentityEvidence(httpStore.identitySummary(document))
+      const name = sourceName(new URL(durableOmeZarrRootUrl(httpStore.normalized.storeRootUrl)))
+      const record: SourceRecord = {
+        id: this.#id('source') as SourceId,
+        documentId: this.#id('document') as DocumentId,
+        generation: request.payload.generation,
+        kind: 'ome-zarr-remote',
+        name: name.length === 0 ? 'ome-zarr' : name,
+        size: identity.rootObjectSize,
+        url: durableOmeZarrRootUrl(httpStore.normalized.storeRootUrl),
+        document,
+        rangeSources: [],
+        lifetime,
+        lastUsedAt: this.#now(),
+        omeZarrHttpStore: httpStore,
+        omeZarrIdentity: identity,
+        omeZarrNetwork: () => omeZarrNetworkFromStore(httpStore),
+        datasets: new Map(),
+        closed: false,
+      }
+      await this.#commitSource(record)
+      return success(request.requestId, 'source.opened', this.#describe(record))
+    } catch (error) {
+      lifetime.abort(abortError('Source open failed'))
+      store?.close()
+      if (document !== undefined) await document.close?.()
+      return errorResult(request.requestId, this.#openFailure(error))
+    }
+  }
+
+  async #openOmeZarrDirectory(
+    request: Extract<WorkerRequest, { kind: 'source.open-ome-zarr-directory' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    const lifetime = new AbortController()
+    let document: ScientificDocument | undefined
+    try {
+      const files = filesFromOmeZarrAttachments(request.payload.files)
+      const selected = directoryMembersForOpen(files, request.payload.storeRoot)
+      document = await openOmeZarrScientificDocument(selected.primary, selected.members, signal)
+      const fingerprint = await omeZarrDirectoryFingerprint(
+        files.map((file) => ({
+          relativePath: file.name,
+          size: file.size,
+        })),
+      )
+      const identity = directoryOmeZarrIdentity(
+        selected.metadataName,
+        fingerprint,
+        selected.primary.size,
+      )
+      const record: SourceRecord = {
+        id: this.#id('source') as SourceId,
+        documentId: this.#id('document') as DocumentId,
+        generation: request.payload.generation,
+        kind: 'ome-zarr-directory',
+        name: selected.root.length === 0 ? selected.metadataName : selected.root,
+        size: files.reduce((sum, file) => sum + file.size, 0),
+        document,
+        rangeSources: [],
+        lifetime,
+        lastUsedAt: this.#now(),
+        omeZarrIdentity: identity,
+        directoryDisposer: () => undefined,
+        datasets: new Map(),
+        closed: false,
+      }
+      await this.#commitSource(record)
+      return success(request.requestId, 'source.opened', this.#describe(record))
+    } catch (error) {
+      lifetime.abort(abortError('Source open failed'))
+      if (document !== undefined) await document.close?.()
+      return errorResult(request.requestId, this.#openFailure(error))
+    }
+  }
+
+  async #openOmeZarrZip(
+    request: Extract<WorkerRequest, { kind: 'source.open-ome-zarr-zip' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    const lifetime = new AbortController()
+    let document: ScientificDocument | undefined
+    try {
+      const files = filesFromOmeZarrAttachments(request.payload.files)
+      const primary = files[0]
+      if (primary === undefined)
+        throw new RpcValidationError('INVALID_PAYLOAD', 'OME-Zarr ZIP archive is missing')
+      const prefix = await primary.slice(0, 4).arrayBuffer()
+      const magic = new Uint8Array(prefix)
+      if (
+        magic.byteLength < 4 ||
+        magic[0] !== 0x50 ||
+        magic[1] !== 0x4b ||
+        !(
+          (magic[2] === 0x03 && magic[3] === 0x04) ||
+          (magic[2] === 0x05 && magic[3] === 0x06) ||
+          (magic[2] === 0x06 && magic[3] === 0x06)
+        )
+      ) {
+        throw new RpcValidationError('INVALID_PAYLOAD', 'OME-Zarr ZIP open requires a ZIP archive.')
+      }
+      document = await openOmeZarrScientificDocument(primary, [primary], signal)
+      const metadataName =
+        document.metadata['store'] === 'zip' &&
+        typeof document.metadata['primaryMetadataName'] === 'string'
+          ? document.metadata['primaryMetadataName']
+          : 'zarr.json'
+      const identity = zipOmeZarrIdentity(
+        metadataName === '.zgroup' || metadataName === '.zattrs' || metadataName === 'zarr.json'
+          ? metadataName
+          : 'zarr.json',
+        primary.size,
+      )
+      const record: SourceRecord = {
+        id: this.#id('source') as SourceId,
+        documentId: this.#id('document') as DocumentId,
+        generation: request.payload.generation,
+        kind: 'ome-zarr-zip',
+        name: primary.name,
+        size: primary.size,
+        document,
+        rangeSources: [],
+        lifetime,
+        lastUsedAt: this.#now(),
+        omeZarrIdentity: identity,
+        datasets: new Map(),
+        closed: false,
+      }
+      await this.#commitSource(record)
+      return success(request.requestId, 'source.opened', this.#describe(record))
+    } catch (error) {
+      lifetime.abort(abortError('Source open failed'))
+      if (document !== undefined) await document.close?.()
+      return errorResult(request.requestId, this.#openFailure(error))
+    }
+  }
+
   async #commitSource(record: SourceRecord): Promise<void> {
     if (this.#sources.size >= this.#limits.maxOpenSources) {
       record.lifetime.abort(abortError('Open source limit reached'))
+      record.omeZarrHttpStore?.close()
+      record.directoryDisposer?.()
       await record.document.close?.()
       throw this.#limitError(`Open source limit of ${this.#limits.maxOpenSources} reached.`)
     }
@@ -775,12 +952,18 @@ export class ImagingWorkerHost {
       size: record.size,
       ...(record.url === undefined ? {} : { url: record.url }),
     })
-    if (record.cogInspection === undefined) return base
+    const extra = {
+      ...omeZarrIdentityMetadata(record.omeZarrIdentity),
+      ...(record.cogInspection === undefined
+        ? {}
+        : { [COG_INSPECTION_METADATA_KEY]: record.cogInspection }),
+    }
+    if (Object.keys(extra).length === 0) return base
     return {
       ...base,
       metadata: {
         ...base.metadata,
-        [COG_INSPECTION_METADATA_KEY]: record.cogInspection,
+        ...extra,
       },
     }
   }
@@ -953,6 +1136,30 @@ export class ImagingWorkerHost {
         request.payload.generation,
       )
       this.#touch(source)
+      if (request.payload.mapping.omeZarrChannels !== undefined) {
+        const mapped = await composeOmeZarrDisplayTile(record, request.payload, signal)
+        const width = request.payload.region.width
+        const height = request.payload.region.height
+        const response: Extract<WorkerResponse, { kind: 'tile.ready' }> = {
+          schemaVersion: RPC_SCHEMA_VERSION,
+          requestId: request.requestId,
+          ok: true,
+          kind: 'tile.ready',
+          payload: {
+            tileId: request.payload.tileId,
+            datasetHandleId: request.payload.datasetHandleId,
+            generation: request.payload.generation,
+            region: request.payload.region,
+            component: request.payload.component,
+            width,
+            height,
+            ...mapped,
+            elapsedMilliseconds: performance.now() - started,
+          },
+        }
+        this.#releases.tiles += 1
+        return { response, transfer: mappedTileTransfer(mapped) }
+      }
       tile = await record.runtime.request(record.tileSource, {
         address: {
           cacheClass: 'source',
@@ -1009,6 +1216,33 @@ export class ImagingWorkerHost {
         request.payload.generation,
       )
       this.#touch(source)
+      if (request.payload.mapping.omeZarrChannels !== undefined) {
+        const mapped = await composeOmeZarrDisplayTile(record, request.payload, signal)
+        const response: Extract<WorkerResponse, { kind: 'display.tile.ready' }> = {
+          schemaVersion: RPC_SCHEMA_VERSION,
+          requestId: request.requestId,
+          ok: true,
+          kind: 'display.tile.ready',
+          payload: {
+            tileId: request.payload.tileId,
+            datasetHandleId: request.payload.datasetHandleId,
+            generation: request.payload.generation,
+            sourceIdentity: request.payload.sourceIdentity,
+            sourceRevision: request.payload.sourceRevision,
+            layerId: request.payload.layerId,
+            styleRevision: request.payload.styleRevision,
+            statisticsRevision: request.payload.statisticsRevision,
+            region: request.payload.region,
+            overview: request.payload.resolutionLevel,
+            width: request.payload.region.width,
+            height: request.payload.region.height,
+            rgba: mapped.rgba,
+            elapsedMilliseconds: performance.now() - started,
+          },
+        }
+        this.#releases.tiles += 1
+        return { response, transfer: mappedDisplayTileTransfer(mapped.rgba) }
+      }
       tile = await record.runtime.request(record.tileSource, {
         address: {
           cacheClass: 'source',
@@ -1831,18 +2065,25 @@ export class ImagingWorkerHost {
     )
     const rangeRequests = rangeStats.requests
     const rangeCacheHits = rangeStats.cacheHits
+    const omeZarrNetwork = source.omeZarrNetwork?.()
     return {
       id: source.id,
       kind: source.kind,
       size: source.size,
       revision: source.generation,
-      rangeRequests,
-      rangeBytesFetched: rangeStats.bytesFetched,
-      rangeCacheBytes: rangeStats.cacheBytes,
-      rangeCacheHits,
-      rangeCacheMisses: Math.max(0, rangeRequests - rangeCacheHits),
-      uniqueBytes: rangeStats.uniqueBytes,
+      rangeRequests: omeZarrNetwork?.rangeRequests ?? rangeRequests,
+      rangeBytesFetched: omeZarrNetwork?.bytesFetched ?? rangeStats.bytesFetched,
+      rangeCacheBytes: omeZarrNetwork?.sourceCacheBytes ?? rangeStats.cacheBytes,
+      rangeCacheHits: omeZarrNetwork?.sourceCacheHits ?? rangeCacheHits,
+      rangeCacheMisses: Math.max(
+        0,
+        (omeZarrNetwork?.rangeRequests ?? rangeRequests) -
+          (omeZarrNetwork?.sourceCacheHits ?? rangeCacheHits),
+      ),
+      uniqueBytes: omeZarrNetwork?.uniqueBytes ?? rangeStats.uniqueBytes,
       openDatasets: source.datasets.size,
+      ...(omeZarrNetwork === undefined ? {} : { omeZarrNetwork }),
+      ...(source.omeZarrIdentity === undefined ? {} : { omeZarrIdentity: source.omeZarrIdentity }),
     }
   }
 
@@ -1944,6 +2185,8 @@ export class ImagingWorkerHost {
     }
     for (const dataset of [...record.datasets.values()]) await this.#releaseDataset(record, dataset)
     await record.document.close?.()
+    record.omeZarrHttpStore?.close()
+    record.directoryDisposer?.()
     this.#sources.delete(record.id)
     this.#releases.documents += 1
   }
@@ -1964,6 +2207,7 @@ export class ImagingWorkerHost {
     let used = 0
     for (const source of this.#sources.values()) {
       for (const range of source.rangeSources) used += range.stats.cacheBytes
+      used += source.omeZarrNetwork?.().sourceCacheBytes ?? 0
     }
     return Math.max(0, this.#limits.maxRangeCacheBytes - used)
   }
@@ -1982,6 +2226,9 @@ export class ImagingWorkerHost {
       kind === 'source.open-local' ||
       kind === 'source.open-bundled' ||
       kind === 'source.open-remote' ||
+      kind === 'source.open-ome-zarr-remote' ||
+      kind === 'source.open-ome-zarr-directory' ||
+      kind === 'source.open-ome-zarr-zip' ||
       kind === 'dataset.open' ||
       kind === 'tile.request' ||
       kind === 'display.tile.request' ||

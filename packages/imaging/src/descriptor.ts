@@ -237,9 +237,32 @@ export function defaultPlaneSelection(descriptor: DatasetDescriptor): PlaneSelec
     displayAxes: pair,
     fixedIndices: descriptor.axes
       .filter(({ id }) => id !== pair[0] && id !== pair[1])
-      .map(({ id }) => ({ axisId: id, index: 0 })),
+      .map((axis) => ({ axisId: axis.id, index: defaultFixedIndex(descriptor, axis) })),
     resolutionLevel: descriptor.levels[0]?.level ?? 0,
   }
+}
+
+function defaultFixedIndex(
+  descriptor: DatasetDescriptor,
+  axis: AxisDescriptor,
+): number {
+  const display = descriptor.metadata?.['omeZarrDisplay']
+  const rdefs =
+    typeof display === 'object' && display !== null && !Array.isArray(display)
+      ? (display as Readonly<Record<string, unknown>>)['rdefs']
+      : undefined
+  const defaults =
+    typeof rdefs === 'object' && rdefs !== null && !Array.isArray(rdefs)
+      ? (rdefs as Readonly<Record<string, unknown>>)
+      : undefined
+  const authored =
+    axis.kind === 'time' || axis.id === 't' || axis.id === 'T'
+      ? defaults?.['defaultT']
+      : axis.id === 'z' || axis.id === 'Z'
+        ? defaults?.['defaultZ']
+        : undefined
+  const index = typeof authored === 'number' && Number.isInteger(authored) ? authored : 0
+  return Math.min(Math.max(0, index), Math.max(0, axis.length - 1))
 }
 
 export function openedSourceDescriptor(options: {

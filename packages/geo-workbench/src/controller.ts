@@ -72,6 +72,7 @@ import {
   transformGeoMapGeometry,
   transformMapPoint,
 } from '@pji-workbench/domain-geo'
+import { PUREJSIMAGE_PACKAGE_VERSION } from '@pji-workbench/imaging'
 import { type GeoProjectStore, MemoryGeoProjectStore } from './project-store.js'
 import {
   catalogRehydrationEntry,
@@ -237,7 +238,7 @@ export class GeoWorkbenchController {
     this.#preflight = options.preflightCatalogAsset
     this.#projectVersions = options.projectVersions ?? {
       appVersion: '0.0.0',
-      pureJsImageVersion: '0.14.0',
+      pureJsImageVersion: PUREJSIMAGE_PACKAGE_VERSION,
     }
     this.#projectStore = options.projectStore ?? new MemoryGeoProjectStore(this.#projectVersions)
     this.#probeRemoteSource = options.probeRemoteSource

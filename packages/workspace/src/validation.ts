@@ -1,5 +1,9 @@
 import type { DatasetDescriptor, DisplayMapping, PlaneSelection } from '@pji-workbench/contracts'
-import { normalizeSpatialReference, SpatialReferenceError } from '@pji-workbench/contracts'
+import {
+  isOmeZarrRootMetadataName,
+  normalizeSpatialReference,
+  SpatialReferenceError,
+} from '@pji-workbench/contracts'
 import type { AnalysisGraph, AnalysisSemanticIdentity } from 'purejsimage/analysis'
 import type { PersistedInputBinding, PersistedSourceReference } from 'purejsimage/analysis/project'
 import type { RoiSet } from 'purejsimage/analysis/roi'
@@ -303,6 +307,105 @@ function locator(value: unknown, path: string): SourceLocator {
       throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.url must use HTTPS`)
     }
     return { kind: 'remote', url: parsed.href }
+  }
+  if (candidate.kind === 'ome-zarr-remote') {
+    const url = stringValue(candidate.url, `${path}.url`)
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.url is invalid`)
+    }
+    if (
+      parsed.protocol !== 'https:' &&
+      parsed.hostname !== 'localhost' &&
+      parsed.hostname !== '127.0.0.1'
+    ) {
+      throw new WorkspaceValidationError('INVALID_PROJECT', `${path}.url must use HTTPS`)
+    }
+    parsed.search = ''
+    parsed.hash = ''
+    parsed.username = ''
+    parsed.password = ''
+    const selectedRootMetadataName = stringValue(
+      candidate['selectedRootMetadataName'],
+      `${path}.selectedRootMetadataName`,
+    )
+    if (!isOmeZarrRootMetadataName(selectedRootMetadataName)) {
+      throw new WorkspaceValidationError(
+        'INVALID_PROJECT',
+        `${path}.selectedRootMetadataName is unsupported`,
+      )
+    }
+    const strength = stringValue(
+      candidate['sourceIdentityStrength'],
+      `${path}.sourceIdentityStrength`,
+    )
+    if (strength !== 'strong' && strength !== 'weak' && strength !== 'session') {
+      throw new WorkspaceValidationError(
+        'INVALID_PROJECT',
+        `${path}.sourceIdentityStrength is unsupported`,
+      )
+    }
+    const validatorValue = candidate['rootObjectValidator']
+    const rootObjectValidator =
+      validatorValue === undefined
+        ? undefined
+        : (() => {
+            const validator = record(validatorValue, `${path}.rootObjectValidator`)
+            const kindValue = stringValue(validator['kind'], `${path}.rootObjectValidator.kind`)
+            if (
+              kindValue !== 'etag' &&
+              kindValue !== 'version-id' &&
+              kindValue !== 'last-modified'
+            ) {
+              throw new WorkspaceValidationError(
+                'INVALID_PROJECT',
+                `${path}.rootObjectValidator.kind is unsupported`,
+              )
+            }
+            return {
+              kind: kindValue,
+              value: stringValue(validator['value'], `${path}.rootObjectValidator.value`),
+            } as const
+          })()
+    return {
+      kind: 'ome-zarr-remote',
+      url: parsed.href.endsWith('/') ? parsed.href : `${parsed.href}/`,
+      selectedRootMetadataName,
+      sourceIdentityStrength: strength,
+      rootObjectSize: integer(candidate['rootObjectSize'], `${path}.rootObjectSize`),
+      ...(rootObjectValidator === undefined ? {} : { rootObjectValidator }),
+    }
+  }
+  if (candidate.kind === 'ome-zarr-directory') {
+    const selectedRootMetadataName = stringValue(
+      candidate['selectedRootMetadataName'],
+      `${path}.selectedRootMetadataName`,
+    )
+    if (!isOmeZarrRootMetadataName(selectedRootMetadataName)) {
+      throw new WorkspaceValidationError(
+        'INVALID_PROJECT',
+        `${path}.selectedRootMetadataName is unsupported`,
+      )
+    }
+    return {
+      kind: 'ome-zarr-directory',
+      name: stringValue(candidate.name, `${path}.name`),
+      selectedRootMetadataName,
+      directoryFingerprint: stringValue(
+        candidate['directoryFingerprint'],
+        `${path}.directoryFingerprint`,
+      ),
+    }
+  }
+  if (candidate.kind === 'ome-zarr-zip') {
+    return {
+      kind: 'ome-zarr-zip',
+      name: stringValue(candidate.name, `${path}.name`),
+      size: integer(candidate.size, `${path}.size`),
+      lastModified: integer(candidate.lastModified, `${path}.lastModified`),
+    }
   }
   if (candidate.kind === 'local') {
     return {

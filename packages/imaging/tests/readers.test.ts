@@ -452,8 +452,8 @@ describe('scientific reader catalog', () => {
       .map(({ id, format }) => ({ id, format }))
       .sort((left, right) => left.id.localeCompare(right.id))
     expect(live).toEqual(expect.arrayContaining(supported))
-    expect(supported).toHaveLength(31)
-    expect(live.length).toBeGreaterThanOrEqual(31)
+    expect(supported).toHaveLength(32)
+    expect(live.length).toBeGreaterThanOrEqual(32)
   })
 
   it('selects probe candidates from filename extensions', () => {
@@ -465,7 +465,9 @@ describe('scientific reader catalog', () => {
     expect(readerKeysForSource('cube.raw')).toEqual(['rpl', 'envi'])
     expect(readerKeysForSource('photo.png')).toEqual(['png'])
     expect(readerKeysForSource('unknown.bin')).toEqual(
-      SUPPORTED_READERS.map(({ id }) => id.slice('purejsimage/'.length)),
+      SUPPORTED_READERS.filter(({ id }) => id !== 'purejsimage/ome-zarr').map(({ id }) =>
+        id.slice('purejsimage/'.length),
+      ),
     )
   })
 

@@ -9,6 +9,7 @@ export const RPC_LIMITS = Object.freeze({
   maxTilePixels: 512 * 512,
   maxTablePageRows: 200,
   maxTablePageColumns: 32,
+  maxOmeZarrDirectoryFiles: 4_096,
 })
 
 /** Default imaging-Worker resource budgets. Visible sources are never LRU-evicted. */
@@ -56,13 +57,27 @@ import type {
   DerivedRasterStatisticsRequest,
   DerivedRasterStatisticsResponse,
 } from './geo-analysis.js'
+import type {
+  OmeZarrChannelDisplayState,
+  OmeZarrColorModel,
+  OmeZarrNetworkDiagnostics,
+  OmeZarrRootIdentityEvidence,
+} from './ome-zarr.js'
 import type { SpatialReference } from './spatial-reference.js'
 
 export * from './analysis.js'
 export * from './geo-analysis.js'
+export * from './ome-zarr.js'
 export * from './spatial-reference.js'
 
-export type SourceKind = 'bundled' | 'local' | 'remote' | 'sample'
+export type SourceKind =
+  | 'bundled'
+  | 'local'
+  | 'remote'
+  | 'sample'
+  | 'ome-zarr-remote'
+  | 'ome-zarr-directory'
+  | 'ome-zarr-zip'
 export type TilePriority = 'visible' | 'near-visible' | 'background'
 export type DisplayStretch = 'minmax' | 'percentile'
 
@@ -87,6 +102,8 @@ export type DisplayMapping = Readonly<{
   bands?: DisplayBandMapping
   channelRanges?: Readonly<Record<string, Readonly<{ minimum: number; maximum: number }>>>
   componentTransforms?: Readonly<Record<string, Readonly<{ scale: number; offset: number }>>>
+  colorModel?: OmeZarrColorModel
+  omeZarrChannels?: readonly OmeZarrChannelDisplayState[]
 }>
 
 /** JSON-safe PureJsImage `inspectCog` report attached to opened TIFF/COG sources. */
@@ -424,6 +441,8 @@ export interface SourceRangeDiagnostics {
   readonly rangeCacheMisses: number
   readonly uniqueBytes?: number
   readonly openDatasets: number
+  readonly omeZarrNetwork?: OmeZarrNetworkDiagnostics
+  readonly omeZarrIdentity?: OmeZarrRootIdentityEvidence
 }
 
 export interface WorkerDiagnostics {
@@ -479,6 +498,8 @@ export interface LocalFileAttachment {
   readonly size: number
   readonly type: string
   readonly lastModified: number
+  /** Store-relative path for directory-like OME-Zarr members. */
+  readonly relativePath?: string
   /** Structured-clone attachment. Live scientific objects are never transported. */
   readonly blob: StructuredCloneBlob
 }
@@ -513,6 +534,27 @@ export type WorkerRequest =
       }>
     >
   | RpcRequest<'source.open-remote', Readonly<{ generation: number; url: string }>>
+  | RpcRequest<
+      'source.open-ome-zarr-remote',
+      Readonly<{ generation: number; url: string }>
+    >
+  | RpcRequest<
+      'source.open-ome-zarr-directory',
+      Readonly<{
+        generation: number
+        primaryId: string
+        storeRoot: string
+        files: readonly LocalFileAttachment[]
+      }>
+    >
+  | RpcRequest<
+      'source.open-ome-zarr-zip',
+      Readonly<{
+        generation: number
+        primaryId: string
+        files: readonly LocalFileAttachment[]
+      }>
+    >
   | RpcRequest<'source.close', Readonly<{ sourceId: SourceId; generation: number }>>
   | RpcRequest<
       'dataset.open',
@@ -626,6 +668,9 @@ const REQUEST_KINDS = new Set<string>([
   'source.open-local',
   'source.open-bundled',
   'source.open-remote',
+  'source.open-ome-zarr-remote',
+  'source.open-ome-zarr-directory',
+  'source.open-ome-zarr-zip',
   'source.close',
   'dataset.open',
   'dataset.close',
@@ -978,6 +1023,43 @@ function assertTile(payload: PayloadCandidate): void {
       }
       assertFinite(value['scale'], `mapping transform ${channel} scale`)
       assertFinite(value['offset'], `mapping transform ${channel} offset`)
+    }
+  }
+  if (mapping['colorModel'] !== undefined) {
+    if (mapping['colorModel'] !== 'color' && mapping['colorModel'] !== 'greyscale') {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'mapping colorModel must be color or greyscale')
+    }
+  }
+  if (mapping['omeZarrChannels'] !== undefined) {
+    if (
+      !Array.isArray(mapping['omeZarrChannels']) ||
+      mapping['omeZarrChannels'].length === 0 ||
+      mapping['omeZarrChannels'].length > RPC_LIMITS.maxItems
+    ) {
+      throw new RpcValidationError('INVALID_PAYLOAD', 'mapping omeZarrChannels is invalid')
+    }
+    for (const channel of mapping['omeZarrChannels']) {
+      if (!isRecord(channel)) {
+        throw new RpcValidationError('INVALID_PAYLOAD', 'mapping omeZarrChannels entry is invalid')
+      }
+      assertInteger(channel['index'], 'omeZarrChannels index')
+      if (typeof channel['active'] !== 'boolean') {
+        throw new RpcValidationError('INVALID_PAYLOAD', 'omeZarrChannels active must be a boolean')
+      }
+      if (channel['color'] !== undefined) assertInteger(channel['color'], 'omeZarrChannels color')
+      if (channel['coefficient'] !== undefined)
+        assertFinite(channel['coefficient'], 'omeZarrChannels coefficient')
+      if (channel['inverted'] !== undefined && typeof channel['inverted'] !== 'boolean') {
+        throw new RpcValidationError('INVALID_PAYLOAD', 'omeZarrChannels inverted must be a boolean')
+      }
+      if (channel['window'] !== undefined) {
+        if (!isRecord(channel['window'])) {
+          throw new RpcValidationError('INVALID_PAYLOAD', 'omeZarrChannels window is invalid')
+        }
+        assertFinite(channel['window']['start'], 'omeZarrChannels window start')
+        assertFinite(channel['window']['end'], 'omeZarrChannels window end')
+      }
+      if (channel['label'] !== undefined) assertString(channel['label'], 'omeZarrChannels label')
     }
   }
   if (!isRecord(payload.region))
@@ -1457,7 +1539,10 @@ function utf8Bytes(value: string): number {
 
 function jsonMessageBytes(value: Candidate): number {
   const payload =
-    value.kind === 'source.open-local' && isRecord(value.payload)
+    (value.kind === 'source.open-local' ||
+      value.kind === 'source.open-ome-zarr-directory' ||
+      value.kind === 'source.open-ome-zarr-zip') &&
+    isRecord(value.payload)
       ? { ...value.payload, files: '[structured-clone attachments]' }
       : value.payload
   try {
@@ -1506,7 +1591,7 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
       assertGeneration(payload)
       if (payload['sampleId'] !== undefined) assertString(payload['sampleId'], 'sampleId')
     }
-    if (kind === 'source.open-remote') {
+    if (kind === 'source.open-remote' || kind === 'source.open-ome-zarr-remote') {
       assertGeneration(payload)
       assertString(payload.url, 'url')
     }
@@ -1529,14 +1614,33 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
       if (!/^[a-f0-9]{64}$/u.test(payload['sha256']))
         throw new RpcValidationError('INVALID_PAYLOAD', 'bundled SHA-256 must be lowercase hex')
     }
-    if (kind === 'source.open-local') {
+    if (
+      kind === 'source.open-local' ||
+      kind === 'source.open-ome-zarr-directory' ||
+      kind === 'source.open-ome-zarr-zip'
+    ) {
       assertGeneration(payload)
       assertString(payload.primaryId, 'primaryId')
+      const maxFiles =
+        kind === 'source.open-ome-zarr-directory'
+          ? RPC_LIMITS.maxOmeZarrDirectoryFiles
+          : RPC_LIMITS.maxItems
       if (!Array.isArray(payload.files) || payload.files.length === 0) {
         throw new RpcValidationError('INVALID_PAYLOAD', 'at least one local file is required')
       }
-      if (payload.files.length > RPC_LIMITS.maxItems) {
+      if (payload.files.length > maxFiles) {
         throw new RpcValidationError('LIMIT_EXCEEDED', 'too many local files')
+      }
+      if (kind === 'source.open-ome-zarr-directory') {
+        if (typeof payload['storeRoot'] !== 'string') {
+          throw new RpcValidationError('INVALID_PAYLOAD', 'storeRoot must be a string')
+        }
+        if (payload['storeRoot'].length > RPC_LIMITS.maxStringLength) {
+          throw new RpcValidationError('LIMIT_EXCEEDED', 'storeRoot exceeds the string limit')
+        }
+      }
+      if (kind === 'source.open-ome-zarr-zip' && payload.files.length !== 1) {
+        throw new RpcValidationError('INVALID_PAYLOAD', 'OME-Zarr ZIP open requires one archive')
       }
       for (const file of payload.files) {
         if (!isRecord(file))
@@ -1546,6 +1650,9 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
         assertString(fileCandidate.name, 'file name')
         assertInteger(fileCandidate.size, 'file size')
         assertInteger(fileCandidate.lastModified, 'lastModified')
+        if (fileCandidate['relativePath'] !== undefined) {
+          assertString(fileCandidate['relativePath'], 'relativePath')
+        }
         const blob = fileCandidate.blob
         if (typeof fileCandidate.type !== 'string' || !isStructuredCloneBlob(blob)) {
           throw new RpcValidationError('INVALID_PAYLOAD', 'invalid Blob attachment')

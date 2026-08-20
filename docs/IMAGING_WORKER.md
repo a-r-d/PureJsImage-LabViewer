@@ -13,12 +13,12 @@ handles do not cross the boundary.
 
 ## Public PureJsImage imports
 
-The integration uses these documented `purejsimage@0.14.0` paths and symbols:
+The integration uses these documented `purejsimage@0.15.0` paths and symbols:
 
 | Package path | Symbols |
 | --- | --- |
 | `purejsimage/scientific` | `createScientificLibrary`, `normalizeScientificRelativeName`, `resolveNumericTileSource`, `numericTileSampleOffset`, `supportsScientificPlaneRead` |
-| `purejsimage/scientific/browser` | `createScientificFileContext` |
+| `purejsimage/scientific/browser` | `createScientificFileContext`, `createScientificFileCompanionResolver`, `createOmeZarrHttpContext`, `OmeZarrHttpStore`, `normalizeOmeZarrStoreUrl` |
 | `purejsimage/scientific/readers/png` | `pngReader` |
 | `purejsimage/scientific/readers/jpeg` | `jpegReader` |
 | `purejsimage/scientific/readers/webp` | `webpReader` |
@@ -26,6 +26,7 @@ The integration uses these documented `purejsimage@0.14.0` paths and symbols:
 | `purejsimage/scientific/readers/jp2` | `jp2Reader` |
 | `purejsimage/scientific/readers/tiff` | `tiffReader` |
 | `purejsimage/scientific/readers/ome-tiff` | `omeTiffReader` |
+| `purejsimage/scientific/readers/ome-zarr` | `omeZarrReader`, `createOmeZarrReader`, `omeZarrReaderDescriptor` |
 | `purejsimage/scientific/readers/aperio-svs` | `aperioSvsReader` |
 | `purejsimage/scientific/readers/digital-micrograph` | `digitalMicrographReader` |
 | `purejsimage/scientific/readers/tia-ser` | `tiaSerReader` |
@@ -54,9 +55,10 @@ The integration uses these documented `purejsimage@0.14.0` paths and symbols:
 | `purejsimage/analysis` | `createBuiltInAnalysisBundle`, `createAnalysisController` |
 | `purejsimage/sources/http-range` | `HttpRangeSource` |
 
-Each of the 31 readers is behind an explicit dynamic import. The Vite Worker uses ES module
+Each of the 32 readers is behind an explicit dynamic import. The Vite Worker uses ES module
 output so individual format chunks stay independently loadable. Filename extensions choose a
-probe set; unknown extensions load the full catalog. One-dimensional series-only documents such
+probe set; unknown extensions load the ordinary single-file catalog and do not select OME-Zarr.
+OME-Zarr opens only through explicit source kinds and `readerId` `purejsimage/ome-zarr`. One-dimensional series-only documents such
 as EMSA/MAS can open, but the viewport still requires a two-dimensional plane. Sparse Velox
 spectra remain outside this surface. JPEG, PNG, WebP, BMP, and JP2 scientific adapters can
 decode origin-relative bands but reject many interior tiled requests; the imaging Worker
@@ -66,7 +68,8 @@ materializes one cached plane and crops viewport tiles and analysis plane reads 
 ## RPC protocol
 
 `packages/contracts` defines schema version 2 and validates unknown input before dispatch. Requests
-cover initialization (optional resource limits), local/sample/remote/bundled source opening, source
+cover initialization (optional resource limits), local/sample/remote/bundled source opening,
+OME-Zarr remote store / local directory / ZIP opening, source
 and dataset close, dataset open, plane selection, tile request, request cancellation, diagnostics
 (optional `sourceId` filter), and the crash-only test seam. Dataset descriptors may include an
 optional JSON-safe `spatialReference` copied from PureJsImage. That field does not bump the RPC
@@ -91,6 +94,7 @@ Worker resource budgets (overridable at `worker.initialize`) default to:
 - 32 MiB total HTTP range cache;
 - 192 MiB total tile-runtime memory;
 - 32 in-flight budgeted requests.
+- 4,096 OME-Zarr directory files.
 
 Reaching a budget returns `LIMIT_EXCEEDED`. The Worker never silently closes a source the UI still
 holds. Unknown kinds, malformed payloads, unsupported versions, stale opaque IDs, exceeded limits, and
@@ -101,7 +105,8 @@ handle identity plus that source's revision; a Worker epoch increments only on r
 ## Source and dataset lifecycle
 
 One imaging Worker owns a map of source records keyed by a stable source handle. Each source owns
-its document, HTTP range sources (with a lifetime `AbortController`), datasets, diagnostics, and
+its document, HTTP range sources (with a lifetime `AbortController`), OME-Zarr HTTP stores,
+directory-store disposers, datasets, diagnostics, identity evidence, and
 tile runtimes. Dataset handles resolve directly to the owning source. Tile and analysis requests
 must not consult a global active source.
 
@@ -113,8 +118,10 @@ must not consult a global active source.
    injected by the app: the generic imaging Worker entry used by Atlas installs none; the science
    Worker entry installs the materials-analysis toolbox.
 5. On dataset close, abort its pending tiles, dispose the runtime, and remove the opaque handle.
-6. On source close, abort that source's lifetime signal (cancelling in-flight range reads), close
-   every dataset, close the document, and drop companion range sources. HttpRangeSource has no
+6. On source close, abort that source's lifetime signal (cancelling in-flight range reads and
+   object-store requests), close every dataset, close the document, close any OME-Zarr HTTP store,
+   run the directory-store disposer, clear diagnostics, and drop companion range sources. Other open
+   sources remain unaffected. HttpRangeSource has no
    `close()`; abort `lifetimeSignal` instead. `openSignal` cancels only the open probe.
 
 The science imaging client uses `sourcePolicy: 'replace-one'`: after a successful open it explicitly

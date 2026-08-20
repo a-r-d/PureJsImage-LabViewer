@@ -24,6 +24,21 @@ describe('live scientific agent eval launcher', () => {
       'split-touching-particles',
     ])
     expect(
+      selectedAgentEvalCases(parseAgentEvalArgs(['--suite', 'ome-zarr'], {})),
+    ).toEqual([
+      'ome-zarr-open-v2',
+      'ome-zarr-open-v3-sharded',
+      'ome-zarr-select-plane',
+      'ome-zarr-authored-channels',
+      'ome-zarr-chunks-vs-shards',
+      'ome-zarr-fetch-telemetry',
+      'ome-zarr-label-dataset',
+      'ome-zarr-unsupported-codec',
+      'ome-zarr-cancel-open',
+      'ome-zarr-rebind-directory',
+      'ome-zarr-bounded-preview',
+    ])
+    expect(
       selectedAgentEvalCases(
         parseAgentEvalArgs(['--case=split-touching-particles', '--max-cost-usd=0.4'], {}),
       ),

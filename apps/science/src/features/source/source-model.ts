@@ -41,7 +41,36 @@ export function sourceLocatorDetail(kind: string): string {
   if (kind === 'bundled') return 'example'
   if (kind === 'local') return 'local file'
   if (kind === 'remote') return 'remote'
+  if (kind === 'ome-zarr-remote') return 'OME-Zarr URL'
+  if (kind === 'ome-zarr-directory') return 'OME-Zarr directory'
+  if (kind === 'ome-zarr-zip') return 'OME-Zarr ZIP'
   return kind
+}
+
+export function datasetNavigatorDetail(
+  dataset: Readonly<{
+    descriptor: Readonly<{
+      axes: readonly unknown[]
+      levels: readonly unknown[]
+      metadata?: Readonly<Record<string, unknown>>
+    }>
+  }>,
+): string {
+  const metadata = dataset.descriptor.metadata
+  const kind = metadata?.['kind']
+  const series = metadata?.['series']
+  const well = metadata?.['well']
+  const field =
+    typeof well === 'object' && well !== null && 'field' in well
+      ? (well as { field?: unknown }).field
+      : undefined
+  const parts = [
+    typeof kind === 'string' ? kind : `${dataset.descriptor.axes.length}D`,
+    typeof series === 'number' ? `series ${series}` : undefined,
+    typeof field === 'string' ? field : undefined,
+    dataset.descriptor.levels.length > 1 ? `${dataset.descriptor.levels.length} levels` : undefined,
+  ].filter((part): part is string => typeof part === 'string' && part.length > 0)
+  return parts.join(' · ')
 }
 
 export function calibrationLabel(opened: OpenedDatasetDescriptor | undefined): string {

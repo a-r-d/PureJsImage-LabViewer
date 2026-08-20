@@ -188,6 +188,79 @@ export class ImagingWorkerClient {
     )
   }
 
+  async openOmeZarrRemote(
+    url: string,
+    generation: number,
+    signal?: AbortSignal,
+  ): Promise<OpenedSourceDescriptor> {
+    return this.#opened(
+      this.#payload(
+        await this.#call('source.open-ome-zarr-remote', { generation, url }, signal),
+        'source.opened',
+      ),
+    )
+  }
+
+  async openOmeZarrDirectory(
+    files: readonly File[],
+    storeRoot: string,
+    generation: number,
+    signal?: AbortSignal,
+  ): Promise<OpenedSourceDescriptor> {
+    const attachments = files.map((file, index) => ({
+      id: `file-${index}`,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified,
+      relativePath:
+        typeof file.webkitRelativePath === 'string' && file.webkitRelativePath.length > 0
+          ? file.webkitRelativePath
+          : file.name,
+      blob: file as Blob,
+    }))
+    return this.#opened(
+      this.#payload(
+        await this.#call(
+          'source.open-ome-zarr-directory',
+          { generation, primaryId: 'file-0', storeRoot, files: attachments },
+          signal,
+        ),
+        'source.opened',
+      ),
+    )
+  }
+
+  async openOmeZarrZip(
+    file: File,
+    generation: number,
+    signal?: AbortSignal,
+  ): Promise<OpenedSourceDescriptor> {
+    return this.#opened(
+      this.#payload(
+        await this.#call(
+          'source.open-ome-zarr-zip',
+          {
+            generation,
+            primaryId: 'file-0',
+            files: [
+              {
+                id: 'file-0',
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                lastModified: file.lastModified,
+                blob: file as Blob,
+              },
+            ],
+          },
+          signal,
+        ),
+        'source.opened',
+      ),
+    )
+  }
+
   async closeSource(sourceId: SourceId, generation: number): Promise<void> {
     await this.#call('source.close', { sourceId, generation })
     if (this.#retained?.sourceId === sourceId && this.#retained.generation === generation) {

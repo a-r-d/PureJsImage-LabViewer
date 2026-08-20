@@ -61,6 +61,37 @@ export type SourceLocator =
       companionNames: readonly string[]
     }>
   | Readonly<{ kind: 'remote'; url: string }>
+  | Readonly<{
+      kind: 'ome-zarr-remote'
+      url: string
+      selectedRootMetadataName: 'zarr.json' | '.zgroup' | '.zattrs'
+      sourceIdentityStrength: 'strong' | 'weak' | 'session'
+      rootObjectSize: number
+      rootObjectValidator?: Readonly<{
+        kind: 'etag' | 'version-id' | 'last-modified'
+        value: string
+      }>
+    }>
+  | Readonly<{
+      kind: 'ome-zarr-directory'
+      name: string
+      selectedRootMetadataName: 'zarr.json' | '.zgroup' | '.zattrs'
+      directoryFingerprint: string
+    }>
+  | Readonly<{
+      kind: 'ome-zarr-zip'
+      name: string
+      size: number
+      lastModified: number
+    }>
+
+export function sourceLocatorRequiresRebind(locator: SourceLocator): boolean {
+  return (
+    locator.kind === 'local' ||
+    locator.kind === 'ome-zarr-directory' ||
+    locator.kind === 'ome-zarr-zip'
+  )
+}
 
 export interface WorkspaceProjectMetadata {
   readonly id: ProjectId
@@ -188,7 +219,7 @@ export function createEmptyWorkspace(
       updatedAt: now,
       createdWith: {
         appVersion: options.appVersion ?? '0.0.0',
-        pureJsImageVersion: options.pureJsImageVersion ?? '0.14.0',
+        pureJsImageVersion: options.pureJsImageVersion ?? '0.15.0',
       },
     },
     sources: [],

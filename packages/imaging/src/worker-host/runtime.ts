@@ -3,6 +3,8 @@ import type {
   CogInspectionReport,
   DatasetHandleId,
   DocumentId,
+  OmeZarrNetworkDiagnostics,
+  OmeZarrRootIdentityEvidence,
   PlaneSelection,
   SourceId,
   SourceKind,
@@ -22,6 +24,7 @@ import type {
   ScientificDatasetSummary,
   ScientificDocument,
 } from 'purejsimage/scientific'
+import type { OmeZarrHttpStore } from 'purejsimage/scientific/browser'
 import type { HttpRangeSource } from 'purejsimage/sources/http-range'
 
 export interface SourceRecord {
@@ -36,6 +39,10 @@ export interface SourceRecord {
   readonly rangeSources: readonly HttpRangeSource[]
   readonly lifetime: AbortController
   readonly cogInspection?: CogInspectionReport
+  readonly omeZarrHttpStore?: OmeZarrHttpStore
+  readonly omeZarrIdentity?: OmeZarrRootIdentityEvidence
+  readonly omeZarrNetwork?: () => OmeZarrNetworkDiagnostics
+  readonly directoryDisposer?: () => void
   readonly datasets: Map<DatasetHandleId, DatasetRecord>
   lastUsedAt: number
   closed: boolean

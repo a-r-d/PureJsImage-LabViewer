@@ -4,6 +4,7 @@ import {
   type GeoProject,
   importGeoProjectDocument,
 } from '@pji-workbench/domain-geo'
+import { PUREJSIMAGE_PACKAGE_VERSION } from '@pji-workbench/imaging'
 
 export interface GeoStoredProjectSummary {
   readonly id: string
@@ -30,7 +31,7 @@ export class MemoryGeoProjectStore implements GeoProjectStore {
   constructor(
     readonly versions: Readonly<{ appVersion: string; pureJsImageVersion: string }> = {
       appVersion: '0.0.0',
-      pureJsImageVersion: '0.14.0',
+      pureJsImageVersion: PUREJSIMAGE_PACKAGE_VERSION,
     },
   ) {}
 
@@ -79,7 +80,7 @@ export class IndexedDbGeoProjectStore implements GeoProjectStore {
     factory: IDBFactory,
     readonly versions: Readonly<{ appVersion: string; pureJsImageVersion: string }> = {
       appVersion: '0.0.0',
-      pureJsImageVersion: '0.14.0',
+      pureJsImageVersion: PUREJSIMAGE_PACKAGE_VERSION,
     },
     databaseName = DATABASE_NAME,
   ) {

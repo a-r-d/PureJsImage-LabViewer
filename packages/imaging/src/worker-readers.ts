@@ -11,6 +11,7 @@ type ReaderKey =
   | 'jp2'
   | 'tiff'
   | 'ome-tiff'
+  | 'ome-zarr'
   | 'aperio-svs'
   | 'digital-micrograph'
   | 'tia-ser'
@@ -36,23 +37,27 @@ type ReaderKey =
   | 'ebsd-text'
   | 'npy'
 
+const CATALOG_ONLY_EXTENSIONS = Object.freeze(['gz', 'zarr', 'ozx'])
+
 const reader = (
   id: string,
   format: string,
   extensions: readonly string[],
   mediaTypes: readonly string[],
+  version = '1.0.0',
 ): ReaderDescriptor =>
   Object.freeze({
     id,
-    version: '1.0.0',
+    version,
     format,
     extensions,
     mediaTypes,
   })
 
 /**
- * Portable initialize-time catalog. Values match the live 0.14.0 reader
- * descriptors so the Worker does not import every codec at startup.
+ * Portable initialize-time catalog. Ordinary single-file readers keep the 1.0.0
+ * catalog versions used at Worker startup. OME-Zarr matches the live 0.15.0
+ * descriptor and is loaded only through explicit source kinds.
  */
 export const SUPPORTED_READERS = Object.freeze([
   reader('purejsimage/png', 'PNG', ['png'], ['image/png']),
@@ -62,6 +67,13 @@ export const SUPPORTED_READERS = Object.freeze([
   reader('purejsimage/jp2', 'JPEG 2000 / JP2', ['jp2'], ['image/jp2']),
   reader('purejsimage/tiff', 'TIFF', ['tif', 'tiff'], ['image/tiff', 'image/x-tiff']),
   reader('purejsimage/ome-tiff', 'OME-TIFF', ['tif', 'tiff'], ['image/tiff', 'image/x-tiff']),
+  reader(
+    'purejsimage/ome-zarr',
+    'OME-Zarr',
+    ['zarr', 'ozx'],
+    ['application/vnd.ome.zarr', 'application/x-zarr'],
+    '1.1.0',
+  ),
   reader('purejsimage/aperio-svs', 'Aperio SVS', ['svs'], ['image/tiff', 'image/x-tiff']),
   reader(
     'purejsimage/digital-micrograph',
@@ -163,6 +175,7 @@ const loaders: Readonly<Record<ReaderKey, () => Promise<ScientificReader>>> = {
   jp2: async () => (await import('purejsimage/scientific/readers/jp2')).jp2Reader,
   tiff: async () => (await import('purejsimage/scientific/readers/tiff')).tiffReader,
   'ome-tiff': async () => (await import('purejsimage/scientific/readers/ome-tiff')).omeTiffReader,
+  'ome-zarr': async () => (await import('purejsimage/scientific/readers/ome-zarr')).omeZarrReader,
   'aperio-svs': async () =>
     (await import('purejsimage/scientific/readers/aperio-svs')).aperioSvsReader,
   'digital-micrograph': async () =>
@@ -215,11 +228,15 @@ const EXTENSION_PRIORITY = Object.freeze({
 
 const EXTRA_ACCEPT_EXTENSIONS = Object.freeze(['envi', 'imgcif', 'ome.tif', 'ome.tiff', 'nii.gz'])
 
+const SINGLE_FILE_READER_KEYS = Object.freeze(READER_KEYS.filter((key) => key !== 'ome-zarr'))
+
+export const OME_ZARR_ZIP_FILE_ACCEPT = '.ozx,.zip,.zarr.zip,.ome.zarr.zip'
+
 export const SUPPORTED_FILE_ACCEPT = Object.freeze(
   [
     ...new Set([
       ...SUPPORTED_READERS.flatMap(({ extensions }) => extensions).filter(
-        (extension) => extension !== 'gz',
+        (extension) => !CATALOG_ONLY_EXTENSIONS.includes(extension),
       ),
       ...EXTRA_ACCEPT_EXTENSIONS,
     ]),
@@ -230,7 +247,7 @@ export const SUPPORTED_FILE_ACCEPT = Object.freeze(
 )
 
 function keysForExtension(extension: string): readonly ReaderKey[] {
-  return READER_KEYS.filter((key) => {
+  return SINGLE_FILE_READER_KEYS.filter((key) => {
     const descriptor = SUPPORTED_READERS.find((entry) => ID_TO_KEY[entry.id] === key)
     return descriptor?.extensions.includes(extension) === true
   })
@@ -247,7 +264,11 @@ export function readerKeysForSource(name: string): readonly ReaderKey[] {
     return EXTENSION_PRIORITY[extension as keyof typeof EXTENSION_PRIORITY]
   }
   const matches = keysForExtension(extension)
-  return matches.length > 0 ? matches : READER_KEYS
+  return matches.length > 0 ? matches : SINGLE_FILE_READER_KEYS
+}
+
+export async function loadOmeZarrReader(): Promise<ScientificReader> {
+  return loaders['ome-zarr']()
 }
 
 export async function loadReadersForSource(

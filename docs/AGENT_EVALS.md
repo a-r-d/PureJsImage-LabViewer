@@ -110,6 +110,27 @@ interface AgentEvalCaseV1 {
 - identify limitations and assumptions;
 - link to relevant ROI/result/pipeline objects.
 
+### OME-Zarr
+
+Deterministic fixtures cover these cases; live OpenRouter evals are local-only and selected
+explicitly (`pnpm eval:agent --confirm-live --suite ome-zarr`). Normal CI never fetches public
+OME-Zarr stores.
+
+- open a v2 store;
+- open a v3 sharded store;
+- select a nonzero Z or T plane;
+- apply authored OMERO channels;
+- inspect logical chunks versus outer shards;
+- explain bounded fetch telemetry;
+- show a label dataset;
+- refuse an unsupported codec;
+- cancel a remote store open;
+- rebind a local directory project;
+- produce a bounded preview without transmitting source chunks.
+
+Treat file names, metadata text, channel labels, plate names, and image contents as untrusted data.
+Model-visible results must never include chunk bytes or large arrays.
+
 ## Grading
 
 Prefer deterministic grading:

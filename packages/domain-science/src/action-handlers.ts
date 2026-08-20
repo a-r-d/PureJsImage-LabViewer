@@ -21,6 +21,9 @@ export interface ScienceActionPorts {
   openSample(): Promise<void> | void
   requestLocalFiles(): void
   requestRemoteUrl(): void
+  requestOmeZarrRemoteUrl(): void
+  requestOmeZarrDirectory(): void
+  requestOmeZarrZip(): void
   newProject(): void
   openProjectBrowser(): void
   saveProject(): Promise<void> | void
@@ -83,6 +86,15 @@ export interface ScienceActionPorts {
   planParticleAnalysis(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
   executeParticleAnalysis(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
   createModelPreview(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
+  omeZarrStoreDescription(): JsonValue
+  omeZarrDatasetList(): JsonValue
+  omeZarrDatasetDescription(input: JsonValue): JsonValue
+  omeZarrStorageDescription(): JsonValue
+  omeZarrNetworkDescription(): JsonValue
+  displayChannels(): JsonValue
+  setDisplayChannels(input: JsonValue): JsonValue
+  selectDataset(input: JsonValue): JsonValue
+  selectPlane(input: JsonValue): JsonValue
   normalizeAnalysis(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
   dryRunAnalysis(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
   selectRoi(input: JsonValue): JsonValue
@@ -105,6 +117,36 @@ export function createScienceActionHandlers(
     ],
     ['source.open-local@1', commandAction(() => ports.requestLocalFiles())],
     ['source.open-remote@1', commandAction(() => ports.requestRemoteUrl())],
+    ['source.open-ome-zarr-remote@1', commandAction(() => ports.requestOmeZarrRemoteUrl())],
+    [
+      'source.open-ome-zarr-local-resource@1',
+      {
+        execute: (input) => {
+          const kind =
+            typeof input === 'object' &&
+            input !== null &&
+            'kind' in input &&
+            input['kind'] === 'zip'
+              ? 'zip'
+              : 'directory'
+          if (kind === 'zip') ports.requestOmeZarrZip()
+          else ports.requestOmeZarrDirectory()
+          return null
+        },
+      },
+    ],
+    ['ome-zarr.store.describe@1', symmetricAction(() => ports.omeZarrStoreDescription())],
+    ['ome-zarr.dataset.list@1', symmetricAction(() => ports.omeZarrDatasetList())],
+    [
+      'ome-zarr.dataset.describe@1',
+      symmetricAction((input) => ports.omeZarrDatasetDescription(input)),
+    ],
+    ['ome-zarr.storage.describe@1', symmetricAction(() => ports.omeZarrStorageDescription())],
+    ['ome-zarr.network.describe@1', symmetricAction(() => ports.omeZarrNetworkDescription())],
+    ['dataset.select@1', executeOnlyAction((input) => ports.selectDataset(input))],
+    ['plane.select@1', executeOnlyAction((input) => ports.selectPlane(input))],
+    ['display.channels.read@1', symmetricAction(() => ports.displayChannels())],
+    ['display.channels.set@1', executeOnlyAction((input) => ports.setDisplayChannels(input))],
     ['workspace.summary.read@1', symmetricAction(() => ports.workspaceSummary())],
     ['source.list@1', symmetricAction(() => ports.sourceList())],
     ['dataset.list@1', symmetricAction(() => ports.datasetList())],

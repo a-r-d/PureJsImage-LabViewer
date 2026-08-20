@@ -23,11 +23,18 @@ export {
   ImagingWorkerHost,
   type ImagingWorkerHostOptions,
 } from './worker-host.js'
-export { SUPPORTED_FILE_ACCEPT, SUPPORTED_READERS } from './worker-readers.js'
+export { authoredOmeZarrDisplayMapping } from './ome-zarr-display.js'
+export {
+  omeZarrDirectoryFingerprint,
+  selectOmeZarrDirectoryRoot,
+} from './ome-zarr-directory.js'
+export { durableOmeZarrRootUrl } from './worker-host/ome-zarr-rpc.js'
+export { SUPPORTED_FILE_ACCEPT, OME_ZARR_ZIP_FILE_ACCEPT, SUPPORTED_READERS } from './worker-readers.js'
 
 // Compile-time probes deliberately verify documented package paths without exporting live objects.
 export type PublicScientificApi = typeof import('purejsimage/scientific')
 export type PublicScientificBrowserApi = typeof import('purejsimage/scientific/browser')
+export type PublicOmeZarrReaderApi = typeof import('purejsimage/scientific/readers/ome-zarr')
 export type PublicAnalysisApi = typeof import('purejsimage/analysis')
 export type PublicAnalysisRuntimeApi = typeof import('purejsimage/analysis/runtime')
 export type PublicHttpRangeApi = typeof import('purejsimage/sources/http-range')
