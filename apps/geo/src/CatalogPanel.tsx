@@ -5,14 +5,11 @@ import {
   type CatalogSearchItem,
   type CatalogService,
   type CatalogSourceCandidate,
-  type CatalogStory,
   catalogProtocolHint,
   classifyStacClientError,
-  collectionIdsForStory,
   collectionSummariesFromRegistry,
   type GeoOpenFailure,
   preferredSearchCandidate,
-  type RasterStyle,
   type StacBbox,
   StacClientError,
 } from '@pji-workbench/domain-geo'
@@ -28,7 +25,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 export function CatalogPanel({
   service,
   catalogs,
-  stories,
   viewBbox,
   busy,
   searchNonce = 0,
@@ -37,7 +33,6 @@ export function CatalogPanel({
 }: {
   readonly service: CatalogService
   readonly catalogs: readonly CatalogRegistryEntry[]
-  readonly stories: readonly CatalogStory[]
   readonly viewBbox?: StacBbox
   readonly busy: boolean
   readonly searchNonce?: number
@@ -66,7 +61,6 @@ export function CatalogPanel({
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('Search a collection to list Cloud Optimized GeoTIFF tiles.')
   const [preferInspect, setPreferInspect] = useState(false)
-  const [storyStyle, setStoryStyle] = useState<RasterStyle | undefined>()
   const [preflight, setPreflight] = useState<Readonly<Record<string, RasterAssetPreflight>>>({})
   const requestRef = useRef<AbortController | null>(null)
   const requestGenRef = useRef(0)
@@ -84,8 +78,6 @@ export function CatalogPanel({
     >(),
   )
   const [retryNonce, setRetryNonce] = useState(0)
-
-  const catalogStories = stories.filter((story) => story.catalogId === catalog?.id)
 
   const beginRequest = useCallback((): { generation: number; signal: AbortSignal } => {
     requestRef.current?.abort()
@@ -317,15 +309,7 @@ export function CatalogPanel({
   const openItem = useCallback(
     (item: CatalogSearchItem, inspect: boolean, nextAssetKey?: string) => {
       if (catalog === undefined) return
-      const styled =
-        storyStyle === undefined
-          ? item.candidates
-          : item.candidates.map((candidate) => ({ ...candidate, style: storyStyle }))
-      const nextCandidate = preferredSearchCandidate(
-        { ...item, candidates: styled },
-        nextAssetKey,
-        catalog.preferredAssetKeys,
-      )
+      const nextCandidate = preferredSearchCandidate(item, nextAssetKey, catalog.preferredAssetKeys)
       setSelectedItemId(item.id)
       setAssetKey(nextAssetKey ?? nextCandidate?.assetKey)
       if (nextCandidate === undefined) return
@@ -333,24 +317,18 @@ export function CatalogPanel({
       if (probe?.compatibility !== 'ready') return
       onOpen(nextCandidate, inspect, probe)
     },
-    [catalog, onOpen, preflight, storyStyle],
+    [catalog, onOpen, preflight],
   )
 
   useEffect(() => {
     if (searchNonce === lastSearchNonceRef.current) return
     lastSearchNonceRef.current = searchNonce
     if (searchNonce < 1) return
-    setStoryStyle(undefined)
     void search()
   }, [search, searchNonce])
 
   const selected = items.find((item) => item.id === selectedItemId)
-  const candidates =
-    selected === undefined
-      ? []
-      : storyStyle === undefined
-        ? selected.candidates
-        : selected.candidates.map((candidate) => ({ ...candidate, style: storyStyle }))
+  const candidates = selected?.candidates ?? []
   const active =
     selected === undefined
       ? undefined
@@ -388,7 +366,6 @@ export function CatalogPanel({
             setCollectionId('')
             setItems([])
             setPreferInspect(false)
-            setStoryStyle(undefined)
             setPreflight({})
             const nextCatalog = catalogs.find((entry) => entry.id === nextId)
             setBboxText(formatBbox(nextCatalog?.defaultBbox))
@@ -466,7 +443,6 @@ export function CatalogPanel({
       <div className="geo-inspector-toolbar">
         <Button
           onClick={() => {
-            setStoryStyle(undefined)
             void search()
           }}
           variant="primary"
@@ -532,34 +508,6 @@ export function CatalogPanel({
         })}
       </ol>
       {next === undefined ? null : <Button onClick={() => void loadMore()}>More items</Button>}
-      {catalogStories.length > 0 ? (
-        <fieldset className="geo-story-chips">
-          <legend>Stories</legend>
-          {catalogStories.map((story) => (
-            <button
-              key={story.id}
-              onClick={() => {
-                if (catalog === undefined) return
-                const ids = collectionIdsForStory(catalog, story)
-                if (story.bbox !== undefined) setBboxText(formatBbox(story.bbox))
-                if (story.datetime !== undefined) setDatetime(story.datetime)
-                setCollectionId(ids[0] ?? '')
-                setPreferInspect(story.inspect === true)
-                setStoryStyle(story.style)
-                void search({
-                  ...(ids.length === 0 ? {} : { collections: ids }),
-                  ...(story.bbox === undefined ? {} : { bbox: story.bbox }),
-                  ...(story.datetime === undefined ? {} : { datetime: story.datetime }),
-                })
-              }}
-              title={story.summary}
-              type="button"
-            >
-              {story.title}
-            </button>
-          ))}
-        </fieldset>
-      ) : null}
       {selected === undefined || active === undefined ? null : (
         <div className="geo-asset-picker">
           {candidates.length > 1 ? (

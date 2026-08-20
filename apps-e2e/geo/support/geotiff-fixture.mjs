@@ -4,22 +4,23 @@ function geoAsciiEntry(tag, value) {
   return { tag, type: 2, values: [...new TextEncoder().encode(value), 0] }
 }
 
-function geoKeyEntries() {
-  const citation = 'WGS 84|'
+function geoKeyEntries(epsg) {
+  const projected = epsg !== 4_326
+  const citation = projected ? `EPSG:${String(epsg)}|` : 'WGS 84|'
   const keys = [
     1_024,
     0,
     1,
-    2,
+    projected ? 1 : 2,
     1_025,
     0,
     1,
     1,
-    2_048,
+    projected ? 3_072 : 2_048,
     0,
     1,
-    4_326,
-    2_049,
+    epsg,
+    projected ? 3_073 : 2_049,
     34_737,
     citation.length,
     0,
@@ -34,28 +35,33 @@ function entryBytes(type) {
   return type === 3 ? 2 : type === 4 ? 4 : type === 12 ? 8 : 1
 }
 
-export function northUpGeoTiffFixture() {
+export function northUpGeoTiffFixture(options = {}) {
   const width = 4
   const height = 2
-  const pixels = Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8)
+  const components = options.components ?? 1
+  const pixels = Uint8Array.from(
+    { length: width * height * components },
+    (_, index) => (index * 17 + 1) % 256,
+  )
   const extraEntries = [
     { tag: 33_550, type: 12, values: [10, 20, 0] },
     { tag: 33_922, type: 12, values: [0, 0, 0, 100, 200, 0] },
-    ...geoKeyEntries(),
+    ...geoKeyEntries(options.epsg ?? 4_326),
     geoAsciiEntry(42_113, '-9999'),
   ]
   const defaults = [
     { tag: 256, type: 4, values: [width] },
     { tag: 257, type: 4, values: [height] },
-    { tag: 258, type: 3, values: [8] },
+    { tag: 258, type: 3, values: Array.from({ length: components }, () => 8) },
     { tag: 259, type: 3, values: [1] },
-    { tag: 262, type: 3, values: [1] },
+    { tag: 262, type: 3, values: [components >= 3 ? 2 : 1] },
     { tag: 273, type: 4, values: [0] },
-    { tag: 277, type: 3, values: [1] },
+    { tag: 277, type: 3, values: [components] },
     { tag: 278, type: 4, values: [height] },
     { tag: 279, type: 4, values: [pixels.byteLength] },
     { tag: 284, type: 3, values: [1] },
     { tag: 339, type: 3, values: [1] },
+    ...(components > 3 ? [{ tag: 338, type: 3, values: [0] }] : []),
   ]
   const overridden = new Set(extraEntries.map((entry) => entry.tag))
   const entries = [...defaults.filter((entry) => !overridden.has(entry.tag)), ...extraEntries].sort(

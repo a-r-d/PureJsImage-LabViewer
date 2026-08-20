@@ -4,7 +4,7 @@ import {
   NOAA_DIGITAL_COAST_CATALOG_ID,
   NOAA_PUERTO_RICO_COLLECTION_ID,
 } from './noaa-digital-coast.js'
-import type { CatalogAssetIdentity, CatalogStoryPreset } from './types.js'
+import type { CatalogAssetIdentity, CatalogDisplayPreset } from './types.js'
 
 export interface AtlasStartDemo {
   readonly id: string
@@ -14,7 +14,7 @@ export interface AtlasStartDemo {
   readonly identity: CatalogAssetIdentity
   readonly style: RasterStyle
   readonly inspect?: boolean
-  readonly presets?: readonly CatalogStoryPreset[]
+  readonly presets?: readonly CatalogDisplayPreset[]
 }
 
 const KENTUCKY_ORTHO_STYLE: RasterStyle = Object.freeze({

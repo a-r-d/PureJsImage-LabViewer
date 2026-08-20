@@ -87,6 +87,8 @@ export interface CatalogSourceCandidate extends CatalogAssetProvenance {
   readonly mediaType?: string
   readonly roles: readonly string[]
   readonly bands: readonly GeoBandMetadata[]
+  /** Audited product-documentation note when configured metadata replaces STAC band metadata. */
+  readonly bandMetadataOverride?: Readonly<{ note: string }>
   readonly fileSize?: number
   readonly checksum?: string
   readonly validator?: string
@@ -96,24 +98,10 @@ export interface CatalogSourceCandidate extends CatalogAssetProvenance {
   readonly style?: RasterStyle
 }
 
-export interface CatalogStoryPreset {
+export interface CatalogDisplayPreset {
   readonly id: string
   readonly label: string
   readonly style: RasterStyle
-}
-
-export interface CatalogStory {
-  readonly id: string
-  readonly title: string
-  readonly summary: string
-  readonly catalogId: string
-  readonly collectionGroup: string
-  readonly bbox?: StacBbox
-  readonly datetime?: string
-  readonly inspect?: boolean
-  readonly note?: string
-  readonly style?: RasterStyle
-  readonly presets?: readonly CatalogStoryPreset[]
 }
 
 export interface AtlasDeepLink extends CatalogAssetIdentity {
@@ -171,13 +159,6 @@ export interface CatalogSearchPage {
 export function providerName(providers: readonly StacProvider[]): string | undefined {
   const producer = providers.find((provider) => provider.roles?.includes('producer'))
   return producer?.name ?? providers[0]?.name
-}
-
-export function collectionIdsForStory(
-  entry: CatalogRegistryEntry,
-  story: CatalogStory,
-): readonly string[] {
-  return entry.collectionGroups[story.collectionGroup] ?? []
 }
 
 export function catalogRootHref(entry: CatalogRegistryEntry): string {

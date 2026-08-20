@@ -84,14 +84,17 @@ Vitest covers:
 - `packages/domain-geo` unit tests for the Atlas profile, CRS helpers, open-error copy, X-ray
   reports, cursor readout, STAC parsing/client, catalog adapters (STAC API GET/POST, static STAC
   filter/too-large, TNMAccess GeoTIFF-only), bounded JSON streams, paginated collection metadata,
-  POST next-link semantics, catalog registry, deep links, and provenance
+  POST next-link semantics, catalog registry, workflow schemas/availability, metadata-only display
+  presets, deep links, and provenance
   session round-trips. Fetch throws are `NETWORK` / `browser-network-blocked` unless the error
   names CORS. STAC/TNM fixtures are checked-in JSON. Live Kentucky STAC smoke is opt-in
   via `ATLAS_LIVE_STAC=1`. Live browser CORS probes are `PJI_GEO_LIVE=1` and are not part of
   normal CI.
 - `packages/geo-workbench` unit tests for semantic action replay, transactional source open,
   source-limit recovery, local-resource rebinding, source/layer cleanup, CRS composition refusal,
-  selected-source context, and disposal of every live imaging binding.
+  selected-source context, workflow action recording, two-date compatibility refusal, Landsat
+  multi-asset recipes, terrain recipes, cancellation rollback, deterministic identity replay,
+  persisted workflow provenance, and disposal of every live imaging binding.
 
 Tests should assert cleanup and cancellation, not just output.
 
@@ -101,6 +104,9 @@ probes, staged preflight, and the distinction between structural TIFF compatibil
 document/dataset/native-sample decode. Catalog browser tests assert bounded probe concurrency,
 alternate-asset readiness, stale-probe suppression across catalog changes, invalid WGS84 bounds,
 and no duplicate full preflight on Open.
+Recorded geo Playwright also executes COG Anatomy, Kentucky Through Time, metadata-driven natural
+color with CIR suppression, Landsat RGB/CIR/NDVI, Terrain Lab, cancellation cleanup, and replay
+without a catalog search against local Range fixtures. Live catalogs remain opt-in.
 
 Normal PR CI runs generated and small bundled corpus tiers only. Hosted/external scenarios require
 explicit scheduled tags and controlled mirrors; no deterministic gate calls an uncontrolled public

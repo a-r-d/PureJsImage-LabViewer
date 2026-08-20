@@ -213,6 +213,54 @@ function controller(runtime = new FakeRuntime()) {
 }
 
 describe('GeoWorkbenchController', () => {
+  it('persists bounded workflow action and asset provenance in the project', async () => {
+    const { controller: workbench } = controller()
+    const sourceId = await workbench.openRemote({ url: 'https://example.com/workflow.tif' })
+    const layerId = workbench.getSnapshot().project.layers[0]?.id
+    if (layerId === undefined) throw new Error('Expected workflow source layer')
+    await workbench.executeAction('geo.workflow.record', {
+      record: {
+        schemaVersion: 1,
+        id: 'workflow-run-1',
+        workflowId: 'cog-anatomy',
+        workflowVersion: 1,
+        parameters: {},
+        decisions: { choose: ['fixture'] },
+        selectedAssets: [
+          {
+            catalogId: 'fixture',
+            collectionId: 'collection',
+            itemId: 'item',
+            assetKey: 'data',
+          },
+        ],
+        actions: [
+          {
+            sequence: 1,
+            stepId: 'open',
+            actionId: 'geo.source.open_catalog_asset',
+            input: { candidate: 'bounded fixture' },
+            result: { sourceId },
+          },
+        ],
+        sourceIds: [sourceId],
+        outputLayerIds: [layerId],
+        completedOutputs: [{ id: 'cog-report', title: 'COG X-ray and telemetry', kind: 'report' }],
+        attribution: ['Fixture attribution'],
+        startedAt: '2026-08-20T00:00:00.000Z',
+        completedAt: '2026-08-20T00:00:01.000Z',
+      },
+    })
+    expect(workbench.getSnapshot().project.workflowRuns).toMatchObject([
+      {
+        workflowId: 'cog-anatomy',
+        sourceIds: [sourceId],
+        outputLayerIds: [layerId],
+        actions: [{ actionId: 'geo.source.open_catalog_asset' }],
+      },
+    ])
+  })
+
   it('dry-runs and persists a replayable normalized-difference derived layer', async () => {
     const { controller: workbench } = controller()
     await workbench.executeAction('geo.source.open_remote', { url: 'https://example.com/a.tif' })

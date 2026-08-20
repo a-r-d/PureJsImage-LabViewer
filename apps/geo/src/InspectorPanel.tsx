@@ -1,6 +1,6 @@
 import type {
   BandMapping,
-  CatalogStoryPreset,
+  CatalogDisplayPreset,
   CogXrayReport,
   GeoCatalogReference,
   GeoRasterLayer,
@@ -10,7 +10,7 @@ import type {
 import { Button, Panel, Tabs } from '@pji-workbench/ui'
 import type { ReactNode } from 'react'
 
-export type InspectorTab = 'catalog' | 'layers' | 'display' | 'xray'
+export type InspectorTab = 'workflows' | 'catalog' | 'layers' | 'display' | 'xray'
 
 export function InspectorPanel({
   tab,
@@ -26,6 +26,7 @@ export function InspectorPanel({
   bandCount,
   xray,
   catalog,
+  workflows,
   provenance,
   presets,
 }: {
@@ -45,14 +46,16 @@ export function InspectorPanel({
   readonly bandCount: number
   readonly xray: CogXrayReport | undefined
   readonly catalog: ReactNode
+  readonly workflows: ReactNode
   readonly provenance?: GeoCatalogReference
-  readonly presets?: readonly CatalogStoryPreset[]
+  readonly presets?: readonly CatalogDisplayPreset[]
 }) {
   const selected = layers.find((layer) => layer.id === selectedLayerId) ?? layers[0]
   return (
     <Panel className="geo-inspector" label="Inspector">
       <Tabs
         items={[
+          { id: 'workflows', label: 'Workflows' },
           { id: 'catalog', label: 'Catalog' },
           { id: 'layers', label: 'Layers' },
           { id: 'display', label: 'Display' },
@@ -62,6 +65,7 @@ export function InspectorPanel({
         onSelect={onTab}
         selectedId={tab}
       />
+      {tab === 'workflows' ? workflows : null}
       {tab === 'catalog' ? catalog : null}
       {tab === 'layers' ? (
         <div className="geo-inspector-body" data-testid="layer-panel">
@@ -170,7 +174,7 @@ function DisplayControls({
   readonly layer: GeoRasterLayer
   readonly bandCount: number
   readonly onChange: (style: RasterStyle) => void
-  readonly presets?: readonly CatalogStoryPreset[]
+  readonly presets?: readonly CatalogDisplayPreset[]
 }) {
   const rgb = layer.style.mapping.red !== undefined
   const bands = Array.from({ length: bandCount }, (_, index) => index)

@@ -9,3 +9,7 @@ export {
   type GeoWorkbenchControllerOptions,
 } from './controller.js'
 export { GeoLocalResourceRegistry, type LocalResourceRecord } from './resource-registry.js'
+export {
+  GeoWorkflowRunner,
+  type GeoWorkflowRunnerSnapshot,
+} from './workflow-runner.js'

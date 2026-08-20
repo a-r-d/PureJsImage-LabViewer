@@ -204,3 +204,19 @@ their standard composite operations, resampling controls image smoothing, and st
 retain project order. The display cache owns only canvases and metadata under hard byte/tile limits.
 All-band native point reads are separate cancellable Worker requests. Same-CRS swipe and blink are
 render modes over already-loaded tiles; Atlas does not reproject or reload a source to compare it.
+
+## Atlas workflows are URL-free recipes executed through semantic actions
+
+Catalog story search presets are replaced by versioned `GeoWorkflowRecipe` data in
+`packages/domain-geo`. Recipes declare catalog selectors, named asset roles, compatibility checks,
+parameters, approvals, outputs, attribution, and truthful blocked-state explanations without
+embedding expiring asset URLs. The shared React browser only renders recipe and runner state.
+
+`GeoWorkflowRunner` in `packages/geo-workbench` is the single UI/future-agent execution path. It
+invokes the existing controller action host, records every actual input/result, supports bounded
+user choices and cancellation, and removes sources and derived layers created by a failed run.
+Completed records are validated into `GeoProject.workflowRuns`. Replay resolves catalog,
+collection, item, and asset identity directly; it does not repeat catalog search. Named band
+metadata controls RGB, CIR, and normalized-difference recipes, so a component count alone never
+establishes NIR. A configured provider band override is accepted only with a non-empty audited
+product-documentation note, which remains attached to the candidate and workflow action record.

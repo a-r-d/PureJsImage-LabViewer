@@ -1,10 +1,11 @@
+import type { RasterStyle } from '../model.js'
 import { defaultRasterAsset, itemSelfHref, rasterAssets } from '../stac/assets.js'
 import type { StacAsset, StacCollection, StacItem } from '../stac/types.js'
 import type {
   CatalogRegistryEntry,
   CatalogSearchItem,
   CatalogSourceCandidate,
-  CatalogStory,
+  StaticStacCollectionConfig,
 } from './types.js'
 import { providerName } from './types.js'
 import {
@@ -20,11 +21,12 @@ export function candidatesFromItem(
   options?: {
     readonly collection?: StacCollection
     readonly collectionId?: string
-    readonly style?: CatalogStory['style']
+    readonly style?: RasterStyle
+    readonly bandOverride?: NonNullable<StaticStacCollectionConfig['bandOverride']>
   },
 ): readonly CatalogSourceCandidate[] {
   const collection = options?.collection
-  const style = options?.style
+  const style = options?.style ?? options?.bandOverride?.style
   const collectionId = options?.collectionId ?? item.collection ?? collection?.id
   if (collectionId === undefined) return []
   const license = item.license ?? collection?.license ?? entry.license
@@ -39,6 +41,12 @@ export function candidatesFromItem(
       attribution: collectionAttribution ?? entry.attribution,
       ...(sourceUrl === undefined ? {} : { sourceUrl }),
       ...(style === undefined ? {} : { style }),
+      ...(options?.bandOverride === undefined
+        ? {}
+        : {
+            bands: options.bandOverride.bands,
+            bandMetadataOverride: { note: options.bandOverride.note },
+          }),
     }),
   )
 }
@@ -69,10 +77,12 @@ export function candidateFromAsset(
     readonly provider?: string
     readonly attribution?: string
     readonly sourceUrl?: string
-    readonly style?: CatalogStory['style']
+    readonly style?: RasterStyle
+    readonly bands?: NonNullable<StaticStacCollectionConfig['bandOverride']>['bands']
+    readonly bandMetadataOverride?: Readonly<{ note: string }>
   },
 ): CatalogSourceCandidate {
-  const bands = asset.eoBands.length > 0 ? asset.eoBands : item.eoBands
+  const bands = extra.bands ?? (asset.eoBands.length > 0 ? asset.eoBands : item.eoBands)
   const bandCount =
     bands.length > 0
       ? bands.length
@@ -121,6 +131,9 @@ export function candidateFromAsset(
           : { colorInterpretation: raster.colorInterpretation }),
       }
     }),
+    ...(extra.bandMetadataOverride === undefined
+      ? {}
+      : { bandMetadataOverride: extra.bandMetadataOverride }),
     ...(asset.fileSize === undefined ? {} : { fileSize: asset.fileSize }),
     ...(asset.fileChecksum === undefined ? {} : { checksum: asset.fileChecksum }),
     ...(item.projCode === undefined

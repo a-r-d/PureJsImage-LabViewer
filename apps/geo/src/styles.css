@@ -342,28 +342,65 @@ body,
 .geo-catalog h2 {
   font-size: 12px;
 }
-.geo-inspector-body fieldset.geo-story-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 0 8px;
-  border: 0;
-  padding: 0;
+.geo-workflows {
+  display: grid;
+  gap: 10px;
 }
-.geo-story-chips legend {
-  padding: 0;
-  font-size: 11px;
+.geo-workflows h3,
+.geo-workflows p,
+.geo-workflows dl,
+.geo-workflows ol,
+.geo-workflows ul {
+  margin: 0;
+}
+.geo-workflows dl {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) 1fr;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+.geo-workflows dt {
+  color: var(--wb-text-muted);
   font-weight: 600;
 }
-.geo-story-chips button {
-  padding: 6px 8px;
+.geo-workflows dd {
+  margin: 0;
+}
+.geo-workflow-availability {
+  padding: 8px;
   border: 1px solid var(--wb-border);
   border-radius: 3px;
   background: var(--wb-surface-raised);
-  color: inherit;
-  font-size: 11px;
-  text-align: left;
-  cursor: pointer;
+  font-size: 12px;
+}
+.geo-workflow-availability[class*="is-blocked-"] {
+  border-color: var(--wb-danger);
+}
+.geo-inspector-body fieldset.geo-workflow-options {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.geo-workflow-options legend {
+  margin-bottom: 4px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.geo-inspector-body .geo-workflow-options label {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 8px;
+  margin: 0;
+  padding: 7px;
+  border: 1px solid var(--wb-border);
+  border-radius: 3px;
+  background: var(--wb-surface-raised);
+}
+.geo-workflow-options small {
+  display: block;
+  margin-top: 2px;
+  color: var(--wb-text-muted);
 }
 .geo-catalog-hint {
   color: var(--wb-text-muted);

@@ -2,8 +2,14 @@ import http from 'node:http'
 import { northUpGeoTiffFixture } from './support/geotiff-fixture.mjs'
 
 const tiff = northUpGeoTiffFixture()
-const bytes = new Uint8Array(256 * 1024)
-bytes.set(tiff)
+const fourBandTiff = northUpGeoTiffFixture({ components: 4 })
+const webMercatorTiff = northUpGeoTiffFixture({ components: 4, epsg: 3_857 })
+const fixtures = new Map([
+  ['/north-up.tif', padded(tiff)],
+  ['/north-up-later.tif', padded(tiff)],
+  ['/four-band.tif', padded(fourBandTiff)],
+  ['/web-mercator.tif', padded(webMercatorTiff)],
+])
 const port = 4175
 const host = '127.0.0.1'
 
@@ -26,7 +32,8 @@ const server = http.createServer((request, response) => {
     response.end()
     return
   }
-  if (url.pathname !== '/north-up.tif' && url.pathname !== '/north-up-later.tif') {
+  const bytes = fixtures.get(url.pathname)
+  if (bytes === undefined) {
     response.writeHead(404, cors)
     response.end()
     return
@@ -60,5 +67,11 @@ const server = http.createServer((request, response) => {
 })
 
 server.listen(port, host, () => {
-  process.stdout.write(`geo-range-server ${host}:${port} ${bytes.byteLength} bytes\n`)
+  process.stdout.write(`geo-range-server ${host}:${port} recorded range fixtures\n`)
 })
+
+function padded(fixture) {
+  const output = new Uint8Array(256 * 1024)
+  output.set(fixture)
+  return output
+}

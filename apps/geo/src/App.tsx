@@ -1,10 +1,8 @@
 import type { SourceId, WorkerDiagnostics } from '@pji-workbench/contracts'
 import type {
-  BandMapping,
   CatalogSearchPage,
   CatalogService,
   CatalogSourceCandidate,
-  CatalogStoryPreset,
   GeoRasterLayer,
   StacBbox,
 } from '@pji-workbench/domain-geo'
@@ -12,18 +10,17 @@ import {
   ATLAS_START_DEMOS,
   buildCogXrayReport,
   CATALOG_REGISTRY,
-  CATALOG_STORIES,
   catalogById,
   createCatalogService,
+  displayPresetsForCandidate,
   formatGeoCursorReadout,
   GEO_FILE_ACCEPT,
   geoUiContributions,
   parseAtlasDeepLink,
   registerCrsDefinition,
   serializeAtlasDeepLink,
-  storiesForCatalog,
 } from '@pji-workbench/domain-geo'
-import { GeoWorkbenchController } from '@pji-workbench/geo-workbench'
+import { GeoWorkbenchController, GeoWorkflowRunner } from '@pji-workbench/geo-workbench'
 import { preflightRasterAsset, type RasterAssetPreflight } from '@pji-workbench/imaging'
 import { Button, EmptyState, ErrorState, Icon, ThemeRoot } from '@pji-workbench/ui'
 import { WorkbenchShell } from '@pji-workbench/workbench-react'
@@ -44,6 +41,7 @@ import { GeoViewport, type GeoViewportPointer } from './GeoViewport.js'
 import { InspectorPanel, type InspectorTab } from './InspectorPanel.js'
 import { createGeoImagingWorkerClient } from './imaging-client.js'
 import { createLocalStacCache } from './stac-storage.js'
+import { WorkflowBrowser } from './WorkflowBrowser.js'
 
 export function App({ environment }: { readonly environment: PublicEnvironment }) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -84,12 +82,26 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     })
   }
   const controller = controllerRef.current
+  const workflowRunnerRef = useRef<GeoWorkflowRunner | null>(null)
+  if (workflowRunnerRef.current === null)
+    workflowRunnerRef.current = new GeoWorkflowRunner(controller)
+  const workflowRunner = workflowRunnerRef.current
   const subscribe = useCallback(
     (listener: () => void) => controller.subscribe(listener),
     [controller],
   )
   const getSnapshot = useCallback(() => controller.getSnapshot(), [controller])
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  const subscribeWorkflow = useCallback(
+    (listener: () => void) => workflowRunner.subscribe(listener),
+    [workflowRunner],
+  )
+  const getWorkflowSnapshot = useCallback(() => workflowRunner.getSnapshot(), [workflowRunner])
+  const workflowSnapshot = useSyncExternalStore(
+    subscribeWorkflow,
+    getWorkflowSnapshot,
+    getWorkflowSnapshot,
+  )
 
   const [ready, setReady] = useState(false)
   const [url, setUrl] = useState('')
@@ -98,7 +110,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [demoOpen, setDemoOpen] = useState(
     () => parseAtlasDeepLink(window.location.hash) === undefined,
   )
-  const [tab, setTab] = useState<InspectorTab>('catalog')
+  const [tab, setTab] = useState<InspectorTab>('workflows')
   const [readout, setReadout] = useState('Move the pointer over the raster')
   const [diagnostics, setDiagnostics] = useState<WorkerDiagnostics | null>(null)
   const [settled, setSettled] = useState(true)
@@ -227,7 +239,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       if (verifiedReport?.compatibility === 'ready') {
         verifiedPreflightsRef.current.set(new URL(candidate.href).href, verifiedReport)
       }
-      const presets = presetsForCandidate(candidate)
+      const presets = displayPresetsForCandidate(candidate)
       openAbortRef.current?.abort()
       const abort = new AbortController()
       openAbortRef.current = abort
@@ -571,8 +583,17 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                 }}
                 searchNonce={searchNonce}
                 service={semanticCatalogService}
-                stories={CATALOG_STORIES}
                 {...(viewBbox === undefined ? {} : { viewBbox })}
+              />
+            }
+            workflows={
+              <WorkflowBrowser
+                disabled={!ready || busy}
+                onCompleted={(run) =>
+                  setTab(run.workflowId === 'cog-anatomy' ? 'xray' : 'workflows')
+                }
+                runner={workflowRunner}
+                snapshot={workflowSnapshot}
               />
             }
             layers={rasterLayers}
@@ -674,22 +695,6 @@ function createSemanticCatalogService(
       return backend.invalidate(url)
     },
   }
-}
-
-function presetsForCandidate(candidate: CatalogSourceCandidate): readonly CatalogStoryPreset[] {
-  return storiesForCatalog(candidate.catalogId)
-    .flatMap((story) => story.presets ?? [])
-    .filter((preset) => {
-      const required = maxBandIndex(preset.style.mapping)
-      return candidate.bandCount === undefined ? required === 0 : required < candidate.bandCount
-    })
-}
-
-function maxBandIndex(mapping: BandMapping): number {
-  const values = [mapping.gray, mapping.red, mapping.green, mapping.blue].filter(
-    (value): value is number => typeof value === 'number',
-  )
-  return values.length === 0 ? 0 : Math.max(...values)
 }
 
 function sameBbox(left: StacBbox | undefined, right: StacBbox | undefined): boolean {

@@ -23,12 +23,7 @@ export {
   NOAA_WI_NAIP_COLLECTION_ID,
   NOAA_WISCONSIN_BBOX,
 } from './catalog/noaa-digital-coast.js'
-export {
-  CATALOG_REGISTRY,
-  CATALOG_STORIES,
-  catalogById,
-  storiesForCatalog,
-} from './catalog/registry.js'
+export { CATALOG_REGISTRY, catalogById } from './catalog/registry.js'
 export type { CatalogService, CatalogServiceOptions } from './catalog/service.js'
 export { createCatalogService } from './catalog/service.js'
 export { parseAtlasCatalogSession, serializeAtlasCatalogSession } from './catalog/session.js'
@@ -40,6 +35,7 @@ export type {
   CatalogCollectionSummary,
   CatalogCrsDefinition,
   CatalogCursor,
+  CatalogDisplayPreset,
   CatalogEndpoint,
   CatalogProtocol,
   CatalogRegistryEntry,
@@ -47,14 +43,11 @@ export type {
   CatalogSearchPage,
   CatalogSearchRequest,
   CatalogSourceCandidate,
-  CatalogStory,
-  CatalogStoryPreset,
   StaticStacCollectionConfig,
 } from './catalog/types.js'
 export {
   catalogProtocolHint,
   catalogRootHref,
-  collectionIdsForStory,
   collectionSummariesFromRegistry,
 } from './catalog/types.js'
 export {
@@ -124,6 +117,7 @@ export type {
   GeoRecipeReference,
   GeoRoiId,
   GeoSourceId,
+  GeoWorkflowProvenanceRecord,
   LocalFileFingerprint,
   RasterStretch,
   RasterStyle,
@@ -171,6 +165,31 @@ export type {
 } from './stac/types.js'
 export { StacClientError } from './stac/types.js'
 export { GEO_TERMINOLOGY, geoUiContributions } from './ui-contributions.js'
+export type {
+  GeoWorkflowActionRecord,
+  GeoWorkflowAssetRequirement,
+  GeoWorkflowAvailability,
+  GeoWorkflowAvailabilityStatus,
+  GeoWorkflowBandRole,
+  GeoWorkflowCatalogDependency,
+  GeoWorkflowDecisionOption,
+  GeoWorkflowOutputDefinition,
+  GeoWorkflowParameter,
+  GeoWorkflowRecipe,
+  GeoWorkflowRunRecord,
+  GeoWorkflowSelector,
+  GeoWorkflowStep,
+} from './workflows.js'
+export {
+  assertGeoWorkflowRecipe,
+  candidateHasBand,
+  displayPresetsForCandidate,
+  GEO_WORKFLOW_RECIPES,
+  GEO_WORKFLOW_SCHEMA_VERSION,
+  geoWorkflowById,
+  workflowAssetIdentity,
+  workflowAvailability,
+} from './workflows.js'
 export type { CogXrayReport } from './xray.js'
 export {
   buildCogXrayReport,

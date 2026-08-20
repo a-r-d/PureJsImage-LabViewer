@@ -1,3 +1,4 @@
+import type { JsonValue } from '@pji-workbench/actions'
 import type {
   CoordinateReferenceSystem,
   DerivedRasterRecipeV1,
@@ -15,6 +16,7 @@ export const GEO_PROJECT_LIMITS = Object.freeze({
   maxRois: 256,
   maxRoiPoints: 4_096,
   maxProvenance: 128,
+  maxWorkflowRuns: 128,
   maxInputLayers: 16,
 })
 
@@ -165,6 +167,39 @@ export interface GeoProvenanceReference {
   readonly note?: string
 }
 
+export interface GeoWorkflowProvenanceRecord {
+  readonly schemaVersion: 1
+  readonly id: string
+  readonly workflowId: string
+  readonly workflowVersion: number
+  readonly parameters: Readonly<Record<string, JsonValue>>
+  readonly decisions: Readonly<Record<string, readonly string[]>>
+  readonly selectedAssets: readonly Readonly<{
+    catalogId: string
+    collectionId: string
+    itemId: string
+    assetKey: string
+  }>[]
+  readonly actions: readonly Readonly<{
+    sequence: number
+    stepId: string
+    actionId: string
+    input: JsonValue
+    result: JsonValue
+  }>[]
+  readonly sourceIds: readonly GeoSourceId[]
+  readonly outputLayerIds: readonly GeoLayerId[]
+  readonly completedOutputs: readonly Readonly<{
+    id: string
+    title: string
+    kind: 'layer' | 'table' | 'report'
+    reference?: string
+  }>[]
+  readonly attribution: readonly string[]
+  readonly startedAt: string
+  readonly completedAt: string
+}
+
 export interface DerivedGeoRasterLayer {
   readonly kind: 'derived'
   readonly id: GeoLayerId
@@ -227,6 +262,7 @@ export interface GeoProject {
   readonly comparison: GeoComparisonState
   readonly rois: readonly GeoMapRoi[]
   readonly provenance: readonly GeoProvenanceReference[]
+  readonly workflowRuns: readonly GeoWorkflowProvenanceRecord[]
 }
 
 export class GeoValidationError extends Error {
@@ -292,6 +328,7 @@ export interface CreateGeoProjectInput {
   readonly comparison?: GeoComparisonState
   readonly rois?: readonly GeoMapRoi[]
   readonly provenance?: readonly GeoProvenanceReference[]
+  readonly workflowRuns?: readonly GeoWorkflowProvenanceRecord[]
 }
 
 const BLEND_MODES = new Set<GeoBlendMode>(['normal', 'multiply', 'screen', 'lighten', 'darken'])
@@ -393,6 +430,7 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
   const layers = input.layers ?? []
   const rois = input.rois ?? []
   const provenance = input.provenance ?? []
+  const workflowRuns = input.workflowRuns ?? []
   if (sources.length > GEO_PROJECT_LIMITS.maxSources) {
     throw new GeoValidationError('LIMIT_EXCEEDED', 'The project exceeds the source limit')
   }
@@ -405,9 +443,16 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
   if (provenance.length > GEO_PROJECT_LIMITS.maxProvenance) {
     throw new GeoValidationError('LIMIT_EXCEEDED', 'The project exceeds the provenance limit')
   }
+  if (workflowRuns.length > GEO_PROJECT_LIMITS.maxWorkflowRuns) {
+    throw new GeoValidationError('LIMIT_EXCEEDED', 'The project exceeds the workflow-run limit')
+  }
   uniqueIds(
     sources.map(({ id }) => id),
     'source id',
+  )
+  uniqueIds(
+    workflowRuns.map(({ id }) => id),
+    'workflow run id',
   )
   uniqueIds(
     layers.map(({ id }) => id),
@@ -506,7 +551,41 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
       }
       return normalized
     }),
+    workflowRuns: workflowRuns.map((record) => normalizeWorkflowRun(record, sourceIds, layerIds)),
   }
+}
+
+function normalizeWorkflowRun(
+  record: GeoWorkflowProvenanceRecord,
+  sourceIds: ReadonlySet<GeoSourceId>,
+  layerIds: ReadonlySet<GeoLayerId>,
+): GeoWorkflowProvenanceRecord {
+  if (record.schemaVersion !== 1 || !Number.isInteger(record.workflowVersion)) {
+    throw new GeoValidationError('INVALID_PROJECT', 'Workflow provenance version is invalid')
+  }
+  boundedId(record.id, 'workflow run id')
+  boundedId(record.workflowId, 'workflow id')
+  if (record.actions.length > 256 || record.selectedAssets.length > 64) {
+    throw new GeoValidationError('LIMIT_EXCEEDED', 'Workflow provenance exceeds its item limit')
+  }
+  for (const sourceId of record.sourceIds) {
+    if (!sourceIds.has(sourceId))
+      throw new GeoValidationError(
+        'INVALID_PROJECT',
+        `Workflow ${record.id} references missing source ${sourceId}`,
+      )
+  }
+  for (const layerId of record.outputLayerIds) {
+    if (!layerIds.has(layerId))
+      throw new GeoValidationError(
+        'INVALID_PROJECT',
+        `Workflow ${record.id} references missing layer ${layerId}`,
+      )
+  }
+  const serialized = JSON.stringify(record)
+  if (serialized.length > 256 * 1024)
+    throw new GeoValidationError('LIMIT_EXCEEDED', 'Workflow provenance exceeds 256 KiB')
+  return JSON.parse(serialized) as GeoWorkflowProvenanceRecord
 }
 
 function sameKnownCrs(left: CrsReference, right: CrsReference): boolean {

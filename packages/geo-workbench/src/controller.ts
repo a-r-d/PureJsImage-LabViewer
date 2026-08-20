@@ -45,6 +45,7 @@ import {
   type GeoRasterLocator,
   type GeoRasterSource,
   type GeoSourceId,
+  type GeoWorkflowProvenanceRecord,
   geoActionDefinitions,
   type RasterStyle,
   sameCrs,
@@ -461,6 +462,9 @@ export class GeoWorkbenchController {
           removed.kind === 'derived'
             ? this.#snapshot.project.provenance.filter(({ id }) => id !== removed.provenance.id)
             : this.#snapshot.project.provenance,
+        workflowRuns: this.#snapshot.project.workflowRuns.filter(
+          ({ outputLayerIds }) => !outputLayerIds.includes(removed.id),
+        ),
       },
       fallback === undefined
         ? { selectedLayerId: undefined, selectedSourceId: undefined }
@@ -517,6 +521,11 @@ export class GeoWorkbenchController {
         comparison: { mode: 'single' },
         provenance: this.#snapshot.project.provenance.filter(
           (entry) => !entry.sourceIds.includes(source.id),
+        ),
+        workflowRuns: this.#snapshot.project.workflowRuns.filter(
+          (run) =>
+            !run.sourceIds.includes(source.id) &&
+            run.outputLayerIds.every((id) => remainingLayers.some((layer) => layer.id === id)),
         ),
       },
       fallback === undefined
@@ -872,7 +881,9 @@ export class GeoWorkbenchController {
   }
 
   #replaceProject(
-    patch: Partial<Pick<GeoProject, 'sources' | 'layers' | 'comparison' | 'provenance'>>,
+    patch: Partial<
+      Pick<GeoProject, 'sources' | 'layers' | 'comparison' | 'provenance' | 'workflowRuns'>
+    >,
     selection: {
       readonly selectedLayerId?: GeoLayerId | undefined
       readonly selectedSourceId?: GeoSourceId | undefined
@@ -897,6 +908,11 @@ export class GeoWorkbenchController {
     const set = (id: GeoActionId, execute: ActionHandler<GeoActionContext>['execute']): void => {
       handlers.set(`${id}@1`, { execute })
     }
+    set('geo.workflow.record', (input) => {
+      const record = recordInput(input)['record'] as unknown as GeoWorkflowProvenanceRecord
+      this.#replaceProject({ workflowRuns: [...this.#snapshot.project.workflowRuns, record] })
+      return { recorded: true, runId: record.id }
+    })
     set('geo.catalog.list', () =>
       json(
         this.#catalogs.map(({ id, title, description, protocol }) => ({
@@ -1151,7 +1167,14 @@ export class GeoWorkbenchController {
     createAnalysis('geo.analysis.aspect', 'terrain', 'aspect')
     set('geo.analysis.region_statistics', async (input, _context, signal) => {
       const record = recordInput(input)
-      const layer = this.#requireDerivedLayer(stringField(record, 'layerId'))
+      const recipeValue = record['recipe']
+      const request =
+        recipeValue === undefined
+          ? this.#derivedRequest(
+              this.#requireDerivedLayer(stringField(record, 'layerId')).recipe,
+              stringField(record, 'layerId'),
+            )
+          : this.#derivedRequest(recipeValue, 'geo-region-statistics')
       const histogramValue = record['histogram']
       const histogram =
         histogramValue === undefined
@@ -1163,7 +1186,7 @@ export class GeoWorkbenchController {
             }
       const result = await this.#runtime.requestDerivedStatistics(
         {
-          ...this.#derivedRequest(layer.recipe, layer.id),
+          ...request,
           region: regionField(record, 'region'),
           component: optionalIntegerField(record, 'component') ?? 0,
           ...(histogram === undefined ? {} : { histogram }),
@@ -1179,10 +1202,17 @@ export class GeoWorkbenchController {
     })
     set('geo.analysis.line_profile', async (input, _context, signal) => {
       const record = recordInput(input)
-      const layer = this.#requireDerivedLayer(stringField(record, 'layerId'))
+      const recipeValue = record['recipe']
+      const request =
+        recipeValue === undefined
+          ? this.#derivedRequest(
+              this.#requireDerivedLayer(stringField(record, 'layerId')).recipe,
+              stringField(record, 'layerId'),
+            )
+          : this.#derivedRequest(recipeValue, 'geo-line-profile')
       const result = await this.#runtime.requestDerivedLineProfile(
         {
-          ...this.#derivedRequest(layer.recipe, layer.id),
+          ...request,
           start: pointField(record, 'start'),
           end: pointField(record, 'end'),
           sampleCount: integerField(record, 'sampleCount'),

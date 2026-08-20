@@ -4,14 +4,12 @@ import { describe, expect, it } from 'vitest'
 import {
   ATLAS_START_DEMOS,
   CATALOG_REGISTRY,
-  CATALOG_STORIES,
   CRS_EPSG_4326,
   candidatesFromItem,
   catalogById,
   catalogProtocolHint,
   catalogRootHref,
   classifyStacClientError,
-  collectionIdsForStory,
   collectionSummariesFromRegistry,
   createGeoProject,
   createGeoRasterSource,
@@ -25,7 +23,6 @@ import {
   StacClientError,
   serializeAtlasCatalogSession,
   serializeAtlasDeepLink,
-  storiesForCatalog,
   transformMapPoint,
   USGS_LANDSAT_CATALOG,
 } from '../src/index.js'
@@ -37,7 +34,7 @@ const wgs84 = {
 }
 
 describe('catalog registry', () => {
-  it('keeps Kentucky collection IDs in the registry, not in story React surfaces', () => {
+  it('keeps product collection IDs in the catalog registry', () => {
     expect(CATALOG_REGISTRY.map((entry) => entry.id)).toEqual([
       'noaa-digital-coast',
       'usgs-3dep',
@@ -46,30 +43,15 @@ describe('catalog registry', () => {
     ])
     expect(catalogRootHref(KY_FROM_ABOVE_CATALOG)).toContain('execute-api')
     expect(KY_FROM_ABOVE_CATALOG.protocol).toBe('stac-api')
-    const stories = storiesForCatalog('ky-from-above')
-    expect(stories.map((story) => story.id)).toEqual([
-      'kentucky-through-time',
-      'natural-color-cir',
-      'terrain-lab',
-      'cog-anatomy',
-    ])
-    for (const story of CATALOG_STORIES) {
-      expect(story).not.toHaveProperty('collectionIds')
-      if (story.catalogId !== KY_FROM_ABOVE_CATALOG.id) continue
-      const ids = collectionIdsForStory(KY_FROM_ABOVE_CATALOG, story)
-      if (story.id === 'terrain-lab') {
-        expect(ids.some((id) => id.startsWith('dem-'))).toBe(true)
-        expect(
-          collectionIdsForStory(KY_FROM_ABOVE_CATALOG, {
-            ...story,
-            collectionGroup: 'elevation-dsm',
-          }),
-        ).toEqual([])
-      } else {
-        expect(ids.length).toBeGreaterThan(0)
-        expect(ids.every((id) => id.startsWith('orthos-'))).toBe(true)
-      }
-    }
+    expect(
+      KY_FROM_ABOVE_CATALOG.collectionGroups['elevation-dtm']?.some((id) => id.startsWith('dem-')),
+    ).toBe(true)
+    expect(KY_FROM_ABOVE_CATALOG.collectionGroups['elevation-dsm']).toEqual([])
+    expect(
+      KY_FROM_ABOVE_CATALOG.collectionGroups['time-series-ortho']?.every((id) =>
+        id.startsWith('orthos-'),
+      ),
+    ).toBe(true)
     expect(catalogById('missing')).toBeUndefined()
   })
 

@@ -20,6 +20,7 @@ test.beforeEach(async ({ page }) => {
     { timeout: 30_000 },
   )
   await dismissDemoPicker(page)
+  await page.getByRole('tab', { name: 'Catalog' }).click()
   await expect(page.getByTestId('catalog-status')).toHaveText(/\d+ collections/u, {
     timeout: 15_000,
   })
@@ -42,7 +43,7 @@ test('searches a mocked Kentucky collection and opens a COG asset as a layer', a
   test.setTimeout(60_000)
   let delayedFirstRange = false
   let zeroByteProbes = 0
-  await page.route('http://127.0.0.1:4175/north-up.tif', async (route) => {
+  await page.route('http://127.0.0.1:4175/four-band.tif', async (route) => {
     if (route.request().headers()['range'] === 'bytes=0-0') zeroByteProbes += 1
     if (!delayedFirstRange) {
       delayedFirstRange = true
@@ -54,7 +55,8 @@ test('searches a mocked Kentucky collection and opens a COG asset as a layer', a
   })
   await expect(page.getByTestId('catalog-panel')).toBeVisible()
   await selectKentucky(page)
-  await page.getByRole('button', { name: 'Kentucky Through Time' }).click()
+  await page.getByLabel('Collection').selectOption('orthos-phase2')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
   await expect(page.getByTestId('catalog-status')).toHaveText(/^\d+ of \d+ items$/u, {
     timeout: 15_000,
   })
@@ -74,7 +76,7 @@ test('searches a mocked Kentucky collection and opens a COG asset as a layer', a
 
 test('preflights an alternate raster asset when it is selected', async ({ page }) => {
   await page.getByLabel('Catalog').selectOption('usgs-landsat')
-  await page.getByRole('button', { name: 'USGS Landsat Cincinnati' }).click()
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
   await expect(page.getByTestId('catalog-status')).toHaveText(/^\d+ of \d+ items$/u, {
     timeout: 15_000,
   })
@@ -102,7 +104,7 @@ test('suppresses a stale preflight when catalog selection changes', async ({ pag
     releaseFirstRange = resolve
   })
   let delayed = false
-  await page.route('http://127.0.0.1:4175/north-up.tif', async (route) => {
+  await page.route('http://127.0.0.1:4175/four-band.tif', async (route) => {
     if (!delayed && route.request().headers()['range'] === 'bytes=0-0') {
       delayed = true
       observedFirstRange?.()
@@ -112,13 +114,14 @@ test('suppresses a stale preflight when catalog selection changes', async ({ pag
   })
 
   await selectKentucky(page)
-  await page.getByRole('button', { name: 'Kentucky Through Time' }).click()
+  await page.getByLabel('Collection').selectOption('orthos-phase2')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
   await firstRangeObserved
   await page.getByLabel('Catalog').selectOption('usgs-landsat')
   await expect(page.getByTestId('catalog-status')).toHaveText(/\d+ collections/u, {
     timeout: 15_000,
   })
-  await page.getByRole('button', { name: 'USGS Landsat Cincinnati' }).click()
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
   releaseFirstRange?.()
 
   await expect(page.getByTestId('catalog-preflight')).toContainText('Ready.', {
@@ -166,7 +169,7 @@ test('shows a catalog error when the browser blocks the STAC API', async ({ page
 
 test('opens a mocked NOAA static STAC item from the local range fixture', async ({ page }) => {
   test.setTimeout(60_000)
-  await page.getByRole('button', { name: 'NOAA Puerto Rico Terrain' }).click()
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
   await expect(page.getByTestId('catalog-status')).toHaveText(/^\d+ of \d+ items$/u, {
     timeout: 15_000,
   })
@@ -181,7 +184,7 @@ test('searches mocked Landsat and TNM catalogs without provider branches', async
   await expect(page.getByTestId('catalog-status')).toHaveText(/\d+ collections/u, {
     timeout: 15_000,
   })
-  await page.getByRole('button', { name: 'USGS Landsat Cincinnati' }).click()
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
   await expect(page.getByTestId('catalog-status')).toHaveText(/^\d+ of \d+ items$/u, {
     timeout: 15_000,
   })
@@ -190,7 +193,7 @@ test('searches mocked Landsat and TNM catalogs without provider branches', async
   await expect(page.getByTestId('catalog-status')).toHaveText(/\d+ collections/u, {
     timeout: 15_000,
   })
-  await page.getByRole('button', { name: 'USGS National Terrain' }).click()
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
   await expect(page.getByTestId('catalog-status')).toHaveText(/^\d+ of \d+ items$/u, {
     timeout: 15_000,
   })

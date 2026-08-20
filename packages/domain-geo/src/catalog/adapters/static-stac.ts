@@ -48,9 +48,9 @@ export function createStaticStacAdapter(jsonOptions: CatalogJsonFetchOptions): C
         item.collection === undefined ? { ...item, collection: collection.id } : item
       const candidates = candidatesFromItem(entry, withCollection, {
         collectionId: collection.id,
-        ...(collection.bandOverride?.style === undefined
+        ...(collection.bandOverride === undefined
           ? {}
-          : { style: collection.bandOverride.style }),
+          : { bandOverride: validatedBandOverride(collection) }),
       })
       return preferredCandidate(candidates, withCollection, identity.assetKey)
     },
@@ -90,16 +90,33 @@ async function loadFilteredItems(
       const withCollection =
         item.collection === undefined ? { ...item, collection: collection.id } : item
       if (!itemMatches(withCollection, request, collection.id)) continue
-      const style = collection.bandOverride?.style
       const candidates = candidatesFromItem(entry, withCollection, {
         collectionId: collection.id,
-        ...(style === undefined ? {} : { style }),
+        ...(collection.bandOverride === undefined
+          ? {}
+          : { bandOverride: validatedBandOverride(collection) }),
       })
       if (candidates.length === 0) continue
       items.push(searchItemFromCandidates(withCollection, collection.id, candidates, item.id))
     }
   }
   return items
+}
+
+function validatedBandOverride(
+  collection: StaticStacCollectionConfig,
+): NonNullable<StaticStacCollectionConfig['bandOverride']> {
+  const override = collection.bandOverride
+  if (override === undefined) {
+    throw new StacClientError('INVALID_DOCUMENT', 'Band override is missing.')
+  }
+  if (override.note.trim().length === 0 || override.bands.length === 0) {
+    throw new StacClientError(
+      'INVALID_DOCUMENT',
+      `Static STAC collection ${collection.id} has an unaudited band override.`,
+    )
+  }
+  return override
 }
 
 async function loadItemCollection(

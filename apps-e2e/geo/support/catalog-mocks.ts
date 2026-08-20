@@ -68,7 +68,9 @@ export async function mockGovernmentCatalogs(page: Page): Promise<void> {
     },
   )
   const landsatCatalog = loadJson(landsatRoot, 'landsat-catalog.json')
-  const landsatSearch = withLocalCog(loadJson(landsatRoot, 'landsat-search.json'))
+  const landsatSearch = withLandsatRgbAssets(
+    withLocalCog(loadJson(landsatRoot, 'landsat-search.json')),
+  )
   await page.route(/landsatlook\.usgs\.gov/u, async (route) => {
     const url = route.request().url()
     if (url.includes('/search') || url.includes('/items/')) {
@@ -94,4 +96,29 @@ export async function mockGovernmentCatalogs(page: Page): Promise<void> {
     }
     await route.fulfill(jsonFulfill(products))
   })
+}
+
+function withLandsatRgbAssets(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return value
+  const features = (value as Record<string, unknown>)['features']
+  if (!Array.isArray(features)) return value
+  for (const feature of features) {
+    if (typeof feature !== 'object' || feature === null) continue
+    const assets = (feature as Record<string, unknown>)['assets']
+    if (typeof assets !== 'object' || assets === null) continue
+    const record = assets as Record<string, unknown>
+    const red = record['red']
+    if (typeof red !== 'object' || red === null) continue
+    for (const [key, commonName, title] of [
+      ['green', 'green', 'Green Band (B3)'],
+      ['blue', 'blue', 'Blue Band (B2)'],
+    ] as const) {
+      const asset = JSON.parse(JSON.stringify(red)) as Record<string, unknown>
+      asset['title'] = title
+      asset['href'] = `http://127.0.0.1:4175/north-up.tif?asset=${key}`
+      asset['eo:bands'] = [{ name: key === 'green' ? 'B3' : 'B2', common_name: commonName }]
+      record[key] = asset
+    }
+  }
+  return value
 }

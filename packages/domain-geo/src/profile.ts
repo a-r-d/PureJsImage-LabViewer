@@ -1,6 +1,7 @@
 import type { HeadlessDomainProfile, SourceAdapterKind } from '@pji-workbench/workbench-core'
 
 import { type GeoActionContext, geoActionDefinitions } from './actions.js'
+import { GEO_WORKFLOW_RECIPES } from './workflows.js'
 
 export const GEO_DOMAIN_ID = 'geo' as const
 export const GEO_READER_IDS = Object.freeze(['purejsimage/tiff'] as const)
@@ -34,7 +35,7 @@ export const geoDomainProfile: HeadlessDomainProfile<GeoActionContext> = Object.
   readerIds: GEO_READER_IDS,
   sourceAdapters: Object.freeze(['local', 'remote'] as readonly SourceAdapterKind[]),
   exampleScenarioIds: [],
-  workflowRecipes: [],
+  workflowRecipes: GEO_WORKFLOW_RECIPES,
   actionDefinitions: geoActionDefinitions,
   capabilities: GEO_CAPABILITIES,
   agentPolicy: Object.freeze({

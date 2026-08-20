@@ -5,6 +5,7 @@ import { geoActionDefinitions } from '../src/index.js'
 describe('Atlas semantic action catalog', () => {
   it('publishes the complete stable controller surface', () => {
     expect(geoActionDefinitions.map(({ descriptor }) => descriptor.id)).toEqual([
+      'geo.workflow.record',
       'geo.catalog.list',
       'geo.catalog.list_collections',
       'geo.catalog.search',

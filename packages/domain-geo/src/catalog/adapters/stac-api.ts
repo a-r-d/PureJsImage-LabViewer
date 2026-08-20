@@ -1,4 +1,5 @@
 import type { StacClient } from '../../stac/client.js'
+import { linkHref } from '../../stac/parse.js'
 import type {
   StacCatalog,
   StacCollection,
@@ -62,29 +63,28 @@ export function createStacApiAdapter(
     async resolveDeepLink(entry, identity, signal) {
       const client = clientFor(entry)
       const root = await rootCatalog(client, entry, signal)
-      let page = await client.search(
-        root,
-        { collections: [identity.collectionId], limit: 100 },
+      const rootHref =
+        linkHref(root.links, 'self') ??
+        (entry.endpoint.kind === 'stac-api' ? entry.endpoint.rootHref : undefined)
+      if (rootHref === undefined) return undefined
+      const baseHref = rootHref.endsWith('/') ? rootHref : `${rootHref}/`
+      const item = await client.getItem(
+        new URL(
+          `collections/${encodeURIComponent(identity.collectionId)}/items/${encodeURIComponent(identity.itemId)}`,
+          baseHref,
+        ).href,
         signal,
       )
-      for (let pageIndex = 0; pageIndex < 10; pageIndex += 1) {
-        const item = page.items.find((candidate) => candidate.id === identity.itemId)
-        if (item !== undefined) {
-          const collection = await collectionForItem(
-            entry,
-            item,
-            client,
-            root,
-            collectionCache,
-            collectionLists,
-            signal,
-          )
-          return candidateFromResolvedItem(entry, item, identity.assetKey, collection)
-        }
-        if (page.next === undefined) return undefined
-        page = await client.followLink(page.next, signal)
-      }
-      return undefined
+      const collection = await collectionForItem(
+        entry,
+        item,
+        client,
+        root,
+        collectionCache,
+        collectionLists,
+        signal,
+      )
+      return candidateFromResolvedItem(entry, item, identity.assetKey, collection)
     },
   }
 }

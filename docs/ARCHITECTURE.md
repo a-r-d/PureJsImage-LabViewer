@@ -55,7 +55,8 @@ apps/geo
   and Kentucky From Above), native-CRS viewport, independent COG sources with per-handle tiles,
   layer/display controls, and COG X-ray. Raster preflight runs in `packages/imaging` before a
   catalog URL is opened: metadata-only, range-readable, TIFF-compatible, then decoder-ready.
-  Only decoder-ready assets may report Ready. Deployed at geo.purejsimage.com.
+  Only decoder-ready assets may report Ready. A shared workflow browser renders and executes
+  domain recipes; workflows do not own bespoke React trees. Deployed at geo.purejsimage.com.
 
 packages/actions
   JSON-safe semantic action descriptors, deterministic registry, availability, validation,
@@ -83,7 +84,8 @@ packages/domain-science
 
 packages/domain-geo
   Geo project model, CRS helpers, Atlas copy, JSON-safe COG X-ray reports, a generic STAC
-  client, catalog adapters (STAC API, static STAC, TNMAccess), and the catalog registry.
+  client, catalog adapters (STAC API, static STAC, TNMAccess), the catalog registry, and URL-free
+  `GeoWorkflowRecipe` definitions with bounded availability diagnostics.
   Collection IDs belong in registry entries, not generic UI. Catalog fetch throws are
   `NETWORK`; CORS is claimed only when the error names CORS. Atlas does not proxy.
   Proj4js may transform EPSG:4326 ↔ EPSG:3857 plus CRS definitions registered by a catalog
@@ -96,6 +98,9 @@ packages/geo-workbench
   transitions, stable semantic source identities, session-local file resources, and the map from
   semantic source IDs to live imaging handles. May compose actions, contracts, domain-geo,
   imaging, and workspace; must not import React or science/materials packages.
+  `GeoWorkflowRunner` delegates every effect to the controller action host, records action
+  inputs/results, rolls temporary resources back on failure/cancellation, resolves persisted asset
+  identities directly for search-free replay, and commits completed run provenance to GeoProject.
   Derived raster actions persist a validated JSON-safe recipe and provenance only after the
   imaging Worker accepts a dry-run. Runtime bindings resolve recipes to exact live dataset
   handles without storing Worker objects in the project.

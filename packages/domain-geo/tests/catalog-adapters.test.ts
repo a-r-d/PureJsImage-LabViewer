@@ -39,6 +39,15 @@ const staticCatalog: CatalogRegistryEntry = {
         collectionHref: 'https://static.example.test/stac/collection.json',
         itemCollectionHref: 'https://static.example.test/stac/item-collection.json',
         itemDocumentBaseHref: 'https://static.example.test/stac/',
+        bandOverride: {
+          note: 'Example provider product guide, table 4.',
+          bands: [
+            { name: 'Band 1', commonName: 'red' },
+            { name: 'Band 2', commonName: 'green' },
+            { name: 'Band 3', commonName: 'blue' },
+            { name: 'Band 4', commonName: 'nir' },
+          ],
+        },
       },
       {
         id: 'too-large',
@@ -82,6 +91,15 @@ describe('static STAC adapter', () => {
     expect(page.items[0]?.candidates[0]?.href).toBe(
       'https://static.example.test/ncei13_n17x75_w065x75_2022v1.tif',
     )
+    expect(page.items[0]?.candidates[0]?.bands.map(({ commonName }) => commonName)).toEqual([
+      'red',
+      'green',
+      'blue',
+      'nir',
+    ])
+    expect(page.items[0]?.candidates[0]?.bandMetadataOverride).toEqual({
+      note: 'Example provider product guide, table 4.',
+    })
     expect(page.next).toBeDefined()
     const more = await service.follow(staticCatalog, page.next ?? { href: '' })
     expect(more.items[0]?.id).toBe('west-tile')
@@ -102,6 +120,7 @@ describe('Landsat STAC API adapter', () => {
   it('searches with GET by default, prefers HTTPS assets, and keeps s3-only as s3', async () => {
     const catalog = await fixture('./fixtures/stac-api/landsat-catalog.json')
     const search = await fixture('./fixtures/stac-api/landsat-search.json')
+    const searchFeatures = (search as { readonly features: readonly unknown[] }).features
     const s3Item = await fixture('./fixtures/stac-api/landsat-s3-item.json')
     const methods: string[] = []
     const fetchFn: typeof fetch = async (input, init) => {
@@ -115,6 +134,8 @@ describe('Landsat STAC API adapter', () => {
         expect(init?.method ?? 'GET').toBe('GET')
         return jsonResponse(search)
       }
+      if (url.includes('/collections/landsat-c2l2-sr/items/LC08_L2SP_019033_20250909_02_T1_SR'))
+        return jsonResponse(searchFeatures[0])
       if (url.includes('/items/s3-only-scene')) return jsonResponse(s3Item)
       if (url.includes('/collections') && !url.includes('/items')) {
         return jsonResponse({
@@ -140,6 +161,18 @@ describe('Landsat STAC API adapter', () => {
     const s3 = preferHttpsAsset(asset)
     expect(s3.href.startsWith('s3://')).toBe(true)
     expect(methods.some((entry) => entry.startsWith('POST'))).toBe(false)
+    const candidate = page.items[0]?.candidates[0]
+    if (candidate === undefined) throw new Error('Expected Landsat replay candidate')
+    const searchesBeforeReplay = methods.filter((entry) => entry.includes('/search')).length
+    await expect(
+      service.resolveDeepLink(USGS_LANDSAT_CATALOG, {
+        catalogId: candidate.catalogId,
+        collectionId: candidate.collectionId,
+        itemId: candidate.itemId,
+        assetKey: candidate.assetKey,
+      }),
+    ).resolves.toMatchObject({ itemId: candidate.itemId, assetKey: candidate.assetKey })
+    expect(methods.filter((entry) => entry.includes('/search'))).toHaveLength(searchesBeforeReplay)
   })
 
   it('POSTs search and next only when advertised on the catalog origin', async () => {

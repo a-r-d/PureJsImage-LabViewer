@@ -58,6 +58,7 @@ export type GeoActionId =
   | 'geo.analysis.cancel'
   | 'geo.analysis.release'
   | 'geo.derived_layer.remove'
+  | 'geo.workflow.record'
 
 export interface GeoActionContext {
   readonly hasSource: boolean
@@ -190,6 +191,13 @@ const sourceMutation = (
 })
 
 export const geoActionDefinitions: readonly ActionDefinition<GeoActionContext>[] = Object.freeze([
+  {
+    descriptor: descriptor('geo.workflow.record', 'Record workflow provenance', 'workflow', {
+      input: objectInput({ record: OBJECT }, ['record']),
+      mutability: 'mutation',
+      permissions: ['workspace.propose'],
+    }),
+  },
   catalogRead('geo.catalog.list', 'List catalogs'),
   catalogRead(
     'geo.catalog.list_collections',
