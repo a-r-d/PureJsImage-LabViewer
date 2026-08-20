@@ -16,6 +16,7 @@
     { "path": "./packages/workbench-react" },
     { "path": "./packages/domain-science" },
     { "path": "./packages/domain-geo" },
+    { "path": "./packages/geo-workbench" },
     { "path": "./apps/science/tsconfig.app.json" },
     { "path": "./apps/science/tsconfig.node.json" },
     { "path": "./apps/gallery/tsconfig.app.json" },

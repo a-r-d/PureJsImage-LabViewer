@@ -4,6 +4,7 @@ import type {
   CogXrayReport,
   GeoCatalogReference,
   GeoRasterLayer,
+  GeoRasterSource,
   RasterStyle,
 } from '@pji-workbench/domain-geo'
 import { Button, Panel, Tabs } from '@pji-workbench/ui'
@@ -20,6 +21,8 @@ export function InspectorPanel({
   onLayerChange,
   onDuplicateLayer,
   onMoveLayer,
+  sources,
+  onCloseSource,
   bandCount,
   xray,
   catalog,
@@ -37,6 +40,8 @@ export function InspectorPanel({
   ) => void
   readonly onDuplicateLayer: () => void
   readonly onMoveLayer: (id: string, direction: -1 | 1) => void
+  readonly sources: readonly GeoRasterSource[]
+  readonly onCloseSource: (id: string) => void
   readonly bandCount: number
   readonly xray: CogXrayReport | undefined
   readonly catalog: ReactNode
@@ -60,6 +65,29 @@ export function InspectorPanel({
       {tab === 'catalog' ? catalog : null}
       {tab === 'layers' ? (
         <div className="geo-inspector-body" data-testid="layer-panel">
+          <section aria-labelledby="geo-sources-heading">
+            <div className="geo-inspector-toolbar">
+              <strong id="geo-sources-heading">Sources</strong>
+              <span>{sources.length} / 32</span>
+            </div>
+            {sources.length === 0 ? (
+              <p>No sources are open.</p>
+            ) : (
+              <ol className="geo-source-list">
+                {sources.map((source) => (
+                  <li key={source.id}>
+                    <span>{source.label}</span>
+                    <Button
+                      aria-label={`Close ${source.label}`}
+                      onClick={() => onCloseSource(source.id)}
+                    >
+                      Close source
+                    </Button>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
           <div className="geo-inspector-toolbar">
             <Button onClick={onDuplicateLayer}>Duplicate layer</Button>
           </div>

@@ -80,6 +80,33 @@ export function candidateFromAsset(
     ...(item.datetime === undefined ? {} : { datetime: item.datetime }),
     ...(item.bbox === undefined ? {} : { bbox: item.bbox }),
     ...(asset.type === undefined ? {} : { mediaType: asset.type }),
+    roles: asset.roles,
+    bands: Array.from({ length: bandCount }, (_, index) => {
+      const eo = bands[index]
+      const raster = asset.rasterBands[index]
+      return {
+        index,
+        ...(eo?.name === undefined ? {} : { name: eo.name }),
+        ...(eo?.commonName === undefined ? {} : { commonName: eo.commonName }),
+        ...(eo?.description === undefined ? {} : { description: eo.description }),
+        ...(eo?.wavelength === undefined ? {} : { wavelength: eo.wavelength }),
+        ...(raster?.dataType === undefined ? {} : { dataType: raster.dataType }),
+        ...(raster?.nodata === undefined ? {} : { nodata: raster.nodata }),
+        ...(raster?.scale === undefined ? {} : { scale: raster.scale }),
+        ...(raster?.offset === undefined ? {} : { offset: raster.offset }),
+        ...(raster?.unit === undefined ? {} : { unit: raster.unit }),
+        ...(raster?.colorInterpretation === undefined
+          ? {}
+          : { colorInterpretation: raster.colorInterpretation }),
+      }
+    }),
+    ...(asset.fileSize === undefined ? {} : { fileSize: asset.fileSize }),
+    ...(asset.fileChecksum === undefined ? {} : { checksum: asset.fileChecksum }),
+    ...(item.projCode === undefined
+      ? item.projEpsg === undefined
+        ? {}
+        : { projection: `EPSG:${item.projEpsg}` }
+      : { projection: item.projCode }),
     ...(bandCount === 0 ? {} : { bandCount }),
     ...(item.projEpsg === undefined ? {} : { projEpsg: item.projEpsg }),
     ...(extra.provider === undefined ? {} : { provider: extra.provider }),

@@ -106,6 +106,7 @@ packages/workbench-core      Headless shared runtime and profile types
 packages/workbench-react     Shared React workbench shell
 packages/domain-science      Science catalogs, workflows, actions, panels
 packages/domain-geo          Empty geo profile and terminology
+packages/geo-workbench       Headless Atlas controller and action handlers
 packages/materials-analysis  Trusted science/materials extension bundle
 packages/<domain>-analysis   Future trusted domain extension bundles
 ```

@@ -21,6 +21,7 @@ export interface StacEoBand {
   readonly name?: string
   readonly description?: string
   readonly commonName?: string
+  readonly wavelength?: number
 }
 
 export interface StacRasterBand {
@@ -29,6 +30,8 @@ export interface StacRasterBand {
   readonly scale?: number
   readonly offset?: number
   readonly sampling?: string
+  readonly unit?: string
+  readonly colorInterpretation?: string
 }
 
 export interface StacAssetAlternate {

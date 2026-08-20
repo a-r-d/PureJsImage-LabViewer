@@ -1,4 +1,4 @@
-import type { GeoCatalogReference, RasterStyle } from '../model.js'
+import type { GeoBandMetadata, GeoCatalogReference, RasterStyle } from '../model.js'
 import type { StacBbox, StacEoBand, StacProvider } from '../stac/types.js'
 
 export const CATALOG_REGISTRY_SCHEMA_VERSION = 2 as const
@@ -85,6 +85,12 @@ export interface CatalogSourceCandidate extends CatalogAssetProvenance {
   readonly datetime?: string
   readonly bbox?: StacBbox
   readonly mediaType?: string
+  readonly roles: readonly string[]
+  readonly bands: readonly GeoBandMetadata[]
+  readonly fileSize?: number
+  readonly checksum?: string
+  readonly validator?: string
+  readonly projection?: string
   readonly bandCount?: number
   readonly projEpsg?: number
   readonly style?: RasterStyle

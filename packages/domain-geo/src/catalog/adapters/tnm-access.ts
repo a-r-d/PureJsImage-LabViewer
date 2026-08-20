@@ -84,6 +84,8 @@ export function createTnmAccessAdapter(jsonOptions: CatalogJsonFetchOptions): Ca
           license: entry.license,
           provider: entry.title,
           mediaType: 'image/tiff',
+          roles: ['data'],
+          bands: [],
           ...(identity.sourceUrl === undefined ? {} : { sourceUrl: identity.sourceUrl }),
         }
       }
@@ -187,6 +189,8 @@ function tnmSearchItem(
     attribution: entry.attribution,
     license: entry.license,
     provider: entry.title,
+    roles: ['data'],
+    bands: [],
     ...(datetime === undefined ? {} : { datetime }),
     ...(bbox === undefined ? {} : { bbox }),
     mediaType: 'image/tiff',

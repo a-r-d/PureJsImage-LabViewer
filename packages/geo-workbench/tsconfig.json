@@ -4,12 +4,14 @@
     "lib": ["ES2024", "DOM"],
     "outDir": "./dist",
     "rootDir": "./src",
-    "tsBuildInfoFile": "./dist/domain-geo.tsbuildinfo"
+    "tsBuildInfoFile": "./dist/geo-workbench.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../actions" },
-    { "path": "../workbench-core" },
-    { "path": "../contracts" }
+    { "path": "../contracts" },
+    { "path": "../domain-geo" },
+    { "path": "../imaging" },
+    { "path": "../workspace" }
   ]
 }

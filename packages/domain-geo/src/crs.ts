@@ -49,12 +49,8 @@ export function sameCrs(left: CrsReference, right: CrsReference): boolean {
   const leftKey = crsKey(left)
   const rightKey = crsKey(right)
   if (leftKey !== undefined && rightKey !== undefined) return leftKey === rightKey
-  return (
-    left.kind === right.kind &&
-    left.authority === right.authority &&
-    left.code === right.code &&
-    left.name === right.name
-  )
+  // Unidentified CRSs are never safe to compose merely because their sparse metadata matches.
+  return false
 }
 
 export function canTransformCrs(from: CrsReference, to: CrsReference): boolean {

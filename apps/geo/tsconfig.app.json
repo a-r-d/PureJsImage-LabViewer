@@ -9,6 +9,7 @@
   "references": [
     { "path": "../../packages/contracts" },
     { "path": "../../packages/domain-geo" },
+    { "path": "../../packages/geo-workbench" },
     { "path": "../../packages/imaging" },
     { "path": "../../packages/ui" },
     { "path": "../../packages/viewport" },

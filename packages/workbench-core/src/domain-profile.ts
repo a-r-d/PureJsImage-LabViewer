@@ -8,19 +8,23 @@ export const SOURCE_ADAPTER_KINDS = ['local', 'remote', 'sample', 'bundled'] as 
 export type SourceAdapterKind = (typeof SOURCE_ADAPTER_KINDS)[number]
 
 export interface DomainCapabilityFlags {
-  readonly localFiles: boolean
-  readonly remoteHttps: boolean
-  readonly generatedSamples: boolean
-  readonly bundledExamples: boolean
-  readonly scripts: boolean
-  readonly agent: boolean
-  readonly particleAnalysis: boolean
-  readonly materialsToolbox: boolean
-  readonly batch: boolean
-  readonly fft: boolean
-  readonly surface: boolean
-  readonly stack: boolean
-  readonly projectPersistence: boolean
+  readonly sources: Readonly<{
+    localFiles: boolean
+    remoteHttps: boolean
+    generatedSamples: boolean
+    bundledExamples: boolean
+    catalogs: boolean
+  }>
+  readonly automation: Readonly<{ scripts: boolean; agent: boolean }>
+  readonly analysis: Readonly<{
+    particle: boolean
+    materials: boolean
+    batch: boolean
+    fft: boolean
+    surface: boolean
+    stack: boolean
+  }>
+  readonly workspace: Readonly<{ projectPersistence: boolean }>
 }
 
 export interface DomainAgentPolicy {

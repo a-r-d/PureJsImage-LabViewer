@@ -276,10 +276,12 @@ function parseEoBands(value: unknown): readonly StacEoBand[] {
     const name = optionalString(entry['name'])
     const description = optionalString(entry['description'])
     const commonName = optionalString(entry['common_name'])
+    const wavelength = optionalFinite(entry['center_wavelength'])
     bands.push({
       ...(name === undefined ? {} : { name }),
       ...(description === undefined ? {} : { description }),
       ...(commonName === undefined ? {} : { commonName }),
+      ...(wavelength === undefined ? {} : { wavelength }),
     })
   }
   return bands
@@ -295,12 +297,16 @@ function parseRasterBands(value: unknown): readonly StacRasterBand[] {
     const nodata = optionalFinite(entry['nodata'])
     const scale = optionalFinite(entry['scale'])
     const offset = optionalFinite(entry['offset'])
+    const unit = optionalString(entry['unit'])
+    const colorInterpretation = optionalString(entry['color_interpretation'])
     bands.push({
       ...(dataType === undefined ? {} : { dataType }),
       ...(nodata === undefined ? {} : { nodata }),
       ...(scale === undefined ? {} : { scale }),
       ...(offset === undefined ? {} : { offset }),
       ...(sampling === undefined ? {} : { sampling }),
+      ...(unit === undefined ? {} : { unit }),
+      ...(colorInterpretation === undefined ? {} : { colorInterpretation }),
     })
   }
   return bands

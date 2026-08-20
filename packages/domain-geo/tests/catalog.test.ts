@@ -195,6 +195,7 @@ describe('catalog registry', () => {
       height: 2,
       componentCount: 4,
       spatialReference: wgs84,
+      locator: { kind: 'bundled-example', scenarioId: 'test.catalog-source' },
       catalog: session?.provenance,
     })
     const project = createGeoProject({
@@ -220,6 +221,7 @@ describe('catalog registry', () => {
         height: 2,
         componentCount: 1,
         spatialReference: wgs84,
+        locator: { kind: 'bundled-example', scenarioId: 'test.signed-source' },
         catalog: {
           catalogId: 'x',
           catalogTitle: 'x',

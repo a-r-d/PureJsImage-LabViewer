@@ -69,6 +69,61 @@ export interface GeoCatalogReference {
   readonly sourceUrl?: string
 }
 
+export interface GeoBandMetadata {
+  readonly index: number
+  readonly name?: string
+  readonly commonName?: string
+  readonly description?: string
+  readonly dataType?: string
+  readonly nodata?: number
+  readonly scale?: number
+  readonly offset?: number
+  readonly unit?: string
+  readonly wavelength?: number
+  readonly colorInterpretation?: string
+}
+
+export interface LocalFileFingerprint {
+  readonly name: string
+  readonly size: number
+  readonly lastModified: number
+  readonly mediaType?: string
+}
+
+/** Durable, JSON-safe source identity. Live URLs with expiring credentials are refused. */
+export type GeoRasterLocator =
+  | Readonly<{ kind: 'remote-url'; url: string }>
+  | Readonly<{
+      kind: 'stac-asset'
+      catalog: GeoCatalogReference
+      datetime?: string
+      title?: string
+      roles: readonly string[]
+      bands: readonly GeoBandMetadata[]
+      mediaType?: string
+      fileSize?: number
+      checksum?: string
+      validator?: string
+      projection?: string
+    }>
+  | Readonly<{
+      kind: 'tnm-product'
+      catalog: GeoCatalogReference
+      productId: string
+      downloadUrl: string
+      bands: readonly GeoBandMetadata[]
+      datetime?: string
+      title?: string
+      roles: readonly string[]
+      mediaType?: string
+      fileSize?: number
+      checksum?: string
+      validator?: string
+      projection?: string
+    }>
+  | Readonly<{ kind: 'local-file'; fingerprint: LocalFileFingerprint }>
+  | Readonly<{ kind: 'bundled-example'; scenarioId: string; assetId?: string }>
+
 export interface GeoRasterSource {
   readonly id: GeoSourceId
   readonly label: string
@@ -77,6 +132,8 @@ export interface GeoRasterSource {
   readonly componentCount: number
   readonly spatialReference: SpatialReference
   readonly pixelInterpretation: PixelInterpretation
+  readonly locator: GeoRasterLocator
+  readonly bands: readonly GeoBandMetadata[]
   readonly catalog?: GeoCatalogReference
 }
 
@@ -179,6 +236,8 @@ export interface CreateGeoRasterSourceInput {
   readonly height: number
   readonly componentCount: number
   readonly spatialReference: SpatialReference
+  readonly locator: GeoRasterLocator
+  readonly bands?: readonly GeoBandMetadata[]
   readonly catalog?: GeoCatalogReference
 }
 
@@ -234,15 +293,23 @@ export function createGeoRasterSource(input: CreateGeoRasterSourceInput): GeoRas
       'A geo raster source requires a pixel-to-model affine',
     )
   }
+  const componentCount = positiveInteger(input.componentCount, 'component count')
+  const bands = normalizeBands(input.bands ?? [], componentCount)
+  const locator = normalizeLocator(input.locator)
+  const catalog =
+    input.catalog ??
+    (locator.kind === 'stac-asset' || locator.kind === 'tnm-product' ? locator.catalog : undefined)
   return {
     id: boundedId(input.id, 'source id') as GeoSourceId,
     label: boundedString(input.label, 'source label'),
     width: positiveInteger(input.width, 'source width'),
     height: positiveInteger(input.height, 'source height'),
-    componentCount: positiveInteger(input.componentCount, 'component count'),
+    componentCount,
     spatialReference,
     pixelInterpretation: spatialReference.pixelInterpretation,
-    ...(input.catalog === undefined ? {} : { catalog: normalizeCatalogReference(input.catalog) }),
+    locator,
+    bands,
+    ...(catalog === undefined ? {} : { catalog: normalizeCatalogReference(catalog) }),
   }
 }
 
@@ -305,6 +372,8 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
       height: source.height,
       componentCount: source.componentCount,
       spatialReference: source.spatialReference,
+      locator: source.locator,
+      bands: source.bands,
       ...(source.catalog === undefined ? {} : { catalog: source.catalog }),
     }),
   )
@@ -337,6 +406,15 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
   )
   const sourceIds = new Set(sources.map(({ id }) => id))
   const layerIds = new Set(layers.map(({ id }) => id))
+  if (
+    sources.length > 1 &&
+    sources.some((source) => !sameKnownCrs(source.spatialReference.crs, input.crs))
+  ) {
+    throw new GeoValidationError(
+      'INVALID_PROJECT',
+      'Every source in a multi-source project must share the same identified CRS',
+    )
+  }
   for (const layer of layers) {
     if (layer.kind === 'raster' && !sourceIds.has(layer.sourceId)) {
       throw new GeoValidationError(
@@ -352,6 +430,12 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
         )
       }
       for (const inputLayerId of layer.inputLayerIds) {
+        if (inputLayerId === layer.id) {
+          throw new GeoValidationError(
+            'INVALID_PROJECT',
+            `Layer ${layer.id} cannot derive from itself`,
+          )
+        }
         if (!layerIds.has(inputLayerId)) {
           throw new GeoValidationError(
             'INVALID_PROJECT',
@@ -359,10 +443,20 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
           )
         }
       }
+      for (const sourceId of layer.provenance.sourceIds) {
+        if (!sourceIds.has(sourceId)) {
+          throw new GeoValidationError(
+            'INVALID_PROJECT',
+            `Layer ${layer.id} provenance references missing source ${sourceId}`,
+          )
+        }
+      }
     }
+    validateLayerBandMapping(layer, sources)
   }
+  validateDerivedLayerCycles(layers)
   const comparison = input.comparison ?? { mode: 'single' }
-  validateComparison(comparison, layerIds)
+  validateComparison(comparison, layers)
   for (const roi of rois) {
     if (roi.coordinateSpace !== 'map') {
       throw new GeoValidationError('INVALID_PROJECT', 'Geo ROIs must use map coordinates')
@@ -377,17 +471,43 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
     layers,
     comparison,
     rois,
-    provenance: provenance.map(normalizeProvenance),
+    provenance: provenance.map((entry) => {
+      const normalized = normalizeProvenance(entry)
+      for (const sourceId of normalized.sourceIds) {
+        if (!sourceIds.has(sourceId)) {
+          throw new GeoValidationError(
+            'INVALID_PROJECT',
+            `Provenance ${normalized.id} references missing source ${sourceId}`,
+          )
+        }
+      }
+      return normalized
+    }),
   }
 }
 
-function validateComparison(comparison: GeoComparisonState, layerIds: ReadonlySet<string>): void {
+function sameKnownCrs(left: CrsReference, right: CrsReference): boolean {
+  if (left.authority === undefined || left.code === undefined) return false
+  if (right.authority === undefined || right.code === undefined) return false
+  return (
+    left.authority.trim().toUpperCase() === right.authority.trim().toUpperCase() &&
+    String(left.code).trim() === String(right.code).trim()
+  )
+}
+
+function validateComparison(comparison: GeoComparisonState, layers: readonly GeoLayer[]): void {
+  const layerIds = new Set(layers.map(({ id }) => id))
   switch (comparison.mode) {
     case 'single':
       return
     case 'swipe':
       requireLayer(comparison.leftLayerId, layerIds, 'swipe left layer')
       requireLayer(comparison.rightLayerId, layerIds, 'swipe right layer')
+      requireVisibleLayer(comparison.leftLayerId, layers, 'swipe left layer')
+      requireVisibleLayer(comparison.rightLayerId, layers, 'swipe right layer')
+      if (comparison.leftLayerId === comparison.rightLayerId) {
+        throw new GeoValidationError('INVALID_PROJECT', 'Swipe comparison requires two layers')
+      }
       unitInterval(comparison.swipePosition, 'swipe position')
       return
     case 'overlay':
@@ -395,7 +515,8 @@ function validateComparison(comparison: GeoComparisonState, layerIds: ReadonlySe
         throw new GeoValidationError('INVALID_PROJECT', 'Overlay comparison requires layers')
       }
       for (const layerId of comparison.overlayLayerIds)
-        requireLayer(layerId, layerIds, 'overlay layer')
+        requireVisibleLayer(layerId, layers, 'overlay layer')
+      uniqueIds(comparison.overlayLayerIds, 'overlay layer id')
       return
     default: {
       const unexpected: never = comparison
@@ -405,6 +526,52 @@ function validateComparison(comparison: GeoComparisonState, layerIds: ReadonlySe
       )
     }
   }
+}
+
+function requireVisibleLayer(id: string, layers: readonly GeoLayer[], label: string): void {
+  const layer = layers.find((candidate) => candidate.id === id)
+  if (layer === undefined) {
+    throw new GeoValidationError('INVALID_PROJECT', `${label} ${id} is not in the project`)
+  }
+  if (!layer.visible || layer.opacity <= 0) {
+    throw new GeoValidationError('INVALID_PROJECT', `${label} ${id} must be visible`)
+  }
+}
+
+function validateLayerBandMapping(layer: GeoLayer, sources: readonly GeoRasterSource[]): void {
+  if (layer.sourceId === undefined) return
+  const source = sources.find((candidate) => candidate.id === layer.sourceId)
+  if (source === undefined) return
+  const indices = Object.values(layer.style.mapping).filter(
+    (value): value is number => typeof value === 'number',
+  )
+  if (indices.some((index) => index >= source.componentCount)) {
+    throw new GeoValidationError(
+      'INVALID_PROJECT',
+      `Layer ${layer.id} maps a band outside source ${source.id}`,
+    )
+  }
+}
+
+function validateDerivedLayerCycles(layers: readonly GeoLayer[]): void {
+  const derived = new Map(
+    layers
+      .filter((layer): layer is DerivedGeoRasterLayer => layer.kind === 'derived')
+      .map((layer) => [layer.id, layer.inputLayerIds] as const),
+  )
+  const visiting = new Set<GeoLayerId>()
+  const visited = new Set<GeoLayerId>()
+  const visit = (id: GeoLayerId): void => {
+    if (visiting.has(id)) {
+      throw new GeoValidationError('INVALID_PROJECT', `Derived layer cycle includes ${id}`)
+    }
+    if (visited.has(id)) return
+    visiting.add(id)
+    for (const input of derived.get(id) ?? []) visit(input)
+    visiting.delete(id)
+    visited.add(id)
+  }
+  for (const id of derived.keys()) visit(id)
 }
 
 function requireLayer(id: string, layerIds: ReadonlySet<string>, label: string): void {
@@ -488,6 +655,141 @@ function normalizeBandMapping(mapping: BandMapping): BandMapping {
   }
 }
 
+function normalizeBands(
+  bands: readonly GeoBandMetadata[],
+  componentCount: number,
+): readonly GeoBandMetadata[] {
+  const seen = new Set<number>()
+  return bands.map((band) => {
+    const index = bandIndex(band.index, 'band index')
+    if (index >= componentCount) {
+      throw new GeoValidationError('INVALID_PROJECT', 'Band metadata exceeds component count')
+    }
+    if (seen.has(index)) {
+      throw new GeoValidationError('INVALID_PROJECT', `Duplicate band metadata index ${index}`)
+    }
+    seen.add(index)
+    return {
+      index,
+      ...(band.name === undefined ? {} : { name: boundedString(band.name, 'band name') }),
+      ...(band.commonName === undefined
+        ? {}
+        : { commonName: boundedString(band.commonName, 'band common name') }),
+      ...(band.description === undefined
+        ? {}
+        : { description: boundedString(band.description, 'band description') }),
+      ...(band.dataType === undefined
+        ? {}
+        : { dataType: boundedString(band.dataType, 'band data type') }),
+      ...(band.nodata === undefined ? {} : { nodata: finiteNumber(band.nodata, 'band nodata') }),
+      ...(band.scale === undefined ? {} : { scale: finiteNumber(band.scale, 'band scale') }),
+      ...(band.offset === undefined ? {} : { offset: finiteNumber(band.offset, 'band offset') }),
+      ...(band.unit === undefined ? {} : { unit: boundedString(band.unit, 'band unit') }),
+      ...(band.wavelength === undefined
+        ? {}
+        : { wavelength: finiteNumber(band.wavelength, 'band wavelength') }),
+      ...(band.colorInterpretation === undefined
+        ? {}
+        : {
+            colorInterpretation: boundedString(
+              band.colorInterpretation,
+              'band color interpretation',
+            ),
+          }),
+    }
+  })
+}
+
+function normalizeLocator(locator: GeoRasterLocator): GeoRasterLocator {
+  switch (locator.kind) {
+    case 'remote-url':
+      return { kind: 'remote-url', url: durableRemoteUrl(locator.url, 'remote URL') }
+    case 'stac-asset':
+      return {
+        kind: 'stac-asset',
+        catalog: normalizeCatalogReference(locator.catalog),
+        roles: locator.roles.map((role) => boundedString(role, 'asset role')),
+        bands: normalizeBands(locator.bands, Math.max(1, locator.bands.length)),
+        ...(locator.datetime === undefined
+          ? {}
+          : { datetime: boundedString(locator.datetime, 'asset datetime') }),
+        ...(locator.title === undefined
+          ? {}
+          : { title: boundedString(locator.title, 'asset title') }),
+        ...(locator.mediaType === undefined
+          ? {}
+          : { mediaType: boundedString(locator.mediaType, 'asset media type') }),
+        ...(locator.fileSize === undefined
+          ? {}
+          : { fileSize: positiveInteger(locator.fileSize, 'asset file size') }),
+        ...(locator.checksum === undefined
+          ? {}
+          : { checksum: boundedString(locator.checksum, 'asset checksum') }),
+        ...(locator.validator === undefined
+          ? {}
+          : { validator: boundedString(locator.validator, 'asset validator') }),
+        ...(locator.projection === undefined
+          ? {}
+          : { projection: boundedString(locator.projection, 'asset projection') }),
+      }
+    case 'tnm-product':
+      return {
+        kind: 'tnm-product',
+        catalog: normalizeCatalogReference(locator.catalog),
+        productId: boundedString(locator.productId, 'TNM product id'),
+        downloadUrl: durableRemoteUrl(locator.downloadUrl, 'TNM download URL'),
+        bands: normalizeBands(locator.bands, Math.max(1, locator.bands.length)),
+        roles: locator.roles.map((role) => boundedString(role, 'TNM asset role')),
+        ...(locator.datetime === undefined
+          ? {}
+          : { datetime: boundedString(locator.datetime, 'TNM product datetime') }),
+        ...(locator.title === undefined
+          ? {}
+          : { title: boundedString(locator.title, 'TNM product title') }),
+        ...(locator.mediaType === undefined
+          ? {}
+          : { mediaType: boundedString(locator.mediaType, 'TNM media type') }),
+        ...(locator.fileSize === undefined
+          ? {}
+          : { fileSize: positiveInteger(locator.fileSize, 'TNM file size') }),
+        ...(locator.checksum === undefined
+          ? {}
+          : { checksum: boundedString(locator.checksum, 'TNM checksum') }),
+        ...(locator.validator === undefined
+          ? {}
+          : { validator: boundedString(locator.validator, 'TNM validator') }),
+        ...(locator.projection === undefined
+          ? {}
+          : { projection: boundedString(locator.projection, 'TNM projection') }),
+      }
+    case 'local-file':
+      return {
+        kind: 'local-file',
+        fingerprint: {
+          name: boundedString(locator.fingerprint.name, 'local file name'),
+          size: nonNegativeInteger(locator.fingerprint.size, 'local file size'),
+          lastModified: nonNegativeInteger(
+            locator.fingerprint.lastModified,
+            'local file lastModified',
+          ),
+          ...(locator.fingerprint.mediaType === undefined
+            ? {}
+            : {
+                mediaType: boundedString(locator.fingerprint.mediaType, 'local file media type'),
+              }),
+        },
+      }
+    case 'bundled-example':
+      return {
+        kind: 'bundled-example',
+        scenarioId: boundedId(locator.scenarioId, 'scenario id'),
+        ...(locator.assetId === undefined
+          ? {}
+          : { assetId: boundedId(locator.assetId, 'example asset id') }),
+      }
+  }
+}
+
 function normalizeCatalogReference(value: GeoCatalogReference): GeoCatalogReference {
   const href = boundedString(value.href, 'catalog href')
   if (isUnsafeCatalogUrl(href)) {
@@ -526,7 +828,42 @@ function normalizeCatalogReference(value: GeoCatalogReference): GeoCatalogRefere
 }
 
 function isUnsafeCatalogUrl(href: string): boolean {
-  return href.startsWith('data:') || href.includes('X-Amz-Signature') || href.includes('token=')
+  if (href.startsWith('data:')) return true
+  try {
+    const url = new URL(href)
+    const unsafe = new Set([
+      'x-amz-signature',
+      'x-amz-credential',
+      'x-goog-signature',
+      'signature',
+      'sig',
+      'token',
+      'access_token',
+    ])
+    return [...url.searchParams.keys()].some((key) => unsafe.has(key.toLowerCase()))
+  } catch {
+    return true
+  }
+}
+
+function durableRemoteUrl(value: string, label: string): string {
+  const normalized = boundedString(value, label)
+  let url: URL
+  try {
+    url = new URL(normalized)
+  } catch {
+    throw new GeoValidationError('INVALID_PROJECT', `${label} must be an absolute URL`)
+  }
+  const loopbackHttp =
+    url.protocol === 'http:' &&
+    (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')
+  if ((url.protocol !== 'https:' && !loopbackHttp) || isUnsafeCatalogUrl(url.href)) {
+    throw new GeoValidationError(
+      'INVALID_PROJECT',
+      `${label} must be durable HTTPS (or loopback HTTP) without signed credentials`,
+    )
+  }
+  return url.href
 }
 
 function normalizeProvenance(value: GeoProvenanceReference): GeoProvenanceReference {
@@ -619,6 +956,13 @@ function bandIndex(value: number, label: string): number {
 function positiveInteger(value: number, label: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new GeoValidationError('INVALID_PROJECT', `${label} must be a positive integer`)
+  }
+  return value
+}
+
+function nonNegativeInteger(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new GeoValidationError('INVALID_PROJECT', `${label} must be a non-negative integer`)
   }
   return value
 }

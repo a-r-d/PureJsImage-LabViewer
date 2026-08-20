@@ -5,7 +5,6 @@ import {
   assertSameCrsComposition,
   CRS_EPSG_3857,
   CRS_EPSG_4326,
-  CrsTransformError,
   createDerivedGeoRasterLayer,
   createGeoMapRoi,
   createGeoProject,
@@ -32,6 +31,7 @@ function source(id: string, spatialReference: SpatialReference = wgs84NorthUp) {
     height: 2,
     componentCount: 1,
     spatialReference,
+    locator: { kind: 'bundled-example', scenarioId: `test.${id}` },
   })
 }
 
@@ -123,22 +123,17 @@ describe('geo project model', () => {
     })
     expect(() => assertSameCrsComposition(sameCrsProject)).not.toThrow()
 
-    const mixed = createGeoProject({
-      title: 'Mixed',
-      crs: CRS_EPSG_4326,
-      sources: [wgs, utm],
-      layers: [
-        createGeoRasterLayer({ id: 'a', sourceId: 'wgs', label: 'A' }),
-        createGeoRasterLayer({ id: 'b', sourceId: 'utm', label: 'B' }),
-      ],
-    })
-    try {
-      assertSameCrsComposition(mixed)
-      throw new Error('Expected mixed CRS composition to fail')
-    } catch (error) {
-      expect(error).toBeInstanceOf(CrsTransformError)
-      expect((error as CrsTransformError).code).toBe('UNSUPPORTED_TRANSFORM')
-    }
+    expect(() =>
+      createGeoProject({
+        title: 'Mixed',
+        crs: CRS_EPSG_4326,
+        sources: [wgs, utm],
+        layers: [
+          createGeoRasterLayer({ id: 'a', sourceId: 'wgs', label: 'A' }),
+          createGeoRasterLayer({ id: 'b', sourceId: 'utm', label: 'B' }),
+        ],
+      }),
+    ).toThrow(GeoValidationError)
   })
 
   it('formats map-coordinate pointer readout', () => {
@@ -159,6 +154,7 @@ describe('geo project model', () => {
         height: 2,
         componentCount: 1,
         spatialReference: { crs: CRS_EPSG_4326, pixelInterpretation: 'unspecified' },
+        locator: { kind: 'bundled-example', scenarioId: 'test.plain' },
       }),
     ).toThrow(GeoValidationError)
   })
@@ -186,5 +182,37 @@ describe('raster style and cursor readout', () => {
       gamma: 1.4,
       nodataTransparent: true,
     })
+  })
+
+  it('rejects out-of-range mapped bands and unidentified multi-source CRS', () => {
+    const oneBand = source('one-band')
+    expect(() =>
+      createGeoProject({
+        title: 'Bad band',
+        crs: CRS_EPSG_4326,
+        sources: [oneBand],
+        layers: [
+          createGeoRasterLayer({
+            id: 'bad-band',
+            sourceId: oneBand.id,
+            label: 'Bad band',
+            style: { mapping: { gray: 1 } },
+          }),
+        ],
+      }),
+    ).toThrow(GeoValidationError)
+
+    const unknownSpatial: SpatialReference = {
+      crs: { kind: 'unknown' },
+      pixelInterpretation: 'pixel-is-area',
+      pixelToModel: [1, 0, 0, 0, 1, 0],
+    }
+    expect(() =>
+      createGeoProject({
+        title: 'Unknown pair',
+        crs: { kind: 'unknown' },
+        sources: [source('unknown-a', unknownSpatial), source('unknown-b', unknownSpatial)],
+      }),
+    ).toThrow(GeoValidationError)
   })
 })

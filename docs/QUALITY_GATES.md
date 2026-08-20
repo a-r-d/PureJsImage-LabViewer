@@ -89,6 +89,9 @@ Vitest covers:
   names CORS. STAC/TNM fixtures are checked-in JSON. Live Kentucky STAC smoke is opt-in
   via `ATLAS_LIVE_STAC=1`. Live browser CORS probes are `PJI_GEO_LIVE=1` and are not part of
   normal CI.
+- `packages/geo-workbench` unit tests for semantic action replay, transactional source open,
+  source-limit recovery, local-resource rebinding, source/layer cleanup, CRS composition refusal,
+  selected-source context, and disposal of every live imaging binding.
 
 Tests should assert cleanup and cancellation, not just output.
 

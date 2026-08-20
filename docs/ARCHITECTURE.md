@@ -91,6 +91,12 @@ packages/domain-geo
   reprojection and basemaps are out of scope. Must not import domain-science,
   materials-analysis, React, or PureJsImage.
 
+packages/geo-workbench
+  Headless Atlas application controller and semantic action handlers. Owns durable GeoProject
+  transitions, stable semantic source identities, session-local file resources, and the map from
+  semantic source IDs to live imaging handles. May compose actions, contracts, domain-geo,
+  imaging, and workspace; must not import React or science/materials packages.
+
 packages/imaging
   The only package that directly composes PureJsImage readers, scientific documents,
   analysis controller/runtime, and worker-side lifecycles. One Worker owns a bounded map of
@@ -151,7 +157,7 @@ ui → React only and generic contracts
 Rules:
 
 - `apps/science` may import `domain-science`, `materials-analysis`, and shared packages. It must not import `domain-geo`.
-- `apps/geo` may import `domain-geo`, `imaging`, `viewport`, `contracts`, and the shared shell. It must not import `domain-science` or `materials-analysis`.
+- `apps/geo` may import `domain-geo`, `geo-workbench`, `imaging`, `viewport`, `contracts`, and the shared shell. It must not import `domain-science` or `materials-analysis`.
 - `apps/gallery` may import `packages/ui` only among workspace packages. It must not import the imaging runtime.
 - No package imports from `apps/*`.
 - `imaging` may import only documented PureJsImage package exports.

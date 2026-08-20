@@ -1,3 +1,5 @@
+export type { GeoActionContext, GeoActionId } from './actions.js'
+export { geoActionDefinitions } from './actions.js'
 export {
   candidatesFromItem,
   preferredCandidate,
@@ -102,6 +104,7 @@ export type {
   CreateGeoRasterSourceInput,
   CrsReference,
   DerivedGeoRasterLayer,
+  GeoBandMetadata,
   GeoBlendMode,
   GeoCatalogReference,
   GeoComparisonMode,
@@ -116,10 +119,12 @@ export type {
   GeoProvenanceId,
   GeoProvenanceReference,
   GeoRasterLayer,
+  GeoRasterLocator,
   GeoRasterSource,
   GeoRecipeReference,
   GeoRoiId,
   GeoSourceId,
+  LocalFileFingerprint,
   RasterStretch,
   RasterStyle,
 } from './model.js'
@@ -138,7 +143,6 @@ export {
   GEO_DOMAIN_ID,
   GEO_FILE_ACCEPT,
   GEO_READER_IDS,
-  type GeoCommandContext,
   geoDomainProfile,
 } from './profile.js'
 export type { GeoCursorReadoutInput } from './readout.js'

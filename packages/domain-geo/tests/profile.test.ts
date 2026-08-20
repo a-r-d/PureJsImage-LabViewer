@@ -17,11 +17,13 @@ describe('geo domain profile', () => {
     expect(profile.deploymentHostname).toBe('geo.purejsimage.com')
     expect(profile.readerIds).toEqual([...GEO_READER_IDS])
     expect(profile.sourceAdapters).toEqual(['local', 'remote'])
-    expect(profile.capabilities.localFiles).toBe(true)
-    expect(profile.capabilities.remoteHttps).toBe(true)
-    expect(profile.capabilities.projectPersistence).toBe(false)
-    expect(profile.capabilities.particleAnalysis).toBe(false)
-    expect(profile.capabilities.materialsToolbox).toBe(false)
+    expect(profile.capabilities.sources.localFiles).toBe(true)
+    expect(profile.capabilities.sources.remoteHttps).toBe(true)
+    expect(profile.capabilities.sources.catalogs).toBe(true)
+    expect(profile.capabilities.workspace.projectPersistence).toBe(true)
+    expect(profile.capabilities.analysis.particle).toBe(false)
+    expect(profile.capabilities.analysis.materials).toBe(false)
+    expect(profile.actionDefinitions.length).toBeGreaterThan(0)
     expect(profile.agentPolicy.enabled).toBe(false)
     expect(GEO_FILE_ACCEPT).toContain('.tif')
     expect(geoUiContributions.panels.map(({ id }) => id)).toEqual([
@@ -47,12 +49,13 @@ describe('geo domain package boundary', () => {
     const names = Object.keys(manifest.dependencies ?? {})
     expect(names).toEqual(
       expect.arrayContaining([
+        '@pji-workbench/actions',
         '@pji-workbench/workbench-core',
         '@pji-workbench/contracts',
         'proj4',
       ]),
     )
-    expect(names).toHaveLength(3)
+    expect(names).toHaveLength(4)
     expect(names).not.toContain('@pji-workbench/domain-science')
     expect(names).not.toContain('@pji-workbench/materials-analysis')
     expect(names).not.toContain('@pji-workbench/imaging')

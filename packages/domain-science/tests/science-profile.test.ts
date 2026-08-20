@@ -27,7 +27,7 @@ describe('science domain profile', () => {
     expect(profile.title).toBe('Materials Workbench')
     expect(profile.deploymentHostname).toBe('lab.purejsimage.com')
     expect(profile.sourceAdapters).toEqual(['local', 'remote', 'sample', 'bundled'])
-    expect(profile.capabilities.particleAnalysis).toBe(true)
+    expect(profile.capabilities.analysis.particle).toBe(true)
     expect(profile.agentPolicy.liveModelEnabled).toBe(false)
     expect(profile.agentPolicy.decisionFor('workspace.read')).toBe('allow')
     expect(profile.agentPolicy.decisionFor('analysis.execute')).toBe('require-approval')

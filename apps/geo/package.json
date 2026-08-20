@@ -18,6 +18,7 @@
   "dependencies": {
     "@pji-workbench/contracts": "workspace:*",
     "@pji-workbench/domain-geo": "workspace:*",
+    "@pji-workbench/geo-workbench": "workspace:*",
     "@pji-workbench/imaging": "workspace:*",
     "@pji-workbench/ui": "workspace:*",
     "@pji-workbench/viewport": "workspace:*",

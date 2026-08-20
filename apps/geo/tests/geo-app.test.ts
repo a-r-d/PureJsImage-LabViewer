@@ -13,9 +13,15 @@ describe('geo application', () => {
     expect(appSource).toContain('resolveDeepLink')
     expect(appSource).toContain('preflightRasterAsset')
     expect(appSource).not.toMatch(/collections\/\$\{link\.collectionId\}\/items\//u)
-    expect(appSource).toContain('appendAtlas')
+    expect(appSource).toContain('GeoWorkbenchController')
+    expect(appSource).toContain('useSyncExternalStore')
+    expect(appSource).not.toContain('appendAtlas')
+    expect(appSource).not.toContain('patchLayer')
+    expect(appSource).not.toContain('duplicateLayer')
+    expect(appSource).not.toContain('moveLayer')
     expect(appSource).toContain('viewportRasters')
-    expect(appSource).toContain('opened?.rasters.map((raster) => raster.dataset)')
+    expect(appSource).toContain('controller.runtimeBindings()')
+    expect(appSource).toContain("executeAction('geo.source.open_catalog_asset'")
     expect(appSource).not.toContain('if (replaced) setOpened(null)')
     expect(appSource).not.toContain('opened={opened.dataset}')
     const viewportSource = await readFile(
@@ -55,7 +61,7 @@ describe('geo application', () => {
     expect(appSource).not.toContain('ParticleAnalysis')
     expect(appSource).not.toContain('Choose local scientific files')
     expect(geoDomainProfile.id).toBe('geo')
-    expect(geoDomainProfile.capabilities.localFiles).toBe(true)
+    expect(geoDomainProfile.capabilities.sources.localFiles).toBe(true)
     expect(geoUiContributions.panels.map(({ id }) => id)).toContain('geo-catalog')
     expect(geoUiContributions.panels.map(({ id }) => id)).toContain('geo-xray')
   })
@@ -71,6 +77,7 @@ describe('geo application', () => {
       expect.arrayContaining([
         '@pji-workbench/contracts',
         '@pji-workbench/domain-geo',
+        '@pji-workbench/geo-workbench',
         '@pji-workbench/imaging',
         '@pji-workbench/ui',
         '@pji-workbench/viewport',
