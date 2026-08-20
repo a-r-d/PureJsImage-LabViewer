@@ -65,6 +65,25 @@ export function classifyStacClientError(error: StacClientError): GeoOpenFailure 
           error.guidance ??
           'This static STAC item collection is too large to browse directly in the browser.',
       }
+    case 'NETWORK':
+      if (looksLikeCorsFailure(error.message)) {
+        return {
+          kind: 'cors',
+          title: 'Catalog origin blocked',
+          message: error.message,
+          guidance:
+            error.guidance ??
+            'This catalog host does not allow this origin in Access-Control-Allow-Origin. Atlas will not proxy the request.',
+        }
+      }
+      return {
+        kind: 'browser-network-blocked',
+        title: 'Browser blocked this catalog',
+        message: error.message,
+        guidance:
+          error.guidance ??
+          'The browser blocked the request. This is not classified as CORS unless the error names CORS. If the console mentions Access-Control-Allow-Origin, the host must allow this origin.',
+      }
     default: {
       const unexpected: never = error.code
       return {
@@ -195,4 +214,8 @@ export function displayMappingFromStyle(
 
 function looksLikeExpiredUrl(message: string): boolean {
   return /403|expired|AccessDenied|Request has expired|X-Amz-Expires/iu.test(message)
+}
+
+function looksLikeCorsFailure(message: string): boolean {
+  return /cors|cross-origin|access-control-allow-origin/iu.test(message)
 }

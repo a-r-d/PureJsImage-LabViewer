@@ -13,6 +13,7 @@ import type {
   StacBbox,
 } from '@pji-workbench/domain-geo'
 import {
+  ATLAS_START_DEMOS,
   buildCogXrayReport,
   CATALOG_REGISTRY,
   CATALOG_STORIES,
@@ -37,6 +38,7 @@ import { WorkbenchShell } from '@pji-workbench/workbench-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { CatalogPanel } from './CatalogPanel.js'
+import { DemoPicker } from './DemoPicker.js'
 import type { PublicEnvironment } from './environment.js'
 import { GeoViewport, type GeoViewportPointer } from './GeoViewport.js'
 import { InspectorPanel, type InspectorTab } from './InspectorPanel.js'
@@ -73,6 +75,9 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [busy, setBusy] = useState(false)
   const [openingLabel, setOpeningLabel] = useState<string | undefined>()
   const [searchNonce, setSearchNonce] = useState(0)
+  const [demoOpen, setDemoOpen] = useState(
+    () => parseAtlasDeepLink(window.location.hash) === undefined,
+  )
   const [tab, setTab] = useState<InspectorTab>('catalog')
   const [selectedLayerId, setSelectedLayerId] = useState<string | undefined>()
   const [readout, setReadout] = useState('Move the pointer over the raster')
@@ -307,6 +312,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       void (async () => {
         const probe = await preflightRasterAsset(candidate.href)
         if (probe.compatibility !== 'ready') {
+          setBusy(false)
           setError({
             kind:
               probe.compatibility === 'metadata-only'
@@ -336,6 +342,45 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       })()
     },
     [openRemote],
+  )
+
+  const openStartDemo = useCallback(
+    (demoId: string) => {
+      const demo = ATLAS_START_DEMOS.find((entry) => entry.id === demoId)
+      if (demo === undefined) return
+      const entry = catalogById(demo.identity.catalogId)
+      if (entry === undefined) {
+        setError({
+          kind: 'catalog-unavailable',
+          title: 'Demo catalog missing',
+          message: `No registry entry for ${demo.identity.catalogId}.`,
+        })
+        return
+      }
+      setDemoOpen(false)
+      setOpeningLabel(demo.title)
+      setBusy(true)
+      setError(null)
+      void (async () => {
+        try {
+          const candidate = await catalogServiceRef.current.resolveDeepLink(entry, demo.identity)
+          if (candidate === undefined) {
+            setBusy(false)
+            setError({
+              kind: 'catalog-unavailable',
+              title: 'Demo item not found',
+              message: `${demo.title} is no longer in the catalog. Search from the Catalog panel instead.`,
+            })
+            return
+          }
+          openCatalogAsset({ ...candidate, style: demo.style }, demo.inspect === true)
+        } catch (caught) {
+          setBusy(false)
+          setError(asOpenFailure(caught))
+        }
+      })()
+    },
+    [openCatalogAsset],
   )
 
   useEffect(() => {
@@ -461,6 +506,10 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               <Icon name="link" size={16} />
               Copy catalog link
             </Button>
+            <Button onClick={() => setDemoOpen(true)}>
+              <Icon name="examples" size={16} />
+              Demos
+            </Button>
             <Button onClick={() => setTab('catalog')}>
               <Icon name="search" size={16} />
               Catalog
@@ -534,15 +583,19 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           ) : (
             <EmptyState
               action={
-                <Button
-                  onClick={() => {
-                    setTab('catalog')
-                    setSearchNonce((value) => value + 1)
-                  }}
-                  variant="primary"
-                >
-                  Search {CATALOG_REGISTRY[0]?.title ?? 'the catalog'}
-                </Button>
+                <div className="geo-empty-actions">
+                  <Button onClick={() => setDemoOpen(true)} variant="primary">
+                    Choose a demo
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setTab('catalog')
+                      setSearchNonce((value) => value + 1)
+                    }}
+                  >
+                    Search {CATALOG_REGISTRY[0]?.title ?? 'the catalog'}
+                  </Button>
+                </div>
               }
               description={geoUiContributions.emptyState.body}
               title={geoUiContributions.emptyState.heading}
@@ -604,6 +657,14 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           </span>
         </footer>
       </WorkbenchShell>
+      {demoOpen ? (
+        <DemoPicker
+          demos={ATLAS_START_DEMOS}
+          disabled={!ready || client === null || busy}
+          onClose={() => setDemoOpen(false)}
+          onOpen={openStartDemo}
+        />
+      ) : null}
     </ThemeRoot>
   )
 }

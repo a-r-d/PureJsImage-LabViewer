@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { mockGovernmentCatalogs } from '../support/catalog-mocks.js'
+import { dismissDemoPicker } from '../support/demo-picker.js'
 import { KENTUCKY_STAC_ROUTE } from '../support/stac-mock.js'
 
 test.beforeEach(async ({ page }) => {
@@ -18,6 +19,7 @@ test.beforeEach(async ({ page }) => {
     'true',
     { timeout: 30_000 },
   )
+  await dismissDemoPicker(page)
   await expect(page.getByTestId('catalog-status')).toHaveText(/\d+ collections/u, {
     timeout: 15_000,
   })
@@ -86,12 +88,14 @@ test('opens a catalog asset from a shareable deep link', async ({ page }) => {
   await expect(page.getByTestId('cog-xray')).toBeVisible()
 })
 
-test('shows a catalog error when the STAC API is unavailable', async ({ page }) => {
+test('shows a catalog error when the browser blocks the STAC API', async ({ page }) => {
   await selectKentucky(page)
   await page.unroute(KENTUCKY_STAC_ROUTE)
   await page.route(KENTUCKY_STAC_ROUTE, (route) => route.abort('failed'))
   await page.getByRole('button', { name: 'Refresh catalog' }).click()
-  await expect(page.getByTestId('catalog-panel').getByText('Catalog unavailable')).toBeVisible()
+  await expect(
+    page.getByTestId('catalog-panel').getByText('Browser blocked this catalog'),
+  ).toBeVisible()
 })
 
 test('opens a mocked NOAA static STAC item from the local range fixture', async ({ page }) => {
@@ -125,4 +129,14 @@ test('searches mocked Landsat and TNM catalogs without provider branches', async
     timeout: 15_000,
   })
   await expect(page.getByRole('button', { name: /Open 60d2c050d34e84098652891a/u })).toBeVisible()
+})
+
+test('opens a curated demo from the launch picker', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.getByRole('button', { name: 'Demos' }).click()
+  await expect(page.getByRole('dialog', { name: 'Choose a demo' })).toBeVisible()
+  await page.getByRole('button', { name: /Kentucky leaf-off ortho/u }).click()
+  await expect(page.getByRole('img', { name: /Geo raster viewport/u })).toBeVisible({
+    timeout: 30_000,
+  })
 })

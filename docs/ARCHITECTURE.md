@@ -83,7 +83,8 @@ packages/domain-science
 packages/domain-geo
   Geo project model, CRS helpers, Atlas copy, JSON-safe COG X-ray reports, a generic STAC
   client, catalog adapters (STAC API, static STAC, TNMAccess), and the catalog registry.
-  Collection IDs belong in registry entries, not generic UI.
+  Collection IDs belong in registry entries, not generic UI. Catalog fetch throws are
+  `NETWORK`; CORS is claimed only when the error names CORS. Atlas does not proxy.
   Proj4js may transform EPSG:4326 ↔ EPSG:3857 plus CRS definitions registered by a catalog
   (EPSG:3089 for Kentucky From Above). Unsupported projections return typed errors. Pixel
   reprojection and basemaps are out of scope. Must not import domain-science,

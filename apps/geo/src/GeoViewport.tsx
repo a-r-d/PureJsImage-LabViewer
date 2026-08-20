@@ -17,15 +17,16 @@ import {
   type Bounds,
   type Camera,
   type CoordinateSpaceAdapter,
+  cameraLimitsForWorldLayer,
   createWorldSpaceAffineAdapter,
   fitCameraToLayer,
   type Point,
   panCameraInSpace,
+  pixelToWorldForOverview,
   planMultiLayerTiles,
   resizeCamera,
   type Size,
   sampleViewportPointer,
-  scaleAffineToOverview,
   selectOverviewLevel,
   type TileLayerPlanInput,
   visibleWorldBounds,
@@ -247,7 +248,12 @@ export function GeoViewport({
     const cameraAdapter = withWorldBounds(fullAdapter, sharedWorld)
     const renderer = new CanvasGeoRenderer(canvas)
     let viewport: Size = { width: 1, height: 1 }
-    let camera: Camera = fitCameraToLayer(cameraAdapter, viewport)
+    let limits = cameraLimitsForWorldLayer(
+      cameraAdapter.worldBounds(),
+      cameraAdapter.pixelBounds(),
+      viewport,
+    )
+    let camera: Camera = fitCameraToLayer(cameraAdapter, viewport, 24, limits)
     let fitted = false
     let frameRequest = 0
     const requestGeneration = 1
@@ -425,11 +431,16 @@ export function GeoViewport({
       const previous = viewport
       viewport = { width: Math.max(1, box.width), height: Math.max(1, box.height) }
       renderer.configure(viewport)
+      limits = cameraLimitsForWorldLayer(
+        cameraAdapter.worldBounds(),
+        cameraAdapter.pixelBounds(),
+        viewport,
+      )
       if (!fitted) {
-        camera = fitCameraToLayer(cameraAdapter, viewport)
+        camera = fitCameraToLayer(cameraAdapter, viewport, 24, limits)
         fitted = viewport.width > 32 && viewport.height > 32
       } else {
-        camera = resizeCamera(camera, previous, viewport, cameraAdapter.worldBounds())
+        camera = resizeCamera(camera, previous, viewport, cameraAdapter.worldBounds(), limits)
       }
       scheduleTiles()
     })
@@ -499,6 +510,7 @@ export function GeoViewport({
         factor,
         viewport,
         cameraAdapter,
+        limits,
       )
       scheduleTiles()
     }
@@ -516,6 +528,7 @@ export function GeoViewport({
         { x: event.clientX - last.x, y: event.clientY - last.y },
         viewport,
         cameraAdapter,
+        limits,
       )
       last = { x: event.clientX, y: event.clientY }
       scheduleTiles()
@@ -583,9 +596,14 @@ function adapterForOverview(
     height: full.height,
   }
   const levelReference = dataset.levels.find((level) => level.level === overview)?.spatialReference
-  const pixelToWorld =
-    levelReference?.pixelToModel ??
-    scaleAffineToOverview(affine, full.width, full.height, size.width, size.height)
+  const pixelToWorld = pixelToWorldForOverview(
+    affine,
+    full.width,
+    full.height,
+    size.width,
+    size.height,
+    levelReference?.pixelToModel,
+  )
   return createWorldSpaceAffineAdapter({
     pixelToWorld,
     width: size.width,

@@ -156,6 +156,36 @@ export function resizeCamera(
   return constrainCamera(camera, imageBounds, nextViewport, limits)
 }
 
+/**
+ * World-space zoom is screen pixels per world unit. Geographic COGs use degrees
+ * (~1e-4 per pixel); a 64× cap made a fitted NOAA tile render as a postage stamp.
+ * Limits always allow fitting the layer, and 64 screen pixels per source pixel.
+ */
+export function cameraLimitsForWorldLayer(
+  worldBounds: Bounds,
+  pixelBounds: Bounds,
+  viewport: Size,
+  padding = 24,
+): CameraLimits {
+  assertPositive(worldBounds.width, 'World width')
+  assertPositive(worldBounds.height, 'World height')
+  assertPositive(pixelBounds.width, 'Pixel width')
+  assertPositive(pixelBounds.height, 'Pixel height')
+  const availableWidth = Math.max(1, viewport.width - padding * 2)
+  const availableHeight = Math.max(1, viewport.height - padding * 2)
+  const fitZoom = Math.min(availableWidth / worldBounds.width, availableHeight / worldBounds.height)
+  const worldPerPixel = Math.min(
+    worldBounds.width / pixelBounds.width,
+    worldBounds.height / pixelBounds.height,
+  )
+  const pixelZoom = 64 / Math.max(worldPerPixel, Number.EPSILON)
+  return {
+    minZoom: Math.max(Number.EPSILON, fitZoom * 0.2),
+    maxZoom: Math.max(fitZoom * 8, pixelZoom),
+    overscroll: 0,
+  }
+}
+
 function formatMeasurement(value: number): string {
   if (value >= 100) return value.toFixed(0)
   if (value >= 10) return value.toFixed(1).replace(/\.0$/, '')

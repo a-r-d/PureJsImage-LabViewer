@@ -2,13 +2,17 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
 import {
+  ATLAS_START_DEMOS,
   CATALOG_REGISTRY,
   CATALOG_STORIES,
   CRS_EPSG_4326,
   candidatesFromItem,
   catalogById,
+  catalogProtocolHint,
   catalogRootHref,
+  classifyStacClientError,
   collectionIdsForStory,
+  collectionSummariesFromRegistry,
   createGeoProject,
   createGeoRasterSource,
   GeoValidationError,
@@ -18,10 +22,12 @@ import {
   parseStacItem,
   preferredCandidate,
   registerCrsDefinition,
+  StacClientError,
   serializeAtlasCatalogSession,
   serializeAtlasDeepLink,
   storiesForCatalog,
   transformMapPoint,
+  USGS_LANDSAT_CATALOG,
 } from '../src/index.js'
 
 const wgs84 = {
@@ -65,6 +71,47 @@ describe('catalog registry', () => {
       }
     }
     expect(catalogById('missing')).toBeUndefined()
+  })
+
+  it('pins launch demos to registry catalog identities', () => {
+    expect(ATLAS_START_DEMOS.map((demo) => demo.id)).toEqual([
+      'kentucky-frankfort-ortho',
+      'noaa-puerto-rico-cudem',
+    ])
+    for (const demo of ATLAS_START_DEMOS) {
+      expect(catalogById(demo.identity.catalogId)?.id).toBe(demo.identity.catalogId)
+      expect(demo.style.mapping).toBeDefined()
+    }
+  })
+
+  it('surfaces Landsat origin limits through the generic protocol hint', () => {
+    expect(catalogProtocolHint(KY_FROM_ABOVE_CATALOG)).toBe('STAC API · public HTTPS')
+    expect(catalogProtocolHint(USGS_LANDSAT_CATALOG)).toContain('STAC API · public HTTPS')
+    expect(catalogProtocolHint(USGS_LANDSAT_CATALOG)).toContain(
+      'LandsatLook CORS allows only landsatlook.usgs.gov, not Atlas',
+    )
+    expect(collectionSummariesFromRegistry(USGS_LANDSAT_CATALOG).map((entry) => entry.id)).toEqual([
+      'landsat-c2l2-sr',
+      'landsat-c2l2-st',
+    ])
+  })
+
+  it('classifies catalog fetch throws as network unless the error names CORS', () => {
+    const blocked = classifyStacClientError(
+      new StacClientError('NETWORK', 'NetworkError when attempting to fetch resource.'),
+    )
+    expect(blocked).toMatchObject({
+      kind: 'browser-network-blocked',
+      title: 'Browser blocked this catalog',
+    })
+    const cors = classifyStacClientError(
+      new StacClientError(
+        'NETWORK',
+        'Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://landsatlook.usgs.gov/stac-server/.',
+      ),
+    )
+    expect(cors.kind).toBe('cors')
+    expect(cors.title).toBe('Catalog origin blocked')
   })
 
   it('normalizes STAC items into source candidates with provenance', async () => {

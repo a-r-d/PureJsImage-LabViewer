@@ -84,7 +84,8 @@ Vitest covers:
 - `packages/domain-geo` unit tests for the Atlas profile, CRS helpers, open-error copy, X-ray
   reports, cursor readout, STAC parsing/client, catalog adapters (STAC API GET/POST, static STAC
   filter/too-large, TNMAccess GeoTIFF-only), catalog registry, deep links, and provenance
-  session round-trips. STAC/TNM fixtures are checked-in JSON. Live Kentucky STAC smoke is opt-in
+  session round-trips. Fetch throws are `NETWORK` / `browser-network-blocked` unless the error
+  names CORS. STAC/TNM fixtures are checked-in JSON. Live Kentucky STAC smoke is opt-in
   via `ATLAS_LIVE_STAC=1`. Live browser CORS probes are `PJI_GEO_LIVE=1` and are not part of
   normal CI.
 

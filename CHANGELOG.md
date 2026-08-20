@@ -18,6 +18,14 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Fixed
 
+- Atlas catalog fetch throws are classified as a browser network block, not “Catalog
+  unavailable.” CORS is claimed only when the error names CORS. LandsatLook still cannot be
+  searched from `geo.purejsimage.com` until USGS allows that origin; Atlas does not proxy.
+  The geo CSP no longer includes the invalid host `http://[::1]:*`.
+- Atlas scales overview geo tags that copy the full-resolution pixel size, and raises the
+  world-space zoom cap so geographic-degree COGs (NOAA CUDEM) fill the map instead of rendering
+  as a postage stamp. A launch demo picker opens pinned Kentucky ortho and NOAA Puerto Rico
+  terrain scenes with display mapping already set.
 - Atlas catalog tiles open the preferred Cloud Optimized GeoTIFF on click. The empty-state Search
   button runs a catalog search instead of only switching the already-open Catalog tab. The map
   shows an opening state with Cancel while HTTP Range fetches are in flight, instead of staying on

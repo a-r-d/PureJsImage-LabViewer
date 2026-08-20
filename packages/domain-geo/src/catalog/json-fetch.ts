@@ -122,10 +122,18 @@ function catalogFetch(
       if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
         throw new StacClientError('ABORTED', 'The catalog request was cancelled.')
       }
+      const message = error instanceof Error ? error.message : 'The catalog could not be reached.'
+      if (looksLikeCorsFailure(message)) {
+        throw new StacClientError(
+          'NETWORK',
+          message,
+          'This catalog host does not allow this origin in Access-Control-Allow-Origin. Atlas will not proxy the request.',
+        )
+      }
       throw new StacClientError(
-        'UNAVAILABLE',
-        error instanceof Error ? error.message : 'The catalog could not be reached.',
-        'The server may be offline, or this origin may be blocked by CORS.',
+        'NETWORK',
+        message,
+        'The browser blocked the request. This is not classified as CORS unless the error names CORS. If the console mentions Access-Control-Allow-Origin, the host must allow this origin.',
       )
     })
 }
@@ -135,6 +143,10 @@ function contentLength(response: Response): number | undefined {
   if (header === null || header.length === 0) return undefined
   const size = Number(header)
   return Number.isSafeInteger(size) && size >= 0 ? size : undefined
+}
+
+function looksLikeCorsFailure(message: string): boolean {
+  return /cors|cross-origin|access-control-allow-origin/iu.test(message)
 }
 
 function tooLarge(href: string, maxBytes: number): StacClientError {

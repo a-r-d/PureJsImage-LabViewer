@@ -2,6 +2,7 @@ export type { ViewportTransformErrorCode } from './affine.js'
 export { applyAffine, invertAffine, ViewportTransformError } from './affine.js'
 export {
   calculateScaleBar,
+  cameraLimitsForWorldLayer,
   constrainCamera,
   DEFAULT_CAMERA_LIMITS,
   fitCameraToBounds,
@@ -38,7 +39,7 @@ export type {
 } from './layer-tiles.js'
 export { planMultiLayerTiles, sourceTileCacheKey } from './layer-tiles.js'
 export type { OverviewLevelSize } from './overview.js'
-export { scaleAffineToOverview, selectOverviewLevel } from './overview.js'
+export { pixelToWorldForOverview, scaleAffineToOverview, selectOverviewLevel } from './overview.js'
 export { ViewportCameraSession } from './session.js'
 export { planVisibleTileRegions } from './tiles.js'
 export type {

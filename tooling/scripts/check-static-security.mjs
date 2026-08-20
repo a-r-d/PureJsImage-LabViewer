@@ -70,6 +70,9 @@ for (const appEntry of await readdir(path.join(root, 'apps'), { withFileTypes: t
   if (headers.includes("'unsafe-eval'")) {
     violations.push(`${relativeHeaders}: CSP permits 'unsafe-eval'`)
   }
+  if (headers.includes('[::1]:*')) {
+    violations.push(`${relativeHeaders}: CSP host http://[::1]:* is invalid in Firefox`)
+  }
   if (appEntry.name === SCIENCE_APP && !headers.includes("script-src 'self' 'wasm-unsafe-eval'")) {
     violations.push(`${relativeHeaders}: QuickJS requires narrowly scoped 'wasm-unsafe-eval'`)
   }

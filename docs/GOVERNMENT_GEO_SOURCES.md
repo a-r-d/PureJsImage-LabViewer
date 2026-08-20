@@ -20,6 +20,7 @@ Relative STAC hrefs are real (`./catalog.json`, `../tile.tif`). Catalog JSON use
 - HEAD 200, `Content-Type: image/tiff`, `Content-Length: 17011840`
 - GET `Range: bytes=0-65535` → **HTTP 206**, `Content-Range: bytes 0-65535/17011840`, identity encoding, classic TIFF little-endian magic `II*`
 - `Access-Control-Allow-Origin` / `Access-Control-Expose-Headers`: **absent in Node**. Browser CORS is not proven by this probe.
+- **Browser confirmation (Chromium, `http://127.0.0.1:5173`, 2026-08-19):** Atlas opened `ncei13_n17x75_w065x75_2022v1`. Overview IFDs copy the full-resolution pixel scale; Atlas now scales that affine. World-space zoom is no longer capped at 64 (screen pixels per degree), so a 0.25° tile can fill the viewport.
 
 ### Palm Coast 4-band tile (Node, 2026-08-19)
 
@@ -32,7 +33,8 @@ Relative STAC hrefs are real (`./catalog.json`, `../tile.tif`). Catalog JSON use
 ## USGS LandsatLook (STAC API)
 
 - Root: `https://landsatlook.usgs.gov/stac-server/` (Node HEAD 200, GET Range 206 on the JSON document)
-- `Access-Control-Allow-Origin` on the STAC root was `https://landsatlook.usgs.gov/stac-server` — **not** `*` and **not** the Atlas origin. Browser search from `geo.purejsimage.com` / `127.0.0.1` may be blocked.
+- `Access-Control-Allow-Origin` on the STAC root was `https://landsatlook.usgs.gov/stac-server` — **not** `*` and **not** the Atlas origin.
+- **Browser confirmation (Firefox, `https://geo.purejsimage.com`, 2026-08-19):** three GETs to `https://landsatlook.usgs.gov/stac-server/` failed. Console: `CORS header 'Access-Control-Allow-Origin' does not match 'https://landsatlook.usgs.gov/stac-server/'`. JS exception is `NetworkError when attempting to fetch resource.` Atlas does not proxy; USGS must allow this origin.
 - Search link advertises **GET and POST**. Atlas uses GET when both exist.
 - Collection `landsat-c2l2-sr` items expose **one COG per band**. HTTPS is the primary `href`; `alternate.s3` is requester-pays `s3://usgs-landsat/…`. Atlas never rewrites `s3://` to guessed HTTPS.
 - Node GET Range on a LandsatLook `…/SR_B4.TIF` data URL returned **HTTP 200 HTML** (`<!DO…`), not TIFF. That asset is not a proven browser Range COG from this probe.

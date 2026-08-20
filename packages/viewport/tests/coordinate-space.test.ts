@@ -2,6 +2,7 @@ import type { AffineTransform, PixelInterpretation } from '@pji-workbench/contra
 import { describe, expect, it } from 'vitest'
 
 import {
+  cameraLimitsForWorldLayer,
   createImageSpaceAdapter,
   createWorldSpaceAffineAdapter,
   fitCameraToBounds,
@@ -9,6 +10,7 @@ import {
   invertAffine,
   panCamera,
   panCameraInSpace,
+  pixelToWorldForOverview,
   planMultiLayerTiles,
   planVisibleTileRegions,
   sampleViewportPointer,
@@ -258,5 +260,26 @@ describe('overview selection', () => {
 
   it('scales a full-resolution affine onto an overview grid', () => {
     expect(scaleAffineToOverview(NORTH_UP_AFFINE, 4, 2, 2, 1)).toEqual([20, 0, 100, 0, -40, 200])
+  })
+
+  it('ignores overview geo tags that copy the full-resolution pixel scale', () => {
+    expect(pixelToWorldForOverview(NORTH_UP_AFFINE, 4, 2, 2, 1, NORTH_UP_AFFINE)).toEqual(
+      scaleAffineToOverview(NORTH_UP_AFFINE, 4, 2, 2, 1),
+    )
+  })
+
+  it('keeps overview geo tags that already cover the full raster world', () => {
+    const scaled = scaleAffineToOverview(NORTH_UP_AFFINE, 4, 2, 2, 1)
+    expect(pixelToWorldForOverview(NORTH_UP_AFFINE, 4, 2, 2, 1, scaled)).toEqual(scaled)
+  })
+
+  it('allows fit zoom beyond 64 for geographic-degree rasters', () => {
+    const world = { x: -65.75, y: 17.5, width: 0.251, height: 0.251 }
+    const pixels = { x: 0, y: 0, width: 2_712, height: 2_712 }
+    const map = { width: 800, height: 640 }
+    const limits = cameraLimitsForWorldLayer(world, pixels, map)
+    const camera = fitCameraToBounds(world, map, 24, limits)
+    expect(camera.zoom).toBeGreaterThan(64)
+    expect(camera.zoom * world.width).toBeGreaterThan(500)
   })
 })

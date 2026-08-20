@@ -103,6 +103,7 @@ export type StacClientErrorCode =
   | 'INVALID_DOCUMENT'
   | 'ABORTED'
   | 'TOO_LARGE'
+  | 'NETWORK'
 
 export class StacClientError extends Error {
   constructor(

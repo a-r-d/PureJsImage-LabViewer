@@ -9,6 +9,7 @@ import {
   catalogProtocolHint,
   classifyStacClientError,
   collectionIdsForStory,
+  collectionSummariesFromRegistry,
   type GeoOpenFailure,
   preferredSearchCandidate,
   type RasterStyle,
@@ -90,7 +91,14 @@ export function CatalogPanel({
       setStatus(`${nextCollections.length} collections`)
     } catch (caught) {
       if (signal.aborted || requestGenRef.current !== generation) return
-      setCollections([])
+      const fallback = collectionSummariesFromRegistry(catalog)
+      setCollections(fallback)
+      setCollectionId((current) =>
+        fallback.some((collection) => collection.id === current)
+          ? current
+          : (fallback[0]?.id ?? ''),
+      )
+      setStatus('')
       setError(asCatalogFailure(caught))
     } finally {
       if (requestGenRef.current === generation) setLoading(false)

@@ -92,7 +92,7 @@ describe('STAC client', () => {
     expect(requests.filter((url) => url === 'https://stac.example.test/')).toHaveLength(2)
   })
 
-  it('classifies unavailable catalogs', async () => {
+  it('classifies fetch throws as NETWORK', async () => {
     const client = createStacClient({
       fetch: async () => {
         throw new TypeError('Failed to fetch')
@@ -100,7 +100,7 @@ describe('STAC client', () => {
       cacheVersion: '1',
     })
     await expect(client.getCatalog('https://stac.example.test/')).rejects.toMatchObject({
-      code: 'UNAVAILABLE',
+      code: 'NETWORK',
     })
   })
 

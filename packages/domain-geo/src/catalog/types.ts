@@ -63,6 +63,11 @@ export interface CatalogRegistryEntry {
   readonly preferredAssetKeys?: readonly string[]
   readonly crsDefinitions?: readonly CatalogCrsDefinition[]
   readonly collectionGroups: Readonly<Record<string, readonly string[]>>
+  /**
+   * Optional origin/CORS limitation shown under the protocol hint. Not a provider branch;
+   * CatalogPanel renders this string for any registry entry that sets it.
+   */
+  readonly browserNote?: string
 }
 
 export type CatalogAssetIdentity = Pick<
@@ -175,14 +180,28 @@ export function catalogRootHref(entry: CatalogRegistryEntry): string {
 }
 
 export function catalogProtocolHint(entry: CatalogRegistryEntry): string {
-  switch (entry.protocol) {
-    case 'stac-api':
-      return 'STAC API · public HTTPS'
-    case 'static-stac':
-      return 'Static STAC · public HTTPS'
-    case 'tnm-access':
-      return 'TNMAccess API · public HTTPS'
+  const protocol =
+    entry.protocol === 'stac-api'
+      ? 'STAC API · public HTTPS'
+      : entry.protocol === 'static-stac'
+        ? 'Static STAC · public HTTPS'
+        : 'TNMAccess API · public HTTPS'
+  return entry.browserNote === undefined ? protocol : `${protocol}. ${entry.browserNote}`
+}
+
+export function collectionSummariesFromRegistry(
+  entry: CatalogRegistryEntry,
+): readonly CatalogCollectionSummary[] {
+  const seen = new Set<string>()
+  const summaries: CatalogCollectionSummary[] = []
+  for (const ids of Object.values(entry.collectionGroups)) {
+    for (const id of ids) {
+      if (seen.has(id)) continue
+      seen.add(id)
+      summaries.push({ id, title: id })
+    }
   }
+  return summaries
 }
 
 export function staticStacCollections(

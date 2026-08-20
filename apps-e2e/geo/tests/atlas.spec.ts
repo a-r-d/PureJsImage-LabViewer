@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
-
+import { dismissDemoPicker } from '../support/demo-picker.js'
 import { mockKentuckyStac } from '../support/stac-mock.js'
 
 const fixtureUrl = 'http://127.0.0.1:4175/north-up.tif'
@@ -19,6 +19,7 @@ test.beforeEach(async ({ page }) => {
     'true',
     { timeout: 30_000 },
   )
+  await dismissDemoPicker(page)
 })
 
 async function openRemoteFixture(page: Page) {

@@ -4,6 +4,8 @@ export {
   preferredSearchCandidate,
 } from './catalog/candidates.js'
 export { parseAtlasDeepLink, serializeAtlasDeepLink } from './catalog/deep-link.js'
+export type { AtlasStartDemo } from './catalog/demos.js'
+export { ATLAS_START_DEMOS } from './catalog/demos.js'
 export {
   KY_FROM_ABOVE_CATALOG,
   KY_FROM_ABOVE_CATALOG_ID,
@@ -51,6 +53,7 @@ export {
   catalogProtocolHint,
   catalogRootHref,
   collectionIdsForStory,
+  collectionSummariesFromRegistry,
 } from './catalog/types.js'
 export {
   USGS_3DEP_CATALOG,

@@ -34,6 +34,8 @@ export const USGS_LANDSAT_CATALOG: CatalogRegistryEntry = Object.freeze({
   defaultDatetime: USGS_LANDSAT_DEFAULT_DATETIME,
   defaultSortby: '+properties.eo:cloud_cover',
   preferredAssetKeys: Object.freeze(['red', 'nir08', 'green', 'blue']),
+  browserNote:
+    'LandsatLook CORS allows only landsatlook.usgs.gov, not Atlas. Search from this origin fails until USGS allows geo.purejsimage.com.',
   collectionGroups: Object.freeze({
     'surface-reflectance': Object.freeze([USGS_LANDSAT_SR_COLLECTION_ID]),
     'surface-temperature': Object.freeze([USGS_LANDSAT_ST_COLLECTION_ID]),
