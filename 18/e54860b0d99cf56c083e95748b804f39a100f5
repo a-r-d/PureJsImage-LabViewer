@@ -1,0 +1,116 @@
+tooling/scripts/check-static-security.mjs
+  s_06ddef2cc80384::t_ab09be80206263 73-75
+apps/geo/src/styles.css
+  s_06ddef2cc80384::t_504b82562da779 347-432
+packages/domain-geo/src/catalog/types.ts
+  s_06ddef2cc80384::t_d679a5d9689827 66-70
+  s_06ddef2cc80384::t_fd149ee88f58c0 183-202,204
+packages/viewport/src/camera.ts
+  s_06ddef2cc80384::t_1cb05e5da67543 159-188
+docs/QUALITY_GATES.md
+  s_06ddef2cc80384::t_f0fedd00cf4f7a 87-88
+packages/domain-geo/src/catalog/demos.ts
+  s_06ddef2cc80384::t_dfa183220e7660 2-81
+  s_06ddef2cc80384::t_4851d29fbb45e8 1
+packages/domain-geo/src/catalog/json-fetch.ts
+  s_06ddef2cc80384::t_08238bc219f7d3 125-132,134-136
+  s_06ddef2cc80384::t_27328c1fdf507a 148-151
+docs/ARCHITECTURE.md
+  s_06ddef2cc80384::t_ce6fe6a45b29b7 86-87
+packages/domain-geo/tests/catalog.test.ts
+  s_06ddef2cc80384::t_86ae5259ff15c4 76-86
+  s_06ddef2cc80384::t_56cc803373cad5 25,30
+  s_06ddef2cc80384::t_8d19b21c83a24e 11,13,15
+  s_06ddef2cc80384::t_4851d29fbb45e8 5
+  s_06ddef2cc80384::t_9597b2579fc773 87-109,111-116
+  s_06ddef2cc80384::t_ffda6c966b23a5 110
+apps/geo/src/App.tsx
+  s_06ddef2cc80384::t_eddb44f6db8fa2 586-598
+  s_06ddef2cc80384::t_c10325e4201e44 78-80
+  s_06ddef2cc80384::t_e4801af08fd2eb 16
+  s_06ddef2cc80384::t_b0d57bac59a26e 510
+  s_06ddef2cc80384::t_ee6762d10b7935 660-667
+  s_06ddef2cc80384::t_2fc931243d2380 315
+  s_06ddef2cc80384::t_b017124b48ffd0 509,511-512
+  s_06ddef2cc80384::t_75ec987c451a39 41
+  s_06ddef2cc80384::t_f7a5a03d512ae0 347-375,377-385
+  s_06ddef2cc80384::t_4851d29fbb45e8 376
+packages/viewport/src/overview.ts
+  s_06ddef2cc80384::t_4851d29fbb45e8 64,69
+  s_06ddef2cc80384::t_c37f321304d186 46-63,65-68,70-104
+apps-e2e/geo/tests/catalog.spec.ts
+  s_06ddef2cc80384::t_4f690ec1ab8ce7 4
+  s_06ddef2cc80384::t_844cfabc0f805d 96-98
+  s_06ddef2cc80384::t_a2331f804208a2 91
+  s_06ddef2cc80384::t_fb8fcaa5d392e6 133-142
+  s_06ddef2cc80384::t_c400f78c0762f6 22
+apps/geo/public/_headers
+  s_06ddef2cc80384::t_40fded4c5bef66 2
+apps-e2e/geo/support/demo-picker.ts
+  s_06ddef2cc80384::t_be40e600a03d5f 1-6
+packages/domain-geo/src/index.ts
+  s_06ddef2cc80384::t_650d0ab11e616b 56
+  s_06ddef2cc80384::t_abb9da9ae5dd27 7-8
+packages/domain-geo/tests/stac.test.ts
+  s_06ddef2cc80384::t_64d04205485242 95
+  s_06ddef2cc80384::t_b294c51feeee2b 103
+docs/GOVERNMENT_GEO_SOURCES.md
+  s_06ddef2cc80384::t_24b7821feaa1ef 23
+  s_06ddef2cc80384::t_463b28db50c8da 36-37
+packages/viewport/src/index.ts
+  s_06ddef2cc80384::t_740d6bdd31b7bf 42
+  s_06ddef2cc80384::t_8ee3d9bc5607de 5
+CHANGELOG.md
+  s_06ddef2cc80384::t_f80c2b72ccd938 21-24
+  s_06ddef2cc80384::t_7fb3ff8e743498 25-28
+apps/geo/src/CatalogPanel.tsx
+  s_06ddef2cc80384::t_c51d4ffa74255b 12
+  s_06ddef2cc80384::t_a23149dac7d56b 101
+  s_06ddef2cc80384::t_666cb8b908bce8 94-100
+apps-e2e/geo/tests/atlas.spec.ts
+  s_06ddef2cc80384::t_4991d45911143d 2
+  s_06ddef2cc80384::t_d00ec5f3440a24 22
+packages/domain-geo/src/errors.ts
+  s_06ddef2cc80384::t_79c381f6958651 68-86
+  s_06ddef2cc80384::t_a6e0252b2e4043 218-221
+apps/geo/tests/geo-app.test.ts
+  s_06ddef2cc80384::t_2784bf38c71a62 30
+  s_06ddef2cc80384::t_27f63c9dd31005 45
+  s_06ddef2cc80384::t_2141117524459a 50-51
+  s_06ddef2cc80384::t_22f0f33061b024 29
+apps/geo/src/DemoPicker.tsx
+  s_06ddef2cc80384::t_2296a493011543 1-62
+packages/viewport/tests/coordinate-space.test.ts
+  s_06ddef2cc80384::t_8f3e3a88f6abfe 275-284
+  s_06ddef2cc80384::t_4851d29fbb45e8 13
+  s_06ddef2cc80384::t_a16b439ef2be79 264-274
+  s_06ddef2cc80384::t_a030d43249d448 5
+packages/domain-geo/src/catalog/usgs-landsat.ts
+  s_06ddef2cc80384::t_fd031a890d32cc 37-38
+packages/domain-geo/src/stac/types.ts
+  s_06ddef2cc80384::t_0f0e3ef2bb0538 106
+apps/geo/src/GeoViewport.tsx
+  s_06ddef2cc80384::t_a030d43249d448 20
+  s_06ddef2cc80384::t_b63dce56482bdc 25
+  s_06ddef2cc80384::t_236ac0e7498817 434-438,440,443
+  s_06ddef2cc80384::t_29aff58088d971 513
+  s_06ddef2cc80384::t_41b1214e103c98 599-606
+  s_06ddef2cc80384::t_4022dbc4ef9ecd 531
+  s_06ddef2cc80384::t_23953cc1c5c1a0 251-256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "18e54860b0d99cf56c083e95748b804f39a100f5",
+  "prompts": {},
+  "sessions": {
+    "s_06ddef2cc80384": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e36f334e-3d5e-4df0-bddc-0e9ee634ee7d",
+        "model": "grok-4.6"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
