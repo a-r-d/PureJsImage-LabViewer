@@ -1,0 +1,119 @@
+apps-e2e/geo/support/stac-mock.ts
+  s_896fa7e1aa98f9::t_664121d5091596 42-48,61-71
+  s_896fa7e1aa98f9::t_bc7faaad10b2a9 72-73
+CHANGELOG.md
+  s_896fa7e1aa98f9::t_224e94f7e520cd 14-17
+  s_896fa7e1aa98f9::t_a42f6d4bed852b 18-19
+packages/imaging/tests/raster-preflight.test.ts
+  s_896fa7e1aa98f9::t_35925bb4388a8e 50-53
+  s_896fa7e1aa98f9::t_0086c6d18a8151 4-8,48-49,54-56,69-70,119-140
+  s_896fa7e1aa98f9::t_94330305b0735d 141
+packages/domain-geo/src/catalog/candidates.ts
+  s_896fa7e1aa98f9::t_af63ff84709f59 27,33,64,87,93-96
+  s_896fa7e1aa98f9::t_aad606d27575c9 97-98
+docs/ARCHITECTURE.md
+  s_896fa7e1aa98f9::t_224e94f7e520cd 56-58,98-100
+docs/QUALITY_GATES.md
+  s_896fa7e1aa98f9::t_a42f6d4bed852b 99-100
+  s_896fa7e1aa98f9::t_224e94f7e520cd 86-87,95-98
+  s_896fa7e1aa98f9::t_59ec44923f320d 101
+packages/domain-geo/src/catalog/adapters/stac-api.ts
+  s_896fa7e1aa98f9::t_224e94f7e520cd 197-200
+  s_896fa7e1aa98f9::t_d9156d629d991a 2-8,23-24,54,59-60,64-87,103-111,113-114,116-128,130-134,136-138,150,160,168,177-196,201-211
+  s_896fa7e1aa98f9::t_00301a2703c3f3 129,170-174
+packages/imaging/src/cors-range-fetch.ts
+  s_896fa7e1aa98f9::t_35925bb4388a8e 1,130-133
+  s_896fa7e1aa98f9::t_8a3bb0fe301943 111,135-139,285
+  s_896fa7e1aa98f9::t_206d31ef89fe08 2,4-6,10-28,50,52-56,58-62,64-110,112-113,115-120,122-128,134,153,155,162,166-191,193,197-198,200-201,218,244-245,250-252,262,270-271,274-276,278-281,283-284,286-296,299-300
+  s_896fa7e1aa98f9::t_224e94f7e520cd 249
+packages/domain-geo/tests/catalog-adapters.test.ts
+  s_896fa7e1aa98f9::t_941b69bf3a7dc0 147,165,179-180,196-216,219-234,236,249-254,267,272-284
+  s_896fa7e1aa98f9::t_35925bb4388a8e 217-218,235
+packages/domain-geo/src/stac/client.ts
+  s_896fa7e1aa98f9::t_95da7789c24032 193,198,200,203
+  s_896fa7e1aa98f9::t_dd6bb8cf67a854 12,71-75,85,105-109,119-130,135-154,174-175,177-178,180,182-183,191,196,201-202,215-219,222-247
+  s_896fa7e1aa98f9::t_35925bb4388a8e 131-134,220-221
+  s_896fa7e1aa98f9::t_9a9b13df58a477 248
+packages/domain-geo/src/catalog/json-fetch.ts
+  s_896fa7e1aa98f9::t_6d745c14130424 19,31,38-53,55,75,105-106,108,113,115,119
+  s_896fa7e1aa98f9::t_35925bb4388a8e 2
+packages/domain-geo/src/catalog/deep-link.ts
+  s_896fa7e1aa98f9::t_35925bb4388a8e 61-62
+  s_896fa7e1aa98f9::t_18f0db6e606e2c 4,15-16,59-60,63-66
+  s_896fa7e1aa98f9::t_00301a2703c3f3 31-32,54-55
+  s_896fa7e1aa98f9::t_45859b9115bfc8 67-68
+packages/domain-geo/src/catalog/adapters/static-stac.ts
+  s_896fa7e1aa98f9::t_35925bb4388a8e 138-141,145-148
+  s_896fa7e1aa98f9::t_21fdc12bc1d5cc 135-137,142-144,149-151,155
+packages/domain-geo/src/catalog/usgs-landsat.ts
+  s_896fa7e1aa98f9::t_bef05c0a2e2b51 31
+packages/domain-geo/src/stac/types.ts
+  s_896fa7e1aa98f9::t_cc9c84b668095f 11,101-103
+  s_896fa7e1aa98f9::t_bb98b67dcd0c50 104-106
+apps-e2e/geo/tests/catalog-live.spec.ts
+  s_896fa7e1aa98f9::t_907973dd72cbc2 16-21,29-32,40-41
+packages/imaging/src/bounded-response.ts
+  s_896fa7e1aa98f9::t_35925bb4388a8e 104-107,166-168
+  s_896fa7e1aa98f9::t_eb2375d81b3c94 1-103,108-165,169-176
+packages/imaging/tests/cors-range-fetch.test.ts
+  s_896fa7e1aa98f9::t_f6f109b4177676 28-29,33,60-61,106-107,123-126,140-144,151-184,198-204
+  s_896fa7e1aa98f9::t_2c71a6fbe95c0a 122
+  s_896fa7e1aa98f9::t_35925bb4388a8e 109-117,127-139,145-150,185-197
+  s_896fa7e1aa98f9::t_6b9bf3547383e0 46-48,97
+packages/domain-geo/src/catalog/types.ts
+  s_896fa7e1aa98f9::t_cc9c84b668095f 145,152
+  s_896fa7e1aa98f9::t_18f0db6e606e2c 76-79
+apps-e2e/geo/tests/catalog.spec.ts
+  s_896fa7e1aa98f9::t_664121d5091596 44,46,62,72-93,131-134
+  s_896fa7e1aa98f9::t_9e8ab70904eb98 94-130
+packages/imaging/src/raster-preflight.ts
+  s_896fa7e1aa98f9::t_8a3bb0fe301943 134-139
+  s_896fa7e1aa98f9::t_b750983f0901b9 1,6,11-16,20-21,30,42-48,52-60,63,68,77-78,84-91,98,100-101,106,108-109,113,116,119-123,126-133,141,143-145,148,153,155-159,161-170,173-200,212-223,233-236,253-254,260-286,291-307,311-317,319-325,328-350,354,359-398,404,412,420-428,432-433,437-510,513-567
+  s_896fa7e1aa98f9::t_35925bb4388a8e 4,7,287-288,308-310,435-436
+  s_896fa7e1aa98f9::t_69c62fec067b23 146,172,201-211
+apps/geo/src/App.tsx
+  s_896fa7e1aa98f9::t_4f2f96f17e3bdd 35-39,313-317,325-327,349-356,633-635
+  s_896fa7e1aa98f9::t_18f0db6e606e2c 285-288
+packages/domain-geo/tests/stac.test.ts
+  s_896fa7e1aa98f9::t_7abddd49414eea 160,162-167,182-188,190-191
+  s_896fa7e1aa98f9::t_941b69bf3a7dc0 136-159,192-224
+  s_896fa7e1aa98f9::t_f0878f88d69a69 2,189
+  s_896fa7e1aa98f9::t_8b8883ff72bd62 161,168-181
+apps/geo/src/CatalogPanel.tsx
+  s_896fa7e1aa98f9::t_81c8dda8591d9e 23,44-53,75-79,86,134,138-156,159-173,175-177,179-184,192-208,212,214,263-268,274,284-293,334,361-362,364-368,370-371,374-376
+  s_896fa7e1aa98f9::t_35925bb4388a8e 187,225-229,262,511,640
+  s_896fa7e1aa98f9::t_fa91481960d501 510,512
+  s_896fa7e1aa98f9::t_965db952f88693 360,363,369,372-373,377
+  s_896fa7e1aa98f9::t_9e8ab70904eb98 80-85,157-158,174,178
+  s_896fa7e1aa98f9::t_87a7bb636685d6 224,230-238,244,513-520,589-591,600-611,642,646-665
+  s_896fa7e1aa98f9::t_f8ee259c434391 185
+  s_896fa7e1aa98f9::t_026878ddee9ef7 641
+  s_896fa7e1aa98f9::t_1f6aba9fa2acc4 666
+packages/domain-geo/src/catalog/bounded-response.ts
+  s_896fa7e1aa98f9::t_35925bb4388a8e 41-45,92-95
+  s_896fa7e1aa98f9::t_eb2375d81b3c94 1-40,46-91,96-150
+packages/domain-geo/src/catalog/adapters/tnm-access.ts
+  s_896fa7e1aa98f9::t_c31fd1ae358cb4 57-58,73-93,206-209,211,215-216,225,231-240,247-260
+  s_896fa7e1aa98f9::t_99b2ec26bf12e0 261
+packages/imaging/src/index.ts
+  s_896fa7e1aa98f9::t_8a3bb0fe301943 4,7
+packages/domain-geo/src/stac/parse.ts
+  s_896fa7e1aa98f9::t_cc9c84b668095f 7,80-93,229,238,243-251
+  s_896fa7e1aa98f9::t_1fa600550083d1 252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "236e72767015d804548e048b91b43d44168e821a",
+  "prompts": {},
+  "sessions": {
+    "s_896fa7e1aa98f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01c80-0b22-75c1-ae02-3ac87fba6167",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
