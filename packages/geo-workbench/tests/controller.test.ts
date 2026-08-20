@@ -384,6 +384,40 @@ describe('GeoWorkbenchController', () => {
     expect(workbench.getSnapshot().project).toEqual(before)
   })
 
+  it('keeps the current project and bindings intact when transactional project loading fails', async () => {
+    const { runtime, controller: workbench } = controller()
+    const sourceId = await workbench.openRemote({ url: 'https://example.com/current.tif' })
+    const exported = (await workbench.executeAction('geo.project.export', {})) as Readonly<{
+      text: string
+    }>
+    const before = workbench.getSnapshot().project
+    const beforeBinding = workbench.bindingForSource(sourceId)
+    runtime.failNext = true
+
+    await expect(
+      workbench.executeAction('geo.project.open', { document: exported.text }),
+    ).rejects.toMatchObject({ code: 'RUNTIME_OPEN_FAILED' })
+
+    expect(workbench.getSnapshot().project).toEqual(before)
+    expect(workbench.bindingForSource(sourceId)).toBe(beforeBinding)
+  })
+
+  it('saves, closes, and transactionally reopens a remote project', async () => {
+    const { controller: workbench } = controller()
+    const sourceId = await workbench.openRemote({ url: 'https://example.com/reopen.tif' })
+    const saved = (await workbench.executeAction('geo.project.save', {})) as Readonly<{
+      id: string
+    }>
+    await workbench.closeSource(sourceId, 'remove')
+    expect(workbench.runtimeBindings()).toHaveLength(0)
+
+    const opened = await workbench.executeAction('geo.project.open', { projectId: saved.id })
+
+    expect(opened).toMatchObject({ committed: true, projectId: saved.id })
+    expect(workbench.getSnapshot().project.sources).toHaveLength(1)
+    expect(workbench.runtimeBindings()).toHaveLength(1)
+  })
+
   it('retries a runtime binding without changing its semantic source or layer ids', async () => {
     const { runtime, controller: workbench } = controller()
     const sourceId = await workbench.openRemote({ url: 'https://example.com/a.tif' })
@@ -424,6 +458,69 @@ describe('GeoWorkbenchController', () => {
       workbench.executeAction('geo.source.rebind_local', { sourceId, resourceId }),
     ).resolves.toEqual({ sourceId })
     expect(workbench.getSnapshot().project.sources[0]?.id).toBe(sourceId)
+  })
+
+  it('requires explicit local reassociation before opening a persisted local project', async () => {
+    const { controller: workbench } = controller()
+    const file = new File([new Uint8Array([1, 2, 3])], 'persisted-local.tif', {
+      type: 'image/tiff',
+      lastModified: 456,
+    })
+    const resourceId = workbench.registerLocalResource([file], file)
+    const sourceId = await workbench.openLocalResource(resourceId)
+    const exported = (await workbench.executeAction('geo.project.export', {})) as Readonly<{
+      text: string
+    }>
+    await workbench.closeSource(sourceId, 'remove')
+
+    const staged = await workbench.executeAction('geo.project.open', { document: exported.text })
+    expect(staged).toMatchObject({
+      committed: false,
+      plan: { entries: [{ sourceId, status: 'rebind-required' }], readyToCommit: false },
+    })
+    const rebound = await workbench.executeAction('geo.project.rebind_source', {
+      sourceId,
+      resourceId,
+    })
+    expect(rebound).toMatchObject({ readyToCommit: true })
+    await expect(workbench.executeAction('geo.project.open', {})).resolves.toMatchObject({
+      committed: true,
+    })
+  })
+
+  it('adopts a confirmed replacement local fingerprint for future rehydration', async () => {
+    const { controller: workbench } = controller()
+    const original = new File([Uint8Array.of(1, 2, 3)], 'original.tif', {
+      type: 'image/tiff',
+      lastModified: 456,
+    })
+    const originalResourceId = workbench.registerLocalResource([original], original)
+    const sourceId = await workbench.openLocalResource(originalResourceId)
+    const exported = (await workbench.executeAction('geo.project.export', {})) as Readonly<{
+      text: string
+    }>
+    const replacement = new File([Uint8Array.of(4, 5, 6, 7)], 'replacement.tif', {
+      type: 'image/tiff',
+      lastModified: 789,
+    })
+    const replacementResourceId = workbench.registerLocalResource([replacement], replacement)
+
+    await workbench.executeAction('geo.project.open', { document: exported.text })
+    await workbench.executeAction('geo.project.rebind_source', {
+      sourceId,
+      resourceId: replacementResourceId,
+    })
+    await workbench.executeAction('geo.project.open', { confirmChanged: true })
+
+    expect(workbench.getSnapshot().project.sources[0]?.locator).toEqual({
+      kind: 'local-file',
+      fingerprint: {
+        name: 'replacement.tif',
+        size: 4,
+        lastModified: 789,
+        mediaType: 'image/tiff',
+      },
+    })
   })
 
   it('closes one source while leaving the other runtime binding readable', async () => {

@@ -4,6 +4,7 @@ import type {
   CatalogService,
   CatalogSourceCandidate,
   GeoMapGeometry,
+  GeoProjectViewport,
   GeoRasterLayer,
   StacBbox,
 } from '@pji-workbench/domain-geo'
@@ -25,6 +26,8 @@ import {
   type GeoViewportPort,
   GeoWorkbenchController,
   GeoWorkflowRunner,
+  IndexedDbGeoProjectStore,
+  MemoryGeoProjectStore,
 } from '@pji-workbench/geo-workbench'
 import { preflightRasterAsset, type RasterAssetPreflight } from '@pji-workbench/imaging'
 import { Button, EmptyState, ErrorState, Icon, ThemeRoot } from '@pji-workbench/ui'
@@ -42,9 +45,14 @@ import {
 import { CatalogPanel } from './CatalogPanel.js'
 import { DemoPicker } from './DemoPicker.js'
 import type { PublicEnvironment } from './environment.js'
-import { GeoViewport, type GeoViewportPointer } from './GeoViewport.js'
+import {
+  GeoViewport,
+  type GeoViewportPointer,
+  type GeoViewportProposalHandler,
+} from './GeoViewport.js'
 import { InspectorPanel, type InspectorTab } from './InspectorPanel.js'
 import { createGeoImagingWorkerClient } from './imaging-client.js'
+import { ProjectPanel } from './ProjectPanel.js'
 import { createLocalStacCache } from './stac-storage.js'
 import { type GeoDrawingTool, VectorAnalysisPanel } from './VectorAnalysisPanel.js'
 import { WorkflowBrowser } from './WorkflowBrowser.js'
@@ -70,24 +78,39 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   }
   const rawCatalogService = rawCatalogServiceRef.current
   const exportFrameRef = useRef<((includeRoiOverlay: boolean) => void) | undefined>(undefined)
+  const projectViewportRef = useRef<GeoProjectViewport>({ kind: 'auto' })
+  const viewportProposalRef = useRef<GeoViewportProposalHandler | undefined>(undefined)
+  const pendingViewportProposalRef = useRef<Parameters<GeoViewportPort['propose']>[0] | undefined>(
+    undefined,
+  )
   const viewportPortRef = useRef<GeoViewportPort | null>(null)
   if (viewportPortRef.current === null) {
     viewportPortRef.current = {
-      read: () => {
-        const canvas = document.querySelector<HTMLCanvasElement>('.geo-viewport canvas')
-        return canvas === null
-          ? { mounted: false }
-          : { mounted: true, width: canvas.width, height: canvas.height }
+      read: () => projectViewportRef.current,
+      propose: (input) => {
+        if (viewportProposalKind(input) === 'export-rendered-image')
+          return renderViewportExport(input, exportFrameRef.current)
+        const handler = viewportProposalRef.current
+        if (handler !== undefined) return handler(input)
+        pendingViewportProposalRef.current = input
+        return { queued: true }
       },
-      propose: (input) => renderViewportExport(input, exportFrameRef.current),
     }
   }
+  const viewportPort = viewportPortRef.current
   const controllerRef = useRef<GeoWorkbenchController | null>(null)
   if (controllerRef.current === null) {
+    const projectVersions = { appVersion: '0.0.0', pureJsImageVersion: '0.14.0' }
     controllerRef.current = new GeoWorkbenchController({
       runtime,
-      viewport: viewportPortRef.current,
+      viewport: viewportPort,
       catalogService: rawCatalogService,
+      projectVersions,
+      projectStore:
+        typeof indexedDB === 'undefined'
+          ? new MemoryGeoProjectStore(projectVersions)
+          : new IndexedDbGeoProjectStore(indexedDB, projectVersions),
+      probeRemoteSource,
       preflightCatalogAsset: async (candidate, signal) => {
         const cached = verifiedPreflightsRef.current.get(new URL(candidate.href).href)
         if (cached?.compatibility === 'ready') return
@@ -137,6 +160,23 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [viewBbox, setViewBbox] = useState<StacBbox | undefined>()
   const [blinkInterval, setBlinkInterval] = useState(750)
   const [drawingTool, setDrawingTool] = useState<GeoDrawingTool>('pan')
+  const inspectorProjectRef = useRef(snapshot.project.id)
+
+  const selectTab = useCallback(
+    (next: InspectorTab) => {
+      setTab(next)
+      controller.selectInspector(next === 'xray' ? 'cog' : next === 'display' ? 'layers' : next)
+    },
+    [controller],
+  )
+
+  useEffect(() => {
+    if (inspectorProjectRef.current === snapshot.project.id) return
+    inspectorProjectRef.current = snapshot.project.id
+    const inspector = snapshot.project.selection.inspector
+    if (inspector === undefined) return
+    setTab(inspector === 'cog' ? 'xray' : inspector)
+  }, [snapshot.project.id, snapshot.project.selection.inspector])
 
   const semanticCatalogService = useMemo(
     () => createSemanticCatalogService(controller, rawCatalogService),
@@ -222,13 +262,13 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       try {
         await controller.executeAction(action, input, abort.signal)
         setUrlOpen(false)
-        setTab('xray')
+        selectTab('xray')
         setReadout('Move the pointer over the raster')
       } catch {
         // The controller publishes a typed error snapshot for the shared UI.
       }
     },
-    [controller],
+    [controller, selectTab],
   )
 
   const openFiles = useCallback(
@@ -267,7 +307,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       void controller
         .executeAction('geo.source.open_catalog_asset', { candidate, presets }, abort.signal)
         .then(() => {
-          setTab(inspect ? 'xray' : 'layers')
+          selectTab(inspect ? 'xray' : 'layers')
           window.history.replaceState(
             null,
             '',
@@ -284,7 +324,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         })
         .catch(() => undefined)
     },
-    [controller],
+    [controller, selectTab],
   )
 
   const openStartDemo = useCallback(
@@ -308,24 +348,91 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     let abort: AbortController | undefined
     const openFromHash = (): void => {
       const link = parseAtlasDeepLink(window.location.hash)
-      const entry = link === undefined ? undefined : catalogById(link.catalogId)
-      if (link === undefined || entry === undefined) return
+      if (link === undefined) return
       abort?.abort()
       abort = new AbortController()
-      void semanticCatalogService.resolveDeepLink(entry, link, abort.signal).then((candidate) => {
-        if (!cancelled && !abort?.signal.aborted && candidate !== undefined) {
-          openCatalogAsset(candidate, link.inspect === true)
+      if (link.kind === 'workflow') {
+        void workflowRunner
+          .startFromIdentities(link.workflowId, link.parameters, link.sources)
+          .then(() => {
+            if (!cancelled)
+              selectTab(link.inspector === 'cog' ? 'xray' : (link.inspector ?? 'workflows'))
+          })
+          .catch(() => undefined)
+        return
+      }
+      const identities = link.kind === 'asset' ? [link] : link.sources
+      void (async () => {
+        const openedSourceIds: string[] = []
+        try {
+          for (const identity of identities) {
+            const entry = catalogById(identity.catalogId)
+            if (entry === undefined)
+              throw new Error(`Catalog ${identity.catalogId} is unavailable.`)
+            const candidate = await semanticCatalogService.resolveDeepLink(
+              entry,
+              identity,
+              abort?.signal,
+            )
+            if (candidate === undefined)
+              throw new Error(`Catalog asset ${identity.assetKey} was not found.`)
+            const presets = displayPresetsForCandidate(candidate)
+            const selectedPreset = presets.find(({ id }) => id === link.presetId)
+            const result = await controller.executeAction(
+              'geo.source.open_catalog_asset',
+              {
+                candidate:
+                  selectedPreset === undefined
+                    ? candidate
+                    : { ...candidate, style: selectedPreset.style },
+                presets,
+              },
+              abort?.signal,
+            )
+            const sourceId = actionResultId(result, 'sourceId')
+            openedSourceIds.push(sourceId)
+          }
+          if (cancelled || abort?.signal.aborted) return
+          if (link.kind === 'comparison') {
+            const layerIds = openedSourceIds.flatMap((sourceId) =>
+              controller
+                .getSnapshot()
+                .project.layers.filter((layer) => layer.sourceId === sourceId)
+                .map(({ id }) => id),
+            )
+            const leftLayerId = layerIds[0]
+            const rightLayerId = layerIds[1]
+            if (leftLayerId === undefined || rightLayerId === undefined)
+              throw new Error('Comparison layers were not created.')
+            await controller.executeAction('geo.comparison.set_swipe', {
+              leftLayerId,
+              rightLayerId,
+              swipePosition: 0.5,
+            })
+          }
+          selectTab(
+            link.inspector === 'cog'
+              ? 'xray'
+              : (link.inspector ?? (link.kind === 'asset' && link.inspect ? 'xray' : 'layers')),
+          )
+        } catch {
+          await Promise.all(
+            openedSourceIds.map((sourceId) =>
+              controller.closeSource(sourceId, 'remove').catch(() => undefined),
+            ),
+          )
         }
-      })
+      })()
     }
     openFromHash()
     window.addEventListener('hashchange', openFromHash)
     return () => {
       cancelled = true
       abort?.abort()
+      workflowRunner.cancel()
       window.removeEventListener('hashchange', openFromHash)
     }
-  }, [openCatalogAsset, ready, semanticCatalogService])
+  }, [controller, ready, selectTab, semanticCatalogService, workflowRunner])
 
   const onPointer = useCallback(
     (sample: GeoViewportPointer | undefined) => {
@@ -380,10 +487,16 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           tool: drawingTool,
           name: `${drawingTool[0]?.toUpperCase() ?? ''}${drawingTool.slice(1)} ROI`,
         })
-        .then(() => setTab('vectors'))
+        .then(() => selectTab('vectors'))
         .catch(() => undefined)
     },
-    [controller, drawingTool, selectedSource?.spatialReference.crs, snapshot.project.crs],
+    [
+      controller,
+      drawingTool,
+      selectTab,
+      selectedSource?.spatialReference.crs,
+      snapshot.project.crs,
+    ],
   )
 
   return (
@@ -443,7 +556,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               <Icon name="examples" size={16} />
               Demos
             </Button>
-            <Button onClick={() => setTab('catalog')}>
+            <Button onClick={() => selectTab('catalog')}>
               <Icon name="search" size={16} />
               Catalog
             </Button>
@@ -561,8 +674,19 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                 onComparisonChange={onComparisonChange}
                 onOverview={onOverview}
                 onPointer={onPointer}
+                onProjectViewport={(viewport) => {
+                  projectViewportRef.current = viewport
+                }}
                 onSettled={setSettled}
                 onViewBbox={onViewBbox}
+                onViewportProposal={(handler) => {
+                  viewportProposalRef.current = handler
+                  const pending = pendingViewportProposalRef.current
+                  if (handler !== undefined && pending !== undefined) {
+                    pendingViewportProposalRef.current = undefined
+                    handler(pending)
+                  }
+                }}
                 onDrawGeometry={onDrawGeometry}
                 onExportFrame={(render) => {
                   exportFrameRef.current = render
@@ -573,6 +697,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                   ? {}
                   : { selectedRoiId: snapshot.selectedRoiId })}
                 rasters={viewportRasters}
+                projectViewport={snapshot.project.viewport}
                 sources={snapshot.project.sources}
                 {...(snapshot.selectedLayerId === undefined
                   ? {}
@@ -600,7 +725,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                   </Button>
                   <Button
                     onClick={() => {
-                      setTab('catalog')
+                      selectTab('catalog')
                       setSearchNonce((value) => value + 1)
                     }}
                   >
@@ -614,6 +739,13 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           )}
           <InspectorPanel
             bandCount={selectedSource?.componentCount ?? 0}
+            project={
+              <ProjectPanel
+                controller={controller}
+                projectId={snapshot.project.id}
+                projectTitle={snapshot.project.title}
+              />
+            }
             catalog={
               <CatalogPanel
                 busy={busy || !ready}
@@ -635,7 +767,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               <WorkflowBrowser
                 disabled={!ready || busy}
                 onCompleted={(run) =>
-                  setTab(run.workflowId === 'cog-anatomy' ? 'xray' : 'workflows')
+                  selectTab(run.workflowId === 'cog-anatomy' ? 'xray' : 'workflows')
                 }
                 runner={workflowRunner}
                 snapshot={workflowSnapshot}
@@ -672,7 +804,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               invoke('geo.layer.set_order', { layerId, direction })
             }
             onSelectLayer={(layerId) => invoke('geo.layer.select', { layerId })}
-            onTab={setTab}
+            onTab={selectTab}
             {...(selectedBinding?.presets.length ? { presets: selectedBinding.presets } : {})}
             {...(selectedSource?.catalog === undefined
               ? {}
@@ -711,6 +843,52 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       ) : null}
     </ThemeRoot>
   )
+}
+
+async function probeRemoteSource(url: string, signal?: AbortSignal) {
+  const request = async (method: 'HEAD' | 'GET') =>
+    fetch(url, {
+      method,
+      ...(method === 'GET' ? { headers: { Range: 'bytes=0-0' } } : {}),
+      ...(signal === undefined ? {} : { signal }),
+    })
+  try {
+    let response = await request('HEAD')
+    if (response.status === 405 || response.status === 501) response = await request('GET')
+    const status =
+      response.status === 401 || response.status === 403
+        ? ('unauthorized' as const)
+        : response.ok || response.status === 206
+          ? ('unchanged' as const)
+          : ('unavailable' as const)
+    const sizeHeader = response.headers.get('content-range')?.match(/\/(\d+)$/u)?.[1]
+    const contentLength = sizeHeader ?? response.headers.get('content-length')
+    const size = contentLength === null ? undefined : Number(contentLength)
+    const etag = response.headers.get('etag')
+    const versionId = response.headers.get('x-amz-version-id')
+    const lastModified = response.headers.get('last-modified')
+    const checksum = response.headers.get('digest')
+    return {
+      status,
+      url: response.url || new URL(url).href,
+      compatible: status === 'unchanged',
+      validators: {
+        ...(etag === null ? {} : { etag }),
+        ...(versionId === null ? {} : { versionId }),
+        ...(lastModified === null ? {} : { lastModified }),
+        ...(size === undefined || !Number.isFinite(size) ? {} : { size }),
+        ...(checksum === null ? {} : { checksum }),
+      },
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    return {
+      status: 'unavailable' as const,
+      url: new URL(url).href,
+      compatible: false,
+      validators: {},
+    }
+  }
 }
 
 function createSemanticCatalogService(
@@ -771,6 +949,29 @@ function errorTitle(code: string): string {
   if (code === 'CRS_INCOMPATIBLE') return 'Raster CRS is incompatible'
   if (code === 'SOURCE_LIMIT') return 'Source limit reached'
   return 'Could not complete this Atlas action'
+}
+
+function actionResultId(value: unknown, key: string): string {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new Error(`Atlas action result ${key} is unavailable.`)
+  const result = (value as Readonly<Record<string, unknown>>)[key]
+  if (typeof result !== 'string' || result.length === 0)
+    throw new Error(`Atlas action result ${key} is unavailable.`)
+  return result
+}
+
+function viewportProposalKind(
+  input: Parameters<GeoViewportPort['propose']>[0],
+): string | undefined {
+  const record =
+    typeof input === 'object' && input !== null && !Array.isArray(input)
+      ? (input as Readonly<Record<string, unknown>>)
+      : undefined
+  return record !== undefined
+    ? typeof record['kind'] === 'string'
+      ? record['kind']
+      : undefined
+    : undefined
 }
 
 async function renderViewportExport(

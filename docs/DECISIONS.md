@@ -220,3 +220,11 @@ collection, item, and asset identity directly; it does not repeat catalog search
 metadata controls RGB, CIR, and normalized-difference recipes, so a component count alone never
 establishes NIR. A configured provider band override is accepted only with a non-empty audited
 product-documentation note, which remains attached to the candidate and workflow action record.
+
+## Atlas projects persist semantic identities, then rehydrate transactionally
+
+`GeoProject` version 2 stores normalized semantic state and source evidence, never live browser or
+Worker objects. STAC/TNM sources resolve fresh hrefs from stable identities, remote URLs compare
+available validators, and local sources require explicit file/companion reassociation. Candidate
+runtime bindings are prepared beside the current project and committed only as a complete set.
+See `docs/ATLAS_PROJECT_PERSISTENCE.md` for limits, migrations, and deep-link policy.

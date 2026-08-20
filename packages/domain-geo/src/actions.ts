@@ -7,6 +7,17 @@ import type {
 } from '@pji-workbench/actions'
 
 export type GeoActionId =
+  | 'geo.project.new'
+  | 'geo.project.describe'
+  | 'geo.project.save'
+  | 'geo.project.list'
+  | 'geo.project.open'
+  | 'geo.project.delete'
+  | 'geo.project.export'
+  | 'geo.project.import'
+  | 'geo.project.rehydration_plan'
+  | 'geo.project.rebind_source'
+  | 'geo.project.resolve_catalog_source'
   | 'geo.catalog.list'
   | 'geo.catalog.list_collections'
   | 'geo.catalog.search'
@@ -204,6 +215,46 @@ const sourceMutation = (
 })
 
 export const geoActionDefinitions: readonly ActionDefinition<GeoActionContext>[] = Object.freeze([
+  {
+    descriptor: descriptor('geo.project.new', 'New Atlas project', 'project', {
+      input: OBJECT,
+      mutability: 'mutation',
+      permissions: ['workspace.propose'],
+    }),
+  },
+  {
+    descriptor: descriptor('geo.project.describe', 'Describe Atlas project', 'project'),
+  },
+  {
+    descriptor: descriptor('geo.project.save', 'Save Atlas project locally', 'project', {
+      input: OBJECT,
+      mutability: 'mutation',
+      permissions: ['workspace.propose'],
+    }),
+  },
+  {
+    descriptor: descriptor('geo.project.list', 'List saved Atlas projects', 'project', {
+      output: ARRAY,
+    }),
+  },
+  ...(['open', 'delete', 'import', 'rebind_source', 'resolve_catalog_source'] as const).map(
+    (name) => ({
+      descriptor: descriptor(`geo.project.${name}`, `${name} Atlas project`, 'project', {
+        input: OBJECT,
+        mutability: 'mutation',
+        cost: name === 'open' ? 'expensive' : 'interactive',
+        permissions: ['workspace.propose'],
+        cancellable: name === 'open' || name === 'resolve_catalog_source',
+      }),
+    }),
+  ),
+  ...(['export', 'rehydration_plan'] as const).map((name) => ({
+    descriptor: descriptor(`geo.project.${name}`, `${name} Atlas project`, 'project', {
+      input: OBJECT,
+      cost: 'interactive',
+      cancellable: name === 'rehydration_plan',
+    }),
+  })),
   {
     descriptor: descriptor('geo.workflow.record', 'Record workflow provenance', 'workflow', {
       input: objectInput({ record: OBJECT }, ['record']),

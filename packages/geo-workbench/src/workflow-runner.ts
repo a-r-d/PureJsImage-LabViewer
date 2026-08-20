@@ -5,6 +5,7 @@ import type {
 } from '@pji-workbench/contracts'
 import {
   CATALOG_REGISTRY,
+  type CatalogAssetIdentity,
   type CatalogSearchItem,
   type CatalogSearchPage,
   type CatalogSourceCandidate,
@@ -185,6 +186,35 @@ export class GeoWorkflowRunner {
       if (this.#session === session) await this.#finishFailure(error)
       throw error
     }
+  }
+
+  async startFromIdentities(
+    workflowId: string,
+    parameterInput: Readonly<Record<string, unknown>>,
+    identities: readonly CatalogAssetIdentity[],
+  ): Promise<void> {
+    const workflow = geoWorkflowById(workflowId)
+    if (workflow === undefined)
+      throw new GeoControllerError('INVALID_ACTION_INPUT', `Workflow ${workflowId} does not exist.`)
+    const parameters = normalizeParameters(workflow, parameterInput)
+    const startedAt = new Date().toISOString()
+    await this.replay({
+      schemaVersion: 1,
+      id: `geo-workflow-link-${this.#nextRun}`,
+      workflowId: workflow.id,
+      workflowVersion: workflow.version,
+      status: 'running',
+      parameters: jsonValue(parameters) as Readonly<Record<string, string | number | boolean>>,
+      decisions: { choose: identities.map(({ itemId, assetKey }) => `${itemId}:${assetKey}`) },
+      selectedAssets: identities,
+      actions: [],
+      sourceIds: [],
+      outputLayerIds: [],
+      completedOutputs: [],
+      attribution: [],
+      availability: { status: 'available', reason: 'Resolved from a concise Atlas deep link.' },
+      startedAt,
+    })
   }
 
   cancel(): void {

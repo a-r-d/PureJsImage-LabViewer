@@ -388,6 +388,31 @@ describe('GeoWorkflowRunner recorded workflows', () => {
       replayController.calls.filter(({ id }) => id === 'geo.catalog.inspect_asset'),
     ).toHaveLength(2)
   })
+
+  it('starts a curated workflow deep link from exact identities without catalog search', async () => {
+    const candidate = raster('linked', 'Linked COG')
+    const controller = recorded({ 'ky-from-above': page(candidate) })
+    const runner = new GeoWorkflowRunner(controller)
+
+    await runner.startFromIdentities(
+      'cog-anatomy',
+      {},
+      [candidate].map(({ catalogId, collectionId, itemId, assetKey }) => ({
+        catalogId,
+        collectionId,
+        itemId,
+        assetKey,
+      })),
+    )
+
+    expect(runner.getSnapshot().run).toMatchObject({
+      workflowId: 'cog-anatomy',
+      status: 'completed',
+      selectedAssets: [{ itemId: 'linked', assetKey: 'data' }],
+    })
+    expect(controller.calls.some(({ id }) => id === 'geo.catalog.search')).toBe(false)
+    expect(controller.calls.filter(({ id }) => id === 'geo.catalog.inspect_asset')).toHaveLength(1)
+  })
 })
 
 function recorded(pages: Readonly<Record<string, CatalogSearchPage>>): GeoWorkbenchController {

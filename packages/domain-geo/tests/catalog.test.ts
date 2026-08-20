@@ -139,10 +139,50 @@ describe('catalog registry', () => {
     })
     expect(link).not.toContain('https://')
     expect(parseAtlasDeepLink(link)).toMatchObject({
+      kind: 'asset',
       catalogId: 'ky-from-above',
       itemId: 'N082E280_2019_6IN_cog.tif',
       inspect: true,
     })
+    const workflow = serializeAtlasDeepLink({
+      kind: 'workflow',
+      workflowId: 'geo.ndvi',
+      sources: [
+        {
+          catalogId: 'catalog',
+          collectionId: 'collection',
+          itemId: 'item',
+          assetKey: 'data',
+        },
+      ],
+      parameters: { nir: 3, red: 2, scaled: true },
+      presetId: 'false-color',
+      inspector: 'workflows',
+    })
+    expect(workflow.length).toBeLessThan(512)
+    expect(workflow).not.toContain('href')
+    expect(parseAtlasDeepLink(workflow)).toEqual({
+      schemaVersion: 2,
+      kind: 'workflow',
+      workflowId: 'geo.ndvi',
+      sources: [
+        {
+          catalogId: 'catalog',
+          collectionId: 'collection',
+          itemId: 'item',
+          assetKey: 'data',
+        },
+      ],
+      parameters: { nir: 3, red: 2, scaled: true },
+      presetId: 'false-color',
+      inspector: 'workflows',
+    })
+    expect(parseAtlasDeepLink(`${workflow}&href=https%3A%2F%2Fsigned.invalid%2Fx`)).toBeUndefined()
+    expect(
+      parseAtlasDeepLink(
+        '#v=2&kind=workflow&workflow=x&c0=c&n0=n&i0=i&a0=a&p.__proto__=string%3Apolluted',
+      ),
+    ).toBeUndefined()
     const session = parseAtlasCatalogSession(
       JSON.parse(
         serializeAtlasCatalogSession({

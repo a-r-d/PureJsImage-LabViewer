@@ -7,7 +7,7 @@ import type {
 } from '@pji-workbench/contracts'
 import { assertDerivedRasterRecipe } from '@pji-workbench/contracts'
 
-export const GEO_PROJECT_SCHEMA_VERSION = 1 as const
+export const GEO_PROJECT_SCHEMA_VERSION = 2 as const
 
 export const GEO_PROJECT_LIMITS = Object.freeze({
   maxStringLength: 4_096,
@@ -67,7 +67,8 @@ export interface GeoCatalogReference {
   readonly collectionId: string
   readonly itemId: string
   readonly assetKey: string
-  readonly href: string
+  /** Session hint only. Project serialization removes it and re-resolves the stable identity. */
+  readonly href?: string
   readonly protocol?: string
   readonly provider?: string
   readonly license?: string
@@ -94,6 +95,8 @@ export interface LocalFileFingerprint {
   readonly size: number
   readonly lastModified: number
   readonly mediaType?: string
+  readonly digest?: Readonly<{ algorithm: 'sha256'; value: string }>
+  readonly companionNames?: readonly string[]
 }
 
 /** Durable, JSON-safe source identity. Live URLs with expiring credentials are refused. */
@@ -116,7 +119,8 @@ export type GeoRasterLocator =
       kind: 'tnm-product'
       catalog: GeoCatalogReference
       productId: string
-      downloadUrl: string
+      /** Session hint only. Project serialization removes it. */
+      downloadUrl?: string
       bands: readonly GeoBandMetadata[]
       datetime?: string
       title?: string
@@ -141,6 +145,26 @@ export interface GeoRasterSource {
   readonly locator: GeoRasterLocator
   readonly bands: readonly GeoBandMetadata[]
   readonly catalog?: GeoCatalogReference
+  readonly validators?: GeoSourceValidators
+  readonly lastKnownMetadata?: GeoSourceLastKnownMetadata
+}
+
+export interface GeoSourceValidators {
+  readonly etag?: string
+  readonly versionId?: string
+  readonly lastModified?: string
+  readonly size?: number
+  readonly checksum?: string
+}
+
+export interface GeoSourceLastKnownMetadata {
+  readonly provider?: string
+  readonly license?: string
+  readonly attribution?: string
+  readonly datetime?: string
+  readonly title?: string
+  readonly projection?: string
+  readonly bands: readonly GeoBandMetadata[]
 }
 
 export interface GeoRasterLayer {
@@ -277,13 +301,28 @@ export interface GeoProject {
   readonly schemaVersion: typeof GEO_PROJECT_SCHEMA_VERSION
   readonly id: GeoProjectId
   readonly title: string
+  readonly createdAt: string
+  readonly updatedAt: string
   readonly crs: CrsReference
+  readonly viewport: GeoProjectViewport
   readonly sources: readonly GeoRasterSource[]
   readonly layers: readonly GeoLayer[]
   readonly comparison: GeoComparisonState
   readonly rois: readonly GeoMapRoi[]
   readonly provenance: readonly GeoProvenanceReference[]
   readonly workflowRuns: readonly GeoWorkflowProvenanceRecord[]
+  readonly selection: GeoProjectSelection
+}
+
+export type GeoProjectViewport =
+  | Readonly<{ kind: 'auto' }>
+  | Readonly<{ kind: 'map'; centerX: number; centerY: number; zoom: number }>
+
+export interface GeoProjectSelection {
+  readonly sourceId?: GeoSourceId
+  readonly layerId?: GeoLayerId
+  readonly roiId?: GeoRoiId
+  readonly inspector?: 'project' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
 }
 
 export class GeoValidationError extends Error {
@@ -306,6 +345,8 @@ export interface CreateGeoRasterSourceInput {
   readonly locator: GeoRasterLocator
   readonly bands?: readonly GeoBandMetadata[]
   readonly catalog?: GeoCatalogReference
+  readonly validators?: GeoSourceValidators
+  readonly lastKnownMetadata?: GeoSourceLastKnownMetadata
 }
 
 export interface CreateGeoRasterLayerInput {
@@ -346,13 +387,17 @@ export interface CreateGeoMapRoiInput {
 export interface CreateGeoProjectInput {
   readonly id?: string
   readonly title: string
+  readonly createdAt?: string
+  readonly updatedAt?: string
   readonly crs: CrsReference
+  readonly viewport?: GeoProjectViewport
   readonly sources?: readonly GeoRasterSource[]
   readonly layers?: readonly GeoLayer[]
   readonly comparison?: GeoComparisonState
   readonly rois?: readonly GeoMapRoi[]
   readonly provenance?: readonly GeoProvenanceReference[]
   readonly workflowRuns?: readonly GeoWorkflowProvenanceRecord[]
+  readonly selection?: GeoProjectSelection
 }
 
 const BLEND_MODES = new Set<GeoBlendMode>(['normal', 'multiply', 'screen', 'lighten', 'darken'])
@@ -382,6 +427,12 @@ export function createGeoRasterSource(input: CreateGeoRasterSourceInput): GeoRas
     locator,
     bands,
     ...(catalog === undefined ? {} : { catalog: normalizeCatalogReference(catalog) }),
+    ...(input.validators === undefined
+      ? {}
+      : { validators: normalizeSourceValidators(input.validators) }),
+    ...(input.lastKnownMetadata === undefined
+      ? {}
+      : { lastKnownMetadata: normalizeLastKnownMetadata(input.lastKnownMetadata, componentCount) }),
   }
 }
 
@@ -454,6 +505,10 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
       locator: source.locator,
       bands: source.bands,
       ...(source.catalog === undefined ? {} : { catalog: source.catalog }),
+      ...(source.validators === undefined ? {} : { validators: source.validators }),
+      ...(source.lastKnownMetadata === undefined
+        ? {}
+        : { lastKnownMetadata: source.lastKnownMetadata }),
     }),
   )
   const layers = input.layers ?? []
@@ -573,7 +628,10 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
     schemaVersion: GEO_PROJECT_SCHEMA_VERSION,
     id: boundedId(input.id ?? 'geo-project', 'project id') as GeoProjectId,
     title: boundedString(input.title, 'project title'),
+    createdAt: normalizedDate(input.createdAt ?? '1970-01-01T00:00:00.000Z', 'project createdAt'),
+    updatedAt: normalizedDate(input.updatedAt ?? '1970-01-01T00:00:00.000Z', 'project updatedAt'),
     crs: input.crs,
+    viewport: normalizeProjectViewport(input.viewport ?? { kind: 'auto' }),
     sources,
     layers,
     comparison,
@@ -591,6 +649,7 @@ export function createGeoProject(input: CreateGeoProjectInput): GeoProject {
       return normalized
     }),
     workflowRuns: workflowRuns.map((record) => normalizeWorkflowRun(record, sourceIds, layerIds)),
+    selection: normalizeProjectSelection(input.selection ?? {}, sourceIds, layerIds, rois),
   }
 }
 
@@ -625,6 +684,50 @@ function normalizeWorkflowRun(
   if (serialized.length > 256 * 1024)
     throw new GeoValidationError('LIMIT_EXCEEDED', 'Workflow provenance exceeds 256 KiB')
   return JSON.parse(serialized) as GeoWorkflowProvenanceRecord
+}
+
+function normalizeProjectViewport(value: GeoProjectViewport): GeoProjectViewport {
+  if (value.kind === 'auto') return { kind: 'auto' }
+  return {
+    kind: 'map',
+    centerX: finiteNumber(value.centerX, 'viewport centerX'),
+    centerY: finiteNumber(value.centerY, 'viewport centerY'),
+    zoom: positiveNumber(value.zoom, 'viewport zoom'),
+  }
+}
+
+function normalizeProjectSelection(
+  value: GeoProjectSelection,
+  sourceIds: ReadonlySet<GeoSourceId>,
+  layerIds: ReadonlySet<GeoLayerId>,
+  rois: readonly GeoMapRoi[],
+): GeoProjectSelection {
+  const sourceId = value.sourceId
+  const layerId = value.layerId
+  const roiId = value.roiId
+  const inspector = value.inspector
+  if (sourceId !== undefined && !sourceIds.has(sourceId))
+    throw new GeoValidationError('INVALID_PROJECT', 'Selected source does not exist')
+  if (layerId !== undefined && !layerIds.has(layerId))
+    throw new GeoValidationError('INVALID_PROJECT', 'Selected layer does not exist')
+  if (roiId !== undefined && !rois.some(({ id }) => id === roiId))
+    throw new GeoValidationError('INVALID_PROJECT', 'Selected ROI does not exist')
+  if (
+    inspector !== undefined &&
+    inspector !== 'project' &&
+    inspector !== 'catalog' &&
+    inspector !== 'layers' &&
+    inspector !== 'workflows' &&
+    inspector !== 'vectors' &&
+    inspector !== 'cog'
+  )
+    throw new GeoValidationError('INVALID_PROJECT', 'Selected inspector does not exist')
+  return {
+    ...(sourceId === undefined ? {} : { sourceId }),
+    ...(layerId === undefined ? {} : { layerId }),
+    ...(roiId === undefined ? {} : { roiId }),
+    ...(inspector === undefined ? {} : { inspector }),
+  }
 }
 
 function sameKnownCrs(left: CrsReference, right: CrsReference): boolean {
@@ -935,7 +1038,9 @@ function normalizeLocator(locator: GeoRasterLocator): GeoRasterLocator {
         kind: 'tnm-product',
         catalog: normalizeCatalogReference(locator.catalog),
         productId: boundedString(locator.productId, 'TNM product id'),
-        downloadUrl: durableRemoteUrl(locator.downloadUrl, 'TNM download URL'),
+        ...(locator.downloadUrl === undefined
+          ? {}
+          : { downloadUrl: durableRemoteUrl(locator.downloadUrl, 'TNM download URL') }),
         bands: normalizeBands(locator.bands, Math.max(1, locator.bands.length)),
         roles: locator.roles.map((role) => boundedString(role, 'TNM asset role')),
         ...(locator.datetime === undefined
@@ -975,6 +1080,21 @@ function normalizeLocator(locator: GeoRasterLocator): GeoRasterLocator {
             : {
                 mediaType: boundedString(locator.fingerprint.mediaType, 'local file media type'),
               }),
+          ...(locator.fingerprint.digest === undefined
+            ? {}
+            : {
+                digest: {
+                  algorithm: 'sha256',
+                  value: boundedString(locator.fingerprint.digest.value, 'local file digest'),
+                },
+              }),
+          ...(locator.fingerprint.companionNames === undefined
+            ? {}
+            : {
+                companionNames: locator.fingerprint.companionNames.map((name) =>
+                  boundedString(name, 'local companion file name'),
+                ),
+              }),
         },
       }
     case 'bundled-example':
@@ -989,8 +1109,8 @@ function normalizeLocator(locator: GeoRasterLocator): GeoRasterLocator {
 }
 
 function normalizeCatalogReference(value: GeoCatalogReference): GeoCatalogReference {
-  const href = boundedString(value.href, 'catalog href')
-  if (isUnsafeCatalogUrl(href)) {
+  const href = value.href === undefined ? undefined : boundedString(value.href, 'catalog href')
+  if (href !== undefined && isUnsafeCatalogUrl(href)) {
     throw new GeoValidationError(
       'INVALID_PROJECT',
       'Catalog provenance cannot store signed or data URLs',
@@ -1010,7 +1130,7 @@ function normalizeCatalogReference(value: GeoCatalogReference): GeoCatalogRefere
     collectionId: boundedId(value.collectionId, 'collection id'),
     itemId: boundedString(value.itemId, 'item id'),
     assetKey: boundedString(value.assetKey, 'asset key'),
-    href,
+    ...(href === undefined ? {} : { href }),
     ...(value.provider === undefined
       ? {}
       : { provider: boundedString(value.provider, 'provider') }),
@@ -1025,6 +1145,47 @@ function normalizeCatalogReference(value: GeoCatalogReference): GeoCatalogRefere
   }
 }
 
+function normalizeSourceValidators(value: GeoSourceValidators): GeoSourceValidators {
+  return {
+    ...(value.etag === undefined ? {} : { etag: boundedString(value.etag, 'source ETag') }),
+    ...(value.versionId === undefined
+      ? {}
+      : { versionId: boundedString(value.versionId, 'source version id') }),
+    ...(value.lastModified === undefined
+      ? {}
+      : { lastModified: boundedString(value.lastModified, 'source last-modified') }),
+    ...(value.size === undefined ? {} : { size: nonNegativeInteger(value.size, 'source size') }),
+    ...(value.checksum === undefined
+      ? {}
+      : { checksum: boundedString(value.checksum, 'source checksum') }),
+  }
+}
+
+function normalizeLastKnownMetadata(
+  value: GeoSourceLastKnownMetadata,
+  componentCount: number,
+): GeoSourceLastKnownMetadata {
+  return {
+    ...(value.provider === undefined
+      ? {}
+      : { provider: boundedString(value.provider, 'source provider') }),
+    ...(value.license === undefined
+      ? {}
+      : { license: boundedString(value.license, 'source license') }),
+    ...(value.attribution === undefined
+      ? {}
+      : { attribution: boundedString(value.attribution, 'source attribution') }),
+    ...(value.datetime === undefined
+      ? {}
+      : { datetime: boundedString(value.datetime, 'source datetime') }),
+    ...(value.title === undefined ? {} : { title: boundedString(value.title, 'source title') }),
+    ...(value.projection === undefined
+      ? {}
+      : { projection: boundedString(value.projection, 'source projection') }),
+    bands: normalizeBands(value.bands, componentCount),
+  }
+}
+
 function isUnsafeCatalogUrl(href: string): boolean {
   if (href.startsWith('data:')) return true
   try {
@@ -1032,13 +1193,25 @@ function isUnsafeCatalogUrl(href: string): boolean {
     const unsafe = new Set([
       'x-amz-signature',
       'x-amz-credential',
+      'x-amz-security-token',
       'x-goog-signature',
+      'x-goog-credential',
       'signature',
       'sig',
       'token',
       'access_token',
+      'api_key',
+      'apikey',
+      'key',
+      'client_secret',
+      'password',
+      'authorization',
     ])
-    return [...url.searchParams.keys()].some((key) => unsafe.has(key.toLowerCase()))
+    return (
+      url.username.length > 0 ||
+      url.password.length > 0 ||
+      [...url.searchParams.keys()].some((key) => unsafe.has(key.toLowerCase()))
+    )
   } catch {
     return true
   }
@@ -1290,6 +1463,12 @@ function positiveInteger(value: number, label: string): number {
     throw new GeoValidationError('INVALID_PROJECT', `${label} must be a positive integer`)
   }
   return value
+}
+
+function positiveNumber(value: number, label: string): number {
+  const normalized = finiteNumber(value, label)
+  if (normalized <= 0) throw new GeoValidationError('INVALID_PROJECT', `${label} must be positive`)
+  return normalized
 }
 
 function nonNegativeInteger(value: number, label: string): number {

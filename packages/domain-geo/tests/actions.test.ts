@@ -5,6 +5,17 @@ import { geoActionDefinitions } from '../src/index.js'
 describe('Atlas semantic action catalog', () => {
   it('publishes the complete stable controller surface', () => {
     expect(geoActionDefinitions.map(({ descriptor }) => descriptor.id)).toEqual([
+      'geo.project.new',
+      'geo.project.describe',
+      'geo.project.save',
+      'geo.project.list',
+      'geo.project.open',
+      'geo.project.delete',
+      'geo.project.import',
+      'geo.project.rebind_source',
+      'geo.project.resolve_catalog_source',
+      'geo.project.export',
+      'geo.project.rehydration_plan',
       'geo.workflow.record',
       'geo.catalog.list',
       'geo.catalog.list_collections',

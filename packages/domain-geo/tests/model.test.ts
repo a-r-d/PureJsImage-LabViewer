@@ -149,7 +149,7 @@ describe('geo project model', () => {
       provenance: [derived.provenance],
     })
 
-    expect(project.schemaVersion).toBe(1)
+    expect(project.schemaVersion).toBe(2)
     expect(project.crs).toEqual(CRS_EPSG_4326)
     expect(orderedGeoLayers(project.layers).map(({ id }) => id)).toEqual([
       'west-layer',

@@ -277,13 +277,17 @@ describe('TNMAccess adapter', () => {
     const empty = await fixture('./fixtures/tnm/products-empty.json')
     const nonTiff = await fixture('./fixtures/tnm/products-non-tiff.json')
     const errored = await fixture('./fixtures/tnm/products-error.json')
+    const targetedQueries: string[] = []
     const fetchFn: typeof fetch = async (input) => {
       const url = String(input)
       if (url.includes('/products?')) {
         const parsed = new URL(url)
-        expect(parsed.searchParams.get('dateType')).toBe('Publication')
-        expect(parsed.searchParams.get('start')).toBe('2021-01-01')
-        expect(parsed.searchParams.get('end')).toBe('2021-12-31')
+        if (parsed.searchParams.has('q')) targetedQueries.push(parsed.searchParams.get('q') ?? '')
+        else {
+          expect(parsed.searchParams.get('dateType')).toBe('Publication')
+          expect(parsed.searchParams.get('start')).toBe('2021-01-01')
+          expect(parsed.searchParams.get('end')).toBe('2021-12-31')
+        }
       }
       if (url.includes('/datasets')) return jsonResponse(datasets)
       if (url.includes('products-empty')) return jsonResponse(empty)
@@ -311,9 +315,9 @@ describe('TNMAccess adapter', () => {
           collectionId: candidate.collectionId,
           itemId: candidate.itemId,
           assetKey: candidate.assetKey,
-          href: candidate.href,
         }),
       ).resolves.toMatchObject({ href: candidate.href, itemId: candidate.itemId })
+      expect(targetedQueries).toContain(candidate.itemId)
     }
     const skipped = await service.search(
       {

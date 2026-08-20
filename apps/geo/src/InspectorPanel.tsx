@@ -10,7 +10,14 @@ import type {
 import { Button, Panel, Tabs } from '@pji-workbench/ui'
 import type { ReactNode } from 'react'
 
-export type InspectorTab = 'workflows' | 'catalog' | 'layers' | 'vectors' | 'display' | 'xray'
+export type InspectorTab =
+  | 'project'
+  | 'workflows'
+  | 'catalog'
+  | 'layers'
+  | 'vectors'
+  | 'display'
+  | 'xray'
 
 export function InspectorPanel({
   tab,
@@ -30,6 +37,7 @@ export function InspectorPanel({
   vectors,
   provenance,
   presets,
+  project,
 }: {
   readonly tab: InspectorTab
   readonly onTab: (tab: InspectorTab) => void
@@ -51,12 +59,14 @@ export function InspectorPanel({
   readonly vectors: ReactNode
   readonly provenance?: GeoCatalogReference
   readonly presets?: readonly CatalogDisplayPreset[]
+  readonly project: ReactNode
 }) {
   const selected = layers.find((layer) => layer.id === selectedLayerId) ?? layers[0]
   return (
     <Panel className="geo-inspector" label="Inspector">
       <Tabs
         items={[
+          { id: 'project', label: 'Project' },
           { id: 'workflows', label: 'Workflows' },
           { id: 'catalog', label: 'Catalog' },
           { id: 'layers', label: 'Layers' },
@@ -68,6 +78,7 @@ export function InspectorPanel({
         onSelect={onTab}
         selectedId={tab}
       />
+      {tab === 'project' ? project : null}
       {tab === 'workflows' ? workflows : null}
       {tab === 'catalog' ? catalog : null}
       {tab === 'layers' ? (
@@ -575,7 +586,7 @@ function ProvenanceFacts({ provenance }: { readonly provenance: GeoCatalogRefere
       <Fact label="Provider" value={provenance.provider ?? '—'} />
       <Fact label="License" value={provenance.license ?? '—'} />
       <Fact label="Attribution" value={provenance.attribution ?? '—'} />
-      <Fact label="Source" value={provenance.sourceUrl ?? provenance.href} />
+      <Fact label="Source" value={provenance.sourceUrl ?? provenance.href ?? 'Resolved on open'} />
     </dl>
   )
 }

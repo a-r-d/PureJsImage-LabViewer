@@ -3,7 +3,7 @@ import type { StacBbox, StacEoBand, StacProvider } from '../stac/types.js'
 
 export const CATALOG_REGISTRY_SCHEMA_VERSION = 2 as const
 export const ATLAS_SESSION_SCHEMA_VERSION = 1 as const
-export const ATLAS_DEEP_LINK_SCHEMA_VERSION = 1 as const
+export const ATLAS_DEEP_LINK_SCHEMA_VERSION = 2 as const
 
 export type CatalogProtocol = 'stac-api' | 'static-stac' | 'tnm-access'
 
@@ -81,6 +81,7 @@ export type CatalogAssetIdentity = Pick<
 export type CatalogAssetProvenance = GeoCatalogReference
 
 export interface CatalogSourceCandidate extends CatalogAssetProvenance {
+  readonly href: string
   readonly label: string
   readonly datetime?: string
   readonly bbox?: StacBbox
@@ -104,10 +105,33 @@ export interface CatalogDisplayPreset {
   readonly style: RasterStyle
 }
 
-export interface AtlasDeepLink extends CatalogAssetIdentity {
+export interface AtlasAssetDeepLink extends CatalogAssetIdentity {
   readonly schemaVersion: typeof ATLAS_DEEP_LINK_SCHEMA_VERSION
+  readonly kind: 'asset'
   readonly inspect?: boolean
+  readonly presetId?: string
+  readonly inspector?: 'project' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
 }
+
+export interface AtlasWorkflowDeepLink {
+  readonly schemaVersion: typeof ATLAS_DEEP_LINK_SCHEMA_VERSION
+  readonly kind: 'workflow'
+  readonly workflowId: string
+  readonly sources: readonly CatalogAssetIdentity[]
+  readonly parameters: Readonly<Record<string, string | number | boolean>>
+  readonly presetId?: string
+  readonly inspector?: 'project' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
+}
+
+export interface AtlasComparisonDeepLink {
+  readonly schemaVersion: typeof ATLAS_DEEP_LINK_SCHEMA_VERSION
+  readonly kind: 'comparison'
+  readonly sources: readonly [CatalogAssetIdentity, CatalogAssetIdentity]
+  readonly presetId?: string
+  readonly inspector?: 'project' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
+}
+
+export type AtlasDeepLink = AtlasAssetDeepLink | AtlasWorkflowDeepLink | AtlasComparisonDeepLink
 
 export interface AtlasCatalogSession {
   readonly schemaVersion: typeof ATLAS_SESSION_SCHEMA_VERSION

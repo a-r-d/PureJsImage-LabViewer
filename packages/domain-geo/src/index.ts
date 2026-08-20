@@ -28,8 +28,11 @@ export type { CatalogService, CatalogServiceOptions } from './catalog/service.js
 export { createCatalogService } from './catalog/service.js'
 export { parseAtlasCatalogSession, serializeAtlasCatalogSession } from './catalog/session.js'
 export type {
+  AtlasAssetDeepLink,
   AtlasCatalogSession,
+  AtlasComparisonDeepLink,
   AtlasDeepLink,
+  AtlasWorkflowDeepLink,
   CatalogAssetIdentity,
   CatalogAssetProvenance,
   CatalogCollectionSummary,
@@ -134,6 +137,8 @@ export type {
   GeoMapRoi,
   GeoProject,
   GeoProjectId,
+  GeoProjectSelection,
+  GeoProjectViewport,
   GeoProvenanceId,
   GeoProvenanceReference,
   GeoRasterLayer,
@@ -143,6 +148,8 @@ export type {
   GeoRoiId,
   GeoRoiProvenance,
   GeoSourceId,
+  GeoSourceLastKnownMetadata,
+  GeoSourceValidators,
   GeoWorkflowProvenanceRecord,
   LocalFileFingerprint,
   RasterStretch,
@@ -165,6 +172,17 @@ export {
   GEO_READER_IDS,
   geoDomainProfile,
 } from './profile.js'
+export type {
+  GeoProjectDocumentV2,
+  GeoProjectMigrationResult,
+} from './project-persistence.js'
+export {
+  canonicalGeoProject,
+  exportGeoProjectDocument,
+  GEO_PROJECT_DOCUMENT_LIMITS,
+  GeoProjectDocumentError,
+  importGeoProjectDocument,
+} from './project-persistence.js'
 export type { GeoCursorReadoutInput } from './readout.js'
 export { formatGeoCursorReadout, formatMapPointerReadout } from './readout.js'
 export { defaultRasterAsset, rasterAssets } from './stac/assets.js'

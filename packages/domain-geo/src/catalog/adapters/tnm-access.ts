@@ -70,28 +70,26 @@ export function createTnmAccessAdapter(jsonOptions: CatalogJsonFetchOptions): Ca
       return this.search(entry, requestFromCursor(cursor), signal)
     },
     async resolveDeepLink(entry, identity, signal) {
-      if (identity.href !== undefined && isDownloadableGeoTiff(identity.href, 'GeoTIFF')) {
-        return {
-          catalogId: entry.id,
-          catalogTitle: entry.title,
-          collectionId: identity.collectionId,
-          itemId: identity.itemId,
-          assetKey: identity.assetKey,
-          href: identity.href,
-          protocol: entry.protocol,
-          label: identity.itemId,
-          attribution: entry.attribution,
-          license: entry.license,
-          provider: entry.title,
-          mediaType: 'image/tiff',
-          roles: ['data'],
-          bands: [],
-          ...(identity.sourceUrl === undefined ? {} : { sourceUrl: identity.sourceUrl }),
-        }
+      const endpoint = tnmEndpoint(entry)
+      const href = productsHref(endpoint.productsHref, {
+        q: identity.itemId,
+        datasets: identity.collectionId,
+        prodFormats: 'GeoTIFF,TIFF',
+        max: '100',
+        offset: '0',
+        outputFormat: 'json',
+      })
+      const body = await fetchCatalogJson(jsonOptions, {
+        href,
+        ...(signal === undefined ? {} : { signal }),
+      })
+      const record = asRecord(body)
+      const items = Array.isArray(record['items']) ? record['items'] : []
+      for (const value of items) {
+        const item = tnmSearchItem(entry, value, identity.collectionId)
+        if (item?.id !== identity.itemId || item.collectionId !== identity.collectionId) continue
+        return item.candidates.find(({ assetKey }) => assetKey === identity.assetKey)
       }
-      // Legacy links did not preserve the product href. Do not scan a national prefix and
-      // accidentally resolve a different product; deterministic rehydration requires the href.
-      signal?.throwIfAborted()
       return undefined
     },
   }

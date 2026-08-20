@@ -94,6 +94,8 @@ packages/domain-geo
   materials-analysis, React, or PureJsImage.
   Focused vector import/export, map-coordinate ROI geometry, measurement policy, and raster-mask
   semantics follow `docs/VECTOR_MEASUREMENT.md`; they do not expand Atlas into a vector GIS.
+  Versioned project documents, lifetime-aware locators, migrations, and transactional rehydration
+  follow `docs/ATLAS_PROJECT_PERSISTENCE.md`.
 
 packages/geo-workbench
   Headless Atlas application controller and semantic action handlers. Owns durable GeoProject

@@ -20,6 +20,7 @@ import {
   type GeoLayer,
   type GeoMapGeometry,
   type GeoMapRoi,
+  type GeoProjectViewport,
   type GeoRasterLayer,
   type GeoRasterSource,
   sameCrs as sameCrsReference,
@@ -34,6 +35,7 @@ import {
   type CoordinateSpaceAdapter,
   cameraLimitsForWorldLayer,
   createWorldSpaceAffineAdapter,
+  fitCameraToBounds,
   fitCameraToLayer,
   type Point,
   panCameraInSpace,
@@ -101,7 +103,14 @@ export interface GeoViewportProps {
   readonly drawingTool?: 'pan' | 'point' | 'line' | 'rectangle' | 'polygon'
   readonly onDrawGeometry?: (geometry: GeoMapGeometry) => void
   readonly onExportFrame?: (render: ((includeRoiOverlay: boolean) => void) | undefined) => void
+  readonly projectViewport?: GeoProjectViewport
+  readonly onProjectViewport?: (viewport: GeoProjectViewport) => void
+  readonly onViewportProposal?: (handler: GeoViewportProposalHandler | undefined) => void
 }
+
+export type GeoViewportProposalResult = Readonly<Record<string, boolean | number>>
+
+export type GeoViewportProposalHandler = (input: unknown) => GeoViewportProposalResult
 
 interface CachedTile {
   readonly canvas: HTMLCanvasElement
@@ -463,6 +472,9 @@ export function GeoViewport({
   drawingTool = 'pan',
   onDrawGeometry,
   onExportFrame,
+  projectViewport,
+  onProjectViewport,
+  onViewportProposal,
 }: GeoViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const layersRef = useRef(layers)
@@ -478,6 +490,9 @@ export function GeoViewport({
   const drawingToolRef = useRef(drawingTool)
   const onDrawGeometryRef = useRef(onDrawGeometry)
   const onExportFrameRef = useRef(onExportFrame)
+  const projectViewportRef = useRef(projectViewport)
+  const onProjectViewportRef = useRef(onProjectViewport)
+  const onViewportProposalRef = useRef(onViewportProposal)
   layersRef.current = layers
   rastersRef.current = rasters
   sourcesRef.current = sources
@@ -491,6 +506,9 @@ export function GeoViewport({
   drawingToolRef.current = drawingTool
   onDrawGeometryRef.current = onDrawGeometry
   onExportFrameRef.current = onExportFrame
+  projectViewportRef.current = projectViewport
+  onProjectViewportRef.current = onProjectViewport
+  onViewportProposalRef.current = onViewportProposal
   const scheduleRef = useRef<() => void>(() => undefined)
   const retryFailedRef = useRef<() => void>(() => undefined)
   const [status, setStatus] = useState<GeoViewportStatus | undefined>()
@@ -543,6 +561,15 @@ export function GeoViewport({
       viewport,
     )
     let camera: Camera = fitCameraToLayer(cameraAdapter, viewport, 24, limits)
+    if (projectViewportRef.current?.kind === 'map') {
+      camera = {
+        center: {
+          x: projectViewportRef.current.centerX,
+          y: projectViewportRef.current.centerY,
+        },
+        zoom: projectViewportRef.current.zoom,
+      }
+    }
     let fitted = false
     let frameRequest = 0
     let required = new Set<string>()
@@ -605,6 +632,48 @@ export function GeoViewport({
       )
     }
     onExportFrameRef.current?.(renderExportFrame)
+
+    const handleViewportProposal: GeoViewportProposalHandler = (value) => {
+      const record = unknownRecord(value)
+      const input = unknownRecord(record['input'])
+      const kind = record['kind']
+      if (kind === 'geo.viewport.fit_source' || kind === 'geo.viewport.fit_layer') {
+        const sourceId =
+          kind === 'geo.viewport.fit_source'
+            ? input['sourceId']
+            : layersRef.current.find(({ id }) => id === input['layerId'])?.sourceId
+        const raster = rastersRef.current.find(
+          ({ sourceId: candidate }) => String(candidate) === String(sourceId),
+        )
+        const adapter = raster === undefined ? undefined : worldAdapterForDataset(raster)
+        if (adapter === undefined)
+          throw new Error('The requested raster is not bound to the viewport.')
+        camera = fitCameraToLayer(adapter, viewport, 24, limits)
+      } else if (kind === 'geo.viewport.fit_bounds') {
+        const bounds = unknownRecord(input['bounds'] ?? input)
+        const minX = finiteUnknown(bounds['minX'], 'minimum x')
+        const minY = finiteUnknown(bounds['minY'], 'minimum y')
+        const maxX = finiteUnknown(bounds['maxX'], 'maximum x')
+        const maxY = finiteUnknown(bounds['maxY'], 'maximum y')
+        if (maxX <= minX || maxY <= minY) throw new Error('Viewport bounds are invalid.')
+        camera = fitCameraToBounds(
+          { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+          viewport,
+          24,
+          limits,
+        )
+      } else if (kind !== 'geo.viewport.propose') {
+        throw new Error('This viewport proposal is unsupported.')
+      }
+      scheduleRef.current()
+      return {
+        updated: true,
+        centerX: camera.center.x,
+        centerY: camera.center.y,
+        zoom: camera.zoom,
+      }
+    }
+    onViewportProposalRef.current?.(handleViewportProposal)
 
     const reportStatus = (): void => {
       const states = [...required].map((tileId) => tileStates.get(tileId))
@@ -932,6 +1001,12 @@ export function GeoViewport({
     }
 
     const scheduleTiles = (): void => {
+      onProjectViewportRef.current?.({
+        kind: 'map',
+        centerX: camera.center.x,
+        centerY: camera.center.y,
+        zoom: camera.zoom,
+      })
       comparisonState = comparisonRef.current
       syncBlinkTimer()
       const visible = visibleWorldBounds(camera, viewport, cameraAdapter)
@@ -1265,6 +1340,7 @@ export function GeoViewport({
     scheduleTiles()
     return () => {
       onExportFrameRef.current?.(undefined)
+      onViewportProposalRef.current?.(undefined)
       scheduleRef.current = () => undefined
       retryFailedRef.current = () => undefined
       resizeObserver.disconnect()
@@ -1833,4 +1909,16 @@ function withWorldBounds(adapter: CoordinateSpaceAdapter, world: Bounds): Coordi
     worldToScreen: (point, camera, viewport) => adapter.worldToScreen(point, camera, viewport),
     screenToWorld: (point, camera, viewport) => adapter.screenToWorld(point, camera, viewport),
   }
+}
+
+function unknownRecord(value: unknown): Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : {}
+}
+
+function finiteUnknown(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value))
+    throw new Error(`Viewport ${label} must be finite.`)
+  return value
 }

@@ -26,6 +26,7 @@ import type {
 import { assertDerivedRasterRecipe } from '@pji-workbench/contracts'
 import {
   CATALOG_REGISTRY,
+  type CatalogAssetIdentity,
   type CatalogRegistryEntry,
   type CatalogSearchRequest,
   type CatalogService,
@@ -39,6 +40,7 @@ import {
   crsKey,
   type DerivedGeoRasterLayer,
   exportGeoJson,
+  exportGeoProjectDocument,
   GEO_PROJECT_LIMITS,
   type GeoActionContext,
   type GeoActionId,
@@ -50,6 +52,7 @@ import {
   type GeoMapRoi,
   GeoMeasurementError,
   type GeoProject,
+  type GeoProjectViewport,
   type GeoProvenanceId,
   type GeoRasterLayer,
   type GeoRasterLocator,
@@ -59,6 +62,7 @@ import {
   GeoValidationError,
   type GeoWorkflowProvenanceRecord,
   geoActionDefinitions,
+  importGeoProjectDocument,
   measureGeoArea,
   measureGeoDistance,
   parseGeoJson,
@@ -68,7 +72,17 @@ import {
   transformGeoMapGeometry,
   transformMapPoint,
 } from '@pji-workbench/domain-geo'
-
+import { type GeoProjectStore, MemoryGeoProjectStore } from './project-store.js'
+import {
+  catalogRehydrationEntry,
+  finalizeGeoProjectRehydrationPlan,
+  type GeoProjectRehydrationPlan,
+  type GeoRemoteSourceProbe,
+  type GeoSourceRehydrationEntry,
+  initialGeoProjectRehydrationPlan,
+  localRehydrationEntry,
+  remoteRehydrationEntry,
+} from './rehydration.js'
 import { GeoLocalResourceRegistry } from './resource-registry.js'
 
 export interface GeoImagingRuntime {
@@ -174,6 +188,9 @@ export interface GeoWorkbenchControllerOptions {
   readonly resources?: GeoLocalResourceRegistry
   readonly viewport?: GeoViewportPort
   readonly initialProject?: GeoProject
+  readonly projectStore?: GeoProjectStore
+  readonly projectVersions?: Readonly<{ appVersion: string; pureJsImageVersion: string }>
+  readonly probeRemoteSource?: (url: string, signal?: AbortSignal) => Promise<GeoRemoteSourceProbe>
   readonly now?: () => string
   readonly preflightCatalogAsset?: (
     candidate: CatalogSourceCandidate,
@@ -191,12 +208,22 @@ export class GeoWorkbenchController {
   readonly #viewport: GeoViewportPort | undefined
   readonly #now: () => string
   readonly #preflight: GeoWorkbenchControllerOptions['preflightCatalogAsset']
+  readonly #projectStore: GeoProjectStore
+  readonly #projectVersions: Readonly<{ appVersion: string; pureJsImageVersion: string }>
+  readonly #probeRemoteSource: GeoWorkbenchControllerOptions['probeRemoteSource']
   readonly #listeners = new Set<Listener>()
   readonly #bindings = new Map<GeoSourceId, GeoRuntimeBinding>()
   readonly #host: WorkbenchActionHost<GeoActionContext>
   #snapshot: GeoControllerSnapshot
   #generation = 0
   #nextSemanticId = 1
+  #pendingProjectLoad:
+    | {
+        readonly project: GeoProject
+        readonly entries: Map<GeoSourceId, GeoSourceRehydrationEntry>
+        readonly localResourceIds: Map<GeoSourceId, string>
+      }
+    | undefined
   #disposed = false
 
   constructor(options: GeoWorkbenchControllerOptions) {
@@ -207,7 +234,13 @@ export class GeoWorkbenchController {
     this.#viewport = options.viewport
     this.#now = options.now ?? (() => new Date().toISOString())
     this.#preflight = options.preflightCatalogAsset
-    const project = normalizeProject(options.initialProject ?? emptyProject())
+    this.#projectVersions = options.projectVersions ?? {
+      appVersion: '0.0.0',
+      pureJsImageVersion: '0.14.0',
+    }
+    this.#projectStore = options.projectStore ?? new MemoryGeoProjectStore(this.#projectVersions)
+    this.#probeRemoteSource = options.probeRemoteSource
+    const project = normalizeProject(options.initialProject ?? emptyProject(this.#now()))
     this.#snapshot = { revision: 0, project, task: { kind: 'idle' } }
     const registry = new WorkbenchActionRegistry<GeoActionContext>(geoActionDefinitions)
     this.#host = new WorkbenchActionHost(registry, this.#createHandlers())
@@ -299,6 +332,10 @@ export class GeoWorkbenchController {
     }>,
     signal?: AbortSignal,
   ): Promise<GeoSourceId> {
+    const probe =
+      input.candidate === undefined && this.#probeRemoteSource !== undefined
+        ? await this.#probeRemoteSource(input.url, signal).catch(() => undefined)
+        : undefined
     const locator =
       input.candidate === undefined
         ? ({ kind: 'remote-url', url: input.url } as const)
@@ -310,6 +347,8 @@ export class GeoWorkbenchController {
       input.style,
       input.presets ?? [],
       signal,
+      input.candidate,
+      probe,
     )
   }
 
@@ -331,6 +370,10 @@ export class GeoWorkbenchController {
           size: primary.size,
           lastModified: primary.lastModified,
           ...(primary.type.length === 0 ? {} : { mediaType: primary.type }),
+          companionNames: resource.files
+            .filter((file) => file !== primary)
+            .map(({ name }) => name)
+            .sort(),
         },
       },
       primary.name,
@@ -342,14 +385,31 @@ export class GeoWorkbenchController {
 
   async retrySource(sourceId: string, signal?: AbortSignal): Promise<GeoSourceId> {
     const source = this.#requireSource(sourceId)
-    const url = replayUrl(source.locator)
+    let locator = source.locator
+    let candidate: CatalogSourceCandidate | undefined
+    if (locator.kind === 'stac-asset' || locator.kind === 'tnm-product') {
+      candidate = await this.#catalogService.resolveDeepLink(
+        this.#catalog(locator.catalog.catalogId),
+        {
+          catalogId: locator.catalog.catalogId,
+          collectionId: locator.catalog.collectionId,
+          itemId: locator.catalog.itemId,
+          assetKey: locator.catalog.assetKey,
+        },
+        signal,
+      )
+      if (candidate === undefined)
+        throw new GeoControllerError('CATALOG_NOT_FOUND', 'Catalog asset was not found.')
+      locator = locatorFromCandidate(candidate)
+    }
+    const url = candidate?.href ?? replayUrl(locator)
     if (url === undefined) {
       throw new GeoControllerError('UNAVAILABLE', 'This source requires a local rebind.')
     }
     return this.#transactionalRebind(
       source,
       () => this.#runtime.openRemote(url, this.#nextGeneration(), signal),
-      source.locator,
+      locator,
       this.#bindings.get(source.id)?.presets ?? [],
       signal,
     )
@@ -400,6 +460,14 @@ export class GeoWorkbenchController {
       ...(layer.sourceId === undefined ? {} : { selectedSourceId: layer.sourceId }),
       task: { kind: 'idle' },
     })
+  }
+
+  selectInspector(inspector: NonNullable<GeoProject['selection']['inspector']>): void {
+    const project = createGeoProject({
+      ...this.#snapshot.project,
+      selection: { ...this.#snapshot.project.selection, inspector },
+    })
+    this.#setSnapshot({ ...this.#snapshot, project })
   }
 
   updateLayer(
@@ -598,6 +666,8 @@ export class GeoWorkbenchController {
     style: RasterStyle | undefined,
     presets: readonly Readonly<{ id: string; label: string; style: RasterStyle }>[],
     signal?: AbortSignal,
+    candidate?: CatalogSourceCandidate,
+    probe?: GeoRemoteSourceProbe,
   ): Promise<GeoSourceId> {
     this.#assertActive()
     if (this.#snapshot.project.sources.length >= GEO_PROJECT_LIMITS.maxSources) {
@@ -630,10 +700,6 @@ export class GeoWorkbenchController {
         'geo-source',
         this.#snapshot.project.sources.map(({ id }) => id),
       ) as GeoSourceId
-      const candidate =
-        locator.kind === 'stac-asset' || locator.kind === 'tnm-product'
-          ? locator.catalog
-          : undefined
       const bands = bandsForDataset(dataset, locator)
       const source = createGeoRasterSource({
         id: semanticSourceId,
@@ -644,7 +710,12 @@ export class GeoWorkbenchController {
         spatialReference: spatial,
         locator,
         bands,
-        ...(candidate === undefined ? {} : { catalog: candidate }),
+        ...(candidate === undefined
+          ? {
+              ...(probe === undefined ? {} : { validators: probe.validators }),
+              lastKnownMetadata: { bands },
+            }
+          : sourceMetadataFromCandidate(candidate, bands)),
       })
       const existing = this.#snapshot.project.sources[0]
       if (
@@ -749,6 +820,10 @@ export class GeoWorkbenchController {
         locator,
         bands: bandsForDataset(dataset, locator),
         ...(existing.catalog === undefined ? {} : { catalog: existing.catalog }),
+        ...(existing.validators === undefined ? {} : { validators: existing.validators }),
+        ...(existing.lastKnownMetadata === undefined
+          ? {}
+          : { lastKnownMetadata: existing.lastKnownMetadata }),
       })
       const other = this.#snapshot.project.sources.find(({ id }) => id !== existing.id)
       if (
@@ -913,13 +988,24 @@ export class GeoWorkbenchController {
       readonly selectedRoiId?: GeoRoiId | undefined
     } = {},
   ): void {
-    const project = createGeoProject({ ...this.#snapshot.project, ...patch })
     const selectedLayerId =
       'selectedLayerId' in selection ? selection.selectedLayerId : this.#snapshot.selectedLayerId
     const selectedSourceId =
       'selectedSourceId' in selection ? selection.selectedSourceId : this.#snapshot.selectedSourceId
     const selectedRoiId =
       'selectedRoiId' in selection ? selection.selectedRoiId : this.#snapshot.selectedRoiId
+    const project = createGeoProject({
+      ...this.#snapshot.project,
+      ...patch,
+      selection: {
+        ...(selectedSourceId === undefined ? {} : { sourceId: selectedSourceId }),
+        ...(selectedLayerId === undefined ? {} : { layerId: selectedLayerId }),
+        ...(selectedRoiId === undefined ? {} : { roiId: selectedRoiId }),
+        ...(this.#snapshot.project.selection.inspector === undefined
+          ? {}
+          : { inspector: this.#snapshot.project.selection.inspector }),
+      },
+    })
     this.#setSnapshot({
       revision: this.#snapshot.revision + 1,
       project,
@@ -930,11 +1016,434 @@ export class GeoWorkbenchController {
     })
   }
 
+  #projectWithCurrentState(): GeoProject {
+    const viewport = this.#viewport?.read()
+    const persistedViewport = isProjectViewport(viewport)
+      ? viewport
+      : this.#snapshot.project.viewport
+    return createGeoProject({
+      ...this.#snapshot.project,
+      updatedAt: this.#now(),
+      viewport: persistedViewport,
+      selection: {
+        ...(this.#snapshot.selectedSourceId === undefined
+          ? {}
+          : { sourceId: this.#snapshot.selectedSourceId }),
+        ...(this.#snapshot.selectedLayerId === undefined
+          ? {}
+          : { layerId: this.#snapshot.selectedLayerId }),
+        ...(this.#snapshot.selectedRoiId === undefined
+          ? {}
+          : { roiId: this.#snapshot.selectedRoiId }),
+        ...(this.#snapshot.project.selection.inspector === undefined
+          ? {}
+          : { inspector: this.#snapshot.project.selection.inspector }),
+      },
+    })
+  }
+
+  async #stageProject(
+    project: GeoProject,
+    signal?: AbortSignal,
+  ): Promise<GeoProjectRehydrationPlan> {
+    const normalized = normalizeProject(project)
+    const initial = initialGeoProjectRehydrationPlan(normalized)
+    const entries = new Map(initial.entries.map((entry) => [entry.sourceId, entry]))
+    this.#pendingProjectLoad = {
+      project: normalized,
+      entries,
+      localResourceIds: new Map(),
+    }
+    for (const source of normalized.sources) {
+      signal?.throwIfAborted()
+      if (source.locator.kind === 'stac-asset' || source.locator.kind === 'tnm-product') {
+        const catalog = this.#catalog(source.locator.catalog.catalogId)
+        const identity: CatalogAssetIdentity = {
+          catalogId: source.locator.catalog.catalogId,
+          collectionId: source.locator.catalog.collectionId,
+          itemId: source.locator.catalog.itemId,
+          assetKey: source.locator.catalog.assetKey,
+        }
+        const candidate = await this.#catalogService.resolveDeepLink(catalog, identity, signal)
+        entries.set(source.id, catalogRehydrationEntry(source, candidate))
+      } else if (source.locator.kind === 'remote-url') {
+        const probe = this.#probeRemoteSource
+          ? await this.#probeRemoteSource(source.locator.url, signal)
+          : {
+              status: 'unchanged' as const,
+              validators: source.validators ?? {},
+              url: source.locator.url,
+              compatible: true,
+            }
+        entries.set(source.id, remoteRehydrationEntry(source, probe))
+      } else if (source.locator.kind === 'bundled-example') {
+        entries.set(source.id, {
+          sourceId: source.id,
+          label: source.label,
+          locatorKind: source.locator.kind,
+          status: 'unavailable',
+          differences: ['Bundled examples require an explicit runtime resolver.'],
+        })
+      }
+    }
+    return this.#pendingPlan()
+  }
+
+  #pendingPlan(): GeoProjectRehydrationPlan {
+    const pending = this.#pendingProjectLoad
+    if (pending === undefined)
+      throw new GeoControllerError('UNAVAILABLE', 'No Atlas project is staged for rehydration.')
+    return finalizeGeoProjectRehydrationPlan(pending.project, [...pending.entries.values()])
+  }
+
+  async #commitPendingProject(confirmChanged: boolean, signal?: AbortSignal): Promise<GeoProject> {
+    const pending = this.#pendingProjectLoad
+    if (pending === undefined)
+      throw new GeoControllerError('UNAVAILABLE', 'No Atlas project is staged for rehydration.')
+    const plan = this.#pendingPlan()
+    if (!plan.readyToCommit)
+      throw new GeoControllerError('UNAVAILABLE', 'Resolve or rebind every project source first.', {
+        statuses: plan.entries.map(({ sourceId, status }) => ({ sourceId, status })),
+      })
+    if (plan.requiresConfirmation && !confirmChanged)
+      throw new GeoControllerError(
+        'UNAVAILABLE',
+        'Changed source content requires explicit confirmation before opening.',
+        { invalidatedDerivedLayerIds: plan.invalidatedDerivedLayerIds },
+      )
+    this.#patchTask({ kind: 'rehydrating', label: pending.project.title })
+    const prepared = new Map<GeoSourceId, GeoRuntimeBinding>()
+    const refreshedSources: GeoRasterSource[] = []
+    try {
+      for (const source of pending.project.sources) {
+        signal?.throwIfAborted()
+        const entry = pending.entries.get(source.id)
+        if (entry === undefined) throw new Error(`Missing rehydration entry for ${source.id}`)
+        const resourceId = pending.localResourceIds.get(source.id)
+        const result = await this.#prepareProjectSource(source, entry, resourceId, signal)
+        prepared.set(source.id, result.binding)
+        refreshedSources.push(result.source)
+      }
+      signal?.throwIfAborted()
+      const project = createGeoProject({
+        ...pending.project,
+        sources: refreshedSources,
+        updatedAt: this.#now(),
+      })
+      const previousBindings = [...this.#bindings.values()]
+      this.#bindings.clear()
+      for (const [id, binding] of prepared) this.#bindings.set(id, binding)
+      this.#pendingProjectLoad = undefined
+      this.#setSnapshot({
+        revision: this.#snapshot.revision + 1,
+        project,
+        ...(project.selection.sourceId === undefined
+          ? {}
+          : { selectedSourceId: project.selection.sourceId }),
+        ...(project.selection.layerId === undefined
+          ? {}
+          : { selectedLayerId: project.selection.layerId }),
+        ...(project.selection.roiId === undefined
+          ? {}
+          : { selectedRoiId: project.selection.roiId }),
+        task: { kind: 'idle' },
+      })
+      await Promise.all(
+        previousBindings.map((binding) => this.#releaseBinding(binding).catch(() => undefined)),
+      )
+      for (const layerId of plan.invalidatedDerivedLayerIds)
+        await this.#runtime.releaseDerivedRaster({ layerId }).catch(() => undefined)
+      return project
+    } catch (error) {
+      await Promise.all(
+        [...prepared.values()].map((binding) =>
+          this.#releaseBinding(binding).catch(() => undefined),
+        ),
+      )
+      const classified = classifyControllerError(error)
+      this.#setError(classified)
+      throw classified
+    }
+  }
+
+  async #prepareProjectSource(
+    saved: GeoRasterSource,
+    entry: GeoSourceRehydrationEntry,
+    resourceId: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<Readonly<{ source: GeoRasterSource; binding: GeoRuntimeBinding }>> {
+    let opened: OpenedSourceDescriptor | undefined
+    let dataset: OpenedDatasetDescriptor | undefined
+    let localFiles: readonly File[] | undefined
+    let localPrimary: File | undefined
+    try {
+      if (saved.locator.kind === 'local-file') {
+        const resource = resourceId === undefined ? undefined : this.#resources.get(resourceId)
+        if (resource === undefined)
+          throw new GeoControllerError('LOCAL_RESOURCE_MISSING', `${saved.label} must be rebound.`)
+        localFiles = resource.files
+        localPrimary = resource.primary
+        opened = await this.#runtime.openLocal(
+          resource.files,
+          resource.primary,
+          this.#nextGeneration(),
+          signal,
+        )
+      } else {
+        const url =
+          entry.refreshedUrl ??
+          (saved.locator.kind === 'remote-url' ? saved.locator.url : undefined)
+        if (url === undefined)
+          throw new GeoControllerError('UNAVAILABLE', `${saved.label} has no refreshed URL.`)
+        opened = await this.#runtime.openRemote(url, this.#nextGeneration(), signal)
+      }
+      signal?.throwIfAborted()
+      const descriptor = opened.datasets[0]
+      if (descriptor === undefined) throw new Error('The source exposes no raster dataset.')
+      dataset = await this.#runtime.openDataset(
+        opened.documentId,
+        descriptor.id,
+        opened.generation,
+        signal,
+        opened.sourceId,
+      )
+      signal?.throwIfAborted()
+      const spatial = dataset.dataset.spatialReference
+      if (spatial?.pixelToModel === undefined)
+        throw new Error('The raster has no pixel-to-model affine.')
+      if (!sameCrs(spatial.crs, saved.spatialReference.crs))
+        throw new GeoControllerError(
+          'CRS_INCOMPATIBLE',
+          `${saved.label} no longer has its saved CRS.`,
+        )
+      const candidate = entry.refreshedCandidate
+      const locator: GeoRasterLocator =
+        candidate !== undefined
+          ? locatorFromCandidate(candidate)
+          : saved.locator.kind === 'local-file' &&
+              localPrimary !== undefined &&
+              localFiles !== undefined
+            ? {
+                kind: 'local-file',
+                fingerprint: {
+                  name: localPrimary.name,
+                  size: localPrimary.size,
+                  lastModified: localPrimary.lastModified,
+                  ...(localPrimary.type.length === 0 ? {} : { mediaType: localPrimary.type }),
+                  ...(entry.differences.length === 0 &&
+                  saved.locator.fingerprint.digest !== undefined
+                    ? { digest: saved.locator.fingerprint.digest }
+                    : {}),
+                  ...(localFiles.length <= 1
+                    ? {}
+                    : {
+                        companionNames: localFiles
+                          .filter((file) => file !== localPrimary)
+                          .map(({ name }) => name),
+                      }),
+                },
+              }
+            : saved.locator
+      const bands = bandsForDataset(dataset, locator)
+      const source = createGeoRasterSource({
+        ...saved,
+        width: axisLength(dataset, 'x'),
+        height: axisLength(dataset, 'y'),
+        componentCount: Math.max(1, dataset.dataset.components.length),
+        spatialReference: spatial,
+        locator,
+        bands,
+        ...(entry.refreshedValidators === undefined
+          ? {}
+          : { validators: entry.refreshedValidators }),
+        ...(candidate === undefined
+          ? {
+              lastKnownMetadata: {
+                ...saved.lastKnownMetadata,
+                bands,
+              },
+            }
+          : sourceMetadataFromCandidate(candidate, bands)),
+      })
+      return {
+        source,
+        binding: {
+          semanticSourceId: saved.id,
+          source: opened,
+          dataset,
+          presets: [],
+          activeOverview: 0,
+        },
+      }
+    } catch (error) {
+      if (dataset !== undefined)
+        await this.#runtime
+          .closeDataset(dataset.handleId, dataset.generation)
+          .catch(() => undefined)
+      if (opened !== undefined)
+        await this.#runtime.closeSource(opened.sourceId, opened.generation).catch(() => undefined)
+      throw error
+    }
+  }
+
   #createHandlers(): ReadonlyMap<string, ActionHandler<GeoActionContext>> {
     const handlers = new Map<string, ActionHandler<GeoActionContext>>()
     const set = (id: GeoActionId, execute: ActionHandler<GeoActionContext>['execute']): void => {
       handlers.set(`${id}@1`, { execute })
     }
+    set('geo.project.new', async (input) => {
+      const record = recordInput(input)
+      const now = this.#now()
+      const project = createGeoProject({
+        id: optionalStringField(record, 'id') ?? `geo-project-${Date.parse(now) || 0}`,
+        title: optionalStringField(record, 'title') ?? 'Atlas project',
+        crs: { kind: 'unknown' },
+        createdAt: now,
+        updatedAt: now,
+      })
+      const previous = [...this.#bindings.values()]
+      this.#bindings.clear()
+      await Promise.all(
+        previous.map((binding) => this.#releaseBinding(binding).catch(() => undefined)),
+      )
+      this.#pendingProjectLoad = undefined
+      this.#setSnapshot({ revision: this.#snapshot.revision + 1, project, task: { kind: 'idle' } })
+      return json(project)
+    })
+    set('geo.project.describe', () =>
+      json({
+        project: this.#projectWithCurrentState(),
+        runtimeBoundSourceIds: [...this.#bindings.keys()],
+      }),
+    )
+    set('geo.project.save', async () => {
+      const project = this.#projectWithCurrentState()
+      const saved = await this.#projectStore.save(project)
+      this.#setSnapshot({ ...this.#snapshot, project })
+      return json(saved)
+    })
+    set('geo.project.list', async () => json(await this.#projectStore.list()))
+    set('geo.project.delete', async (input) => {
+      await this.#projectStore.delete(stringField(input, 'projectId'))
+      return { deleted: true }
+    })
+    set('geo.project.export', async (input) => {
+      const projectId = optionalStringField(input, 'projectId')
+      if (projectId === undefined) {
+        const exported = exportGeoProjectDocument(
+          this.#projectWithCurrentState(),
+          this.#projectVersions,
+        )
+        return { text: exported.text, bytes: exported.bytes }
+      }
+      const stored = await this.#projectStore.load(projectId)
+      if (stored === undefined)
+        throw new GeoControllerError('PROJECT_INVALID', `Saved project ${projectId} was not found.`)
+      return { text: stored.text, bytes: stored.bytes }
+    })
+    set('geo.project.import', async (input, _context, signal) => {
+      const imported = importGeoProjectDocument(stringField(input, 'document'))
+      const plan = await this.#stageProject(imported.project, nativeSignal(signal))
+      return json({
+        plan,
+        migrations: imported.migrations,
+        checksumVerified: imported.checksumVerified,
+      })
+    })
+    set('geo.project.rehydration_plan', async (input, _context, signal) => {
+      const record = recordInput(input)
+      const document = optionalStringField(record, 'document')
+      const projectId = optionalStringField(record, 'projectId')
+      if (document !== undefined)
+        return json(
+          await this.#stageProject(
+            importGeoProjectDocument(document).project,
+            nativeSignal(signal),
+          ),
+        )
+      if (projectId !== undefined) {
+        const stored = await this.#projectStore.load(projectId)
+        if (stored === undefined)
+          throw new GeoControllerError(
+            'PROJECT_INVALID',
+            `Saved project ${projectId} was not found.`,
+          )
+        return json(
+          await this.#stageProject(
+            importGeoProjectDocument(stored.text).project,
+            nativeSignal(signal),
+          ),
+        )
+      }
+      return json(this.#pendingPlan())
+    })
+    set('geo.project.resolve_catalog_source', async (input, _context, signal) => {
+      const pending = this.#pendingProjectLoad
+      if (pending === undefined)
+        throw new GeoControllerError('UNAVAILABLE', 'No Atlas project is staged.')
+      const source = pending.project.sources.find(({ id }) => id === stringField(input, 'sourceId'))
+      if (
+        source === undefined ||
+        (source.locator.kind !== 'stac-asset' && source.locator.kind !== 'tnm-product')
+      )
+        throw new GeoControllerError('SOURCE_NOT_FOUND', 'The staged catalog source was not found.')
+      const catalog = this.#catalog(source.locator.catalog.catalogId)
+      const candidate = await this.#catalogService.resolveDeepLink(
+        catalog,
+        {
+          catalogId: source.locator.catalog.catalogId,
+          collectionId: source.locator.catalog.collectionId,
+          itemId: source.locator.catalog.itemId,
+          assetKey: source.locator.catalog.assetKey,
+        },
+        nativeSignal(signal),
+      )
+      pending.entries.set(source.id, catalogRehydrationEntry(source, candidate))
+      return json(this.#pendingPlan())
+    })
+    set('geo.project.rebind_source', (input) => {
+      const pending = this.#pendingProjectLoad
+      if (pending === undefined)
+        throw new GeoControllerError('UNAVAILABLE', 'No Atlas project is staged.')
+      const sourceId = stringField(input, 'sourceId') as GeoSourceId
+      const resourceId = stringField(input, 'resourceId')
+      const source = pending.project.sources.find(({ id }) => id === sourceId)
+      const resource = this.#resources.get(resourceId)
+      if (source === undefined || resource === undefined)
+        throw new GeoControllerError(
+          'LOCAL_RESOURCE_MISSING',
+          'The source or selected file is unavailable.',
+        )
+      const companions = resource.files.filter((file) => file !== resource.primary)
+      const entry = localRehydrationEntry(source, resource.primary, companions)
+      pending.localResourceIds.set(sourceId, resourceId)
+      pending.entries.set(sourceId, entry)
+      return json(this.#pendingPlan())
+    })
+    set('geo.project.open', async (input, _context, signal) => {
+      const record = recordInput(input)
+      const projectId = optionalStringField(record, 'projectId')
+      const document = optionalStringField(record, 'document')
+      if (projectId !== undefined || document !== undefined) {
+        const text = document ?? (await this.#projectStore.load(projectId as string))?.text
+        if (text === undefined)
+          throw new GeoControllerError(
+            'PROJECT_INVALID',
+            `Saved project ${projectId ?? ''} was not found.`,
+          )
+        const plan = await this.#stageProject(
+          importGeoProjectDocument(text).project,
+          nativeSignal(signal),
+        )
+        if (!plan.readyToCommit || (plan.requiresConfirmation && record['confirmChanged'] !== true))
+          return json({ committed: false, plan })
+      }
+      const project = await this.#commitPendingProject(
+        record['confirmChanged'] === true,
+        nativeSignal(signal),
+      )
+      return json({ committed: true, projectId: project.id })
+    })
     set('geo.workflow.record', (input) => {
       const record = recordInput(input)['record'] as unknown as GeoWorkflowProvenanceRecord
       this.#replaceProject({ workflowRuns: [...this.#snapshot.project.workflowRuns, record] })
@@ -1801,8 +2310,13 @@ export class GeoWorkbenchController {
   }
 }
 
-function emptyProject(): GeoProject {
-  return createGeoProject({ title: 'Atlas project', crs: { kind: 'unknown' } })
+function emptyProject(now: string): GeoProject {
+  return createGeoProject({
+    title: 'Atlas project',
+    crs: { kind: 'unknown' },
+    createdAt: now,
+    updatedAt: now,
+  })
 }
 
 function normalizeProject(project: GeoProject): GeoProject {
@@ -1823,7 +2337,6 @@ function locatorFromCandidate(candidate: CatalogSourceCandidate): GeoRasterLocat
       kind: 'tnm-product',
       catalog,
       productId: candidate.itemId,
-      downloadUrl: durableUrl(candidate.href),
       bands: candidate.bands,
       roles: candidate.roles,
       ...(candidate.datetime === undefined ? {} : { datetime: candidate.datetime }),
@@ -1857,13 +2370,50 @@ function durableCatalog(candidate: CatalogSourceCandidate) {
     collectionId: candidate.collectionId,
     itemId: candidate.itemId,
     assetKey: candidate.assetKey,
-    href: durableUrl(candidate.href),
     ...(candidate.protocol === undefined ? {} : { protocol: candidate.protocol }),
     ...(candidate.provider === undefined ? {} : { provider: candidate.provider }),
     ...(candidate.license === undefined ? {} : { license: candidate.license }),
     ...(candidate.attribution === undefined ? {} : { attribution: candidate.attribution }),
     ...(candidate.sourceUrl === undefined ? {} : { sourceUrl: durableUrl(candidate.sourceUrl) }),
   }
+}
+
+function sourceMetadataFromCandidate(
+  candidate: CatalogSourceCandidate,
+  bands: readonly GeoBandMetadata[] = candidate.bands,
+) {
+  return {
+    catalog: durableCatalog(candidate),
+    validators: {
+      ...(candidate.validator === undefined ? {} : { etag: candidate.validator }),
+      ...(candidate.fileSize === undefined ? {} : { size: candidate.fileSize }),
+      ...(candidate.checksum === undefined ? {} : { checksum: candidate.checksum }),
+    },
+    lastKnownMetadata: {
+      ...(candidate.provider === undefined ? {} : { provider: candidate.provider }),
+      ...(candidate.license === undefined ? {} : { license: candidate.license }),
+      ...(candidate.attribution === undefined ? {} : { attribution: candidate.attribution }),
+      ...(candidate.datetime === undefined ? {} : { datetime: candidate.datetime }),
+      ...(candidate.label.length === 0 ? {} : { title: candidate.label }),
+      ...(candidate.projection === undefined ? {} : { projection: candidate.projection }),
+      bands,
+    },
+  }
+}
+
+function isProjectViewport(value: JsonValue | undefined): value is GeoProjectViewport {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Readonly<Record<string, JsonValue>>
+  if (record['kind'] === 'auto') return true
+  return (
+    record['kind'] === 'map' &&
+    typeof record['centerX'] === 'number' &&
+    Number.isFinite(record['centerX']) &&
+    typeof record['centerY'] === 'number' &&
+    Number.isFinite(record['centerY']) &&
+    typeof record['zoom'] === 'number' &&
+    Number.isFinite(record['zoom'])
+  )
 }
 
 function durableUrl(value: string): string {
