@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@pji-workbench/actions": "workspace:*",
+    "@pji-workbench/agent": "workspace:*",
     "@pji-workbench/contracts": "workspace:*",
     "@pji-workbench/domain-geo": "workspace:*",
     "@pji-workbench/imaging": "workspace:*",

@@ -1,3 +1,4 @@
+import { AgentRuntime, DeterministicAgentTransport } from '@pji-workbench/agent'
 import type {
   DatasetHandleId,
   DocumentId,
@@ -13,7 +14,13 @@ import {
 } from '@pji-workbench/domain-geo'
 import { describe, expect, it } from 'vitest'
 
-import { GeoControllerError, type GeoImagingRuntime, GeoWorkbenchController } from '../src/index.js'
+import {
+  createGeoAgentGateway,
+  createGeoAgentPolicy,
+  GeoControllerError,
+  type GeoImagingRuntime,
+  GeoWorkbenchController,
+} from '../src/index.js'
 
 class FakeRuntime implements GeoImagingRuntime {
   opens = 0
@@ -238,6 +245,159 @@ function controller(runtime = new FakeRuntime()) {
 }
 
 describe('GeoWorkbenchController', () => {
+  it('creates a bounded approved model preview without returning image bytes to the model', async () => {
+    const runtime = new FakeRuntime()
+    const proposals: unknown[] = []
+    const workbench = new GeoWorkbenchController({
+      runtime,
+      catalogService,
+      viewport: {
+        read: () => ({ kind: 'auto' }),
+        propose: (input) => {
+          proposals.push(input)
+          return {
+            dataUrl: 'data:image/png;base64,AAAA',
+            mimeType: 'image/png',
+            bytes: 3,
+            width: 64,
+            height: 64,
+            attribution: ['Fixture imagery'],
+          }
+        },
+      },
+    })
+    await workbench.openRemote({
+      url: 'https://example.com/preview.tif?variant=model-must-not-see-this',
+    })
+    const gateway = createGeoAgentGateway(workbench)
+    const modelContext = JSON.stringify(gateway.context())
+    expect(modelContext).toContain('/preview.tif')
+    expect(modelContext).not.toContain('model-must-not-see-this')
+    expect(modelContext).not.toContain('handle-')
+    const transport = new DeterministicAgentTransport([
+      (request) => ({
+        provider: 'fake',
+        model: 'fake/atlas',
+        content: 'Create a bounded preview.',
+        plan: {
+          goalSummary: 'Create a bounded viewport preview.',
+          actions: [
+            {
+              actionId: 'geo.preview.create',
+              actionVersion: 1,
+              input: { scope: 'viewport', width: 64, height: 64, includeOverlays: true },
+              expectedOutput: 'A bounded image artifact.',
+            },
+          ],
+          approvalsRequired: ['model.preview'],
+          stoppingCondition: 'The preview artifact is created.',
+        },
+        toolCalls: [
+          {
+            callId: 'preview-1',
+            actionId: 'geo.preview.create',
+            actionVersion: 1,
+            projectRevision: request.manifest.projectRevision,
+            input: { scope: 'viewport', width: 64, height: 64, includeOverlays: true },
+          },
+        ],
+      }),
+      {
+        provider: 'fake',
+        model: 'fake/atlas',
+        content: 'Preview artifact created.',
+        toolCalls: [],
+      },
+    ])
+    const agent = new AgentRuntime({
+      transport,
+      gateway,
+      policy: createGeoAgentPolicy(),
+    })
+    agent.subscribe((snapshot) => {
+      const approval = snapshot.approval
+      if (approval !== undefined) queueMicrotask(() => agent.approve(approval.id))
+    })
+
+    const audit = await agent.start('Show a small preview', 'fake/atlas')
+
+    expect(proposals[0]).toMatchObject({
+      kind: 'create-agent-preview',
+      width: 64,
+      height: 64,
+      maxBytes: 2_097_152,
+    })
+    expect(agent.getSnapshot().artifacts[0]).toMatchObject({
+      kind: 'image',
+      bytes: 3,
+      width: 64,
+      height: 64,
+      attribution: ['Fixture imagery'],
+    })
+    expect(audit.artifactIds).toHaveLength(1)
+    const toolMessage = transport.requests[1]?.messages.find(({ role }) => role === 'tool')
+    expect(toolMessage?.content).toContain('artifact-')
+    expect(toolMessage?.content).not.toContain('data:image')
+    const imageMessage = transport.requests[1]?.messages.find(
+      (message) =>
+        message.role === 'user' &&
+        typeof message.content !== 'string' &&
+        message.content.some((part) => part.type === 'image'),
+    )
+    expect(imageMessage).toBeDefined()
+  })
+
+  it('creates a bounded screen-preview artifact without requiring an open raster source', async () => {
+    const proposals: unknown[] = []
+    const workbench = new GeoWorkbenchController({
+      runtime: new FakeRuntime(),
+      catalogService,
+      viewport: {
+        read: () => ({ kind: 'auto' }),
+        propose: (input) => {
+          proposals.push(input)
+          return {
+            dataUrl: 'data:image/png;base64,AAAA',
+            mimeType: 'image/png',
+            bytes: 3,
+            width: 320,
+            height: 200,
+            attribution: ['User-approved browser screen capture'],
+            layerTitles: [],
+            crsNote: 'unknown',
+          }
+        },
+      },
+    })
+    const previewCapability = workbench
+      .actionCapabilities()
+      .find(({ descriptor }) => descriptor.id === 'geo.preview.create')
+    expect(previewCapability?.availability).toEqual({ available: true })
+
+    const result = await workbench.executeAction('geo.preview.create', {
+      scope: 'screen',
+      width: 320,
+      height: 200,
+    })
+
+    expect(proposals[0]).toMatchObject({
+      kind: 'create-agent-screen-preview',
+      scope: 'screen',
+      width: 320,
+      height: 200,
+      maxBytes: 2_097_152,
+    })
+    expect(result).toMatchObject({
+      scope: 'screen',
+      agentArtifact: {
+        kind: 'image',
+        mimeType: 'image/png',
+        bytes: 3,
+        projectRevision: 0,
+      },
+    })
+  })
+
   it('persists bounded workflow action and asset provenance in the project', async () => {
     const { controller: workbench } = controller()
     const sourceId = await workbench.openRemote({ url: 'https://example.com/workflow.tif' })

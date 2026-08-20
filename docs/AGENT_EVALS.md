@@ -142,3 +142,8 @@ Store JSONL locally with redaction:
 - final workspace/result identities.
 
 Never store the API key, raw local file bytes, uncontrolled full metadata blobs, or hidden reasoning traces.
+
+Atlas keeps its required deterministic task and failure catalogs in
+`packages/geo-workbench/src/agent-evals.ts`. Those cases execute against the current geo action
+registry during normal package tests; they do not make OpenRouter or catalog network requests. See
+`docs/ATLAS_AGENT.md` for the runtime boundary and Atlas-specific policy.

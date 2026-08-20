@@ -3,6 +3,10 @@ import type { HeadlessDomainProfile, SourceAdapterKind } from '@pji-workbench/wo
 import { type GeoActionContext, geoActionDefinitions } from './actions.js'
 import { GEO_WORKFLOW_RECIPES } from './workflows.js'
 
+type GeoAgentPermission = Parameters<
+  HeadlessDomainProfile<GeoActionContext>['agentPolicy']['decisionFor']
+>[0]
+
 export const GEO_DOMAIN_ID = 'geo' as const
 export const GEO_READER_IDS = Object.freeze(['purejsimage/tiff'] as const)
 export const GEO_FILE_ACCEPT = '.tif,.tiff,.cog'
@@ -15,7 +19,7 @@ const GEO_CAPABILITIES = Object.freeze({
     bundledExamples: false,
     catalogs: true,
   }),
-  automation: Object.freeze({ scripts: false, agent: false }),
+  automation: Object.freeze({ scripts: false, agent: true }),
   analysis: Object.freeze({
     particle: false,
     materials: false,
@@ -39,9 +43,12 @@ export const geoDomainProfile: HeadlessDomainProfile<GeoActionContext> = Object.
   actionDefinitions: geoActionDefinitions,
   capabilities: GEO_CAPABILITIES,
   agentPolicy: Object.freeze({
-    enabled: false,
-    liveModelEnabled: false,
-    decisionFor: () => 'deny' as const,
+    enabled: true,
+    liveModelEnabled: true,
+    decisionFor: (permission: GeoAgentPermission) =>
+      permission === 'workspace.read' || permission === 'source.read-metadata'
+        ? ('allow' as const)
+        : ('require-approval' as const),
   }),
 })
 

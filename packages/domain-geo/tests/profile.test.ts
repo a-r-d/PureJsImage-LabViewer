@@ -24,10 +24,13 @@ describe('geo domain profile', () => {
     expect(profile.capabilities.analysis.particle).toBe(false)
     expect(profile.capabilities.analysis.materials).toBe(false)
     expect(profile.actionDefinitions.length).toBeGreaterThan(0)
-    expect(profile.agentPolicy.enabled).toBe(false)
+    expect(profile.capabilities.automation.agent).toBe(true)
+    expect(profile.agentPolicy.enabled).toBe(true)
+    expect(profile.agentPolicy.liveModelEnabled).toBe(true)
     expect(GEO_FILE_ACCEPT).toContain('.tif')
     expect(geoUiContributions.panels.map(({ id }) => id)).toEqual([
       'geo-catalog',
+      'geo-agent',
       'geo-layers',
       'geo-vectors',
       'geo-display',

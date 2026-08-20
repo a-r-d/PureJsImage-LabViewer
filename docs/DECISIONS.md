@@ -73,7 +73,10 @@ The first implementations remain local. A future open-source Docker service or h
 
 ## Local-first agent credentials
 
-The initial OpenRouter key is stored in browser local storage because that is the requested onboarding model. The UI must state that local storage is readable by JavaScript running on the origin and by sufficiently privileged browser extensions.
+Durable agent credentials, when a domain explicitly enables them, go only through the reviewed
+credential store. Atlas instead defaults to a memory-only OpenRouter key: paste is explicit, removal
+is explicit, and application-session teardown clears it. Neither mode places credentials in semantic
+actions, project state, history, URLs, logs, telemetry, or error reports.
 
 The key must never enter:
 
@@ -228,3 +231,14 @@ Worker objects. STAC/TNM sources resolve fresh hrefs from stable identities, rem
 available validators, and local sources require explicit file/companion reassociation. Candidate
 runtime bindings are prepared beside the current project and committed only as a complete set.
 See `docs/ATLAS_PROJECT_PERSISTENCE.md` for limits, migrations, and deep-link policy.
+
+## Atlas agents derive tools from the live semantic action host
+
+Atlas has no model-only tool list. `packages/agent` receives a live capability manifest generated
+from action descriptors and availability, while `packages/geo-workbench` supplies bounded project
+context and policy. Every call retains its action ID/version/revision and executes through the same
+controller `ActionHost` as the UI. The OpenRouter adapter is replaceable, BYOK is session-memory-only,
+and normal CI uses deterministic transports. Completed conversation turns are retained only in
+bounded memory. Model-visible imagery exists only through the bounded, approval-gated
+`geo.preview.create` artifact path; browser-screen scope also requires the native display-share
+picker. See `docs/ATLAS_AGENT.md`.

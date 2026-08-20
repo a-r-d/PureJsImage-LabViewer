@@ -1,3 +1,5 @@
+export * from './agent.js'
+export * from './agent-evals.js'
 export {
   GeoControllerError,
   type GeoControllerErrorCode,

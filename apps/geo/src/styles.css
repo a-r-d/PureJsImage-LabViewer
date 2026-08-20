@@ -359,12 +359,106 @@ body,
   padding: 0;
 }
 .geo-inspector-body input[type="number"],
-.geo-inspector-body select {
+.geo-inspector-body select,
+.geo-inspector-body input[type="text"],
+.geo-inspector-body input[type="password"] {
   height: 32px;
   border: 1px solid var(--wb-border);
   border-radius: 3px;
   background: var(--wb-background);
   color: var(--wb-text);
+}
+.geo-agent {
+  display: grid;
+  gap: 16px;
+}
+.geo-agent section + section {
+  border-top: 1px solid var(--wb-border);
+  padding-top: 14px;
+}
+.geo-agent h2,
+.geo-agent p,
+.geo-agent ol,
+.geo-agent figure {
+  margin: 0;
+}
+.geo-agent h2 {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.geo-agent textarea,
+.geo-agent input[type="text"],
+.geo-agent input[type="password"] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--wb-border);
+  border-radius: 3px;
+  background: var(--wb-background);
+  color: var(--wb-text);
+}
+.geo-agent textarea {
+  min-height: 96px;
+  resize: vertical;
+  padding: 8px;
+  font: inherit;
+}
+.geo-agent input[type="text"],
+.geo-agent input[type="password"] {
+  padding: 0 8px;
+}
+.geo-agent-key-row,
+.geo-agent-model-row,
+.geo-agent-actions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+.geo-agent-key-row label,
+.geo-agent-model-row label {
+  flex: 1;
+  min-width: 0;
+}
+.geo-agent-status {
+  color: var(--wb-text-muted);
+  font-size: 12px;
+}
+.geo-agent-approval {
+  border: 1px solid var(--wb-accent);
+  border-radius: 3px;
+  padding: 10px;
+  background: var(--wb-surface-raised);
+}
+.geo-agent-list {
+  display: grid;
+  gap: 6px;
+  padding-left: 20px;
+}
+.geo-agent-list li {
+  display: grid;
+  gap: 2px;
+}
+.geo-agent-list code {
+  overflow-wrap: anywhere;
+}
+.geo-agent-artifacts {
+  display: grid;
+  gap: 8px;
+}
+.geo-agent-artifacts img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--wb-border);
+}
+.geo-agent-artifacts figcaption {
+  margin-top: 4px;
+  color: var(--wb-text-muted);
+}
+.geo-agent-result {
+  white-space: pre-wrap;
+}
+.geo-agent-error {
+  color: var(--wb-danger);
 }
 .status-bar {
   display: flex;

@@ -1,3 +1,8 @@
+import {
+  AgentRuntime,
+  MemoryOpenRouterCredentialStore,
+  OpenRouterTransport,
+} from '@pji-workbench/agent'
 import type { SourceId, WorkerDiagnostics } from '@pji-workbench/contracts'
 import type {
   CatalogSearchPage,
@@ -23,6 +28,8 @@ import {
   serializeAtlasDeepLink,
 } from '@pji-workbench/domain-geo'
 import {
+  createGeoAgentGateway,
+  createGeoAgentPolicy,
   type GeoViewportPort,
   GeoWorkbenchController,
   GeoWorkflowRunner,
@@ -41,7 +48,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-
+import { AgentPanel } from './AgentPanel.js'
 import { CatalogPanel } from './CatalogPanel.js'
 import { DemoPicker } from './DemoPicker.js'
 import type { PublicEnvironment } from './environment.js'
@@ -77,7 +84,9 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     })
   }
   const rawCatalogService = rawCatalogServiceRef.current
-  const exportFrameRef = useRef<((includeRoiOverlay: boolean) => void) | undefined>(undefined)
+  const exportFrameRef = useRef<
+    ((includeRoiOverlay: boolean, layerId?: string) => void) | undefined
+  >(undefined)
   const projectViewportRef = useRef<GeoProjectViewport>({ kind: 'auto' })
   const viewportProposalRef = useRef<GeoViewportProposalHandler | undefined>(undefined)
   const pendingViewportProposalRef = useRef<Parameters<GeoViewportPort['propose']>[0] | undefined>(
@@ -87,9 +96,14 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   if (viewportPortRef.current === null) {
     viewportPortRef.current = {
       read: () => projectViewportRef.current,
-      propose: (input) => {
-        if (viewportProposalKind(input) === 'export-rendered-image')
-          return renderViewportExport(input, exportFrameRef.current)
+      propose: (input, signal) => {
+        if (viewportProposalKind(input) === 'create-agent-screen-preview')
+          return captureBrowserScreen(input, signal)
+        if (
+          viewportProposalKind(input) === 'export-rendered-image' ||
+          viewportProposalKind(input) === 'create-agent-preview'
+        )
+          return renderViewportExport(input, exportFrameRef.current, signal)
         const handler = viewportProposalRef.current
         if (handler !== undefined) return handler(input)
         pendingViewportProposalRef.current = input
@@ -125,6 +139,31 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     })
   }
   const controller = controllerRef.current
+  const agentCredentialsRef = useRef<MemoryOpenRouterCredentialStore | null>(null)
+  if (agentCredentialsRef.current === null)
+    agentCredentialsRef.current = new MemoryOpenRouterCredentialStore()
+  const agentCredentials = agentCredentialsRef.current
+  const agentTransportRef = useRef<OpenRouterTransport | null>(null)
+  if (agentTransportRef.current === null) {
+    agentTransportRef.current = new OpenRouterTransport({
+      credentials: agentCredentials,
+      referer: window.location.origin,
+      title: 'PureJsImage Atlas',
+    })
+  }
+  const agentTransport = agentTransportRef.current
+  const agentRuntimeRef = useRef<AgentRuntime | null>(null)
+  if (agentRuntimeRef.current === null) {
+    agentRuntimeRef.current = new AgentRuntime({
+      transport: agentTransport,
+      gateway: createGeoAgentGateway(controller),
+      policy: createGeoAgentPolicy(),
+      productName: 'PureJsImage Atlas',
+      systemInstructions:
+        'Atlas is primarily a bounded raster-analysis application. Use model-visible previews only when the image is necessary to answer the user request.',
+    })
+  }
+  const agentRuntime = agentRuntimeRef.current
   const workflowRunnerRef = useRef<GeoWorkflowRunner | null>(null)
   if (workflowRunnerRef.current === null)
     workflowRunnerRef.current = new GeoWorkflowRunner(controller)
@@ -222,9 +261,11 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     return () => {
       cancelled = true
       openAbortRef.current?.abort()
+      agentRuntime.cancel()
+      agentCredentials.clear()
       void controller.dispose()
     }
-  }, [controller, runtime])
+  }, [agentCredentials, agentRuntime, controller, runtime])
 
   useEffect(() => {
     for (const entry of CATALOG_REGISTRY) {
@@ -738,6 +779,13 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             />
           )}
           <InspectorPanel
+            agent={
+              <AgentPanel
+                credentials={agentCredentials}
+                runtime={agentRuntime}
+                transport={agentTransport}
+              />
+            }
             bandCount={selectedSource?.componentCount ?? 0}
             project={
               <ProjectPanel
@@ -976,12 +1024,14 @@ function viewportProposalKind(
 
 async function renderViewportExport(
   input: Parameters<GeoViewportPort['propose']>[0],
-  renderFrame: ((includeRoiOverlay: boolean) => void) | undefined,
+  renderFrame: ((includeRoiOverlay: boolean, layerId?: string) => void) | undefined,
+  signal?: Parameters<GeoViewportPort['propose']>[1],
 ): Promise<Awaited<ReturnType<GeoViewportPort['propose']>>> {
+  signal?.throwIfAborted()
   if (typeof input !== 'object' || input === null || Array.isArray(input))
     throw new Error('Rendered export input must be an object.')
   const record = input as Readonly<Record<string, unknown>>
-  if (record['kind'] !== 'export-rendered-image')
+  if (record['kind'] !== 'export-rendered-image' && record['kind'] !== 'create-agent-preview')
     throw new Error('This viewport proposal is unsupported.')
   const source = document.querySelector<HTMLCanvasElement>('.geo-viewport canvas')
   if (source === null) throw new Error('The viewport is not mounted.')
@@ -997,7 +1047,13 @@ async function renderViewportExport(
   context.fillStyle = '#050709'
   context.fillRect(0, 0, width, height)
   const includeRoiOverlay = record['includeRoiOverlay'] !== false
-  renderFrame?.(includeRoiOverlay)
+  const previewLayerId =
+    record['kind'] === 'create-agent-preview' && record['scope'] === 'layer'
+      ? typeof record['layerId'] === 'string'
+        ? record['layerId']
+        : undefined
+      : undefined
+  renderFrame?.(includeRoiOverlay, previewLayerId)
   try {
     context.drawImage(source, 0, 0, width, height)
   } finally {
@@ -1036,6 +1092,7 @@ async function renderViewportExport(
       'image/png',
     ),
   )
+  signal?.throwIfAborted()
   if (blob.size > maxBytes) throw new Error(`Rendered PNG exceeds the ${maxBytes}-byte limit.`)
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
@@ -1056,7 +1113,168 @@ async function renderViewportExport(
     layerTitles,
     crsNote,
     roiOverlayIncluded: includeRoiOverlay,
+    ...(record['kind'] !== 'create-agent-preview'
+      ? {}
+      : {
+          scope: record['scope'] === 'layer' ? 'layer' : 'viewport',
+          ...(typeof record['layerId'] === 'string' ? { layerId: record['layerId'] } : {}),
+          projectRevision:
+            typeof record['projectRevision'] === 'number' ? record['projectRevision'] : 0,
+        }),
   }
+}
+
+async function captureBrowserScreen(
+  input: Parameters<GeoViewportPort['propose']>[0],
+  signal?: Parameters<GeoViewportPort['propose']>[1],
+): Promise<Awaited<ReturnType<GeoViewportPort['propose']>>> {
+  signal?.throwIfAborted()
+  if (typeof input !== 'object' || input === null || Array.isArray(input))
+    throw new Error('Screen preview input must be an object.')
+  const record = input as Readonly<Record<string, unknown>>
+  if (record['kind'] !== 'create-agent-screen-preview')
+    throw new Error('This screen preview proposal is unsupported.')
+  const width = boundedExportInteger(record['width'], 'width', 1_024)
+  const height = boundedExportInteger(record['height'], 'height', 1_024)
+  const maxBytes = boundedExportInteger(record['maxBytes'], 'maxBytes', 2 * 1_024 * 1_024)
+  if (width * height > 786_432) throw new Error('Screen preview exceeds 786,432 pixels.')
+  if (navigator.mediaDevices?.getDisplayMedia === undefined)
+    throw new Error('This browser does not support user-approved screen capture.')
+
+  let stream: MediaStream | undefined
+  const video = document.createElement('video')
+  try {
+    stream = await requestDisplayStream(navigator.mediaDevices, signal)
+    signal?.throwIfAborted()
+    video.muted = true
+    video.playsInline = true
+    video.srcObject = stream
+    await waitForScreenFrame(video, signal)
+    signal?.throwIfAborted()
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d')
+    if (context === null) throw new Error('A 2D canvas context is required for screen capture.')
+    context.fillStyle = '#050709'
+    context.fillRect(0, 0, width, height)
+    const scale = Math.min(width / video.videoWidth, height / video.videoHeight)
+    const renderedWidth = Math.max(1, Math.round(video.videoWidth * scale))
+    const renderedHeight = Math.max(1, Math.round(video.videoHeight * scale))
+    context.drawImage(
+      video,
+      Math.round((width - renderedWidth) / 2),
+      Math.round((height - renderedHeight) / 2),
+      renderedWidth,
+      renderedHeight,
+    )
+    const blob = await canvasPng(canvas, 'Screen preview')
+    signal?.throwIfAborted()
+    if (blob.size > maxBytes) throw new Error(`Screen preview exceeds the ${maxBytes}-byte limit.`)
+    const dataUrl = await blobDataUrl(blob, 'Screen preview')
+    signal?.throwIfAborted()
+    return {
+      mimeType: 'image/png',
+      width,
+      height,
+      bytes: blob.size,
+      dataUrl,
+      attribution: boundedStringArray(record['attribution']),
+      layerTitles: boundedStringArray(record['layerTitles']),
+      crsNote: typeof record['crsNote'] === 'string' ? record['crsNote'] : 'CRS unavailable',
+      scope: 'screen',
+      projectRevision:
+        typeof record['projectRevision'] === 'number' ? record['projectRevision'] : 0,
+    }
+  } finally {
+    video.pause()
+    video.srcObject = null
+    for (const track of stream?.getTracks() ?? []) track.stop()
+  }
+}
+
+function requestDisplayStream(
+  mediaDevices: MediaDevices,
+  signal: AbortSignal | undefined,
+): Promise<MediaStream> {
+  const requested = mediaDevices.getDisplayMedia({ video: true, audio: false })
+  if (signal === undefined) return requested
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
+    if (signal.aborted) abort()
+    else signal.addEventListener('abort', abort, { once: true })
+    void requested.then(
+      (stream) => {
+        signal.removeEventListener('abort', abort)
+        if (signal.aborted) {
+          for (const track of stream.getTracks()) track.stop()
+          return
+        }
+        resolve(stream)
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', abort)
+        if (!signal.aborted) reject(error)
+      },
+    )
+  })
+}
+
+function waitForScreenFrame(
+  video: HTMLVideoElement,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (error?: unknown) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timeout)
+      signal?.removeEventListener('abort', abort)
+      video.onloadedmetadata = null
+      video.onerror = null
+      if (error === undefined) resolve()
+      else reject(error)
+    }
+    const abort = () => finish(signal?.reason ?? new DOMException('Aborted', 'AbortError'))
+    const timeout = window.setTimeout(
+      () => finish(new Error('The shared screen did not produce a frame in time.')),
+      10_000,
+    )
+    video.onloadedmetadata = () => {
+      if (video.videoWidth < 1 || video.videoHeight < 1) {
+        finish(new Error('The shared screen returned invalid dimensions.'))
+        return
+      }
+      void video.play().then(() => finish(), finish)
+    }
+    video.onerror = () => finish(new Error('The shared screen could not be decoded.'))
+    if (signal?.aborted === true) abort()
+    else signal?.addEventListener('abort', abort, { once: true })
+  })
+}
+
+function canvasPng(canvas: HTMLCanvasElement, label: string): Promise<Blob> {
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (value) =>
+        value === null ? reject(new Error(`${label} PNG encoding failed.`)) : resolve(value),
+      'image/png',
+    ),
+  )
+}
+
+function blobDataUrl(blob: Blob, label: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error(`${label} PNG could not be read.`))
+    reader.onload = () =>
+      typeof reader.result === 'string'
+        ? resolve(reader.result)
+        : reject(new Error(`${label} PNG could not be encoded.`))
+    reader.readAsDataURL(blob)
+  })
 }
 
 function boundedExportInteger(value: unknown, label: string, maximum: number): number {

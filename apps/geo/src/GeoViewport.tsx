@@ -102,7 +102,9 @@ export interface GeoViewportProps {
   readonly selectedRoiId?: string
   readonly drawingTool?: 'pan' | 'point' | 'line' | 'rectangle' | 'polygon'
   readonly onDrawGeometry?: (geometry: GeoMapGeometry) => void
-  readonly onExportFrame?: (render: ((includeRoiOverlay: boolean) => void) | undefined) => void
+  readonly onExportFrame?: (
+    render: ((includeRoiOverlay: boolean, layerId?: string) => void) | undefined,
+  ) => void
   readonly projectViewport?: GeoProjectViewport
   readonly onProjectViewport?: (viewport: GeoProjectViewport) => void
   readonly onViewportProposal?: (handler: GeoViewportProposalHandler | undefined) => void
@@ -616,17 +618,23 @@ export function GeoViewport({
       })
     }
 
-    const renderExportFrame = (includeRoiOverlay: boolean): void => {
+    const renderExportFrame = (includeRoiOverlay: boolean, layerId?: string): void => {
       cancelAnimationFrame(frameRequest)
+      const renderedLayers =
+        layerId === undefined
+          ? layersRef.current
+          : layersRef.current.filter(({ id }) => id === layerId)
       renderer.render(
         camera,
         cameraAdapter,
-        layersRef.current,
+        renderedLayers,
         sourcesRef.current,
-        comparisonState,
+        layerId === undefined ? comparisonState : { mode: 'single' },
         blinkPhase,
         required,
-        failures(),
+        layerId === undefined
+          ? failures()
+          : failures().filter((failure) => failure.layerId === layerId),
         includeRoiOverlay ? roisRef.current : [],
         includeRoiOverlay ? selectedRoiRef.current : undefined,
       )

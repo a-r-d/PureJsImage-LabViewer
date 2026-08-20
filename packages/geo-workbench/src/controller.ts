@@ -125,7 +125,7 @@ export interface GeoImagingRuntime {
 
 export interface GeoViewportPort {
   read(): JsonValue
-  propose(input: JsonValue): Promise<JsonValue> | JsonValue
+  propose(input: JsonValue, signal?: AbortSignal): Promise<JsonValue> | JsonValue
 }
 
 export interface GeoRuntimeBinding {
@@ -209,6 +209,7 @@ export class GeoWorkbenchController {
   readonly #now: () => string
   readonly #preflight: GeoWorkbenchControllerOptions['preflightCatalogAsset']
   readonly #projectStore: GeoProjectStore
+  readonly #registry: WorkbenchActionRegistry<GeoActionContext>
   readonly #projectVersions: Readonly<{ appVersion: string; pureJsImageVersion: string }>
   readonly #probeRemoteSource: GeoWorkbenchControllerOptions['probeRemoteSource']
   readonly #listeners = new Set<Listener>()
@@ -242,8 +243,8 @@ export class GeoWorkbenchController {
     this.#probeRemoteSource = options.probeRemoteSource
     const project = normalizeProject(options.initialProject ?? emptyProject(this.#now()))
     this.#snapshot = { revision: 0, project, task: { kind: 'idle' } }
-    const registry = new WorkbenchActionRegistry<GeoActionContext>(geoActionDefinitions)
-    this.#host = new WorkbenchActionHost(registry, this.#createHandlers())
+    this.#registry = new WorkbenchActionRegistry<GeoActionContext>(geoActionDefinitions)
+    this.#host = new WorkbenchActionHost(this.#registry, this.#createHandlers())
   }
 
   getSnapshot(): GeoControllerSnapshot {
@@ -277,11 +278,20 @@ export class GeoWorkbenchController {
   }
 
   actionAvailability(id: GeoActionId): Readonly<{ available: boolean; reason?: string }> {
-    return new WorkbenchActionRegistry(geoActionDefinitions).availability(
-      id,
-      1,
-      this.actionContext(),
-    )
+    return this.#registry.availability(id, 1, this.actionContext())
+  }
+
+  actionCapabilities() {
+    const context = this.actionContext()
+    return this.#registry.list().map((descriptor) => ({
+      descriptor,
+      availability: this.#registry.availability(descriptor.id, descriptor.version, context),
+    }))
+  }
+
+  planAction(id: string, version: number, input: unknown) {
+    this.#assertActive()
+    return this.#host.plan(id, version, input, this.actionContext())
   }
 
   async executeAction(
@@ -289,9 +299,18 @@ export class GeoWorkbenchController {
     input: unknown,
     signal: AbortSignal = new AbortController().signal,
   ): Promise<JsonValue> {
+    return this.executeVersionedAction(id, 1, input, signal)
+  }
+
+  async executeVersionedAction(
+    id: string,
+    version: number,
+    input: unknown,
+    signal: AbortSignal = new AbortController().signal,
+  ): Promise<JsonValue> {
     this.#assertActive()
     try {
-      return await this.#host.execute(id, 1, input, this.actionContext(), signal)
+      return await this.#host.execute(id, version, input, this.actionContext(), signal)
     } catch (error) {
       if (id.startsWith('geo.catalog.')) throw error
       const classified = classifyControllerError(error)
@@ -2162,6 +2181,94 @@ export class GeoWorkbenchController {
       this.removeLayer(layerId)
       return { removed: true }
     })
+    set('geo.preview.create', async (input, _context, signal) => {
+      const record = recordInput(input)
+      const scope = stringField(record, 'scope')
+      if (scope !== 'layer' && scope !== 'viewport' && scope !== 'screen')
+        throw new GeoControllerError('INVALID_ACTION_INPUT', 'Preview scope is invalid.')
+      const layerId = optionalStringField(record, 'layerId')
+      const layer =
+        scope === 'layer'
+          ? this.#requireRasterLayer(
+              layerId ??
+                this.#snapshot.selectedLayerId ??
+                this.#snapshot.project.layers[0]?.id ??
+                '',
+            )
+          : undefined
+      const width = integerField(record, 'width')
+      const height = integerField(record, 'height')
+      if (width > 1_024 || height > 1_024 || width * height > 786_432)
+        throw new GeoControllerError(
+          'INVALID_ACTION_INPUT',
+          'Model preview dimensions exceed the 786,432-pixel limit.',
+        )
+      const requestedStyle = record['style']
+      if (requestedStyle !== undefined && layer === undefined)
+        throw new GeoControllerError(
+          'INVALID_ACTION_INPUT',
+          'A selected style requires a layer preview.',
+        )
+      if (
+        requestedStyle !== undefined &&
+        layer !== undefined &&
+        JSON.stringify(requestedStyle) !== JSON.stringify(layer.style)
+      )
+        throw new GeoControllerError(
+          'INVALID_ACTION_INPUT',
+          'Model previews use the layer styling currently rendered in Atlas.',
+        )
+      const attribution =
+        scope === 'screen'
+          ? ['User-approved browser screen capture']
+          : this.#snapshot.project.sources.flatMap((source) => source.catalog?.attribution ?? [])
+      const preview = await this.#viewportAction(
+        json({
+          kind: scope === 'screen' ? 'create-agent-screen-preview' : 'create-agent-preview',
+          scope,
+          ...(layer === undefined ? {} : { layerId: layer.id, style: layer.style }),
+          width,
+          height,
+          maxBytes: 2 * 1_024 * 1_024,
+          includeRoiOverlay: record['includeOverlays'] === true,
+          attribution,
+          layerTitles:
+            layer === undefined
+              ? this.#snapshot.project.layers
+                  .filter(({ visible }) => visible)
+                  .map(({ label }) => label)
+              : [layer.label],
+          crsNote:
+            crsKey(this.#snapshot.project.crs) ??
+            this.#snapshot.project.crs.name ??
+            this.#snapshot.project.crs.kind,
+          projectRevision: this.#snapshot.revision,
+        }),
+        signal,
+      )
+      const previewRecord = recordInput(preview)
+      const artifactAttribution = Array.isArray(previewRecord['attribution'])
+        ? previewRecord['attribution']
+            .filter((value): value is string => typeof value === 'string')
+            .slice(0, 32)
+        : attribution
+      return json({
+        scope,
+        ...(layer === undefined ? {} : { layerId: layer.id }),
+        layerTitles: previewRecord['layerTitles'] ?? [],
+        crsNote: previewRecord['crsNote'] ?? null,
+        agentArtifact: {
+          kind: 'image',
+          mimeType: stringField(previewRecord, 'mimeType'),
+          width: integerField(previewRecord, 'width'),
+          height: integerField(previewRecord, 'height'),
+          bytes: integerField(previewRecord, 'bytes'),
+          dataUrl: stringField(previewRecord, 'dataUrl'),
+          attribution: artifactAttribution,
+          projectRevision: this.#snapshot.revision,
+        },
+      })
+    })
     set('geo.export.rendered_image', async (input) => {
       const record = recordInput(input)
       const width = optionalIntegerField(record, 'width') ?? 1_920
@@ -2205,10 +2312,11 @@ export class GeoWorkbenchController {
     return this.#requireSource(sourceId)
   }
 
-  #viewportAction(input: JsonValue): Promise<JsonValue> | JsonValue {
+  #viewportAction(input: JsonValue, signal?: ActionAbortSignal): Promise<JsonValue> | JsonValue {
     if (this.#viewport === undefined)
       throw new GeoControllerError('UNAVAILABLE', 'The viewport is not mounted.')
-    return this.#viewport.propose(input)
+    signal?.throwIfAborted()
+    return this.#viewport.propose(input, signal === undefined ? undefined : nativeSignal(signal))
   }
 
   #catalog(id: string): CatalogRegistryEntry {

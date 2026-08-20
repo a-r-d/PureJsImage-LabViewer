@@ -79,6 +79,7 @@ describe('Atlas semantic action catalog', () => {
       'geo.roi.export_geojson',
       'geo.measure.distance',
       'geo.measure.area',
+      'geo.preview.create',
       'geo.export.rendered_image',
     ])
     for (const { descriptor } of geoActionDefinitions) {

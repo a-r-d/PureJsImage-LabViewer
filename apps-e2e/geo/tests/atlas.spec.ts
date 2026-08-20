@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
 async function openRemoteFixture(page: Page) {
   await page.getByRole('button', { name: 'Open URL' }).click()
   await page.getByLabel('HTTPS COG URL').fill(fixtureUrl)
-  await page.getByRole('button', { name: 'Load' }).click()
+  await page.getByRole('button', { name: 'Load', exact: true }).click()
   await expect(page.getByRole('img', { name: /Geo raster viewport/u })).toBeVisible({
     timeout: 30_000,
   })
@@ -50,6 +50,30 @@ test('opens a remote COG from a local range-capable fixture server', async ({ pa
     .locator('xpath=following-sibling::dd[1]')
     .textContent()
   expect(Number(requests)).toBeGreaterThan(0)
+})
+
+test('keeps the agent opt-in and its OpenRouter key session-memory-only', async ({ page }) => {
+  await page.getByRole('tab', { name: 'Agent' }).click()
+  const panel = page.getByTestId('atlas-agent-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel.getByText('Key status: not set')).toBeVisible()
+  await expect(panel.getByLabel('Tool-capable model')).toHaveValue('openai/gpt-5.6-luna')
+  await panel.getByLabel('Tool-capable model').selectOption('google/gemini-3.7-flash')
+  await expect(panel.getByLabel('Tool-capable model')).toHaveValue('google/gemini-3.7-flash')
+  await panel.getByLabel('Tool-capable model').selectOption('custom')
+  await panel.getByLabel('Custom OpenRouter model ID').fill('vendor/custom-tool-model')
+  await expect(panel.getByRole('button', { name: 'Propose and run' })).toBeDisabled()
+
+  const fixtureKey = 'sk-or-playwright-session-only'
+  await panel.getByLabel('OpenRouter key').fill(fixtureKey)
+  await panel.getByRole('button', { name: 'Use for session' }).click()
+  await expect(panel.getByText('Key status: available in memory')).toBeVisible()
+  const localStorageValues = await page.evaluate(() => Object.values(window.localStorage))
+  expect(JSON.stringify(localStorageValues)).not.toContain(fixtureKey)
+
+  await panel.getByRole('button', { name: 'Remove' }).click()
+  await expect(panel.getByText('Key status: not set')).toBeVisible()
+  await openRemoteFixture(page)
 })
 
 test('supports keyboard navigation, swipe adjustment, and blink timing', async ({ page }) => {

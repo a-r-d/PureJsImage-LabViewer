@@ -16,6 +16,7 @@ export type InspectorTab =
   | 'catalog'
   | 'layers'
   | 'vectors'
+  | 'agent'
   | 'display'
   | 'xray'
 
@@ -35,6 +36,7 @@ export function InspectorPanel({
   catalog,
   workflows,
   vectors,
+  agent,
   provenance,
   presets,
   project,
@@ -57,6 +59,7 @@ export function InspectorPanel({
   readonly catalog: ReactNode
   readonly workflows: ReactNode
   readonly vectors: ReactNode
+  readonly agent: ReactNode
   readonly provenance?: GeoCatalogReference
   readonly presets?: readonly CatalogDisplayPreset[]
   readonly project: ReactNode
@@ -71,6 +74,7 @@ export function InspectorPanel({
           { id: 'catalog', label: 'Catalog' },
           { id: 'layers', label: 'Layers' },
           { id: 'vectors', label: 'ROI & Measure' },
+          { id: 'agent', label: 'Agent' },
           { id: 'display', label: 'Display' },
           { id: 'xray', label: 'COG X-ray' },
         ]}
@@ -167,6 +171,7 @@ export function InspectorPanel({
         </div>
       ) : null}
       {tab === 'vectors' ? vectors : null}
+      {tab === 'agent' ? agent : null}
       {tab === 'display' && selected !== undefined ? (
         <DisplayControls
           bandCount={bandCount}

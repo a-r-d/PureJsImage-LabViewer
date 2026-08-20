@@ -435,6 +435,7 @@ function boundedVersion(value: string, label: string): string {
 function isInspector(value: unknown): value is NonNullable<GeoProject['selection']['inspector']> {
   return (
     value === 'project' ||
+    value === 'agent' ||
     value === 'catalog' ||
     value === 'layers' ||
     value === 'workflows' ||

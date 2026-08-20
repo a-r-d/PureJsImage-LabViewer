@@ -16,6 +16,7 @@
     "clean": "node ../../tooling/scripts/clean-package.mjs"
   },
   "dependencies": {
+    "@pji-workbench/agent": "workspace:*",
     "@pji-workbench/contracts": "workspace:*",
     "@pji-workbench/domain-geo": "workspace:*",
     "@pji-workbench/geo-workbench": "workspace:*",

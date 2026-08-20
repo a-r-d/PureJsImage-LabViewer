@@ -80,6 +80,7 @@ export type GeoActionId =
   | 'geo.roi.export_geojson'
   | 'geo.measure.distance'
   | 'geo.measure.area'
+  | 'geo.preview.create'
   | 'geo.export.rendered_image'
   | 'geo.workflow.record'
 
@@ -158,6 +159,10 @@ const requiresComparison = (context: GeoActionContext) =>
 const requiresViewport = (context: GeoActionContext) =>
   context.viewportAvailable
     ? requiresSource(context)
+    : { available: false, reason: 'The viewport is not mounted.' }
+const requiresMountedViewport = (context: GeoActionContext) =>
+  context.viewportAvailable
+    ? { available: true }
     : { available: false, reason: 'The viewport is not mounted.' }
 const requiresRoi = (context: GeoActionContext) =>
   context.hasRoi
@@ -579,6 +584,26 @@ export const geoActionDefinitions: readonly ActionDefinition<GeoActionContext>[]
     }),
     availability: requiresRoi,
   })),
+  {
+    descriptor: descriptor('geo.preview.create', 'Create bounded model preview', 'preview', {
+      input: objectInput(
+        {
+          scope: { type: 'string', enum: ['layer', 'viewport', 'screen'] },
+          layerId: ID,
+          width: { type: 'integer', minimum: 64, maximum: 1_024 },
+          height: { type: 'integer', minimum: 64, maximum: 1_024 },
+          style: OBJECT,
+          includeOverlays: { type: 'boolean' },
+        },
+        ['scope', 'width', 'height'],
+      ),
+      output: OBJECT,
+      cost: 'interactive',
+      permissions: ['model.preview'],
+      cancellable: true,
+    }),
+    availability: requiresMountedViewport,
+  },
   {
     descriptor: descriptor(
       'geo.export.rendered_image',

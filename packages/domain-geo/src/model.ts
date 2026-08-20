@@ -322,7 +322,7 @@ export interface GeoProjectSelection {
   readonly sourceId?: GeoSourceId
   readonly layerId?: GeoLayerId
   readonly roiId?: GeoRoiId
-  readonly inspector?: 'project' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
+  readonly inspector?: 'project' | 'agent' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
 }
 
 export class GeoValidationError extends Error {
@@ -715,6 +715,7 @@ function normalizeProjectSelection(
   if (
     inspector !== undefined &&
     inspector !== 'project' &&
+    inspector !== 'agent' &&
     inspector !== 'catalog' &&
     inspector !== 'layers' &&
     inspector !== 'workflows' &&

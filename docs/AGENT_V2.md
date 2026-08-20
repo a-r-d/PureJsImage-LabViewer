@@ -139,7 +139,9 @@ The approval card shows exact command/tool, target object, normalized parameters
 
 ## Credentials and local history
 
-- Store the OpenRouter key only through `CredentialStore` in localStorage as requested.
+- Atlas keeps the OpenRouter key in a session-only memory credential store by default and clears it
+  when the application session ends. A domain that explicitly enables durable BYOK may use the
+  separately reviewed `CredentialStore`; the provider-independent agent core never owns storage.
 - Store conversation/event history in IndexedDB because it can exceed localStorage capacity.
 - Never store the API key in history, tools, projects, logs, error reports, URLs, telemetry, or eval traces.
 - Add a clear “local browser storage is not an enterprise secret vault” warning.
@@ -156,6 +158,8 @@ parallel tool calls: false
 ```
 
 Read supported parameters from model metadata where possible and fail clearly when the selected model cannot support required tools or schemas.
+Atlas also recommends `google/gemini-3.7-flash` and permits a custom OpenRouter model ID after the
+same live tool-capability validation. Image previews additionally require advertised image input.
 
 ## Testing
 

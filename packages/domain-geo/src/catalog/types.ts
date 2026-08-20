@@ -110,7 +110,7 @@ export interface AtlasAssetDeepLink extends CatalogAssetIdentity {
   readonly kind: 'asset'
   readonly inspect?: boolean
   readonly presetId?: string
-  readonly inspector?: 'project' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
+  readonly inspector?: 'project' | 'agent' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
 }
 
 export interface AtlasWorkflowDeepLink {
@@ -120,7 +120,7 @@ export interface AtlasWorkflowDeepLink {
   readonly sources: readonly CatalogAssetIdentity[]
   readonly parameters: Readonly<Record<string, string | number | boolean>>
   readonly presetId?: string
-  readonly inspector?: 'project' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
+  readonly inspector?: 'project' | 'agent' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
 }
 
 export interface AtlasComparisonDeepLink {
@@ -128,7 +128,7 @@ export interface AtlasComparisonDeepLink {
   readonly kind: 'comparison'
   readonly sources: readonly [CatalogAssetIdentity, CatalogAssetIdentity]
   readonly presetId?: string
-  readonly inspector?: 'project' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
+  readonly inspector?: 'project' | 'agent' | 'catalog' | 'layers' | 'workflows' | 'vectors' | 'cog'
 }
 
 export type AtlasDeepLink = AtlasAssetDeepLink | AtlasWorkflowDeepLink | AtlasComparisonDeepLink

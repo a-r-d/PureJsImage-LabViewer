@@ -20,6 +20,7 @@
     "clean": "node ../../tooling/scripts/clean-package.mjs"
   },
   "dependencies": {
+    "@pji-workbench/actions": "workspace:*",
     "@pji-workbench/contracts": "workspace:*"
   },
   "devDependencies": {

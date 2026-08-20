@@ -9,6 +9,7 @@
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../actions" },
+    { "path": "../agent" },
     { "path": "../contracts" },
     { "path": "../domain-geo" },
     { "path": "../imaging" },

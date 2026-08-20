@@ -4,7 +4,7 @@ import { ATLAS_DEEP_LINK_SCHEMA_VERSION } from './types.js'
 const MAX_LINK_CHARACTERS = 4_096
 const MAX_WORKFLOW_SOURCES = 4
 const MAX_PARAMETERS = 16
-const INSPECTORS = new Set(['project', 'catalog', 'layers', 'workflows', 'vectors', 'cog'])
+const INSPECTORS = new Set(['project', 'agent', 'catalog', 'layers', 'workflows', 'vectors', 'cog'])
 
 type WithoutVersion<T> = T extends unknown ? Omit<T, 'schemaVersion'> : never
 

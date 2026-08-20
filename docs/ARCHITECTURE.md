@@ -127,8 +127,8 @@ packages/viewport
   state is not owned by React panels.
 
 packages/agent
-  OpenRouter client, tool definitions, tool loop, approval policy, message history,
-  summaries, redaction, and deterministic mocks.
+  Provider-independent tool loop, live action capability manifests, approval/replay/audit,
+  bounded artifacts, OpenRouter and deterministic transports.
 
 packages/plugin-sdk
   Manifest schemas, recipe plugins, capability declarations, installation records,
@@ -379,7 +379,8 @@ interface ProjectStore {
 Initial implementation:
 
 - IndexedDB for projects and bounded history;
-- localStorage only for tiny preferences and the requested OpenRouter key;
+- localStorage only for tiny preferences and explicitly enabled durable credentials; Atlas BYOK is
+  session-memory-only;
 - explicit JSON project export/import;
 - local files must be rebound after reload unless the browser grants persistent file handles.
 

@@ -88,6 +88,9 @@ importers:
 
   apps/geo:
     dependencies:
+      '@pji-workbench/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@pji-workbench/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -246,6 +249,9 @@ importers:
 
   packages/agent:
     dependencies:
+      '@pji-workbench/actions':
+        specifier: workspace:*
+        version: link:../actions
       '@pji-workbench/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -336,6 +342,9 @@ importers:
       '@pji-workbench/actions':
         specifier: workspace:*
         version: link:../actions
+      '@pji-workbench/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@pji-workbench/contracts':
         specifier: workspace:*
         version: link:../contracts
