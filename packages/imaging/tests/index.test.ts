@@ -320,7 +320,8 @@ describe('PureJsImage Worker host', () => {
         }),
       ),
     ).toBe(true)
-    expect(isStaleIdError(new Error('Unknown or stale dataset handle'))).toBe(false)
+    expect(isStaleIdError(new Error('Unknown or stale dataset handle'))).toBe(true)
+    expect(isStaleIdError(new Error('Analysis failed'))).toBe(false)
   })
 
   it('composes the trusted materials catalog and renders a bounded derived preview tile', async () => {

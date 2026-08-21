@@ -53,7 +53,10 @@ The application is not yet versioned for release (`0.0.0`).
   marked saved, Atlas comparison waits until the second COG settles, and bundled example
   opens use a 90s test timeout without changing first-tile budgets. JPEG/PNG codec
   adapters share one origin-decoded plane between viewport tiles and analysis so
-  opening an analyzed example does not decode the still twice.
+  opening an analyzed example does not decode the still twice. If the live dataset
+  handle goes stale after the first tile, Science reopens the example once before
+  applying the committed analysis, and replace-one open ignores an already-gone
+  previous source.
 - Atlas catalog fetch throws are classified as a browser network block, not “Catalog
   unavailable.” CORS is claimed only when the error names CORS. LandsatLook still cannot be
   searched from `geo.purejsimage.com` until USGS allows that origin; Atlas does not proxy.

@@ -433,4 +433,26 @@ describe('multi-source imaging Worker', () => {
     await expect(client.closeSource(first.sourceId, first.generation)).rejects.toThrow(/stale/iu)
     client.dispose()
   })
+
+  it('keeps a replace-one open when the previous worker source is already gone', async () => {
+    const host = new ImagingWorkerHost()
+    const client = new ImagingWorkerClient({
+      sourcePolicy: 'replace-one',
+      workerFactory: () => new HostBackedWorker(host) as unknown as Worker,
+    })
+    await client.initialize()
+    const first = await client.openSample(1, undefined, 'generated.calibrated-particles')
+    const closed = await host.handle(
+      rpcRequest('close-first', 'source.close', {
+        sourceId: first.sourceId,
+        generation: first.generation,
+      }),
+    )
+    expect(closed.response.ok).toBe(true)
+    const second = await client.openSample(2, undefined, 'generated.touching-particles')
+    expect(second.sourceId).not.toBe(first.sourceId)
+    expect(host.diagnostics().aggregate.openSources).toBe(1)
+    expect(host.diagnostics().sources[0]?.id).toBe(second.sourceId)
+    client.dispose()
+  })
 })

@@ -55,7 +55,12 @@ export class ImagingRpcError extends Error {
 }
 
 export function isStaleIdError(error: unknown): boolean {
-  return error instanceof ImagingRpcError && error.detail.code === 'STALE_ID'
+  if (error instanceof ImagingRpcError) return error.detail.code === 'STALE_ID'
+  if (typeof error === 'object' && error !== null && 'detail' in error) {
+    const detail = (error as { readonly detail?: { readonly code?: unknown } }).detail
+    if (detail?.code === 'STALE_ID') return true
+  }
+  return error instanceof Error && /^Unknown or stale /u.test(error.message)
 }
 
 type CrashListener = (error: Error) => void
@@ -542,10 +547,15 @@ export class ImagingWorkerClient {
     const previous = this.#retained
     this.#retained = { sourceId: source.sourceId, generation: source.generation }
     if (previous === undefined) return
-    await this.#call('source.close', {
-      sourceId: previous.sourceId,
-      generation: previous.generation,
-    })
+    if (previous.sourceId === source.sourceId && previous.generation === source.generation) return
+    try {
+      await this.#call('source.close', {
+        sourceId: previous.sourceId,
+        generation: previous.generation,
+      })
+    } catch (error) {
+      if (!isStaleIdError(error)) throw error
+    }
   }
 
   #payload<Kind extends ResponseKind>(response: WorkerResponse, kind: Kind): ResponsePayload<Kind> {

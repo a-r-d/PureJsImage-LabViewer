@@ -2650,18 +2650,23 @@ function WorkbenchRuntime({
       }
       signal.addEventListener('abort', cancel, { once: true })
       try {
-        let openedExample: OpenedDatasetDescriptor | undefined
-        if (fixture.locator.kind === 'sample') {
-          openedExample = await openSample(fixture.locator.sampleId, true)
-        } else {
+        const openFixture = async (): Promise<OpenedDatasetDescriptor> => {
+          if (fixture.locator.kind === 'sample') {
+            const opened = await openSample(fixture.locator.sampleId, true)
+            if (opened === undefined) throw new Error(`Unable to open ${scenario.title}.`)
+            return opened
+          }
           const locator = fixture.locator
-          openedExample = await runOpen(
+          const opened = await runOpen(
             (nextGeneration, openSignal) => client.openBundled(locator, nextGeneration, openSignal),
             locator,
             true,
             client,
           )
+          if (opened === undefined) throw new Error(`Unable to open ${scenario.title}.`)
+          return opened
         }
+        let openedExample = await openFixture()
         signal.throwIfAborted()
         setParticleSettings(
           scenario.id === 'generated.touching-particles'
@@ -2669,7 +2674,7 @@ function WorkbenchRuntime({
             : DEFAULT_PARTICLE_WORKFLOW,
         )
         const preset = scenario.initialAnalysis
-        if (preset !== undefined && openedExample !== undefined) {
+        if (preset !== undefined) {
           await waitForFirstUsefulTile(signal)
           signal.throwIfAborted()
           setInspectorTab('analysis')
@@ -2702,6 +2707,12 @@ function WorkbenchRuntime({
                 )
           const liveDataset = (): OpenedDatasetDescriptor =>
             runtime.current?.dataset ?? openedExample
+          const recoverLiveDataset = async (): Promise<OpenedDatasetDescriptor> => {
+            openedExample = await openFixture()
+            signal.throwIfAborted()
+            await waitForFirstUsefulTile(signal)
+            return liveDataset()
+          }
           let succeeded = false
           try {
             succeeded = (await runPreset(liveDataset())) !== undefined
@@ -2710,7 +2721,8 @@ function WorkbenchRuntime({
             if (!aborted && !isStaleIdError(presetError)) throw presetError
             await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
             signal.throwIfAborted()
-            succeeded = (await runPreset(liveDataset())) !== undefined
+            const dataset = isStaleIdError(presetError) ? await recoverLiveDataset() : liveDataset()
+            succeeded = (await runPreset(dataset)) !== undefined
           }
           if (!succeeded)
             throw new Error(`${preset.title} could not be applied to ${scenario.title}.`)
