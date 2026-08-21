@@ -123,6 +123,7 @@ Use stable references (`dataset:...`, `roi:...`, `node:...`, `result:...`) so th
 - Validate every tool argument against the action registry’s JSON Schema.
 - Enforce max iterations, tool calls, elapsed time, input/output tokens, result bytes, and estimated cost.
 - Append assistant tool-call messages and matching tool-result messages in correct order.
+- Do not rewrite already-sent live-loop messages; prefix edits bust provider prompt cache.
 - Preserve any provider-required reasoning details during the active loop without exposing hidden reasoning in the UI.
 - Retry only classified transient transport/provider errors.
 - Never retry mutations blindly.

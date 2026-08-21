@@ -256,8 +256,15 @@ interface AnalysisGraphOutcome {
   readonly message: string
 }
 
+const ANALYSIS_CHART_SERIES_MAX_ROWS = 4_096
+
 function json(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue
+}
+
+function planningAnalysisState(current: MaterialsPanelState): MaterialsPanelState {
+  const { seriesExports: _seriesExports, distribution: _distribution, ...rest } = current
+  return { ...rest, busy: true, message: 'Planning analysis…' }
 }
 
 function abortSignal(signal: ActionAbortSignal | undefined): AbortSignal | undefined {
@@ -1001,7 +1008,13 @@ function WorkbenchRuntime({
         if (options.surface === 'advanced') setAdvancedMessage(message)
       }
       reportParticleMessage('Planning analysis…')
-      setAnalysisState((current) => ({ ...current, busy: true, message: 'Planning analysis…' }))
+      if (options.preview !== true) {
+        setAnalysisOverlay(undefined)
+        setAnalysisDataset(undefined)
+        setAnalysisState(planningAnalysisState)
+      } else {
+        setAnalysisState((current) => ({ ...current, busy: true, message: 'Planning analysis…' }))
+      }
       try {
         const request = {
           datasetHandleId: target.handleId,
@@ -1053,7 +1066,7 @@ function WorkbenchRuntime({
                 generation: target.generation,
                 resultHandleId: execution.resultHandleId,
                 output: name,
-                maxRows: 100_000,
+                maxRows: ANALYSIS_CHART_SERIES_MAX_ROWS,
               },
               controller.signal,
             )) as AnalysisSeriesExport,
@@ -3433,17 +3446,21 @@ function WorkbenchRuntime({
           : source === undefined
             ? ['Local scientific viewport']
             : [`Rendered from ${source.source.name}`]
-      return json({
+      return {
         scope,
-        mapping,
+        mapping: json(mapping),
         overlay: analysisOverlay?.output ?? null,
         agentArtifact: {
           kind: 'image',
-          ...preview,
+          mimeType: preview.mimeType,
+          width: preview.width,
+          height: preview.height,
+          bytes: preview.bytes,
+          dataUrl: preview.dataUrl,
           attribution,
           projectRevision: workspace.revision,
         },
-      })
+      }
     },
     [analysisOverlay?.output, mapping, source, workspace.revision],
   )

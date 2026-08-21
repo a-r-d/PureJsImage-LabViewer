@@ -13,7 +13,8 @@ identity, band metadata, layer recipes, ROIs, and selection. It does not contain
 pixels, native tiles, dataset handles, Workers, stores, credentials, signed catalog URLs, or browser
 storage access. Tool results are depth- and byte-bounded and arrays are paginated. Approved preview
 bytes are held only in memory, attached to the immediately following multimodal model request, and
-replaced by a text-only artifact reference in retained conversation history.
+replaced by a text-only artifact reference in retained conversation history. Already-sent live-loop
+messages are not rewritten, so provider prompt cache can stay warm.
 
 ## Runtime and policy
 

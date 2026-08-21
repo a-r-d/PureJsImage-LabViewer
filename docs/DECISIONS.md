@@ -256,7 +256,11 @@ dry-run, and approved-execute actions so a model does not need to invent interna
 Model-visible imagery is limited to `viewport.preview.create`. Viewport scope downsizes the already
 rendered specimen canvas; screen scope invokes the browser display-share picker, captures one
 bounded frame, and stops every media track. Both require dedicated approval and an image-capable
-model. Analysis execution remains cancellable, swaps result handles only after bounded result
-preparation succeeds, and commits the visible graph through normal project history. A deterministic
+model. The live tool loop appends those images without rewriting earlier messages, so provider
+prompt cache can stay warm. Browser memory is bounded in the workbench: chart series pulled into
+React are capped, plots downsample to a few hundred DOM points, overlay tiles are dropped before a
+replacement analysis, and preview PNGs are not cloned through JSON. The previous Worker result
+handle still swaps only after bounded result preparation succeeds. Analysis execution remains
+cancellable and commits the visible graph through normal project history. A deterministic
 fake-model test covers iterative planning, approval, execution, result interpretation, preview, and
 cross-turn follow-up without OpenRouter or a key.

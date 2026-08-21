@@ -33,6 +33,8 @@ export interface MaterialsPanelState {
 
 const FAVORITE_OPERATIONS_KEY = 'pji-workbench.analysis.favorite-operations.v1'
 const RECENT_OPERATIONS_KEY = 'pji-workbench.analysis.recent-operations.v1'
+const CHART_RENDER_MAX_POINTS = 256
+const CHART_RENDER_MAX_BARS = 64
 
 interface BrowserOperation {
   readonly id: string
@@ -50,6 +52,36 @@ function asRecord(value: unknown): RpcJsonObject | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as RpcJsonObject)
     : undefined
+}
+
+function downsample<T>(items: readonly T[], maximum: number): readonly T[] {
+  if (items.length <= maximum) return items
+  if (maximum <= 1) return items.slice(0, 1)
+  const last = items.length - 1
+  const sampled: T[] = []
+  for (let index = 0; index < maximum; index += 1) {
+    const item = items[Math.round((index * last) / (maximum - 1))]
+    if (item !== undefined) sampled.push(item)
+  }
+  return sampled
+}
+
+function downsampleHistogram(
+  bins: readonly Readonly<{ x: number; count: number }>[],
+  maximum: number,
+): readonly Readonly<{ x: number; count: number }>[] {
+  if (bins.length <= maximum) return bins
+  const group = Math.ceil(bins.length / maximum)
+  const merged: Array<{ x: number; count: number }> = []
+  for (let start = 0; start < bins.length; start += group) {
+    const first = bins[start]
+    if (first === undefined) continue
+    let count = 0
+    for (let index = start; index < start + group && index < bins.length; index += 1)
+      count += bins[index]?.count ?? 0
+    merged.push({ x: first.x, count })
+  }
+  return merged
 }
 
 function operationFrom(value: unknown): BrowserOperation | undefined {
@@ -1313,10 +1345,13 @@ function ParticleDistribution({ distribution }: { readonly distribution: Analysi
           >
             <polyline
               fill="none"
-              points={sizes
-                .map((size, index) => {
+              points={downsample(
+                sizes.map((size, index) => ({ size, fraction: cumulative[index] ?? 0 })),
+                CHART_RENDER_MAX_POINTS,
+              )
+                .map(({ size, fraction }) => {
                   const x = ((size - minimum) / span) * 100
-                  const y = 60 - (cumulative[index] ?? 0) * 60
+                  const y = 60 - fraction * 60
                   return `${x},${y}`
                 })
                 .join(' ')}
@@ -1352,6 +1387,7 @@ function ScientificSeriesPlot({
   const maximumY = Math.max(...points.map(({ y }) => y))
   const spanX = Math.max(Number.EPSILON, maximumX - minimumX)
   const spanY = Math.max(Number.EPSILON, maximumY - minimumY)
+  const rendered = downsample(points, CHART_RENDER_MAX_POINTS)
   return (
     <figure className="scientific-series">
       <figcaption>
@@ -1367,7 +1403,7 @@ function ScientificSeriesPlot({
       >
         <polyline
           fill="none"
-          points={points
+          points={rendered
             .map(
               ({ x, y }) =>
                 `${((x - minimumX) / spanX) * 100},${60 - ((y - minimumY) / spanY) * 60}`,
@@ -1398,7 +1434,8 @@ function AnalysisHistogramPlot({
       : []
   })
   if (bins.length === 0) return null
-  const maximum = Math.max(1, ...bins.map(({ count }) => count))
+  const rendered = downsampleHistogram(bins, CHART_RENDER_MAX_BARS)
+  const maximum = Math.max(1, ...rendered.map(({ count }) => count))
   return (
     <figure className="scientific-series">
       <figcaption>
@@ -1406,7 +1443,7 @@ function AnalysisHistogramPlot({
         {edge.unit === undefined ? '' : ` (${edge.unit})`} / count
       </figcaption>
       <div className="result-plot" role="img" aria-label={`${name} intensity histogram`}>
-        {bins.map((bin) => (
+        {rendered.map((bin) => (
           <span
             key={`h-${bin.x}-${bin.count}`}
             style={{ height: `${Math.max(2, (bin.count / maximum) * 54)}px` }}

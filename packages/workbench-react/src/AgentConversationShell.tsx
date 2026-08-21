@@ -18,7 +18,11 @@ import {
   useSyncExternalStore,
 } from 'react'
 
-import { agentReferenceCards, particlePlanFromTrace } from './agent-reference-cards.js'
+import {
+  agentReferenceCards,
+  particlePlanFromTrace,
+  previewArtifacts,
+} from './agent-reference-cards.js'
 
 export interface AgentStarterPrompt {
   readonly title: string
@@ -477,7 +481,7 @@ export function AgentConversationShell({
                 <section aria-labelledby={`${prefix}-artifacts-heading`}>
                   <h3 id={`${prefix}-artifacts-heading`}>Shared previews</h3>
                   <div className={`${prefix}__artifacts`}>
-                    {snapshot.artifacts.map((artifact) => (
+                    {previewArtifacts(snapshot.artifacts).map((artifact) => (
                       <figure key={artifact.id}>
                         <img
                           alt="Bounded workbench preview shared with the model"

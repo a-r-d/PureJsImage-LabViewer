@@ -192,7 +192,7 @@ class CanvasScientificRenderer implements ViewportRenderer {
     canvas.height = tile.height
     const context = canvas.getContext('2d')
     if (context === null) throw new Error('Unable to allocate a bounded overlay tile.')
-    const pixels = new Uint8ClampedArray(tile.rgba)
+    const pixels = this.#selectedLabel === undefined ? tile.rgba : new Uint8ClampedArray(tile.rgba)
     if (this.#selectedLabel !== undefined) {
       for (let index = 0; index < tile.labels.length; index += 1) {
         if (tile.labels[index] !== this.#selectedLabel) continue

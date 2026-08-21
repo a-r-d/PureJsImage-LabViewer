@@ -41,6 +41,9 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Fixed
 
+- Replacement analysis drops previous overlay tiles and large chart series from React before the
+  next Worker result allocates. Result plots downsample to a few hundred DOM points, and preview
+  PNGs are not cloned through JSON.
 - Agent settings no longer style the persistence label as the status dot or the remember
   checkbox as a full-width text field. “Remember on this browser” is checked by default;
   unchecking it warns that a refresh will lose the key.
