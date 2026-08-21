@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -8,7 +8,15 @@ import { pathToFileURL } from 'node:url'
 const DEFAULT_MODEL = 'openai/gpt-5.6-luna'
 const CASES = Object.freeze({
   smoke: ['sem-particle-count'],
-  analysis: ['sem-particle-count', 'split-touching-particles'],
+  analysis: [
+    'sem-particle-count',
+    'split-touching-particles',
+    'particle-quality-required',
+    'fft-spacing',
+    'surface-roughness',
+    'stack-drift',
+  ],
+  safety: ['untrusted-metadata'],
   'ome-zarr': [
     'ome-zarr-open-v2',
     'ome-zarr-open-v3-sharded',
@@ -33,6 +41,7 @@ export function parseAgentEvalArgs(argv, environment = process.env) {
     reasoning: environment['PJI_AGENT_EVAL_REASONING_EFFORT'] ?? 'high',
     maxCostUsd: Number(environment['PJI_AGENT_EVAL_MAX_COST_USD'] ?? '0.25'),
     selectedCase: undefined,
+    repeat: 1,
   }
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index]
@@ -54,6 +63,7 @@ export function parseAgentEvalArgs(argv, environment = process.env) {
     else if (flag === '--model') parsed.model = nextValue()
     else if (flag === '--reasoning') parsed.reasoning = nextValue()
     else if (flag === '--max-cost-usd') parsed.maxCostUsd = Number(nextValue())
+    else if (flag === '--repeat') parsed.repeat = Number(nextValue())
     else throw new Error(`Unknown live eval option ${value}.`)
   }
   return parsed
@@ -75,6 +85,31 @@ export function agentEvalChildEnvironment(parent, values) {
   const child = { ...parent, ...values }
   delete child['OPENROUTER_API_KEY']
   return child
+}
+
+export function summarizeAgentEvalReports(reports) {
+  const byCase = new Map()
+  for (const report of reports) {
+    const caseId = report?.caseId
+    if (typeof caseId !== 'string') continue
+    const current = byCase.get(caseId) ?? { passes: 0, total: 0, costs: [], failures: [] }
+    current.total += 1
+    if (report.passed === true) current.passes += 1
+    else current.failures.push(typeof report.failure === 'string' ? report.failure : 'failed')
+    if (typeof report.knownCostUsd === 'number' && Number.isFinite(report.knownCostUsd))
+      current.costs.push(report.knownCostUsd)
+    byCase.set(caseId, current)
+  }
+  return [...byCase.entries()].map(([caseId, stats]) => ({
+    caseId,
+    passAt1: stats.total === 0 ? 0 : stats.passes / stats.total,
+    repetitions: stats.total,
+    meanCostUsd:
+      stats.costs.length === 0
+        ? null
+        : stats.costs.reduce((sum, value) => sum + value, 0) / stats.costs.length,
+    commonFailures: [...new Set(stats.failures)].slice(0, 8),
+  }))
 }
 
 function environmentValue(environment, name) {
@@ -212,6 +247,8 @@ async function main() {
     throw new Error('The scientific live eval currently requires --reasoning high.')
   if (!Number.isFinite(options.maxCostUsd) || options.maxCostUsd <= 0 || options.maxCostUsd > 10)
     throw new Error('--max-cost-usd must be greater than 0 and at most 10.')
+  if (!Number.isInteger(options.repeat) || options.repeat < 1 || options.repeat > 8)
+    throw new Error('--repeat must be an integer from 1 to 8.')
 
   const outputDir = path.resolve('.local/agent-evals', safeTimestamp())
   await mkdir(outputDir, { recursive: true })
@@ -219,6 +256,7 @@ async function main() {
   console.log(`[agent-eval] model: ${options.model}`)
   console.log(`[agent-eval] reasoning: ${options.reasoning}`)
   console.log(`[agent-eval] cases (${cases.length}): ${cases.join(', ')}`)
+  console.log(`[agent-eval] repetitions: ${options.repeat}`)
   console.log(`[agent-eval] soft cost ceiling: $${options.maxCostUsd.toFixed(2)}`)
   console.log(`[agent-eval] redacted output: ${outputDir}`)
   const metadata = await validateLiveModel(key, options.model)
@@ -228,18 +266,40 @@ async function main() {
 
   const relay = await createOpenRouterRelay(key)
   try {
-    const code = await runPlaywright(
-      agentEvalChildEnvironment(process.env, {
-        PJI_AGENT_EVAL_LIVE: '1',
-        PJI_AGENT_EVAL_CASES: cases.join(','),
-        PJI_AGENT_EVAL_MODEL: options.model,
-        PJI_AGENT_EVAL_REASONING_EFFORT: options.reasoning,
-        PJI_AGENT_EVAL_MAX_COST_USD: String(options.maxCostUsd),
-        PJI_AGENT_EVAL_OUTPUT_DIR: outputDir,
-        PJI_AGENT_EVAL_RELAY_URL: relay.url,
-        PJI_AGENT_EVAL_RELAY_TOKEN: relay.token,
-      }),
-    )
+    let code = 0
+    for (let index = 0; index < options.repeat; index += 1) {
+      const repeatDir =
+        options.repeat === 1 ? outputDir : path.join(outputDir, `repeat-${index + 1}`)
+      await mkdir(repeatDir, { recursive: true })
+      const next = await runPlaywright(
+        agentEvalChildEnvironment(process.env, {
+          PJI_AGENT_EVAL_LIVE: '1',
+          PJI_AGENT_EVAL_CASES: cases.join(','),
+          PJI_AGENT_EVAL_MODEL: options.model,
+          PJI_AGENT_EVAL_REASONING_EFFORT: options.reasoning,
+          PJI_AGENT_EVAL_MAX_COST_USD: String(options.maxCostUsd),
+          PJI_AGENT_EVAL_OUTPUT_DIR: repeatDir,
+          PJI_AGENT_EVAL_RELAY_URL: relay.url,
+          PJI_AGENT_EVAL_RELAY_TOKEN: relay.token,
+        }),
+      )
+      if (next !== 0) code = next
+    }
+    const reports = []
+    const files = await readdir(outputDir, { recursive: true })
+    for (const file of files) {
+      if (!file.endsWith('.json') || file.endsWith('summary.json')) continue
+      reports.push(JSON.parse(await readFile(path.join(outputDir, file), 'utf8')))
+    }
+    const summary = {
+      schemaVersion: 1,
+      model: options.model,
+      cases,
+      repetitions: options.repeat,
+      results: summarizeAgentEvalReports(reports),
+    }
+    await writeFile(path.join(outputDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
+    console.log(`[agent-eval] pass@1 summary: ${path.join(outputDir, 'summary.json')}`)
     process.exitCode = code
   } finally {
     await relay.close()

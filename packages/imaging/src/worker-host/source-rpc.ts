@@ -204,6 +204,7 @@ type: float32
 dimension: 3
 sizes: ${width} ${height} ${frames}
 spacings: ${options.xStep} ${options.yStep} ${options.zStep}
+kinds: space space space
 labels: "x" "y" "z"
 units: "${options.unit}" "${options.unit}" "${options.unit}"
 encoding: raw

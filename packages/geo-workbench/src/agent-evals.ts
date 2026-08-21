@@ -13,6 +13,7 @@ export interface AtlasAgentEvalCase {
   readonly fixtureId: string
   readonly userRequest: string
   readonly expectedBehavior: 'complete' | 'propose' | 'refuse'
+  readonly kind: 'scripted-action-contract'
   readonly steps: readonly AtlasAgentEvalStep[]
   readonly stoppingCondition: string
 }
@@ -40,6 +41,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-kentucky-stac-cog',
     userRequest: 'Search Kentucky and open a decoder-ready COG.',
     expectedBehavior: 'complete',
+    kind: 'scripted-action-contract',
     steps: [
       step('geo.catalog.search', { query: 'Kentucky' }, 'bounded catalog candidates'),
       step(
@@ -56,6 +58,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-cog-xray',
     userRequest: 'Explain the current COG X-ray telemetry.',
     expectedBehavior: 'complete',
+    kind: 'scripted-action-contract',
     steps: [step('geo.source.describe', { sourceId: 'source-cog' }, 'bounded COG source summary')],
     stoppingCondition: 'The range and byte telemetry is explained without raw payloads.',
   },
@@ -65,6 +68,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-landsat-natural-color',
     userRequest: 'Use named bands to display natural color.',
     expectedBehavior: 'complete',
+    kind: 'scripted-action-contract',
     steps: [
       step('geo.raster.describe_bands', { layerId: 'landsat' }, 'named band metadata'),
       step(
@@ -81,6 +85,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-rgb-only',
     userRequest: 'Display this source as color infrared.',
     expectedBehavior: 'refuse',
+    kind: 'scripted-action-contract',
     steps: [step('geo.raster.describe_bands', { layerId: 'rgb-only' }, 'RGB-only band metadata')],
     stoppingCondition: 'No style mutation occurs because no NIR band is identified.',
   },
@@ -90,6 +95,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-landsat-separate-assets',
     userRequest: 'Build a virtual Landsat stack from the separate band assets.',
     expectedBehavior: 'complete',
+    kind: 'scripted-action-contract',
     steps: [
       step(
         'geo.analysis.virtual_band_stack',
@@ -105,6 +111,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-landsat-ndvi',
     userRequest: 'Plan and create NDVI.',
     expectedBehavior: 'complete',
+    kind: 'scripted-action-contract',
     steps: [
       step(
         'geo.analysis.dry_run',
@@ -125,6 +132,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-dem-cog',
     userRequest: 'Open the DEM and create hillshade.',
     expectedBehavior: 'complete',
+    kind: 'scripted-action-contract',
     steps: [
       step(
         'geo.source.open_catalog_asset',
@@ -145,6 +153,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-two-date-comparison',
     userRequest: 'Compare these dated scenes with swipe.',
     expectedBehavior: 'complete',
+    kind: 'scripted-action-contract',
     steps: [
       step(
         'geo.comparison.set_swipe',
@@ -160,6 +169,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-mixed-crs',
     userRequest: 'Overlay these mixed-CRS sources without changing either grid.',
     expectedBehavior: 'refuse',
+    kind: 'scripted-action-contract',
     steps: [step('geo.comparison.read', {}, 'comparison and CRS summary')],
     stoppingCondition: 'No overlay mutation occurs without a supported reprojection plan.',
   },
@@ -169,6 +179,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-difference-grid',
     userRequest: 'Difference these rasters using an explicit compatible target grid.',
     expectedBehavior: 'propose',
+    kind: 'scripted-action-contract',
     steps: [
       step(
         'geo.analysis.dry_run',
@@ -192,6 +203,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-roi-zonal',
     userRequest: 'Select the ROI and summarize raster statistics inside it.',
     expectedBehavior: 'complete',
+    kind: 'scripted-action-contract',
     steps: [
       step('geo.roi.select', { roiId: 'roi-fixture' }, 'selected ROI identity'),
       step(
@@ -208,6 +220,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-project-save',
     userRequest: 'Save the current Atlas project.',
     expectedBehavior: 'complete',
+    kind: 'scripted-action-contract',
     steps: [step('geo.project.save', {}, 'saved project identity and checksum')],
     stoppingCondition: 'The current project revision is saved.',
   },
@@ -217,6 +230,7 @@ export const ATLAS_AGENT_EVAL_CASES: readonly AtlasAgentEvalCase[] = Object.free
     fixtureId: 'atlas-project-rehydrate',
     userRequest: 'Rehydrate this saved public-catalog project.',
     expectedBehavior: 'complete',
+    kind: 'scripted-action-contract',
     steps: [
       step(
         'geo.project.rehydration_plan',

@@ -20,7 +20,9 @@ export function authoredOmeZarrDisplayMapping(
   const channels = record['channels']
   if (!Array.isArray(channels) || channels.length === 0) return undefined
   const rdefs =
-    typeof record['rdefs'] === 'object' && record['rdefs'] !== null && !Array.isArray(record['rdefs'])
+    typeof record['rdefs'] === 'object' &&
+    record['rdefs'] !== null &&
+    !Array.isArray(record['rdefs'])
       ? (record['rdefs'] as Readonly<Record<string, unknown>>)
       : undefined
   const model = rdefs?.['model']
@@ -118,7 +120,11 @@ export async function composeOmeZarrDisplayTile(
     return {
       rgba,
       values: primary,
-      range: { minimum: selected[0]?.window?.start ?? 0, maximum: selected[0]?.window?.end ?? 1, automatic: false },
+      range: {
+        minimum: selected[0]?.window?.start ?? 0,
+        maximum: selected[0]?.window?.end ?? 1,
+        automatic: false,
+      },
       histogram,
     }
   } finally {

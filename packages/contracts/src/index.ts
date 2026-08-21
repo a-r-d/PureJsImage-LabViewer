@@ -534,10 +534,7 @@ export type WorkerRequest =
       }>
     >
   | RpcRequest<'source.open-remote', Readonly<{ generation: number; url: string }>>
-  | RpcRequest<
-      'source.open-ome-zarr-remote',
-      Readonly<{ generation: number; url: string }>
-    >
+  | RpcRequest<'source.open-ome-zarr-remote', Readonly<{ generation: number; url: string }>>
   | RpcRequest<
       'source.open-ome-zarr-directory',
       Readonly<{
@@ -1027,7 +1024,10 @@ function assertTile(payload: PayloadCandidate): void {
   }
   if (mapping['colorModel'] !== undefined) {
     if (mapping['colorModel'] !== 'color' && mapping['colorModel'] !== 'greyscale') {
-      throw new RpcValidationError('INVALID_PAYLOAD', 'mapping colorModel must be color or greyscale')
+      throw new RpcValidationError(
+        'INVALID_PAYLOAD',
+        'mapping colorModel must be color or greyscale',
+      )
     }
   }
   if (mapping['omeZarrChannels'] !== undefined) {
@@ -1050,7 +1050,10 @@ function assertTile(payload: PayloadCandidate): void {
       if (channel['coefficient'] !== undefined)
         assertFinite(channel['coefficient'], 'omeZarrChannels coefficient')
       if (channel['inverted'] !== undefined && typeof channel['inverted'] !== 'boolean') {
-        throw new RpcValidationError('INVALID_PAYLOAD', 'omeZarrChannels inverted must be a boolean')
+        throw new RpcValidationError(
+          'INVALID_PAYLOAD',
+          'omeZarrChannels inverted must be a boolean',
+        )
       }
       if (channel['window'] !== undefined) {
         if (!isRecord(channel['window'])) {

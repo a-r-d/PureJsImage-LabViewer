@@ -106,6 +106,16 @@ export function createGeoAgentGateway(controller: GeoWorkbenchController): Agent
     execute: (call, signal) =>
       controller.executeVersionedAction(call.actionId, call.actionVersion, call.input, signal),
     auditContext: () => boundedGeoContext(controller),
+    sourceIdentities: () =>
+      json(
+        controller
+          .getSnapshot()
+          .project.sources.slice(0, 32)
+          .map((source) => ({
+            id: source.id,
+            identity: modelVisibleLocator(source.locator),
+          })),
+      ),
   }
 }
 

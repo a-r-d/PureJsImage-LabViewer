@@ -1,6 +1,8 @@
 export {
   AdvancedMaterialsWorkflows,
   type AdvancedPlanState,
+  DEFAULT_FFT_WORKSPACE,
+  DEFAULT_SURFACE_WORKSPACE,
   type FftWorkspaceSettings,
   formatBatchSourceIdentity,
   type StackWorkspaceSettings,
@@ -40,6 +42,8 @@ export {
   type ParticleAnalysisGraphOptions,
   particleAnalysisGraph,
   particleThresholdGraph,
+  stackAxesForSelection,
+  stackAxisForSelection,
   stackWorkflowGraph,
   statisticsGraph,
   surfaceWorkflowGraph,

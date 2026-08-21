@@ -20,7 +20,8 @@ replaced by a text-only artifact reference in retained conversation history.
 `packages/agent` owns the provider-independent state machine, bounded cross-turn conversation,
 limits, audit record, approval waits, cancellation, compact results, and deterministic replay.
 Only completed turns enter retained in-memory history; failed turns do not. A new-conversation
-control clears history, and oldest complete turns are removed when message or byte budgets are met.
+control clears history, and a deterministic retained ledger replaces oldest-turn deletion when
+message or byte budgets are met.
 `packages/geo-workbench` adapts the live
 controller into the narrow gateway and owns Atlas policy:
 
@@ -62,15 +63,18 @@ Implementation references inspected on 2026-08-20:
 - [Models API](https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties)
 - [Errors and debugging](https://openrouter.ai/docs/api_reference/errors-and-debugging)
 
-The user key is held by `MemoryOpenRouterCredentialStore`, is never serialized, and is cleared when
-the Atlas application session unmounts or the user removes it. The model-independent transport
-interface permits a future server relay without coupling the runtime to OpenRouter.
+The user key is held by `OptionalPersistentOpenRouterCredentialStore`. It is session-only by
+default, never serialized into projects or tool results, and may be remembered in this browser only
+after an explicit checkbox. Unmounting Atlas disposes the runtime and its session grants; it does
+not revoke a remembered browser key. The model-independent transport interface permits a future
+server relay without coupling the runtime to OpenRouter.
 
 ## Evaluation
 
 Required CI uses `DeterministicAgentTransport`. The Atlas suite covers the 13 requested catalog,
 display, derived-raster, comparison, ROI, save, and rehydration tasks against the current geo action
-registry. Runtime failure tests cover malformed input, unavailable actions, provider exhaustion,
-step limits, timeout, cancellation, stale revision, approval denial, oversized results, and unsupported
-models; fixture registrations include unsupported-decoder and unavailable-relay failures. Live
-OpenRouter evaluation remains opt-in and is never part of normal CI.
+registry. Runtime failure tests cover malformed input that fails schema validation as a recoverable
+tool error, unavailable actions, provider exhaustion, step limits, timeout, cancellation, stale
+revision, approval denial, oversized results, and unsupported models; fixture registrations include
+unsupported-decoder and unavailable-relay failures. Live OpenRouter evaluation remains opt-in and is
+never part of normal CI.

@@ -14,9 +14,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.execute"
-      ],
+      "permissions": ["analysis.execute"],
       "schemaVersion": 1,
       "title": "Request local batch execution",
       "version": 1
@@ -35,9 +33,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.execute"
-      ],
+      "permissions": ["analysis.execute"],
       "schemaVersion": 1,
       "title": "Cancel active analysis",
       "version": 1
@@ -56,9 +52,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.catalog"
-      ],
+      "permissions": ["analysis.catalog"],
       "schemaVersion": 1,
       "title": "Read analysis catalog",
       "version": 1
@@ -77,9 +71,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "analysis.execute"
-      ],
+      "permissions": ["analysis.execute"],
       "schemaVersion": 1,
       "title": "Run connected components",
       "version": 1
@@ -98,9 +90,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "analysis.dry-run"
-      ],
+      "permissions": ["analysis.dry-run"],
       "schemaVersion": 1,
       "title": "Plan connected components",
       "version": 1
@@ -124,18 +114,14 @@
             "type": "integer"
           }
         },
-        "required": [
-          "operationId"
-        ],
+        "required": ["operationId"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.catalog"
-      ],
+      "permissions": ["analysis.catalog"],
       "schemaVersion": 1,
       "title": "Describe analysis operation",
       "version": 1
@@ -159,20 +145,35 @@
             "type": "string"
           }
         },
-        "required": [
-          "graph"
-        ],
+        "required": ["graph"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.dry-run"
-      ],
+      "permissions": ["analysis.dry-run"],
       "schemaVersion": 1,
       "title": "Dry-run analysis operation",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "expensive",
+      "description": "Compute a bounded 2D FFT workspace summary including spacing peaks when available.",
+      "id": "analysis.fft.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.dry-run"],
+      "schemaVersion": 1,
+      "title": "Read FFT spacing",
       "version": 1
     },
     {
@@ -194,9 +195,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "graph"
-        ],
+        "required": ["graph"],
         "type": "object"
       },
       "mutability": "mutation",
@@ -204,22 +203,54 @@
         "additionalProperties": false,
         "properties": {
           "status": {
-            "enum": [
-              "completed"
-            ],
+            "enum": ["completed"],
             "type": "string"
           }
         },
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "type": "object"
       },
-      "permissions": [
-        "analysis.execute"
-      ],
+      "permissions": ["analysis.execute"],
       "schemaVersion": 1,
       "title": "Request analysis graph execution",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "interactive",
+      "description": "Compute a bounded intensity histogram for the selected ROI or whole plane.",
+      "id": "analysis.histogram.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.dry-run"],
+      "schemaVersion": 1,
+      "title": "Read intensity histogram",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "interactive",
+      "description": "Sample a bounded line profile from the selected line ROI.",
+      "id": "analysis.line-profile.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.dry-run"],
+      "schemaVersion": 1,
+      "title": "Read line profile",
       "version": 1
     },
     {
@@ -245,20 +276,14 @@
             "type": "object"
           }
         },
-        "required": [
-          "operationId",
-          "operationVersion",
-          "parameters"
-        ],
+        "required": ["operationId", "operationVersion", "parameters"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.dry-run"
-      ],
+      "permissions": ["analysis.dry-run"],
       "schemaVersion": 1,
       "title": "Normalize analysis input",
       "version": 1
@@ -299,10 +324,7 @@
                 "type": "integer"
               },
               "connectivity": {
-                "enum": [
-                  4,
-                  8
-                ],
+                "enum": [4, 8],
                 "type": "integer"
               },
               "dynamicRange": {
@@ -310,10 +332,7 @@
                 "type": "number"
               },
               "edgePolicy": {
-                "enum": [
-                  "include",
-                  "exclude"
-                ],
+                "enum": ["include", "exclude"],
                 "type": "string"
               },
               "fillHoles": {
@@ -374,11 +393,7 @@
                 "type": "number"
               },
               "noDataPolicy": {
-                "enum": [
-                  "background",
-                  "foreground",
-                  "propagate"
-                ],
+                "enum": ["background", "foreground", "propagate"],
                 "type": "string"
               },
               "openRadius": {
@@ -387,21 +402,11 @@
                 "type": "integer"
               },
               "overlayView": {
-                "enum": [
-                  "labels",
-                  "mask",
-                  "outline",
-                  "numbered",
-                  "centroids",
-                  "ellipses"
-                ],
+                "enum": ["labels", "mask", "outline", "numbered", "centroids", "ellipses"],
                 "type": "string"
               },
               "polarity": {
-                "enum": [
-                  "light",
-                  "dark"
-                ],
+                "enum": ["light", "dark"],
                 "type": "string"
               },
               "roiId": {
@@ -415,15 +420,7 @@
                 "type": "number"
               },
               "thresholdMethod": {
-                "enum": [
-                  "manual",
-                  "otsu",
-                  "triangle",
-                  "yen",
-                  "li",
-                  "mean",
-                  "sauvola"
-                ],
+                "enum": ["manual", "otsu", "triangle", "yen", "li", "mean", "sauvola"],
                 "type": "string"
               },
               "upper": {
@@ -441,19 +438,14 @@
             "type": "object"
           }
         },
-        "required": [
-          "planId",
-          "settings"
-        ],
+        "required": ["planId", "settings"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.execute"
-      ],
+      "permissions": ["analysis.execute"],
       "schemaVersion": 1,
       "title": "Execute particle analysis settings",
       "version": 1
@@ -489,10 +481,7 @@
                 "type": "integer"
               },
               "connectivity": {
-                "enum": [
-                  4,
-                  8
-                ],
+                "enum": [4, 8],
                 "type": "integer"
               },
               "dynamicRange": {
@@ -500,10 +489,7 @@
                 "type": "number"
               },
               "edgePolicy": {
-                "enum": [
-                  "include",
-                  "exclude"
-                ],
+                "enum": ["include", "exclude"],
                 "type": "string"
               },
               "fillHoles": {
@@ -564,11 +550,7 @@
                 "type": "number"
               },
               "noDataPolicy": {
-                "enum": [
-                  "background",
-                  "foreground",
-                  "propagate"
-                ],
+                "enum": ["background", "foreground", "propagate"],
                 "type": "string"
               },
               "openRadius": {
@@ -577,21 +559,11 @@
                 "type": "integer"
               },
               "overlayView": {
-                "enum": [
-                  "labels",
-                  "mask",
-                  "outline",
-                  "numbered",
-                  "centroids",
-                  "ellipses"
-                ],
+                "enum": ["labels", "mask", "outline", "numbered", "centroids", "ellipses"],
                 "type": "string"
               },
               "polarity": {
-                "enum": [
-                  "light",
-                  "dark"
-                ],
+                "enum": ["light", "dark"],
                 "type": "string"
               },
               "roiId": {
@@ -605,15 +577,7 @@
                 "type": "number"
               },
               "thresholdMethod": {
-                "enum": [
-                  "manual",
-                  "otsu",
-                  "triangle",
-                  "yen",
-                  "li",
-                  "mean",
-                  "sauvola"
-                ],
+                "enum": ["manual", "otsu", "triangle", "yen", "li", "mean", "sauvola"],
                 "type": "string"
               },
               "upper": {
@@ -631,20 +595,35 @@
             "type": "object"
           }
         },
-        "required": [
-          "settings"
-        ],
+        "required": ["settings"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.dry-run"
-      ],
+      "permissions": ["analysis.dry-run"],
       "schemaVersion": 1,
       "title": "Plan particle analysis settings",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "analysis",
+      "cost": "trivial",
+      "description": "Calculate bounded descriptive diagnostics from the current particle result. These metrics are not a formal statistical guarantee; combine them with an approved labels preview before claiming reliability.",
+      "id": "analysis.particle.quality.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.read"],
+      "schemaVersion": 1,
+      "title": "Read particle segmentation quality",
       "version": 1
     },
     {
@@ -661,9 +640,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "workspace.read"
-      ],
+      "permissions": ["workspace.read"],
       "schemaVersion": 1,
       "title": "Read particle analysis settings",
       "version": 1
@@ -678,10 +655,7 @@
         "additionalProperties": false,
         "properties": {
           "mode": {
-            "enum": [
-              "preview",
-              "apply"
-            ],
+            "enum": ["preview", "apply"],
             "type": "string"
           },
           "operationId": {
@@ -698,23 +672,92 @@
             "type": "object"
           }
         },
-        "required": [
-          "operationId",
-          "operationVersion",
-          "parameters",
-          "mode"
-        ],
+        "required": ["operationId", "operationVersion", "parameters", "mode"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.execute"
-      ],
+      "permissions": ["analysis.execute"],
       "schemaVersion": 1,
       "title": "Request analysis execution",
+      "version": 1
+    },
+    {
+      "cancellable": false,
+      "category": "analysis",
+      "cost": "trivial",
+      "description": "Compare the current bounded result summary with the previous committed result without dumping tables.",
+      "id": "analysis.result.compare.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["workspace.read"],
+      "schemaVersion": 1,
+      "title": "Compare analysis results",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "interactive",
+      "description": "Compute bounded intensity statistics for the selected area ROI or whole plane.",
+      "id": "analysis.roi.statistics.read",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "read",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.dry-run"],
+      "schemaVersion": 1,
+      "title": "Read ROI statistics",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "expensive",
+      "description": "Run reviewed stack alignment and return bounded drift diagnostics.",
+      "id": "analysis.stack.align.execute",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Align stack and read drift",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "analysis",
+      "cost": "expensive",
+      "description": "Apply reviewed surface leveling and return bounded roughness diagnostics.",
+      "id": "analysis.surface.level.execute",
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Level surface and read roughness",
       "version": 1
     },
     {
@@ -731,9 +774,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "analysis.execute"
-      ],
+      "permissions": ["analysis.execute"],
       "schemaVersion": 1,
       "title": "Commit threshold",
       "version": 1
@@ -752,9 +793,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "analysis.execute"
-      ],
+      "permissions": ["analysis.execute"],
       "schemaVersion": 1,
       "title": "Preview threshold",
       "version": 1
@@ -774,18 +813,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "datasetId"
-        ],
+        "required": ["datasetId"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "dataset.read-descriptor"
-      ],
+      "permissions": ["dataset.read-descriptor"],
       "schemaVersion": 1,
       "title": "Describe dataset",
       "version": 1
@@ -805,9 +840,7 @@
         "maxItems": 256,
         "type": "array"
       },
-      "permissions": [
-        "dataset.read-descriptor"
-      ],
+      "permissions": ["dataset.read-descriptor"],
       "schemaVersion": 1,
       "title": "List datasets",
       "version": 1
@@ -827,18 +860,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "datasetId"
-        ],
+        "required": ["datasetId"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "dataset.read-descriptor"
-      ],
+      "permissions": ["dataset.read-descriptor"],
       "schemaVersion": 1,
       "title": "Select dataset",
       "version": 1
@@ -857,9 +886,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "source.read-metadata"
-      ],
+      "permissions": ["source.read-metadata"],
       "schemaVersion": 1,
       "title": "Read channel display state",
       "version": 1
@@ -908,20 +935,14 @@
                   "type": "object"
                 }
               },
-              "required": [
-                "index",
-                "active"
-              ],
+              "required": ["index", "active"],
               "type": "object"
             },
             "maxItems": 64,
             "type": "array"
           },
           "colorModel": {
-            "enum": [
-              "color",
-              "greyscale"
-            ],
+            "enum": ["color", "greyscale"],
             "type": "string"
           }
         },
@@ -931,9 +952,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "viewport.propose"
-      ],
+      "permissions": ["viewport.propose"],
       "schemaVersion": 1,
       "title": "Set channel display state",
       "version": 1
@@ -959,9 +978,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "dataset.read-descriptor"
-      ],
+      "permissions": ["dataset.read-descriptor"],
       "schemaVersion": 1,
       "title": "Describe OME-Zarr dataset",
       "version": 1
@@ -981,9 +998,7 @@
         "maxItems": 256,
         "type": "array"
       },
-      "permissions": [
-        "dataset.read-descriptor"
-      ],
+      "permissions": ["dataset.read-descriptor"],
       "schemaVersion": 1,
       "title": "List OME-Zarr datasets",
       "version": 1
@@ -1002,9 +1017,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "source.read-metadata"
-      ],
+      "permissions": ["source.read-metadata"],
       "schemaVersion": 1,
       "title": "Describe OME-Zarr network telemetry",
       "version": 1
@@ -1023,9 +1036,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "source.read-metadata"
-      ],
+      "permissions": ["source.read-metadata"],
       "schemaVersion": 1,
       "title": "Describe OME-Zarr storage",
       "version": 1
@@ -1044,9 +1055,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "source.read-metadata"
-      ],
+      "permissions": ["source.read-metadata"],
       "schemaVersion": 1,
       "title": "Describe OME-Zarr store",
       "version": 1
@@ -1065,9 +1074,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "ui.propose"
-      ],
+      "permissions": ["ui.propose"],
       "schemaVersion": 1,
       "title": "Open command palette",
       "version": 1
@@ -1086,9 +1093,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "ui.propose"
-      ],
+      "permissions": ["ui.propose"],
       "schemaVersion": 1,
       "title": "Show agent panel",
       "version": 1
@@ -1108,18 +1113,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "panel"
-        ],
+        "required": ["panel"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "ui.propose"
-      ],
+      "permissions": ["ui.propose"],
       "schemaVersion": 1,
       "title": "Select workbench panel",
       "version": 1
@@ -1139,18 +1140,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "nodeId"
-        ],
+        "required": ["nodeId"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "workspace.propose"
-      ],
+      "permissions": ["workspace.propose"],
       "schemaVersion": 1,
       "title": "Remove pipeline node",
       "version": 1
@@ -1169,9 +1166,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "workspace.read"
-      ],
+      "permissions": ["workspace.read"],
       "schemaVersion": 1,
       "title": "Read analysis pipeline",
       "version": 1
@@ -1208,10 +1203,7 @@
                   "type": "integer"
                 }
               },
-              "required": [
-                "axisId",
-                "index"
-              ],
+              "required": ["axisId", "index"],
               "type": "object"
             },
             "maxItems": 16,
@@ -1229,9 +1221,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "dataset.read-descriptor"
-      ],
+      "permissions": ["dataset.read-descriptor"],
       "schemaVersion": 1,
       "title": "Select plane",
       "version": 1
@@ -1250,9 +1240,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "file.export"
-      ],
+      "permissions": ["file.export"],
       "schemaVersion": 1,
       "title": "Propose result CSV export",
       "version": 1
@@ -1276,18 +1264,14 @@
             "type": "integer"
           }
         },
-        "required": [
-          "offset"
-        ],
+        "required": ["offset"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "result.read-page"
-      ],
+      "permissions": ["result.read-page"],
       "schemaVersion": 1,
       "title": "Read result page",
       "version": 1
@@ -1306,9 +1290,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "result.read-summary"
-      ],
+      "permissions": ["result.read-summary"],
       "schemaVersion": 1,
       "title": "Read result summary",
       "version": 1
@@ -1327,10 +1309,7 @@
             "type": "number"
           },
           "kind": {
-            "enum": [
-              "rectangle",
-              "ellipse"
-            ],
+            "enum": ["rectangle", "ellipse"],
             "type": "string"
           },
           "label": {
@@ -1349,23 +1328,14 @@
             "type": "number"
           }
         },
-        "required": [
-          "kind",
-          "label",
-          "x",
-          "y",
-          "width",
-          "height"
-        ],
+        "required": ["kind", "label", "x", "y", "width", "height"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "roi.propose"
-      ],
+      "permissions": ["roi.propose"],
       "schemaVersion": 1,
       "title": "Create ROI",
       "version": 1
@@ -1385,9 +1355,7 @@
         "maxItems": 256,
         "type": "array"
       },
-      "permissions": [
-        "roi.read"
-      ],
+      "permissions": ["roi.read"],
       "schemaVersion": 1,
       "title": "List ROIs",
       "version": 1
@@ -1407,18 +1375,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "roiId"
-        ],
+        "required": ["roiId"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "roi.propose"
-      ],
+      "permissions": ["roi.propose"],
       "schemaVersion": 1,
       "title": "Remove ROI",
       "version": 1
@@ -1438,18 +1402,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "roiId"
-        ],
+        "required": ["roiId"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "roi.propose"
-      ],
+      "permissions": ["roi.propose"],
       "schemaVersion": 1,
       "title": "Select ROI",
       "version": 1
@@ -1472,9 +1432,7 @@
                 "type": "string"
               }
             },
-            "required": [
-              "name"
-            ],
+            "required": ["name"],
             "type": "object"
           },
           "roiId": {
@@ -1483,19 +1441,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "roiId",
-          "patch"
-        ],
+        "required": ["roiId", "patch"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "roi.propose"
-      ],
+      "permissions": ["roi.propose"],
       "schemaVersion": 1,
       "title": "Update ROI name",
       "version": 1
@@ -1524,20 +1477,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "expectedDigest",
-          "source"
-        ],
+        "required": ["id", "expectedDigest", "source"],
         "type": "object"
       },
       "mutability": "proposal",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "workspace.propose"
-      ],
+      "permissions": ["workspace.propose"],
       "schemaVersion": 1,
       "title": "Apply script patch",
       "version": 1
@@ -1562,19 +1509,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
+        "required": ["id", "title"],
         "type": "object"
       },
       "mutability": "proposal",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "workspace.propose"
-      ],
+      "permissions": ["workspace.propose"],
       "schemaVersion": 1,
       "title": "Create script draft",
       "version": 1
@@ -1599,19 +1541,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "expectedDigest"
-        ],
+        "required": ["id", "expectedDigest"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "workspace.read"
-      ],
+      "permissions": ["workspace.read"],
       "schemaVersion": 1,
       "title": "Read script diff",
       "version": 1
@@ -1631,18 +1568,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "message"
-        ],
+        "required": ["message"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "workspace.read"
-      ],
+      "permissions": ["workspace.read"],
       "schemaVersion": 1,
       "title": "Write bounded script log",
       "version": 1
@@ -1662,18 +1595,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "id"
-        ],
+        "required": ["id"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "workspace.read"
-      ],
+      "permissions": ["workspace.read"],
       "schemaVersion": 1,
       "title": "Read script",
       "version": 1
@@ -1698,19 +1627,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "expectedDigest"
-        ],
+        "required": ["id", "expectedDigest"],
         "type": "object"
       },
       "mutability": "proposal",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.execute"
-      ],
+      "permissions": ["analysis.execute"],
       "schemaVersion": 1,
       "title": "Request script execution",
       "version": 1
@@ -1735,19 +1659,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "expectedDigest"
-        ],
+        "required": ["id", "expectedDigest"],
         "type": "object"
       },
       "mutability": "proposal",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "workspace.propose"
-      ],
+      "permissions": ["workspace.propose"],
       "schemaVersion": 1,
       "title": "Request local script installation",
       "version": 1
@@ -1772,19 +1691,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "expectedDigest"
-        ],
+        "required": ["id", "expectedDigest"],
         "type": "object"
       },
       "mutability": "proposal",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "analysis.execute"
-      ],
+      "permissions": ["analysis.execute"],
       "schemaVersion": 1,
       "title": "Run script tests",
       "version": 1
@@ -1809,19 +1723,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "expectedDigest"
-        ],
+        "required": ["id", "expectedDigest"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "workspace.read"
-      ],
+      "permissions": ["workspace.read"],
       "schemaVersion": 1,
       "title": "Typecheck script",
       "version": 1
@@ -1841,9 +1750,7 @@
         "maxItems": 64,
         "type": "array"
       },
-      "permissions": [
-        "source.read-metadata"
-      ],
+      "permissions": ["source.read-metadata"],
       "schemaVersion": 1,
       "title": "List sources",
       "version": 1
@@ -1862,9 +1769,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "source.read-metadata"
-      ],
+      "permissions": ["source.read-metadata"],
       "schemaVersion": 1,
       "title": "Open local source",
       "version": 1
@@ -1879,25 +1784,18 @@
         "additionalProperties": false,
         "properties": {
           "kind": {
-            "enum": [
-              "directory",
-              "zip"
-            ],
+            "enum": ["directory", "zip"],
             "type": "string"
           }
         },
-        "required": [
-          "kind"
-        ],
+        "required": ["kind"],
         "type": "object"
       },
       "mutability": "mutation",
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "source.read-metadata"
-      ],
+      "permissions": ["source.read-metadata"],
       "schemaVersion": 1,
       "title": "Open local OME-Zarr resource",
       "version": 1
@@ -1922,9 +1820,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "network.explicit-hosts"
-      ],
+      "permissions": ["network.explicit-hosts"],
       "schemaVersion": 1,
       "title": "Open remote OME-Zarr store",
       "version": 1
@@ -1943,9 +1839,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "network.explicit-hosts"
-      ],
+      "permissions": ["network.explicit-hosts"],
       "schemaVersion": 1,
       "title": "Open remote source",
       "version": 1
@@ -1964,9 +1858,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "ui.propose"
-      ],
+      "permissions": ["ui.propose"],
       "schemaVersion": 1,
       "title": "Toggle color theme",
       "version": 1
@@ -1985,9 +1877,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "viewport.propose"
-      ],
+      "permissions": ["viewport.propose"],
       "schemaVersion": 1,
       "title": "Fit image to viewport",
       "version": 1
@@ -2006,9 +1896,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "viewport.propose"
-      ],
+      "permissions": ["viewport.propose"],
       "schemaVersion": 1,
       "title": "Set viewport to 1:1",
       "version": 1
@@ -2028,10 +1916,7 @@
             "type": "integer"
           },
           "scope": {
-            "enum": [
-              "viewport",
-              "screen"
-            ],
+            "enum": ["viewport", "screen"],
             "type": "string"
           },
           "width": {
@@ -2040,20 +1925,14 @@
             "type": "integer"
           }
         },
-        "required": [
-          "scope",
-          "width",
-          "height"
-        ],
+        "required": ["scope", "width", "height"],
         "type": "object"
       },
       "mutability": "read",
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "model.preview"
-      ],
+      "permissions": ["model.preview"],
       "schemaVersion": 1,
       "title": "Create bounded model preview",
       "version": 1
@@ -2072,9 +1951,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "viewport.propose"
-      ],
+      "permissions": ["viewport.propose"],
       "schemaVersion": 1,
       "title": "Propose viewport state",
       "version": 1
@@ -2093,9 +1970,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "viewport.read"
-      ],
+      "permissions": ["viewport.read"],
       "schemaVersion": 1,
       "title": "Read viewport state",
       "version": 1
@@ -2114,9 +1989,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "file.export"
-      ],
+      "permissions": ["file.export"],
       "schemaVersion": 1,
       "title": "Export project JSON",
       "version": 1
@@ -2135,9 +2008,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "workspace.propose"
-      ],
+      "permissions": ["workspace.propose"],
       "schemaVersion": 1,
       "title": "New project",
       "version": 1
@@ -2156,9 +2027,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "workspace.propose"
-      ],
+      "permissions": ["workspace.propose"],
       "schemaVersion": 1,
       "title": "Open recent project",
       "version": 1
@@ -2177,9 +2046,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "source.read-metadata"
-      ],
+      "permissions": ["source.read-metadata"],
       "schemaVersion": 1,
       "title": "Open sample SEM image",
       "version": 1
@@ -2198,9 +2065,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "workspace.propose"
-      ],
+      "permissions": ["workspace.propose"],
       "schemaVersion": 1,
       "title": "Redo project change",
       "version": 1
@@ -2219,9 +2084,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "workspace.propose"
-      ],
+      "permissions": ["workspace.propose"],
       "schemaVersion": 1,
       "title": "Save project locally",
       "version": 1
@@ -2240,9 +2103,7 @@
       "outputSchema": {
         "type": "object"
       },
-      "permissions": [
-        "workspace.read"
-      ],
+      "permissions": ["workspace.read"],
       "schemaVersion": 1,
       "title": "Read workspace summary",
       "version": 1
@@ -2261,9 +2122,7 @@
       "outputSchema": {
         "type": "null"
       },
-      "permissions": [
-        "workspace.propose"
-      ],
+      "permissions": ["workspace.propose"],
       "schemaVersion": 1,
       "title": "Undo project change",
       "version": 1

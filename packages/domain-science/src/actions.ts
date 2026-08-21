@@ -29,7 +29,15 @@ export type WorkbenchActionId =
   | 'analysis.normalize'
   | 'analysis.particle.execute'
   | 'analysis.particle.plan'
+  | 'analysis.particle.quality.read'
   | 'analysis.particle.settings.read'
+  | 'analysis.roi.statistics.read'
+  | 'analysis.histogram.read'
+  | 'analysis.line-profile.read'
+  | 'analysis.fft.read'
+  | 'analysis.surface.level.execute'
+  | 'analysis.stack.align.execute'
+  | 'analysis.result.compare.read'
   | 'analysis.graph.request-execute'
   | 'analysis.request-execute'
   | 'analysis.batch.request-execute'
@@ -896,6 +904,143 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
       },
     ),
     availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.particle.quality.read',
+      'Read particle segmentation quality',
+      'Calculate bounded descriptive diagnostics from the current particle result. These metrics are not a formal statistical guarantee; combine them with an approved labels preview before claiming reliability.',
+      'analysis',
+      {
+        mutability: 'read',
+        permissions: ['workspace.read'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: ({ hasDataset, hasResult }) =>
+      hasDataset
+        ? hasResult === true
+          ? { available: true }
+          : {
+              available: false,
+              reason: 'Run particle analysis before reading quality diagnostics.',
+            }
+        : { available: false, reason: 'Open a dataset first.' },
+  },
+  {
+    descriptor: descriptor(
+      'analysis.roi.statistics.read',
+      'Read ROI statistics',
+      'Compute bounded intensity statistics for the selected area ROI or whole plane.',
+      'analysis',
+      {
+        mutability: 'read',
+        cost: 'interactive',
+        cancellable: true,
+        permissions: ['analysis.dry-run'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.histogram.read',
+      'Read intensity histogram',
+      'Compute a bounded intensity histogram for the selected ROI or whole plane.',
+      'analysis',
+      {
+        mutability: 'read',
+        cost: 'interactive',
+        cancellable: true,
+        permissions: ['analysis.dry-run'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.line-profile.read',
+      'Read line profile',
+      'Sample a bounded line profile from the selected line ROI.',
+      'analysis',
+      {
+        mutability: 'read',
+        cost: 'interactive',
+        cancellable: true,
+        permissions: ['analysis.dry-run'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.fft.read',
+      'Read FFT spacing',
+      'Compute a bounded 2D FFT workspace summary including spacing peaks when available.',
+      'analysis',
+      {
+        mutability: 'read',
+        cost: 'expensive',
+        cancellable: true,
+        permissions: ['analysis.dry-run'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.surface.level.execute',
+      'Level surface and read roughness',
+      'Apply reviewed surface leveling and return bounded roughness diagnostics.',
+      'analysis',
+      {
+        mutability: 'mutation',
+        cost: 'expensive',
+        cancellable: true,
+        permissions: ['analysis.execute'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.stack.align.execute',
+      'Align stack and read drift',
+      'Run reviewed stack alignment and return bounded drift diagnostics.',
+      'analysis',
+      {
+        mutability: 'mutation',
+        cost: 'expensive',
+        cancellable: true,
+        permissions: ['analysis.execute'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: requiresDataset,
+  },
+  {
+    descriptor: descriptor(
+      'analysis.result.compare.read',
+      'Compare analysis results',
+      'Compare the current bounded result summary with the previous committed result without dumping tables.',
+      'analysis',
+      {
+        mutability: 'read',
+        permissions: ['workspace.read'],
+        outputSchema: { type: 'object' },
+      },
+    ),
+    availability: ({ hasDataset, hasResult }) =>
+      hasDataset
+        ? hasResult === true
+          ? { available: true }
+          : { available: false, reason: 'No analysis result is available to compare.' }
+        : { available: false, reason: 'Open a dataset first.' },
   },
   {
     descriptor: descriptor(

@@ -242,10 +242,7 @@ export function defaultPlaneSelection(descriptor: DatasetDescriptor): PlaneSelec
   }
 }
 
-function defaultFixedIndex(
-  descriptor: DatasetDescriptor,
-  axis: AxisDescriptor,
-): number {
+function defaultFixedIndex(descriptor: DatasetDescriptor, axis: AxisDescriptor): number {
   const display = descriptor.metadata?.['omeZarrDisplay']
   const rdefs =
     typeof display === 'object' && display !== null && !Array.isArray(display)

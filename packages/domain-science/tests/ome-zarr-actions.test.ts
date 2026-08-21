@@ -76,6 +76,8 @@ function ports(overrides: Partial<ScienceActionPorts> = {}): ScienceActionPorts 
     particleSettings: () => ({ settings: {} }),
     planParticleAnalysis: async () => ({ valid: true }),
     executeParticleAnalysis: async () => ({ status: 'completed' }),
+    particleQuality: () => ({ available: false }),
+    runNamedAnalysis: async () => ({ status: 'completed' }),
     createModelPreview: async () => ({
       scope: 'viewport',
       agentArtifact: { kind: 'image', mimeType: 'image/png', bytes: 68 },

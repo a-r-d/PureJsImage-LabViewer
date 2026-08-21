@@ -652,3 +652,11 @@ export function useFocusReturn(): RefObject<HTMLElement | null> {
   const reference = useRef<HTMLElement | null>(null)
   return reference
 }
+
+export {
+  parseRestrictedMarkdown,
+  RESTRICTED_MARKDOWN_LIMITS,
+  RestrictedMarkdown,
+  restrictedMarkdownPlainText,
+  sanitizeHref,
+} from './restricted-markdown.js'

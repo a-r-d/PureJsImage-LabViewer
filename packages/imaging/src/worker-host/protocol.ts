@@ -141,8 +141,14 @@ function isStructuredRpcError(error: unknown): error is StructuredRpcError {
   )
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
+function errorMessage(error: unknown, depth = 0): string {
+  if (depth > 4) return '…'
+  if (error instanceof Error) {
+    const cause =
+      error.cause === undefined || error.cause === error ? '' : errorMessage(error.cause, depth + 1)
+    if (cause.length === 0 || cause === error.message) return error.message
+    return `${error.message}: ${cause}`
+  }
   if (typeof error === 'string') return error
   return 'Unknown worker error'
 }

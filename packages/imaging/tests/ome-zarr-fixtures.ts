@@ -57,9 +57,7 @@ function v2MultiscaleAttrs(options: {
         datasets: [
           {
             path: options.path ?? '0',
-            coordinateTransformations: [
-              { type: 'scale', scale: axes.map(() => 1) },
-            ],
+            coordinateTransformations: [{ type: 'scale', scale: axes.map(() => 1) }],
           },
         ],
       },
@@ -444,7 +442,9 @@ export function storeFetch(
 ): typeof fetch {
   const root = new URL(rootUrl.endsWith('/') ? rootUrl : `${rootUrl}/`)
   return async (input, init) => {
-    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+    const url = new URL(
+      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
+    )
     if (url.origin !== root.origin || !url.pathname.startsWith(root.pathname)) {
       return new Response(null, { status: 404 })
     }

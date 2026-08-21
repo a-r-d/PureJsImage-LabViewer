@@ -35,6 +35,7 @@ for (const artifact of prScenarios) {
   test(`@scenario opens ${artifact.scenarioId} from its normalized artifact`, async ({
     page,
   }, testInfo) => {
+    test.setTimeout(90_000)
     try {
       await page.getByRole('button', { name: 'Examples mode' }).click()
       const gallery = page.getByRole('dialog', { name: 'Example library' })

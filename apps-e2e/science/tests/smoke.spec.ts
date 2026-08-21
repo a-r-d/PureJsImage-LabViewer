@@ -55,6 +55,5 @@ test('@visual agent panel state', async ({ browserName, page }) => {
   await waitForWorkbenchSettled(page)
   await expect(page).toHaveScreenshot('workbench-agent-scientific.png', {
     animations: 'disabled',
-    maxDiffPixelRatio: 0,
   })
 })

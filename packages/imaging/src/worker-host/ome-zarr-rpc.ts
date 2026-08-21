@@ -1,10 +1,10 @@
 import {
+  type LocalFileAttachment,
   OME_ZARR_IDENTITY_METADATA_KEY,
   OME_ZARR_READER_ID,
   type OmeZarrNetworkDiagnostics,
   type OmeZarrRootIdentityEvidence,
   type OmeZarrRootMetadataName,
-  type LocalFileAttachment,
   RpcValidationError,
 } from '@pji-workbench/contracts'
 import { createScientificLibrary } from 'purejsimage/scientific'
@@ -16,10 +16,7 @@ import {
   type OmeZarrHttpStoreIdentitySummary,
 } from 'purejsimage/scientific/browser'
 import { wrapFetchToExposeContentRange } from '../cors-range-fetch.js'
-import {
-  selectOmeZarrDirectoryRoot,
-  storeRelativeOmeZarrFile,
-} from '../ome-zarr-directory.js'
+import { selectOmeZarrDirectoryRoot, storeRelativeOmeZarrFile } from '../ome-zarr-directory.js'
 import { loadOmeZarrReader } from '../worker-readers.js'
 
 export function durableOmeZarrRootUrl(input: string | URL): string {
@@ -32,9 +29,7 @@ export function durableOmeZarrRootUrl(input: string | URL): string {
   return url.href.endsWith('/') ? url.href : `${url.href}/`
 }
 
-export function filesFromOmeZarrAttachments(
-  attachments: readonly LocalFileAttachment[],
-): File[] {
+export function filesFromOmeZarrAttachments(attachments: readonly LocalFileAttachment[]): File[] {
   return attachments.map(
     (attachment) =>
       new File([attachment.blob as Blob], attachment.relativePath ?? attachment.name, {
@@ -67,7 +62,12 @@ export async function openOmeZarrHttpDocument(
     maxCacheBytesPerSource: number
     blockBytes: number
   }>,
-): Promise<Readonly<{ document: Awaited<ReturnType<typeof openOmeZarrScientificDocument>>; store: OmeZarrHttpStore }>> {
+): Promise<
+  Readonly<{
+    document: Awaited<ReturnType<typeof openOmeZarrScientificDocument>>
+    store: OmeZarrHttpStore
+  }>
+> {
   const storeContext = await createOmeZarrHttpContext(url, {
     fetch: wrapFetchToExposeContentRange(options.fetch ?? globalThis.fetch.bind(globalThis)),
     signal: options.signal,
@@ -146,7 +146,12 @@ export function omeZarrIdentityMetadata(
 export function directoryMembersForOpen(
   files: readonly File[],
   storeRoot: string,
-): Readonly<{ primary: File; members: readonly File[]; metadataName: OmeZarrRootMetadataName; root: string }> {
+): Readonly<{
+  primary: File
+  members: readonly File[]
+  metadataName: OmeZarrRootMetadataName
+  root: string
+}> {
   const selected = selectOmeZarrDirectoryRoot(files, storeRoot)
   return {
     root: selected.root,

@@ -75,6 +75,7 @@ test('runs a bounded FFT workspace with calibrated frequency cursor, peaks, expo
   ).toEqual([])
 
   await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('Saved locally')).toBeVisible()
   await page.reload()
   await waitForWorkbenchSettled(page)
   await page.getByRole('tab', { name: 'Pipeline' }).click()

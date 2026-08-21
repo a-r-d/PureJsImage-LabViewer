@@ -59,4 +59,41 @@ describe('stack and registration reference algorithms', () => {
       height: 4,
     })
   })
+
+  it('aligns the generated drifting-stack fixture with the agent defaults', () => {
+    const width = 64
+    const height = 64
+    const frames = 8
+    const values = new Float64Array(width * height * frames)
+    for (let z = 0; z < frames; z += 1)
+      for (let y = 0; y < height; y += 1)
+        for (let x = 0; x < width; x += 1) {
+          const shift = z
+          const dx = x - (width * 0.35 + shift)
+          const dy = y - height * 0.5
+          const radius = width * 0.12
+          const disk = dx * dx + dy * dy <= radius * radius ? 40 : 0
+          values[z * width * height + y * width + x] = 8 + z * 1.5 + disk + ((x + y) % 5) * 0.2
+        }
+    const alignment = alignStack(values, width, height, frames, {
+      referenceIndex: 0,
+      maximumShift: 16,
+      minimumPeakRatio: 1.2,
+      edgePolicy: 'crop-overlap',
+      fillValue: 0,
+    })
+    expect(
+      alignment.registrations.map(({ offsetX, offsetY, accepted }) => ({
+        offsetX,
+        offsetY,
+        accepted,
+      })),
+    ).toEqual(
+      Array.from({ length: frames }, (_unused, frame) => ({
+        offsetX: 0 - frame,
+        offsetY: 0,
+        accepted: true,
+      })),
+    )
+  })
 })

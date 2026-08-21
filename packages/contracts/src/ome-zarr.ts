@@ -55,7 +55,5 @@ export function isOmeZarrRootMetadataName(value: string): value is OmeZarrRootMe
 }
 
 export function isOmeZarrSourceKind(value: string): value is OmeZarrSourceKind {
-  return (
-    value === 'ome-zarr-remote' || value === 'ome-zarr-directory' || value === 'ome-zarr-zip'
-  )
+  return value === 'ome-zarr-remote' || value === 'ome-zarr-directory' || value === 'ome-zarr-zip'
 }

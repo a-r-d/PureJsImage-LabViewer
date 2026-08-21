@@ -85,6 +85,18 @@ export interface ScienceActionPorts {
   particleSettings(): JsonValue
   planParticleAnalysis(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
   executeParticleAnalysis(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
+  particleQuality(): JsonValue
+  runNamedAnalysis(
+    kind:
+      | 'roi-statistics'
+      | 'histogram'
+      | 'line-profile'
+      | 'fft'
+      | 'surface-level'
+      | 'stack-align'
+      | 'result-compare',
+    signal: ActionAbortSignal,
+  ): Promise<JsonValue>
   createModelPreview(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
   omeZarrStoreDescription(): JsonValue
   omeZarrDatasetList(): JsonValue
@@ -270,6 +282,49 @@ export function createScienceActionHandlers(
       'analysis.particle.execute@1',
       {
         execute: (input, _context, signal) => ports.executeParticleAnalysis(input, signal),
+      },
+    ],
+    ['analysis.particle.quality.read@1', symmetricAction(() => ports.particleQuality())],
+    [
+      'analysis.roi.statistics.read@1',
+      {
+        execute: (_input, _context, signal) => ports.runNamedAnalysis('roi-statistics', signal),
+      },
+    ],
+    [
+      'analysis.histogram.read@1',
+      {
+        execute: (_input, _context, signal) => ports.runNamedAnalysis('histogram', signal),
+      },
+    ],
+    [
+      'analysis.line-profile.read@1',
+      {
+        execute: (_input, _context, signal) => ports.runNamedAnalysis('line-profile', signal),
+      },
+    ],
+    [
+      'analysis.fft.read@1',
+      {
+        execute: (_input, _context, signal) => ports.runNamedAnalysis('fft', signal),
+      },
+    ],
+    [
+      'analysis.surface.level.execute@1',
+      {
+        execute: (_input, _context, signal) => ports.runNamedAnalysis('surface-level', signal),
+      },
+    ],
+    [
+      'analysis.stack.align.execute@1',
+      {
+        execute: (_input, _context, signal) => ports.runNamedAnalysis('stack-align', signal),
+      },
+    ],
+    [
+      'analysis.result.compare.read@1',
+      {
+        execute: (_input, _context, signal) => ports.runNamedAnalysis('result-compare', signal),
       },
     ],
     [

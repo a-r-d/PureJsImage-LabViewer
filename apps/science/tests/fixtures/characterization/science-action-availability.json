@@ -22,7 +22,16 @@
     "analysis.dry-run@1": {
       "available": true
     },
+    "analysis.fft.read@1": {
+      "available": true
+    },
     "analysis.graph.request-execute@1": {
+      "available": true
+    },
+    "analysis.histogram.read@1": {
+      "available": true
+    },
+    "analysis.line-profile.read@1": {
       "available": true
     },
     "analysis.normalize@1": {
@@ -34,10 +43,27 @@
     "analysis.particle.plan@1": {
       "available": true
     },
+    "analysis.particle.quality.read@1": {
+      "available": false,
+      "reason": "Run particle analysis before reading quality diagnostics."
+    },
     "analysis.particle.settings.read@1": {
       "available": true
     },
     "analysis.request-execute@1": {
+      "available": true
+    },
+    "analysis.result.compare.read@1": {
+      "available": false,
+      "reason": "No analysis result is available to compare."
+    },
+    "analysis.roi.statistics.read@1": {
+      "available": true
+    },
+    "analysis.stack.align.execute@1": {
+      "available": true
+    },
+    "analysis.surface.level.execute@1": {
       "available": true
     },
     "analysis.threshold.commit@1": {
@@ -228,7 +254,19 @@
     "analysis.dry-run@1": {
       "available": true
     },
+    "analysis.fft.read@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
     "analysis.graph.request-execute@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.histogram.read@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.line-profile.read@1": {
       "available": false,
       "reason": "Open a dataset first."
     },
@@ -243,11 +281,31 @@
       "available": false,
       "reason": "Open a dataset first."
     },
+    "analysis.particle.quality.read@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
     "analysis.particle.settings.read@1": {
       "available": false,
       "reason": "Open a dataset first."
     },
     "analysis.request-execute@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.result.compare.read@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.roi.statistics.read@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.stack.align.execute@1": {
+      "available": false,
+      "reason": "Open a dataset first."
+    },
+    "analysis.surface.level.execute@1": {
       "available": false,
       "reason": "Open a dataset first."
     },

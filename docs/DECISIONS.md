@@ -73,12 +73,11 @@ The first implementations remain local. A future open-source Docker service or h
 
 ## Local-first agent credentials
 
-Durable agent credentials, when a domain explicitly enables them, go only through the reviewed
-credential store. The Science application enables durable BYOK after explicit one-time setup and
-stores the validated key only through its browser credential adapter; users can replace or remove it
-from Agent settings. Atlas instead defaults to a memory-only OpenRouter key: paste is explicit,
-removal is explicit, and application-session teardown clears it. Neither mode places credentials in
-semantic actions, project state, history, URLs, logs, telemetry, or error reports.
+Science and Atlas both default to a memory-only OpenRouter key. An explicit “Remember on this
+browser” action may persist the key through the reviewed credential store. Session keys are never
+migrated to localStorage without that action. Browser storage is not a secret vault; use a separate
+low-limit key. Neither mode places credentials in semantic actions, project state, history, URLs,
+logs, telemetry, eval reports, or error reports.
 
 The key must never enter:
 
@@ -239,11 +238,11 @@ See `docs/ATLAS_PROJECT_PERSISTENCE.md` for limits, migrations, and deep-link po
 Atlas has no model-only tool list. `packages/agent` receives a live capability manifest generated
 from action descriptors and availability, while `packages/geo-workbench` supplies bounded project
 context and policy. Every call retains its action ID/version/revision and executes through the same
-controller `ActionHost` as the UI. The OpenRouter adapter is replaceable, BYOK is session-memory-only,
-and normal CI uses deterministic transports. Completed conversation turns are retained only in
-bounded memory. Model-visible imagery exists only through the bounded, approval-gated
-`geo.preview.create` artifact path; browser-screen scope also requires the native display-share
-picker. See `docs/ATLAS_AGENT.md`.
+controller `ActionHost` as the UI. The OpenRouter adapter is replaceable. BYOK is session-only by
+default with an explicit remember-on-this-browser option, and normal CI uses deterministic
+transports. Completed conversation turns are retained only in bounded memory. Model-visible imagery
+exists only through the bounded, approval-gated `geo.preview.create` artifact path; browser-screen
+scope also requires the native display-share picker. See `docs/ATLAS_AGENT.md`.
 
 ## The Materials Workbench agent tunes analyses through the same science actions
 

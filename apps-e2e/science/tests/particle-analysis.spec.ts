@@ -173,6 +173,7 @@ test('completes the keyboard-guided particle workflow with linked results and re
   ).toEqual([])
   await scriptDialog.getByRole('button', { name: 'Close Script Studio' }).click()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('Saved locally')).toBeVisible()
   await page.reload()
   await waitForWorkbenchSettled(page)
   await page.getByRole('tab', { name: 'Pipeline' }).click()

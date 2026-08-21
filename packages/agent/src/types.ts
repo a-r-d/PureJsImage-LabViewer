@@ -104,6 +104,12 @@ export interface AgentModelRequest {
   readonly planningOnly?: boolean
 }
 
+export interface AgentTokenUsage {
+  readonly promptTokens?: number
+  readonly completionTokens?: number
+  readonly totalTokens?: number
+}
+
 export interface AgentModelResponse {
   readonly provider: string
   readonly model: string
@@ -111,11 +117,8 @@ export interface AgentModelResponse {
   readonly toolCalls: readonly AgentActionCall[]
   readonly plan?: AgentPlan
   readonly providerDetails?: JsonValue
-  readonly usage?: Readonly<{
-    readonly promptTokens?: number
-    readonly completionTokens?: number
-    readonly totalTokens?: number
-  }>
+  readonly usage?: AgentTokenUsage
+  readonly latencyMilliseconds?: number
 }
 
 export interface AgentModelSummary {
@@ -165,6 +168,7 @@ export interface AgentActionGateway {
   plan(call: AgentActionCall): ActionExecutionPlan
   execute(call: AgentActionCall, signal: AbortSignal): Promise<JsonValue>
   auditContext?(): JsonValue
+  sourceIdentities?(): JsonValue
 }
 
 export type AgentRunStatus =
@@ -214,8 +218,35 @@ export interface AgentArtifact {
   readonly projectRevision: number
 }
 
+export interface AgentSessionGrant {
+  readonly id: string
+  readonly scope: string
+  readonly permission: string
+  readonly createdAt: string
+  readonly lastUsedAt: string
+  readonly uses: number
+}
+
+export interface AgentRetainedLedger {
+  readonly schemaVersion: 1
+  readonly compacted: boolean
+  readonly compactionCount: number
+  readonly goals: readonly string[]
+  readonly decisions: readonly string[]
+  readonly sources: readonly Readonly<{ id: string; identity?: string }>[]
+  readonly selections: readonly Readonly<{ datasetId: string; plane?: string }>[]
+  readonly actions: readonly string[]
+  readonly results: readonly string[]
+  readonly assumptions: readonly string[]
+  readonly rejectedApproaches: readonly string[]
+  readonly calibration?: string
+  readonly grants: readonly string[]
+  readonly unresolvedQuestions: readonly string[]
+}
+
 export interface AgentAuditRecord {
   readonly schemaVersion: 1
+  readonly kind: 'run' | 'replay'
   readonly id: string
   readonly userRequest: string
   readonly provider: string
@@ -225,8 +256,9 @@ export interface AgentAuditRecord {
   readonly approvals: readonly Readonly<{
     id: string
     callId: string
-    decision: 'approved' | 'denied'
+    decision: 'approved' | 'denied' | 'remembered'
     at: string
+    grantScope?: string
   }>[]
   readonly trace: readonly AgentActionTrace[]
   readonly artifactIds: readonly string[]
@@ -235,6 +267,26 @@ export interface AgentAuditRecord {
   readonly context: JsonValue
   readonly startedAt: string
   readonly completedAt?: string
+  readonly usage?: AgentTokenUsage
+  readonly latencyMilliseconds?: number
+  readonly compactionCount?: number
+  readonly grantsUsed?: readonly string[]
+}
+
+export interface AgentReplayOptions {
+  readonly baseRevision?: number
+}
+
+export interface AgentReplayStop {
+  readonly actionId: string
+  readonly actionVersion: number
+  readonly reason: string
+}
+
+export interface AgentReplayResult {
+  readonly traces: readonly AgentActionTrace[]
+  readonly audit: AgentAuditRecord
+  readonly stoppedBefore?: AgentReplayStop
 }
 
 export interface AgentConversationTurn {
@@ -259,6 +311,9 @@ export interface AgentRuntimeSnapshot {
   readonly conversation: readonly AgentConversationTurn[]
   readonly conversationTurnCount: number
   readonly conversationMessageCount: number
+  readonly grants: readonly AgentSessionGrant[]
+  readonly ledger: AgentRetainedLedger
+  readonly credentialPersistence?: 'session' | 'browser'
 }
 
 export interface AgentRuntimeLimits {
@@ -290,6 +345,7 @@ export class AgentRuntimeError extends Error {
       | 'MAXIMUM_TOOL_CALLS'
       | 'POLICY_DENIED'
       | 'PROVIDER_ERROR'
+      | 'REPLAY_INCOMPATIBLE'
       | 'STALE_PROJECT_REVISION'
       | 'TIMEOUT'
       | 'TOOL_OUTPUT_TOO_LARGE'

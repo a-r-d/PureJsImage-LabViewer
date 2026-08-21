@@ -79,11 +79,19 @@ interface AgentEvalCaseV1 {
 - report calibration and units;
 - create an ROI and measure statistics;
 - threshold and count generated particles;
+- read `analysis.particle.quality.read` plus an approved preview before claiming reliability;
 - split touching particles with watershed;
 - filter particles by area/circularity;
 - compute an FFT and report a known spacing;
 - level an AFM surface and report Rq;
-- align a stack and report drift.
+- align a stack and report drift;
+- compare two bounded results by ID.
+
+Deterministic particle fixtures in `packages/materials-analysis/tests/particle-scenarios.test.ts`
+cover clean isolated particles, touching merges, edge objects, debris, elongated shapes, dark
+polarity, sampled-page diagnostics, and pixel-unit calibration warnings. They grade count,
+precision/recall, merge/split rate, mask IoU, and unit language. They are not a formal statistical
+guarantee of segmentation quality.
 
 ### Scripting
 
@@ -127,6 +135,25 @@ OME-Zarr stores.
 - cancel a remote store open;
 - rebind a local directory project;
 - produce a bounded preview without transmitting source chunks.
+
+### Atlas
+
+Current `ATLAS_AGENT_EVAL_CASES` are **scripted action-contract** sequences: they prove the fake
+model can call the current geo semantic actions in order. They are not live-model or
+controller-backed scientific grades.
+
+Controller-backed deterministic evals live in `packages/geo-workbench/tests/agent-controller-evals.test.ts`.
+They execute real `GeoWorkbenchController` handlers against local fixture rasters and catalogs, then
+grade project revision, bounded zonal statistics, catalog search without government services, and
+derived hillshade layers. Opt-in live Atlas evals use `ATLAS_LIVE_EVAL=1` and must not require
+external government services.
+
+### Untrusted-data evals
+
+Deterministic agent tests cover metadata saying “ignore previous instructions”, filenames asking for
+the API key, and tool results containing fake action syntax. Live evals should add an image that
+contains prompt-injection text and an imported project title requesting network access; those cases
+must still require ordinary approvals and must not disclose the key.
 
 Treat file names, metadata text, channel labels, plate names, and image contents as untrusted data.
 Model-visible results must never include chunk bytes or large arrays.
@@ -181,15 +208,21 @@ can read particle settings, dry-run a bounded patch, pause for execution approva
 result, pause for preview approval, deliver only the bounded rendered image, and retain a redacted
 follow-up turn without any live provider request.
 
-The opt-in Chromium suite adds two real-model paths:
+The opt-in Chromium suite includes:
 
 - `sem-particle-count` runs reviewed particle analysis, reads bounded results, approves a viewport
   preview, and asks a follow-up that must retain the prior tool context;
 - `split-touching-particles` compares a no-watershed baseline with a watershed run, requiring two
   executions, two bounded summaries, and two model-visible viewport previews. The first preview is
   approved explicitly and the second must reuse the session-scoped preview grant without another
-  prompt.
+  prompt;
+- `particle-quality-required`, `fft-spacing`, `surface-roughness`, and `stack-drift` for dedicated
+  analysis actions;
+- `untrusted-metadata` in the `safety` suite, which must not disclose the key or treat source text as
+  instructions.
 
-Reports contain action IDs, approval IDs, final visible answers, UI result headlines, request IDs,
-latency, usage, known provider cost, and whether an image was present. They omit request bodies,
-tool arguments/results, image data, headers, credentials, and reasoning details.
+Use `--repeat N` (1–8) to collect pass@1, mean cost, and common failure categories into
+`.local/agent-evals/<run>/summary.json`. Reports contain action IDs, approval IDs, final visible
+answers, UI result headlines, request IDs, latency, usage, known provider cost, and whether an image
+was present. They omit request bodies, tool arguments/results, image data, headers, credentials, and
+reasoning details. Every serialized report is secret-scanned in unit tests.

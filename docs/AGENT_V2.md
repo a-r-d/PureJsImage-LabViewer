@@ -107,9 +107,12 @@ Build bounded context from:
 - relevant pipeline nodes;
 - bounded result summaries;
 - installed recipe/script manifests;
-- recent conversation turns and compacted summaries.
+- recent conversation turns and a deterministic retained ledger when budgets are exceeded.
 
-Do not send raw full-resolution pixels by default. An explicit “share current viewport snapshot” action may provide a downsampled rendered image with the user’s approval and clear privacy text.
+Do not invent a conversation summary through an unreviewed model call. Compaction removes old raw
+turns, retains bounded facts (goals, decisions, source/result IDs, grants), and records that
+compaction occurred. Science and Atlas share `AgentConversationShell` with restricted Markdown
+answers, structured reference cards, visible session grants, and session-only keys by default.
 
 Use stable references (`dataset:...`, `roi:...`, `node:...`, `result:...`) so the model can refer to objects without repeating large payloads.
 
@@ -139,15 +142,17 @@ The approval card shows exact command/tool, target object, normalized parameters
 
 ## Credentials and local history
 
-- Atlas keeps the OpenRouter key in a session-only memory credential store by default and clears it
-  when the application session ends. A domain that explicitly enables durable BYOK may use the
-  separately reviewed `CredentialStore`; the provider-independent agent core never owns storage.
-- The Science application enables that durable BYOK adapter: initial setup is a one-time modal,
-  subsequent access is behind Agent settings, and explicit removal clears the browser value.
+- Science and Atlas both default to a session-only in-memory OpenRouter key. An explicit
+  “Remember on this browser” checkbox may persist the key through the reviewed credential store.
+- Session keys are never copied to localStorage without that explicit action. Display whether the
+  current persistence is session or browser, and always offer remove/revoke.
+- The provider-independent agent core never owns storage.
 - Store conversation/event history in IndexedDB because it can exceed localStorage capacity.
 - Never store the API key in history, tools, projects, logs, error reports, URLs, telemetry, or eval traces.
-- Add a clear “local browser storage is not an enterprise secret vault” warning.
+- Add a clear “local browser storage is not an enterprise secret vault” warning and recommend a
+  separate low-limit OpenRouter key.
 - Add delete/export history actions; exports are secret-scanned.
+- Remembered approval scopes are listed, revocable, audited, and cleared when the runtime is disposed.
 
 ## Initial model settings
 
@@ -170,7 +175,8 @@ Normal CI uses a deterministic fake OpenRouter transport that can produce:
 
 - final text;
 - one or multiple sequential tool calls;
-- malformed arguments;
+- malformed arguments, which the host returns as a bounded tool error when they fail schema
+  validation so the model can correct the call;
 - unknown tools;
 - repeated calls;
 - approval waits;

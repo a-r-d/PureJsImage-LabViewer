@@ -60,6 +60,14 @@ export function createScienceAgentGateway(ports: ScienceAgentGatewayPorts): Agen
     },
     context: ports.modelContext,
     auditContext: ports.modelContext,
+    sourceIdentities: () => {
+      const workspace = ports.currentWorkspace()
+      return workspace.sources.slice(0, 32).map((reference) => ({
+        id: reference.id,
+        bound: reference.bound,
+        locator: reference.locator,
+      }))
+    },
     plan: (call) =>
       ports
         .currentHost()

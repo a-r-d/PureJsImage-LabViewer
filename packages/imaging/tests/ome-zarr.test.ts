@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest'
 import { ImagingWorkerHost, PUREJSIMAGE_PACKAGE_VERSION, SUPPORTED_READERS } from '../src/index.js'
 import { readerKeysForSource } from '../src/worker-readers.js'
 import {
-  unsupportedCodecOmeZarrV2Store,
   malformedOmeZarrStore,
   storeFetch,
   storeFiles,
@@ -19,6 +18,7 @@ import {
   tinyOmeZarrShardedV3Store,
   tinyOmeZarrV2Store,
   tinyOmeZarrV3Store,
+  unsupportedCodecOmeZarrV2Store,
   zipStore,
 } from './ome-zarr-fixtures.js'
 
@@ -87,10 +87,7 @@ async function openZip(
   ) as OpenedSourceDescriptor
 }
 
-async function openRemote(
-  host: ImagingWorkerHost,
-  url: string,
-): Promise<OpenedSourceDescriptor> {
+async function openRemote(host: ImagingWorkerHost, url: string): Promise<OpenedSourceDescriptor> {
   return payload(
     (
       await host.handle(
@@ -276,7 +273,9 @@ describe('OME-Zarr imaging worker', () => {
     const v3 = tinyOmeZarrV3Store()
     const host = new ImagingWorkerHost({
       fetch: async (input, init) => {
-        const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+        const url = String(
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
+        )
         if (url.includes('/v2/')) return storeFetch('https://fixtures.invalid/v2/', v2)(input, init)
         return storeFetch('https://fixtures.invalid/v3/', v3)(input, init)
       },
@@ -424,14 +423,17 @@ describe('OME-Zarr imaging worker', () => {
   })
 })
 
-describe.skipIf(process.env['PJI_OME_ZARR_PUBLIC'] !== '1')('optional public OME-Zarr smoke', () => {
-  it('opens a pinned public NGFF store identity', async () => {
-    const url = 'https://uk1s3.embassy.ebi.ac.uk/idr/zarr/v0.4/idr0062A/6001240.zarr'
-    const host = new ImagingWorkerHost()
-    const source = await openRemote(host, url)
-    expect(source.reader.id).toBe('purejsimage/ome-zarr')
-    expect(source.source.kind).toBe('ome-zarr-remote')
-    expect(typeof source.metadata['omeNgffVersion']).toBe('string')
-    await host.dispose()
-  })
-})
+describe.skipIf(process.env['PJI_OME_ZARR_PUBLIC'] !== '1')(
+  'optional public OME-Zarr smoke',
+  () => {
+    it('opens a pinned public NGFF store identity', async () => {
+      const url = 'https://uk1s3.embassy.ebi.ac.uk/idr/zarr/v0.4/idr0062A/6001240.zarr'
+      const host = new ImagingWorkerHost()
+      const source = await openRemote(host, url)
+      expect(source.reader.id).toBe('purejsimage/ome-zarr')
+      expect(source.source.kind).toBe('ome-zarr-remote')
+      expect(typeof source.metadata['omeNgffVersion']).toBe('string')
+      await host.dispose()
+    })
+  },
+)

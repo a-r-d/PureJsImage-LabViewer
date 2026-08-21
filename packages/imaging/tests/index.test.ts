@@ -1054,6 +1054,11 @@ describe('PureJsImage Worker host', () => {
         return axis?.length === 8
       }),
     ).toBe(true)
+    expect(dataset.dataset.axes.map(({ kind, unit }) => ({ kind, unit }))).toEqual([
+      { kind: 'space', unit: 'nm' },
+      { kind: 'space', unit: 'nm' },
+      { kind: 'space', unit: 'nm' },
+    ])
     await host.dispose()
   })
 
@@ -1437,6 +1442,18 @@ describe('PureJsImage Worker host', () => {
     })
   })
 
+  it('includes nested analysis error causes in Worker RPC messages', async () => {
+    const { structuredError } = await import('../src/worker-host/protocol.js')
+    const failure = new Error(
+      'Analysis node materials-stack-align failed in pji-workbench.materials.stack.phase-correlation-align@1 using pji-workbench-advanced-materials-typescript-v1',
+    )
+    failure.cause = new Error('Stack axis must differ from both display axes.')
+    expect(structuredError(failure, 'INTERNAL_ERROR')).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: expect.stringContaining('Stack axis must differ from both display axes.'),
+    })
+  })
+
   it('cancels an in-flight tile through its explicit request ID', async () => {
     const width = 1_024
     const height = 1_024
@@ -1624,6 +1641,87 @@ describe('PureJsImage Worker host', () => {
     expect(payload(radialResponse.response, 'analysis.series-export')).toMatchObject({
       rowCount: 32,
     })
+    await host.dispose()
+  })
+
+  it('aligns the generated drifting stack through the public analysis Worker', async () => {
+    const host = createScienceImagingWorkerHost()
+    const { dataset } = await openGenerated(host, 1, 'generated.drifting-stack')
+    const stackAxis = dataset.dataset.axes.find(
+      (axis) => !dataset.selection.displayAxes.includes(axis.id) && axis.length > 1,
+    )
+    if (stackAxis === undefined) {
+      throw new Error(
+        `The generated stack did not expose a stack axis. axes=${JSON.stringify(dataset.dataset.axes)} selection=${JSON.stringify(dataset.selection)}`,
+      )
+    }
+    expect(stackAxis.length).toBe(8)
+    const graph = {
+      schemaVersion: 1,
+      inputs: [{ name: 'source', valueType: { id: scientificDatasetValueTypeId, version: 1 } }],
+      nodes: [
+        {
+          id: 'materials-stack-align',
+          operation: { id: MATERIALS_OPERATION_IDS.stackAlignment, version: 1 },
+          inputs: [{ port: 'dataset', source: { kind: 'input', input: 'source' } }],
+          parameters: {
+            displayAxes: [...dataset.selection.displayAxes],
+            fixedIndices: dataset.selection.fixedIndices.map(({ axisId, index }) => ({
+              axisId,
+              index,
+            })),
+            component: 0,
+            stackAxis: stackAxis.id,
+            startIndex: 0,
+            endIndex: stackAxis.length - 1,
+            referenceIndex: 0,
+            maximumShift: 16,
+            minimumPeakRatio: 1.2,
+            edgePolicy: 'crop-overlap',
+            fillValue: 0,
+          },
+        },
+      ],
+      outputs: [
+        {
+          name: 'alignedStack',
+          source: { kind: 'node', nodeId: 'materials-stack-align', output: 'alignedStack' },
+        },
+        {
+          name: 'drift',
+          source: { kind: 'node', nodeId: 'materials-stack-align', output: 'drift' },
+        },
+      ],
+    } as unknown as RpcJsonObject
+    const dryRunResponse = await host.handle(
+      rpcRequest('stack-plan', 'analysis.dry-run', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph,
+      }),
+    )
+    expect(payload(dryRunResponse.response, 'analysis.dry-run')).toMatchObject({ valid: true })
+    const executedResponse = await host.handle(
+      rpcRequest('stack-execute', 'analysis.execute', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        graph,
+      }),
+    )
+    expect(executedResponse.response).toMatchObject({ ok: true, kind: 'analysis.executed' })
+    const execution = payload(executedResponse.response, 'analysis.executed')
+    expect(execution.outputs.map(({ name }) => name)).toEqual(['alignedStack', 'drift'])
+    const driftPage = await host.handle(
+      rpcRequest('stack-drift', 'analysis.table-page', {
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        resultHandleId: execution.resultHandleId,
+        output: 'drift',
+        offset: 0,
+        limit: 16,
+      }),
+    )
+    expect(payload(driftPage.response, 'analysis.table-page').totalRows).toBe(stackAxis.length)
     await host.dispose()
   })
 

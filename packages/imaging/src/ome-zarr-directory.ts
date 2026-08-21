@@ -13,8 +13,7 @@ const ROOT_METADATA_PREFERENCE: readonly OmeZarrRootMetadataName[] = [
 
 export function omeZarrRelativePath(file: File): string {
   const relative = file.webkitRelativePath
-  const raw =
-    typeof relative === 'string' && relative.length > 0 ? relative : file.name
+  const raw = typeof relative === 'string' && relative.length > 0 ? relative : file.name
   return normalizeScientificRelativeName(raw.replaceAll('\\', '/'))
 }
 

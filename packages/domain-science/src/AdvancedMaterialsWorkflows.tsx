@@ -8,6 +8,8 @@ import { Button } from '@pji-workbench/ui'
 import type { WorkspaceSnapshot } from '@pji-workbench/workspace'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { stackAxesForSelection } from './analysis-workflows.js'
+
 export interface FftWorkspaceSettings {
   readonly roiId: string
   readonly spectrumDisplay: 'raw' | 'log1p'
@@ -257,7 +259,7 @@ export function AdvancedMaterialsWorkflows({
   selection: PlaneSelection
 }>) {
   const stackAxes = useMemo(
-    () => axes.filter(({ id, length }) => !selection.displayAxes.includes(id) && length > 1),
+    () => stackAxesForSelection(axes, selection.displayAxes),
     [axes, selection.displayAxes],
   )
   const [fft, setFft] = useState(DEFAULT_FFT_WORKSPACE)

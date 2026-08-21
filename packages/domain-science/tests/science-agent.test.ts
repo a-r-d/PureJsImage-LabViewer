@@ -188,6 +188,8 @@ describe('science agent runtime', () => {
           workspace = { ...workspace, revision: workspace.revision + 1 }
           return { status: 'completed', particleCount: 17 }
         },
+        particleQuality: () => ({ available: true, objectCount: 17 }),
+        runNamedAnalysis: async () => ({ status: 'completed' }),
         createModelPreview: async () => {
           executed.push('preview')
           return pngArtifact(workspace.revision)
@@ -309,7 +311,12 @@ describe('science agent runtime', () => {
       'approved',
       'remembered',
     ])
-    expect(audit.approvals.filter(({ callId }) => callId.startsWith('preview'))).toHaveLength(1)
+    expect(
+      audit.approvals.filter(
+        ({ callId, decision }) => decision === 'approved' && callId.startsWith('preview'),
+      ),
+    ).toHaveLength(1)
+    expect(audit.approvals.some(({ decision }) => decision === 'remembered')).toBe(true)
     expect(runtime.getSnapshot().artifacts).toHaveLength(2)
 
     await runtime.start('Which settings changed?', 'fake/science-vision')
@@ -364,5 +371,61 @@ describe('science agent runtime', () => {
       decision: 'require-approval',
       approvalScope: 'science:model-preview:viewport',
     })
+  })
+
+  it('routes dedicated analysis actions and quality diagnostics instead of a generic dump', async () => {
+    const kinds: string[] = []
+    const signal = { aborted: false, throwIfAborted: vi.fn() }
+    const handlers = createScienceActionHandlers({
+      particleQuality: () => ({
+        available: true,
+        objectCount: 10,
+        limitations: ['not a formal statistical guarantee'],
+      }),
+      runNamedAnalysis: async (kind) => {
+        kinds.push(kind)
+        return { kind, bounded: true }
+      },
+    } as unknown as ScienceActionPorts)
+    const quality = handlers.get('analysis.particle.quality.read@1')
+    const histogram = handlers.get('analysis.histogram.read@1')
+    const profile = handlers.get('analysis.line-profile.read@1')
+    const fft = handlers.get('analysis.fft.read@1')
+    const surface = handlers.get('analysis.surface.level.execute@1')
+    const stack = handlers.get('analysis.stack.align.execute@1')
+    const compare = handlers.get('analysis.result.compare.read@1')
+    const roi = handlers.get('analysis.roi.statistics.read@1')
+    if (
+      quality === undefined ||
+      histogram === undefined ||
+      profile === undefined ||
+      fft === undefined ||
+      surface === undefined ||
+      stack === undefined ||
+      compare === undefined ||
+      roi === undefined
+    )
+      throw new Error('Dedicated analysis actions are missing.')
+    expect(
+      await Promise.resolve(quality.execute({}, { hasDataset: true, hasResult: true }, signal)),
+    ).toMatchObject({
+      objectCount: 10,
+    })
+    await histogram.execute({}, { hasDataset: true }, signal)
+    await profile.execute({}, { hasDataset: true }, signal)
+    await fft.execute({}, { hasDataset: true }, signal)
+    await surface.execute({}, { hasDataset: true }, signal)
+    await stack.execute({}, { hasDataset: true }, signal)
+    await compare.execute({}, { hasDataset: true }, signal)
+    await roi.execute({}, { hasDataset: true }, signal)
+    expect(kinds).toEqual([
+      'histogram',
+      'line-profile',
+      'fft',
+      'surface-level',
+      'stack-align',
+      'result-compare',
+      'roi-statistics',
+    ])
   })
 })

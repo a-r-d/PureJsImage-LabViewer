@@ -9,6 +9,12 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Added
 
+- Shared `AgentConversationShell` for Science and Atlas, restricted Markdown answers, session-only
+  OpenRouter keys by default with an explicit remember-on-this-browser option, visible revocable
+  session grants, a deterministic conversation ledger, hardened replay, and
+  `analysis.particle.quality.read` plus dedicated ROI/histogram/profile/FFT/surface/stack/compare
+  actions. Atlas keeps labeled scripted action-contract evals and adds controller-backed grading.
+
 - The workbench consumes `purejsimage@0.15.0`. Science opens remote, directory, and ZIP OME-Zarr
   stores through explicit source kinds on the imaging Worker. Atlas does not gain an OME-Zarr
   source workflow merely because the format is multiscale.
@@ -35,6 +41,16 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Fixed
 
+- Science stack alignment selects the non-display volume axis rather than the first
+  non-space axis, so generated NRRD stacks can be aligned. The generated drifting-stack
+  NRRD now declares `kinds: space space space`. Worker analysis errors include the nested
+  operation cause instead of only the graph wrapper.
+- Biome formatting for the OME-Zarr source surface. Visual goldens include the OME-Zarr
+  open controls and the shared agent conversation shell. Chromium screenshot compare allows
+  a 2.5% pixel ratio so the Playwright Linux container and a developer host can share the
+  same goldens. Science save/reload e2e waits until the project is marked saved, Atlas
+  comparison waits until the second COG settles, and bundled example opens use a 90s test
+  timeout without changing first-tile budgets.
 - Atlas catalog fetch throws are classified as a browser network block, not “Catalog
   unavailable.” CORS is claimed only when the error names CORS. LandsatLook still cannot be
   searched from `geo.purejsimage.com` until USGS allows that origin; Atlas does not proxy.

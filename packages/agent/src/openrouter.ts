@@ -181,6 +181,7 @@ export class OpenRouterTransport implements AgentModelTransport {
       },
       signal,
     )
+    const started = Date.now()
     const response = await this.#fetch(CHAT_ENDPOINT, {
       method: 'POST',
       headers: this.#headers(key),
@@ -209,7 +210,10 @@ export class OpenRouterTransport implements AgentModelTransport {
       signal,
     })
     const body = await responseJson(response, key)
-    if (!response.ok) throw openRouterFailure(response.status, body, key)
+    if (!response.ok) {
+      if (response.status === 404) this.#models = undefined
+      throw openRouterFailure(response.status, body, key)
+    }
     const root = record(body)
     const choice = Array.isArray(root?.['choices']) ? record(root['choices'][0]) : undefined
     const providerError = choice === undefined ? root?.['error'] : choice['error']
@@ -233,6 +237,7 @@ export class OpenRouterTransport implements AgentModelTransport {
       ...(message['reasoning_details'] === undefined
         ? {}
         : { providerDetails: jsonValue(message['reasoning_details']) }),
+      latencyMilliseconds: Math.max(0, Date.now() - started),
       ...(usageRecord === undefined
         ? {}
         : {
@@ -245,6 +250,10 @@ export class OpenRouterTransport implements AgentModelTransport {
     }
   }
 
+  invalidateModelCache(): void {
+    this.#models = undefined
+  }
+
   async validateModel(
     model: string,
     requirements: Readonly<{
@@ -255,16 +264,20 @@ export class OpenRouterTransport implements AgentModelTransport {
   ): Promise<void> {
     if (this.#models === undefined) await this.listModels(signal)
     const selectedModel = this.#models?.get(model)
-    if (selectedModel === undefined)
+    if (selectedModel === undefined) {
+      this.#models = undefined
       throw new AgentRuntimeError(
         'UNSUPPORTED_MODEL',
         `OpenRouter model ${model} does not advertise tool calling support.`,
       )
-    if (requirements.imageInput && !selectedModel.inputModalities.includes('image'))
+    }
+    if (requirements.imageInput && !selectedModel.inputModalities.includes('image')) {
+      this.#models = undefined
       throw new AgentRuntimeError(
         'UNSUPPORTED_MODEL',
         `OpenRouter model ${model} does not advertise image input support required by the approved preview.`,
       )
+    }
     if (
       requirements.reasoningEffort !== undefined &&
       selectedModel.supportedReasoningEfforts !== undefined &&
@@ -388,11 +401,12 @@ function parseToolCalls(value: unknown, request: AgentModelRequest): readonly Ag
         `${capability.actionId} arguments are not valid JSON.`,
       )
     const args = record(parsed.data)
-    if (args === undefined || args['input'] === undefined)
+    if (args === undefined)
       throw new AgentRuntimeError(
         'INVALID_MODEL_RESPONSE',
         `${capability.actionId} arguments are malformed.`,
       )
+    const input = args['input'] === undefined ? flattenedToolInput(args) : jsonValue(args['input'])
     return {
       callId:
         typeof call?.['id'] === 'string' && call['id'].length <= 256
@@ -401,7 +415,7 @@ function parseToolCalls(value: unknown, request: AgentModelRequest): readonly Ag
       actionId: capability.actionId,
       actionVersion: capability.actionVersion,
       projectRevision: request.manifest.projectRevision,
-      input: jsonValue(args['input']),
+      input,
     }
   })
 }
@@ -454,12 +468,7 @@ function parsePlan(content: string): AgentPlan | undefined {
 }
 
 async function responseJson(response: Response, key: string): Promise<unknown> {
-  const length = Number(response.headers.get('content-length'))
-  if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES)
-    throw new AgentRuntimeError('PROVIDER_ERROR', 'OpenRouter response exceeded 2 MiB.')
-  const text = await response.text()
-  if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES)
-    throw new AgentRuntimeError('PROVIDER_ERROR', 'OpenRouter response exceeded 2 MiB.')
+  const text = await readBoundedResponseText(response)
   try {
     return JSON.parse(text) as unknown
   } catch {
@@ -468,6 +477,39 @@ async function responseJson(response: Response, key: string): Promise<unknown> {
       redact(`OpenRouter returned malformed JSON (${response.status}).`, key),
     )
   }
+}
+
+async function readBoundedResponseText(response: Response): Promise<string> {
+  const length = Number(response.headers.get('content-length'))
+  if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES)
+    throw new AgentRuntimeError('PROVIDER_ERROR', 'OpenRouter response exceeded 2 MiB.')
+  const reader = response.body?.getReader()
+  if (reader === undefined) {
+    const text = await response.text()
+    if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES)
+      throw new AgentRuntimeError('PROVIDER_ERROR', 'OpenRouter response exceeded 2 MiB.')
+    return text
+  }
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value === undefined) continue
+    total += value.byteLength
+    if (total > MAX_RESPONSE_BYTES) {
+      await reader.cancel()
+      throw new AgentRuntimeError('PROVIDER_ERROR', 'OpenRouter response exceeded 2 MiB.')
+    }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(bytes)
 }
 
 function openRouterFailure(status: number, value: unknown, key: string): AgentRuntimeError {
@@ -501,7 +543,10 @@ function openRouterFailure(status: number, value: unknown, key: string): AgentRu
 }
 
 function redact(value: string, key: string): string {
-  return value.split(key).join('[REDACTED]')
+  return value
+    .split(key)
+    .join('[REDACTED]')
+    .replaceAll(/sk-or-[A-Za-z0-9_-]{8,}/gu, '[REDACTED]')
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
@@ -510,6 +555,12 @@ function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
   return prototype === Object.prototype || prototype === null
     ? (value as Readonly<Record<string, unknown>>)
     : undefined
+}
+
+function flattenedToolInput(args: Readonly<Record<string, unknown>>): JsonValue {
+  return jsonValue(
+    Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'projectRevision')),
+  )
 }
 
 function jsonValue(value: unknown, depth = 0): JsonValue {

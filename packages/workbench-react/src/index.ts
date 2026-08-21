@@ -1,4 +1,16 @@
 export {
+  type AgentConversationCopy,
+  AgentConversationShell,
+  type AgentStarterPrompt,
+  ATLAS_AGENT_COPY,
+  SCIENCE_AGENT_COPY,
+} from './AgentConversationShell.js'
+export {
+  type AgentReferenceCard,
+  type AgentReferenceKind,
+  agentReferenceCards,
+} from './agent-reference-cards.js'
+export {
   type BoundedPngPreview,
   type BoundedPreviewOptions,
   captureBoundedScreenPreview,

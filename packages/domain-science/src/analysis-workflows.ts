@@ -570,6 +570,20 @@ export interface StackWorkflowOptions {
   readonly fillValue: number
 }
 
+export function stackAxesForSelection<T extends { readonly id: string; readonly length: number }>(
+  axes: readonly T[],
+  displayAxes: readonly string[],
+): readonly T[] {
+  return axes.filter(({ id, length }) => !displayAxes.includes(id) && length > 1)
+}
+
+export function stackAxisForSelection<T extends { readonly id: string; readonly length: number }>(
+  axes: readonly T[],
+  displayAxes: readonly string[],
+): T | undefined {
+  return stackAxesForSelection(axes, displayAxes)[0]
+}
+
 export function stackWorkflowGraph(options: StackWorkflowOptions): AnalysisGraph {
   const nodeId = `materials-stack-${options.mode}`
   const builtInProjection =

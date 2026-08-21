@@ -107,6 +107,7 @@ test('fake OpenRouter conversation survives inspector changes and keeps tool con
   const settings = page.getByRole('dialog', { name: 'Agent settings' })
   await expect(settings).toBeVisible()
   await settings.getByLabel('OpenRouter key').fill('sk-or-fake-e2e-key')
+  await settings.getByLabel('Remember on this browser').check()
   await settings.getByRole('button', { name: 'Save and continue' }).click()
   await expect(settings).toBeHidden()
   await expect

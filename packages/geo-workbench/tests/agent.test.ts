@@ -27,7 +27,7 @@ const FIXTURE_CONTEXT: GeoActionContext = {
   hasRoi: true,
 }
 
-describe('Atlas deterministic agent evaluations', () => {
+describe('Atlas scripted action-contract evaluations', () => {
   it.each(ATLAS_AGENT_EVAL_CASES)(
     '$id uses only current geo semantic actions',
     async (testCase) => {

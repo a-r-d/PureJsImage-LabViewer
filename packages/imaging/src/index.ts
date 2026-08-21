@@ -1,3 +1,8 @@
+export {
+  omeZarrDirectoryFingerprint,
+  selectOmeZarrDirectoryRoot,
+} from './ome-zarr-directory.js'
+export { authoredOmeZarrDisplayMapping } from './ome-zarr-display.js'
 export { PUREJSIMAGE_PACKAGE_VERSION } from './package-version.js'
 export type {
   RasterAssetPreflight,
@@ -18,18 +23,17 @@ export {
   ImagingWorkerClient,
   type ImagingWorkerClientOptions,
 } from './worker-client.js'
+export { durableOmeZarrRootUrl } from './worker-host/ome-zarr-rpc.js'
 export {
   type ImagingAnalysisCatalogExtras,
   ImagingWorkerHost,
   type ImagingWorkerHostOptions,
 } from './worker-host.js'
-export { authoredOmeZarrDisplayMapping } from './ome-zarr-display.js'
 export {
-  omeZarrDirectoryFingerprint,
-  selectOmeZarrDirectoryRoot,
-} from './ome-zarr-directory.js'
-export { durableOmeZarrRootUrl } from './worker-host/ome-zarr-rpc.js'
-export { SUPPORTED_FILE_ACCEPT, OME_ZARR_ZIP_FILE_ACCEPT, SUPPORTED_READERS } from './worker-readers.js'
+  OME_ZARR_ZIP_FILE_ACCEPT,
+  SUPPORTED_FILE_ACCEPT,
+  SUPPORTED_READERS,
+} from './worker-readers.js'
 
 // Compile-time probes deliberately verify documented package paths without exporting live objects.
 export type PublicScientificApi = typeof import('purejsimage/scientific')
