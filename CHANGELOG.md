@@ -51,8 +51,9 @@ The application is not yet versioned for release (`0.0.0`).
   not fail CI. Chromium screenshot compare allows a 2.5% pixel ratio for remaining
   container-vs-host antialiasing. Science save/reload e2e waits until the project is
   marked saved, Atlas comparison waits until the second COG settles, and bundled example
-  opens use a 90s test timeout without changing first-tile budgets. JPEG/PNG codec
-  adapters share one origin-decoded plane between viewport tiles and analysis so
+  opens use a 120s test timeout and 90s gallery-close wait without changing first-tile
+  budgets, so WebKit can finish connected-components on the 2100 by 1630 JPEG. JPEG/PNG
+  codec adapters share one origin-decoded plane between viewport tiles and analysis so
   opening an analyzed example does not decode the still twice. If the live dataset
   handle goes stale after the first tile, Science reopens the example once before
   applying the committed analysis, and replace-one open ignores an already-gone

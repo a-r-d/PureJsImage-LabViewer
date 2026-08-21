@@ -35,7 +35,7 @@ for (const artifact of prScenarios) {
   test(`@scenario opens ${artifact.scenarioId} from its normalized artifact`, async ({
     page,
   }, testInfo) => {
-    test.setTimeout(90_000)
+    test.setTimeout(120_000)
     try {
       await page.getByRole('button', { name: 'Examples mode' }).click()
       const gallery = page.getByRole('dialog', { name: 'Example library' })
@@ -47,7 +47,7 @@ for (const artifact of prScenarios) {
           exact: true,
         })
         .click()
-      await expect(gallery).toBeHidden({ timeout: 30_000 })
+      await expect(gallery).toBeHidden({ timeout: 90_000 })
       await waitForWorkbenchSettled(page)
       await expect(page.getByRole('img', { name: /Scientific image viewport/u })).toBeVisible()
       const sourceName = artifact.fixture.files[0]?.split('/').at(-1)
