@@ -1,0 +1,92 @@
+apps/science/src/app/WorkbenchApp.tsx
+  s_a7ace3638d125b::t_2cd8db8179c3ba 194-198
+  s_a7ace3638d125b::t_d4be63588594ac 5096-5118,5120-5130
+  s_a7ace3638d125b::t_e115dc29a6d66a 5119
+packages/domain-science/src/MaterialsPanels.tsx
+  s_a7ace3638d125b::t_17d327ac07d312 1067-1076
+  s_a7ace3638d125b::t_dc5194a5eda335 1571-1582
+  s_a7ace3638d125b::t_912e96988890ab 1543-1545
+  s_a7ace3638d125b::t_ca1317e75f7a0c 12
+apps/science/tests/preferences.test.ts
+  s_a7ace3638d125b::t_5d6c898d3ea411 5,22-26
+packages/workbench-react/src/AgentConversationShell.tsx
+  s_a7ace3638d125b::t_0b3db80e2f4c02 329-336
+  s_a7ace3638d125b::t_3392d2f3537424 393-412,415-421,423-463
+  s_a7ace3638d125b::t_c4be65e8f1d4bc 378,380,382
+  s_a7ace3638d125b::t_c45598da42572e 10-17
+  s_a7ace3638d125b::t_c6e77728cac132 29
+  s_a7ace3638d125b::t_e1930bb7714921 366-368,379,381
+packages/ui/src/copy-button.tsx
+  s_a7ace3638d125b::t_00da27ae672b07 2-12,16-24,26-27,34-35
+  s_a7ace3638d125b::t_ce8b71babae762 1,13-15,25,28-33
+apps/science/src/styles/shell.css
+  s_a7ace3638d125b::t_c7bcf87415ced8 1290
+  s_a7ace3638d125b::t_86ec118023c3f1 956-958
+apps/science/src/styles.css
+  s_a7ace3638d125b::t_b1e33db3b1de81 627-638
+packages/workbench-react/tests/agent-action-trail.test.ts
+  s_a7ace3638d125b::t_c0fd31782e3943 3
+  s_a7ace3638d125b::t_5fb3c90934ffd1 11-15
+packages/workbench-react/src/AgentActionTrail.tsx
+  s_a7ace3638d125b::t_51adb76abe5f10 15-32
+packages/ui/src/restricted-markdown.tsx
+  s_a7ace3638d125b::t_7c339398c710a9 261-266
+  s_a7ace3638d125b::t_cdbc347ed5295c 3
+  s_a7ace3638d125b::t_677dc652caf7ba 1
+  s_a7ace3638d125b::t_2f8b4521bce90a 308-316,323-328
+  s_a7ace3638d125b::t_b93b6b82938fe1 2
+packages/ui/src/styles.css
+  s_a7ace3638d125b::t_c16064c5d048c0 56-59
+  s_a7ace3638d125b::t_7c1620ab6c4e64 792,797,800,802,814,842
+  s_a7ace3638d125b::t_f36a827b084990 48-50,53,55
+  s_a7ace3638d125b::t_4610980f2edbfa 51-52,54
+  s_a7ace3638d125b::t_8aa661662178d0 382-395,416-419,421
+  s_a7ace3638d125b::t_a0880ce9aa16a4 784-787,789-790,796,798-799,801,803-805,807-809,811-813,816-820,822-837,840-841
+  s_a7ace3638d125b::t_83f808b269803b 645-658
+  s_a7ace3638d125b::t_5248371941b6bb 872-875,877-884
+  s_c49d86ebbd688d::t_b951bc3bbc453e 795
+apps/science/tests/materials-analysis.test.ts
+  s_a7ace3638d125b::t_58c6152e18a1a3 9
+  s_a7ace3638d125b::t_786a8921401a8d 98
+docs/AGENT_V2.md
+  s_a7ace3638d125b::t_6ce472b51d594a 145-146
+packages/ui/src/index.tsx
+  s_a7ace3638d125b::t_f10f7d32e18a8f 225,228,230
+  s_a7ace3638d125b::t_7ac2997d0ca8c6 233
+  s_a7ace3638d125b::t_bb59eeba3e9763 4-6,10
+  s_a7ace3638d125b::t_b5fb95ac45d18f 265,268,270
+  s_a7ace3638d125b::t_3134ab5fe4165c 273
+  s_a7ace3638d125b::t_7e1d6742e34979 668
+apps/science/src/preferences.ts
+  s_a7ace3638d125b::t_8c20a1efe39255 25
+  s_a7ace3638d125b::t_3e2379079b89df 68-74
+packages/domain-science/src/index.ts
+  s_a7ace3638d125b::t_77f3fd5a75fecf 58
+CHANGELOG.md
+  s_a7ace3638d125b::t_81910dc707b020 47,50-51
+  s_a7ace3638d125b::t_cd0157ece8644a 48-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "9784ea00ac28170c92310ece8416e0748bcec8c0",
+  "prompts": {},
+  "sessions": {
+    "s_a7ace3638d125b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "39a0b624-d488-4924-a89c-cd6871d11e2b",
+        "model": "grok-4.6"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    },
+    "s_c49d86ebbd688d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a02096-ad8e-7532-a2a5-3bd419325fa3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
