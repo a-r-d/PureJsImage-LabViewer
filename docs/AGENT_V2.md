@@ -142,7 +142,8 @@ Suggested defaults:
 - script install/execute: source/permissions/test review plus approval;
 - export, upload, or external network: approval every time.
 
-The approval card shows exact command/tool, target object, normalized parameters, estimated memory/work, source ranges where known, and expected outputs.
+The approval prompt is one line naming the action, with Approve and Deny. Input JSON stays
+behind a compact disclosure.
 
 ## Credentials and local history
 

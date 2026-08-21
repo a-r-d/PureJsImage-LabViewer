@@ -624,7 +624,18 @@ canvas:focus-visible,
 
 .bottom-panel {
   display: grid;
-  grid-template-rows: 32px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.bottom-panel__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding-right: 4px;
+  border-bottom: 1px solid var(--wb-border);
+}
+.bottom-panel__header .ui-tabs {
+  border-bottom: 0;
+  padding-left: 6px;
 }
 .bottom-panel .ui-tabs {
   padding-left: 6px;
@@ -660,7 +671,6 @@ canvas:focus-visible,
   color: var(--wb-text);
 }
 .virtual-table {
-  max-height: 220px;
   overflow: auto;
   border: 1px solid var(--wb-border);
 }

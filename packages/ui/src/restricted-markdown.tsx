@@ -1,4 +1,6 @@
-import { createElement, Fragment, type ReactNode } from 'react'
+import { createElement, type ReactNode } from 'react'
+
+import { CopyButton } from './copy-button.js'
 
 export const RESTRICTED_MARKDOWN_LIMITS = Object.freeze({
   maxNodes: 400,
@@ -256,7 +258,12 @@ function renderBlock(block: RestrictedMarkdownNode, key: number): ReactNode {
         createElement('p', null, ...renderInline(block.children)),
       )
     case 'code':
-      return createElement('pre', { key }, createElement('code', null, block.text))
+      return createElement(
+        'div',
+        { key, className: 'restricted-markdown__code' },
+        createElement(CopyButton, { label: 'Copy code', text: block.text }),
+        createElement('pre', null, createElement('code', null, block.text)),
+      )
     case 'list':
       return createElement(
         block.ordered ? 'ol' : 'ul',
@@ -298,15 +305,27 @@ function renderBlock(block: RestrictedMarkdownNode, key: number): ReactNode {
           ),
         ),
       )
-      if (block.rows.length <= RESTRICTED_MARKDOWN_LIMITS.inlineTableRows)
-        return createElement(Fragment, { key }, table)
+      const copy = createElement(CopyButton, { label: 'Copy table', text: blockPlainText(block) })
+      if (block.rows.length <= RESTRICTED_MARKDOWN_LIMITS.inlineTableRows) {
+        return createElement(
+          'div',
+          { key, className: 'restricted-markdown__table-block' },
+          copy,
+          table,
+        )
+      }
       return createElement(
         'details',
         { key, className: 'restricted-markdown__table-fold' },
         createElement(
           'summary',
           null,
-          `Table · ${block.rows.length} row${block.rows.length === 1 ? '' : 's'}`,
+          createElement(
+            'span',
+            null,
+            `Table · ${block.rows.length} row${block.rows.length === 1 ? '' : 's'}`,
+          ),
+          copy,
         ),
         table,
       )

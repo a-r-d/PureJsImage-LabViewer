@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DEFAULT_PREFERENCES,
+  expandedBottomPanelHeight,
   LocalWorkbenchPreferenceStore,
   validatePreferences,
 } from '../src/preferences.js'
@@ -16,6 +17,11 @@ describe('workbench preferences', () => {
         bottomPanelHeight: 200,
       }),
     ).toEqual({ theme: 'light', leftPanelWidth: 184, rightPanelWidth: 480, bottomPanelHeight: 200 })
+  })
+
+  it('expands the results panel into the lower half of the viewport', () => {
+    expect(expandedBottomPanelHeight(1_000)).toBe(580)
+    expect(expandedBottomPanelHeight(2_000)).toBe(720)
   })
 
   it('persists and restores bounded preferences through the interface', () => {

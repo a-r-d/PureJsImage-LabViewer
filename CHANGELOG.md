@@ -44,7 +44,11 @@ The application is not yet versioned for release (`0.0.0`).
 - Agent turns show a collapsed work trail between the user message and the answer. While the
   model is working, only the current action is expanded. Completed work is one summary line
   until the user opens it. Referenced-object cards no longer dump every tool call below the
-  answer. Markdown tables longer than four rows fold in the chat transcript.
+  answer. Markdown tables longer than four rows fold in the chat transcript. Assistant replies,
+  Markdown tables, and result tables have copy-to-clipboard controls. Approval is one line
+  naming the action, with Approve and Deny. Grants and run details sit on one small footer row.
+- The Science results panel can expand into the lower half of the window, and the object table
+  is no longer capped at 220 px.
 
 ### Fixed
 

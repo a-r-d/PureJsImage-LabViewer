@@ -12,6 +12,24 @@ export function actionTrailLabel(actionId: string): string {
   return raw.replaceAll(/[-_]+/gu, ' ').replace(/^\w/u, (character) => character.toUpperCase())
 }
 
+export function actionApprovalPrompt(actionId: string): string {
+  const parts = actionId.split('.').filter((part) => part.length > 0)
+  const leaf = parts.at(-1) ?? 'action'
+  const skipRoot = parts[0] === 'analysis' || parts[0] === 'geo'
+  const object = parts
+    .slice(skipRoot ? 1 : 0, -1)
+    .join(' ')
+    .replaceAll(/[-_]+/gu, ' ')
+  const noun = object.length > 0 ? object : leaf.replaceAll(/[-_]+/gu, ' ')
+  if (leaf === 'execute') {
+    return skipRoot && !noun.includes('analysis') ? `Run ${noun} analysis?` : `Run ${noun}?`
+  }
+  if (leaf === 'create') return `Create ${noun}?`
+  if (leaf === 'read') return `Read ${noun}?`
+  if (leaf === 'plan') return `Plan ${noun}?`
+  return `Approve ${noun}?`
+}
+
 export function AgentActionTrail({
   actions,
   artifacts = [],

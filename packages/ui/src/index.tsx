@@ -1,9 +1,13 @@
 import {
   Bot,
   ChartNoAxesColumn,
+  Check,
+  ChevronsDown,
+  ChevronsUp,
   CircleQuestionMark,
   CodeXml,
   Command,
+  Copy,
   Download,
   FileInput,
   FileOutput,
@@ -218,11 +222,15 @@ export type IconName =
   | 'analyze'
   | 'browse'
   | 'chart'
+  | 'check'
   | 'close'
   | 'code'
+  | 'collapse'
   | 'command'
+  | 'copy'
   | 'download'
   | 'examples'
+  | 'expand'
   | 'export'
   | 'fit'
   | 'file-new'
@@ -254,11 +262,15 @@ const iconComponents: Readonly<Record<IconName, LucideIcon>> = {
   analyze: FlaskConical,
   browse: FolderOpen,
   chart: ChartNoAxesColumn,
+  check: Check,
   close: X,
   code: CodeXml,
+  collapse: ChevronsDown,
   command: Command,
+  copy: Copy,
   download: Download,
   examples: Images,
+  expand: ChevronsUp,
   export: FileOutput,
   fit: Scan,
   'file-new': FilePlus2,
@@ -653,6 +665,7 @@ export function useFocusReturn(): RefObject<HTMLElement | null> {
   return reference
 }
 
+export { CopyButton } from './copy-button.js'
 export {
   parseRestrictedMarkdown,
   RESTRICTED_MARKDOWN_LIMITS,

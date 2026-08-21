@@ -1,5 +1,4 @@
 import {
-  type AgentActionTrace,
   type AgentModelSummary,
   type AgentRuntime,
   compactTurnActions,
@@ -8,7 +7,14 @@ import {
   type OpenRouterTransport,
   type OptionalPersistentOpenRouterCredentialStore,
 } from '@pji-workbench/agent'
-import { Button, Icon, IconButton, RestrictedMarkdown } from '@pji-workbench/ui'
+import {
+  Button,
+  CopyButton,
+  Icon,
+  IconButton,
+  RestrictedMarkdown,
+  restrictedMarkdownPlainText,
+} from '@pji-workbench/ui'
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -20,7 +26,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { AgentActionTrail } from './AgentActionTrail.js'
+import { AgentActionTrail, actionApprovalPrompt } from './AgentActionTrail.js'
 
 export interface AgentStarterPrompt {
   readonly title: string
@@ -120,7 +126,6 @@ export function AgentConversationShell({
     models.find(({ id }) => id === selectedModel)?.name ??
     OPENROUTER_RECOMMENDED_MODELS.find(({ id }) => id === selectedModel)?.name ??
     selectedModel
-  const latestParticlePlan = particlePlanFromTrace(snapshot.trace)
   const submitLabel = snapshot.conversationTurnCount === 0 ? 'Start task' : 'Send follow-up'
   const canSubmit = !active && keyPresent && selectedModel.length > 0 && request.trim().length > 0
   const scrollSignal = `${snapshot.conversationTurnCount}:${snapshot.approval?.id ?? ''}:${snapshot.status}:${snapshot.trace.length}:${pendingRequest?.request ?? ''}`
@@ -321,8 +326,14 @@ export function AgentConversationShell({
                   />
                   <div className={`${prefix}__message-row`}>
                     <span className={`${prefix}__message-label`}>{copy.assistantName}</span>
-                    <div className="agent-message">
-                      <RestrictedMarkdown source={turn.answer} />
+                    <div className={`${prefix}__reply`}>
+                      <CopyButton
+                        label="Copy response"
+                        text={restrictedMarkdownPlainText(turn.answer)}
+                      />
+                      <div className="agent-message">
+                        <RestrictedMarkdown source={turn.answer} />
+                      </div>
                     </div>
                   </div>
                 </li>
@@ -352,36 +363,9 @@ export function AgentConversationShell({
             className={`${prefix}__approval`}
             data-agent-action-id={snapshot.approval.call.actionId}
           >
-            <div className={`${prefix}__approval-heading`}>
-              <span>
-                <Icon name="shield" size={17} />
-              </span>
-              <div>
-                <p className="panel-kicker">Your approval is needed</p>
-                <h3 id={`${prefix}-approval-heading`}>{snapshot.approval.title}</h3>
-              </div>
-            </div>
-            <p>{snapshot.approval.reason}</p>
-            <p className="panel-note">
-              {snapshot.approval.cost} cost · {snapshot.approval.mutability}
-            </p>
-            <details>
-              <summary>Review details</summary>
-              <pre>{JSON.stringify(snapshot.approval.call.input, null, 2)}</pre>
-            </details>
-            {snapshot.approval.call.actionId !== 'analysis.particle.execute' ||
-            latestParticlePlan === undefined
-              ? null
-              : (approvalExtras ?? (
-                  <details>
-                    <summary>Reviewed dry-run result</summary>
-                    <pre>{JSON.stringify(latestParticlePlan.result, null, 2)}</pre>
-                  </details>
-                ))}
-            {approvalExtras === undefined ||
-            snapshot.approval.call.actionId === 'analysis.particle.execute'
-              ? null
-              : approvalExtras}
+            <h3 id={`${prefix}-approval-heading`}>
+              {actionApprovalPrompt(snapshot.approval.call.actionId)}
+            </h3>
             <div className={`${prefix}__actions`}>
               <Button
                 onClick={() => runtime.approve(snapshot.approval?.id ?? '')}
@@ -391,6 +375,11 @@ export function AgentConversationShell({
               </Button>
               <Button onClick={() => runtime.deny(snapshot.approval?.id ?? '')}>Deny</Button>
             </div>
+            <details>
+              <summary aria-label="Approval details">…</summary>
+              <pre>{JSON.stringify(snapshot.approval.call.input, null, 2)}</pre>
+              {approvalExtras}
+            </details>
           </section>
         )}
 
@@ -401,74 +390,77 @@ export function AgentConversationShell({
           </div>
         )}
 
-        {snapshot.grants.length === 0 ? null : (
-          <details className={`${prefix}__details`}>
-            <summary>
-              {copy.grantsHeading} · {snapshot.grants.length}
-            </summary>
-            <div className={`${prefix}__details-content`}>
-              <ul className={`${prefix}__list`}>
-                {snapshot.grants.map((grant) => (
-                  <li key={grant.id}>
-                    <code>{grant.scope}</code>
-                    <span>
-                      {grant.permission} · used {grant.uses}
-                    </span>
-                    <Button disabled={active} onClick={() => runtime.revokeGrant(grant.scope)}>
-                      Revoke
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-              <Button disabled={active} onClick={() => runtime.revokeAllGrants()}>
-                Revoke all grants
-              </Button>
-            </div>
-          </details>
-        )}
-
-        {snapshot.plan === undefined && snapshot.audit === undefined ? null : (
-          <details className={`${prefix}__details`}>
-            <summary>Run details</summary>
-            <div className={`${prefix}__details-content`}>
-              {snapshot.plan === undefined ? null : (
-                <section aria-labelledby={`${prefix}-plan-heading`}>
-                  <h3 id={`${prefix}-plan-heading`}>Plan</h3>
-                  <p>{snapshot.plan.goalSummary}</p>
-                  <ol className={`${prefix}__list`}>
-                    {snapshot.plan.actions.map((action) => (
-                      <li
-                        key={`${action.actionId}-${action.actionVersion}-${JSON.stringify(action.input)}`}
-                      >
-                        <code>
-                          {action.actionId}@{action.actionVersion}
-                        </code>
-                        <span>{action.expectedOutput}</span>
+        {snapshot.grants.length === 0 &&
+        snapshot.plan === undefined &&
+        snapshot.audit === undefined ? null : (
+          <div className={`${prefix}__footer`}>
+            {snapshot.grants.length === 0 ? null : (
+              <details className={`${prefix}__details`}>
+                <summary>
+                  {copy.grantsHeading} · {snapshot.grants.length}
+                </summary>
+                <div className={`${prefix}__details-content`}>
+                  <ul className={`${prefix}__list`}>
+                    {snapshot.grants.map((grant) => (
+                      <li key={grant.id}>
+                        <code>{grant.scope}</code>
+                        <span>
+                          {grant.permission} · used {grant.uses}
+                        </span>
+                        <Button disabled={active} onClick={() => runtime.revokeGrant(grant.scope)}>
+                          Revoke
+                        </Button>
                       </li>
                     ))}
-                  </ol>
-                  <p>
-                    <strong>Stop when:</strong> {snapshot.plan.stoppingCondition}
-                  </p>
-                </section>
-              )}
+                  </ul>
+                  <Button disabled={active} onClick={() => runtime.revokeAllGrants()}>
+                    Revoke all
+                  </Button>
+                </div>
+              </details>
+            )}
 
-              {snapshot.audit === undefined ? null : (
-                <Button
-                  disabled={active}
-                  onClick={() => {
-                    const audit = snapshot.audit
-                    if (audit === undefined) return
-                    void runtime.replay(audit).catch((error: unknown) => {
-                      setPanelError(error instanceof Error ? error.message : String(error))
-                    })
-                  }}
-                >
-                  {copy.replayLabel}
-                </Button>
-              )}
-            </div>
-          </details>
+            {snapshot.plan === undefined && snapshot.audit === undefined ? null : (
+              <details className={`${prefix}__details`}>
+                <summary>Run details</summary>
+                <div className={`${prefix}__details-content`}>
+                  {snapshot.plan === undefined ? null : (
+                    <section aria-labelledby={`${prefix}-plan-heading`}>
+                      <h3 id={`${prefix}-plan-heading`}>Plan</h3>
+                      <p>{snapshot.plan.goalSummary}</p>
+                      <ol className={`${prefix}__list`}>
+                        {snapshot.plan.actions.map((action) => (
+                          <li
+                            key={`${action.actionId}-${action.actionVersion}-${JSON.stringify(action.input)}`}
+                          >
+                            <code>
+                              {action.actionId}@{action.actionVersion}
+                            </code>
+                            <span>{action.expectedOutput}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+                  )}
+
+                  {snapshot.audit === undefined ? null : (
+                    <Button
+                      disabled={active}
+                      onClick={() => {
+                        const audit = snapshot.audit
+                        if (audit === undefined) return
+                        void runtime.replay(audit).catch((error: unknown) => {
+                          setPanelError(error instanceof Error ? error.message : String(error))
+                        })
+                      }}
+                    >
+                      {copy.replayLabel}
+                    </Button>
+                  )}
+                </div>
+              </details>
+            )}
+          </div>
         )}
       </section>
 
@@ -697,10 +689,6 @@ function rememberModel(storageKey: string, model: string): void {
   } catch {
     // Model selection is a convenience preference; a blocked write must not block the agent.
   }
-}
-
-function particlePlanFromTrace(trace: readonly AgentActionTrace[]): AgentActionTrace | undefined {
-  return trace.findLast(({ actionId }) => actionId === 'analysis.particle.plan')
 }
 
 function friendlyStatus(status: string, keyPresent: boolean): string {

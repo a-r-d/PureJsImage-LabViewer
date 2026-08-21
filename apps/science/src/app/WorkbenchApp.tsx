@@ -191,7 +191,11 @@ import {
   sourceLocatorDetail,
 } from '../features/source/source-model.js'
 import { createScienceImagingWorkerClient } from '../imaging-client.js'
-import { PREFERENCE_BOUNDS } from '../preferences.js'
+import {
+  DEFAULT_PREFERENCES,
+  expandedBottomPanelHeight,
+  PREFERENCE_BOUNDS,
+} from '../preferences.js'
 import {
   type AnalysisDatasetSelection,
   type AnalysisOverlaySelection,
@@ -5089,14 +5093,41 @@ function WorkbenchRuntime({
             value={preferences.bottomPanelHeight}
           />
           <Panel className="bottom-panel" label="Analysis output">
-            <Tabs
-              items={bottomTabs}
-              label="Analysis output sections"
-              onSelect={(tab) => {
-                setBottomTab(tab)
-              }}
-              selectedId={bottomTab}
-            />
+            <div className="bottom-panel__header">
+              <Tabs
+                items={bottomTabs}
+                label="Analysis output sections"
+                onSelect={(tab) => {
+                  setBottomTab(tab)
+                }}
+                selectedId={bottomTab}
+              />
+              <IconButton
+                label={
+                  preferences.bottomPanelHeight > DEFAULT_PREFERENCES.bottomPanelHeight
+                    ? 'Collapse results panel'
+                    : 'Expand results panel'
+                }
+                onClick={() => {
+                  updatePreferences({
+                    bottomPanelHeight:
+                      preferences.bottomPanelHeight > DEFAULT_PREFERENCES.bottomPanelHeight
+                        ? DEFAULT_PREFERENCES.bottomPanelHeight
+                        : expandedBottomPanelHeight(window.innerHeight),
+                  })
+                }}
+                type="button"
+              >
+                <Icon
+                  name={
+                    preferences.bottomPanelHeight > DEFAULT_PREFERENCES.bottomPanelHeight
+                      ? 'collapse'
+                      : 'expand'
+                  }
+                  size={16}
+                />
+              </IconButton>
+            </div>
             <div className="bottom-content">
               <BottomContent
                 analysisResults={analysisResults}

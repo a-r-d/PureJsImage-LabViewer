@@ -9,7 +9,7 @@ import type {
   RpcJsonValue,
 } from '@pji-workbench/contracts'
 import { convertCalibration } from '@pji-workbench/materials-analysis'
-import { Button } from '@pji-workbench/ui'
+import { Button, CopyButton } from '@pji-workbench/ui'
 import type { CalibrationOverride, WorkspaceSnapshot } from '@pji-workbench/workspace'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -1064,6 +1064,16 @@ export function analysisPageRows(
   )
 }
 
+export function analysisTableCopyText(page: AnalysisTablePage): string {
+  const header = page.columns
+    .map((column) => (column.unit === undefined ? column.name : `${column.name} (${column.unit})`))
+    .join('\t')
+  const rows = analysisPageRows(page).map((row) =>
+    page.columns.map((column) => String(row[column.name] ?? '')).join('\t'),
+  )
+  return [header, ...rows].join('\n')
+}
+
 const MAX_FREQUENCY_PEAK_LABELS = 8
 
 export function frequencyPeakAnnotations(
@@ -1530,6 +1540,9 @@ export function AnalysisResults({
         <Button onClick={() => onExport('selected', 'csv')}>Export selected CSV</Button>
         <Button onClick={() => onExport('all', 'csv')}>Export all CSV</Button>
         <Button onClick={() => onExport('all', 'json')}>Export JSON</Button>
+        {table === undefined ? null : (
+          <CopyButton label="Copy table" text={analysisTableCopyText(table)} />
+        )}
       </div>
       {roughness === undefined ? null : (
         <section className="roughness-summary" aria-label="Surface roughness">
@@ -1555,7 +1568,18 @@ export function AnalysisResults({
       )}
       {collectionRows.length === 0 ? null : (
         <section className="roughness-summary" aria-label="ROI statistics">
-          <h3>ROI statistics</h3>
+          <h3>
+            ROI statistics
+            <CopyButton
+              label="Copy ROI statistics"
+              text={collectionRows
+                .map(
+                  ({ label, value, unit }) =>
+                    `${label}\t${value.toPrecision(4)}${unit === undefined ? '' : `\t${unit}`}`,
+                )
+                .join('\n')}
+            />
+          </h3>
           <dl>
             {collectionRows.map(({ label, value, unit }) => (
               <div key={label}>

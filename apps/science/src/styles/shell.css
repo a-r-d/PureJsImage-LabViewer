@@ -953,6 +953,9 @@ table,
 }
 
 .roughness-summary h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   font-size: 12px;
 }
@@ -1284,7 +1287,7 @@ table,
 }
 
 .bottom-panel {
-  grid-template-rows: 36px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .bottom-panel .ui-tabs__tab {

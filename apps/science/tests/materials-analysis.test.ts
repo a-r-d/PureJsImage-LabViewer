@@ -6,6 +6,7 @@ import type {
 import {
   analysisPageRows,
   analysisResultHeadline,
+  analysisTableCopyText,
   appendDatasetAnalysisGraph,
   connectedComponentsGraph,
   formatBatchSourceIdentity,
@@ -94,6 +95,7 @@ describe('materials analysis UI contracts', () => {
     const visible = analysisPageRows(page)
     expect(visible).toHaveLength(50)
     expect(visible[0]).toEqual({ label: 49_951 })
+    expect(analysisTableCopyText(page).split('\n')).toHaveLength(51)
     expect(JSON.stringify(page).length).toBeLessThan(2_000)
   })
 

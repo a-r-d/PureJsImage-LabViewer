@@ -55,6 +55,7 @@ export {
   AnalysisResults,
   analysisPageRows,
   analysisResultHeadline,
+  analysisTableCopyText,
   formatRoughnessHeadline,
   frequencyPeakAnnotations,
   type MaterialsPanelState,

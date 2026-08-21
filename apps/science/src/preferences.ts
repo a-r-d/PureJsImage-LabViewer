@@ -22,7 +22,7 @@ export const DEFAULT_PREFERENCES: WorkbenchPreferences = {
 export const PREFERENCE_BOUNDS = {
   leftPanelWidth: { minimum: 184, maximum: 380 },
   rightPanelWidth: { minimum: 300, maximum: 480 },
-  bottomPanelHeight: { minimum: 126, maximum: 320 },
+  bottomPanelHeight: { minimum: 126, maximum: 720 },
 } as const
 
 const PREFERENCE_KEY = 'purejsimage.workbench.preferences.v1'
@@ -63,6 +63,13 @@ export function validatePreferences(value: unknown): WorkbenchPreferences {
       PREFERENCE_BOUNDS.bottomPanelHeight,
     ),
   }
+}
+
+export function expandedBottomPanelHeight(viewportHeight: number): number {
+  return Math.min(
+    PREFERENCE_BOUNDS.bottomPanelHeight.maximum,
+    Math.max(DEFAULT_PREFERENCES.bottomPanelHeight, Math.round(viewportHeight * 0.58)),
+  )
 }
 
 export class LocalWorkbenchPreferenceStore implements WorkbenchPreferenceStore {
