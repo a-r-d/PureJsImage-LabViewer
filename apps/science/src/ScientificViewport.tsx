@@ -149,6 +149,15 @@ function calibrationFor(axis: AxisDescriptor | undefined) {
   return { origin: axis.coordinates.origin, unitsPerPixel: axis.coordinates.step, unit: axis.unit }
 }
 
+function imageDataPixels(source: Uint8ClampedArray, copy: boolean): Uint8ClampedArray<ArrayBuffer> {
+  if (!copy && source.buffer instanceof ArrayBuffer) {
+    return new Uint8ClampedArray(source.buffer, source.byteOffset, source.length)
+  }
+  const pixels = new Uint8ClampedArray(source.length)
+  pixels.set(source)
+  return pixels
+}
+
 class CanvasScientificRenderer implements ViewportRenderer {
   readonly #canvas: HTMLCanvasElement
   #context: CanvasRenderingContext2D
@@ -180,8 +189,7 @@ class CanvasScientificRenderer implements ViewportRenderer {
     canvas.height = tile.height
     const context = canvas.getContext('2d')
     if (context === null) throw new Error('Unable to allocate a bounded render tile.')
-    const pixels = new Uint8ClampedArray(tile.rgba.length)
-    pixels.set(tile.rgba)
+    const pixels = imageDataPixels(tile.rgba, false)
     context.putImageData(new ImageData(pixels, tile.width, tile.height), 0, 0)
     this.#tiles.set(tile.tileId, { tile, canvas })
   }
@@ -192,7 +200,7 @@ class CanvasScientificRenderer implements ViewportRenderer {
     canvas.height = tile.height
     const context = canvas.getContext('2d')
     if (context === null) throw new Error('Unable to allocate a bounded overlay tile.')
-    const pixels = this.#selectedLabel === undefined ? tile.rgba : new Uint8ClampedArray(tile.rgba)
+    const pixels = imageDataPixels(tile.rgba, this.#selectedLabel !== undefined)
     if (this.#selectedLabel !== undefined) {
       for (let index = 0; index < tile.labels.length; index += 1) {
         if (tile.labels[index] !== this.#selectedLabel) continue

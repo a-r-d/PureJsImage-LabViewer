@@ -52,6 +52,8 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Fixed
 
+- Overlay tiles copy into an ArrayBuffer-backed `ImageData` buffer so Science typecheck accepts
+  the canvas constructor.
 - Replacement analysis drops previous overlay tiles and large chart series from React before the
   next Worker result allocates. Result plots downsample to a few hundred DOM points, and preview
   PNGs are not cloned through JSON.
