@@ -32,6 +32,7 @@ import type {
   AgentRuntimeSnapshot,
   AgentSessionGrant,
   AgentTokenUsage,
+  AgentTurnAction,
 } from './types.js'
 import { AgentRuntimeError } from './types.js'
 import { UNTRUSTED_DATA_INSTRUCTIONS, wrapUntrustedModelContext } from './untrusted.js'
@@ -361,6 +362,7 @@ export class AgentRuntime {
             answer: response.content,
             model: selectedModel,
             completedAt: audit.completedAt,
+            actions: compactTurnActions(audit.trace),
           })
           const completed = immutableAudit(audit)
           this.#publish({
@@ -1232,6 +1234,15 @@ function sanitizeConversationMessage(message: AgentModelMessage): AgentModelMess
           },
     ),
   }
+}
+
+export function compactTurnActions(trace: readonly AgentActionTrace[]): readonly AgentTurnAction[] {
+  return trace.map((entry) => ({
+    callId: entry.callId,
+    actionId: entry.actionId,
+    actionVersion: entry.actionVersion,
+    approval: entry.approval,
+  }))
 }
 
 function conversationBytes(turns: readonly (readonly AgentModelMessage[])[]): number {

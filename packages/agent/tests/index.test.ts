@@ -464,11 +464,13 @@ describe('model-independent agent runtime', () => {
           request: 'First request',
           answer: 'First turn complete.',
           model: 'fake/atlas',
+          actions: [],
         },
         {
           request: 'Follow up',
           answer: 'Second turn complete.',
           model: 'fake/atlas',
+          actions: [{ actionId: 'fixture.read', approval: 'automatic' }],
         },
       ],
     })

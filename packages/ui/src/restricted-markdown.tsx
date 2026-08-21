@@ -1,9 +1,10 @@
-import { createElement, type ReactNode } from 'react'
+import { createElement, Fragment, type ReactNode } from 'react'
 
 export const RESTRICTED_MARKDOWN_LIMITS = Object.freeze({
   maxNodes: 400,
   maxNesting: 6,
   maxTableRows: 32,
+  inlineTableRows: 4,
   maxTableColumns: 8,
   maxCellChars: 256,
   maxCodeChars: 8_192,
@@ -264,10 +265,10 @@ function renderBlock(block: RestrictedMarkdownNode, key: number): ReactNode {
           createElement('li', { key: index }, ...renderInline(item)),
         ),
       )
-    case 'table':
-      return createElement(
+    case 'table': {
+      const table = createElement(
         'div',
-        { key, className: 'restricted-markdown__table' },
+        { className: 'restricted-markdown__table' },
         createElement(
           'table',
           null,
@@ -297,6 +298,19 @@ function renderBlock(block: RestrictedMarkdownNode, key: number): ReactNode {
           ),
         ),
       )
+      if (block.rows.length <= RESTRICTED_MARKDOWN_LIMITS.inlineTableRows)
+        return createElement(Fragment, { key }, table)
+      return createElement(
+        'details',
+        { key, className: 'restricted-markdown__table-fold' },
+        createElement(
+          'summary',
+          null,
+          `Table · ${block.rows.length} row${block.rows.length === 1 ? '' : 's'}`,
+        ),
+        table,
+      )
+    }
   }
 }
 

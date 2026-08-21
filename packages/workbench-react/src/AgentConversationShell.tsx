@@ -1,10 +1,13 @@
-import type {
-  AgentModelSummary,
-  AgentRuntime,
-  OpenRouterTransport,
-  OptionalPersistentOpenRouterCredentialStore,
+import {
+  type AgentActionTrace,
+  type AgentModelSummary,
+  type AgentRuntime,
+  compactTurnActions,
+  DEFAULT_OPENROUTER_MODEL,
+  OPENROUTER_RECOMMENDED_MODELS,
+  type OpenRouterTransport,
+  type OptionalPersistentOpenRouterCredentialStore,
 } from '@pji-workbench/agent'
-import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_RECOMMENDED_MODELS } from '@pji-workbench/agent'
 import { Button, Icon, IconButton, RestrictedMarkdown } from '@pji-workbench/ui'
 import {
   type FormEvent,
@@ -17,12 +20,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-
-import {
-  agentReferenceCards,
-  particlePlanFromTrace,
-  previewArtifacts,
-} from './agent-reference-cards.js'
+import { AgentActionTrail } from './AgentActionTrail.js'
 
 export interface AgentStarterPrompt {
   readonly title: string
@@ -125,8 +123,7 @@ export function AgentConversationShell({
   const latestParticlePlan = particlePlanFromTrace(snapshot.trace)
   const submitLabel = snapshot.conversationTurnCount === 0 ? 'Start task' : 'Send follow-up'
   const canSubmit = !active && keyPresent && selectedModel.length > 0 && request.trim().length > 0
-  const scrollSignal = `${snapshot.conversationTurnCount}:${snapshot.approval?.id ?? ''}:${pendingRequest?.request ?? ''}`
-  const references = agentReferenceCards(snapshot)
+  const scrollSignal = `${snapshot.conversationTurnCount}:${snapshot.approval?.id ?? ''}:${snapshot.status}:${snapshot.trace.length}:${pendingRequest?.request ?? ''}`
   const persistenceLabel =
     credentials.persistence === 'browser' ? 'Remembered in this browser' : 'Session only'
 
@@ -305,20 +302,32 @@ export function AgentConversationShell({
           </section>
         ) : (
           <ol className={`${prefix}__conversation`}>
-            {snapshot.conversation.map((turn) => (
-              <li key={turn.id}>
-                <div className={`${prefix}__message-row ${prefix}__message-row--user`}>
-                  <span className={`${prefix}__message-label`}>You</span>
-                  <p className="agent-message agent-message--user">{turn.request}</p>
-                </div>
-                <div className={`${prefix}__message-row`}>
-                  <span className={`${prefix}__message-label`}>{copy.assistantName}</span>
-                  <div className="agent-message">
-                    <RestrictedMarkdown source={turn.answer} />
+            {snapshot.conversation.map((turn, turnIndex) => {
+              const latestCompleted = !active && turnIndex === snapshot.conversation.length - 1
+              return (
+                <li key={turn.id}>
+                  <div className={`${prefix}__message-row ${prefix}__message-row--user`}>
+                    <span className={`${prefix}__message-label`}>You</span>
+                    <p className="agent-message agent-message--user">{turn.request}</p>
                   </div>
-                </div>
-              </li>
-            ))}
+                  <AgentActionTrail
+                    actions={turn.actions}
+                    artifacts={latestCompleted ? snapshot.artifacts : []}
+                    headingId={
+                      latestCompleted ? `${prefix}-trace-heading` : `${prefix}-trace-${turn.id}`
+                    }
+                    prefix={prefix}
+                    status="complete"
+                  />
+                  <div className={`${prefix}__message-row`}>
+                    <span className={`${prefix}__message-label`}>{copy.assistantName}</span>
+                    <div className="agent-message">
+                      <RestrictedMarkdown source={turn.answer} />
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
             {pendingRequest === undefined ||
             snapshot.conversationTurnCount !== pendingRequest.turnCount ? null : (
               <li>
@@ -326,16 +335,15 @@ export function AgentConversationShell({
                   <span className={`${prefix}__message-label`}>You</span>
                   <p className="agent-message agent-message--user">{pendingRequest.request}</p>
                 </div>
+                <AgentActionTrail
+                  actions={compactTurnActions(snapshot.trace)}
+                  headingId={`${prefix}-trace-heading`}
+                  prefix={prefix}
+                  status="active"
+                />
               </li>
             )}
           </ol>
-        )}
-
-        {!active || snapshot.approval !== undefined ? null : (
-          <div className={`${prefix}__thinking`} role="status">
-            <span aria-hidden="true" className={`${prefix}__spinner`} />
-            <span>{friendlyStatus(snapshot.status, keyPresent)}</span>
-          </div>
         )}
 
         {snapshot.approval === undefined ? null : (
@@ -393,46 +401,33 @@ export function AgentConversationShell({
           </div>
         )}
 
-        {references.length === 0 ? null : (
-          <section aria-labelledby={`${prefix}-references-heading`} className={`${prefix}__cards`}>
-            <h3 id={`${prefix}-references-heading`}>Referenced objects</h3>
-            <ul>
-              {references.map((card) => (
-                <li key={`${card.kind}-${card.id}`}>
-                  <strong>{card.kind}</strong>
-                  <code>{card.id}</code>
-                  {card.detail === undefined ? null : <span>{card.detail}</span>}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
         {snapshot.grants.length === 0 ? null : (
-          <section aria-labelledby={`${prefix}-grants-heading`}>
-            <h3 id={`${prefix}-grants-heading`}>{copy.grantsHeading}</h3>
-            <ul className={`${prefix}__list`}>
-              {snapshot.grants.map((grant) => (
-                <li key={grant.id}>
-                  <code>{grant.scope}</code>
-                  <span>
-                    {grant.permission} · used {grant.uses}
-                  </span>
-                  <Button disabled={active} onClick={() => runtime.revokeGrant(grant.scope)}>
-                    Revoke
-                  </Button>
-                </li>
-              ))}
-            </ul>
-            <Button disabled={active} onClick={() => runtime.revokeAllGrants()}>
-              Revoke all grants
-            </Button>
-          </section>
+          <details className={`${prefix}__details`}>
+            <summary>
+              {copy.grantsHeading} · {snapshot.grants.length}
+            </summary>
+            <div className={`${prefix}__details-content`}>
+              <ul className={`${prefix}__list`}>
+                {snapshot.grants.map((grant) => (
+                  <li key={grant.id}>
+                    <code>{grant.scope}</code>
+                    <span>
+                      {grant.permission} · used {grant.uses}
+                    </span>
+                    <Button disabled={active} onClick={() => runtime.revokeGrant(grant.scope)}>
+                      Revoke
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <Button disabled={active} onClick={() => runtime.revokeAllGrants()}>
+                Revoke all grants
+              </Button>
+            </div>
+          </details>
         )}
 
-        {snapshot.plan === undefined &&
-        snapshot.trace.length === 0 &&
-        snapshot.artifacts.length === 0 ? null : (
+        {snapshot.plan === undefined && snapshot.audit === undefined ? null : (
           <details className={`${prefix}__details`}>
             <summary>Run details</summary>
             <div className={`${prefix}__details-content`}>
@@ -455,45 +450,6 @@ export function AgentConversationShell({
                   <p>
                     <strong>Stop when:</strong> {snapshot.plan.stoppingCondition}
                   </p>
-                </section>
-              )}
-
-              {snapshot.trace.length === 0 ? null : (
-                <section aria-labelledby={`${prefix}-trace-heading`}>
-                  <h3 id={`${prefix}-trace-heading`}>Action trace</h3>
-                  <ol className={`${prefix}__list`}>
-                    {snapshot.trace.map((entry) => (
-                      <li data-agent-action-id={entry.actionId} key={entry.callId}>
-                        <code>
-                          {entry.actionId}@{entry.actionVersion}
-                        </code>
-                        <span>
-                          revision {entry.projectRevisionBefore} → {entry.projectRevisionAfter} ·{' '}
-                          {entry.approval}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
-              )}
-
-              {snapshot.artifacts.length === 0 ? null : (
-                <section aria-labelledby={`${prefix}-artifacts-heading`}>
-                  <h3 id={`${prefix}-artifacts-heading`}>Shared previews</h3>
-                  <div className={`${prefix}__artifacts`}>
-                    {previewArtifacts(snapshot.artifacts).map((artifact) => (
-                      <figure key={artifact.id}>
-                        <img
-                          alt="Bounded workbench preview shared with the model"
-                          src={artifact.dataUrl}
-                        />
-                        <figcaption>
-                          {artifact.width} × {artifact.height} · {artifact.bytes} bytes · revision{' '}
-                          {artifact.projectRevision}
-                        </figcaption>
-                      </figure>
-                    ))}
-                  </div>
                 </section>
               )}
 
@@ -741,6 +697,10 @@ function rememberModel(storageKey: string, model: string): void {
   } catch {
     // Model selection is a convenience preference; a blocked write must not block the agent.
   }
+}
+
+function particlePlanFromTrace(trace: readonly AgentActionTrace[]): AgentActionTrace | undefined {
+  return trace.findLast(({ actionId }) => actionId === 'analysis.particle.plan')
 }
 
 function friendlyStatus(status: string, keyPresent: boolean): string {

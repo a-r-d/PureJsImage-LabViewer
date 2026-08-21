@@ -112,7 +112,9 @@ Build bounded context from:
 Do not invent a conversation summary through an unreviewed model call. Compaction removes old raw
 turns, retains bounded facts (goals, decisions, source/result IDs, grants), and records that
 compaction occurred. Science and Atlas share `AgentConversationShell` with restricted Markdown
-answers, structured reference cards, visible session grants, and an OpenRouter key that is
+answers. Intermediate actions sit between the user message and the answer in a collapsed work
+trail (one current step while running). Session grants and run diagnostics stay behind
+disclosures. Large Markdown tables fold until the user opens them. The OpenRouter key is
 remembered in this browser unless the user unchecks that option.
 
 Use stable references (`dataset:...`, `roi:...`, `node:...`, `result:...`) so the model can refer to objects without repeating large payloads.

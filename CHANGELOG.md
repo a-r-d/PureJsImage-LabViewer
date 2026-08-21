@@ -39,6 +39,13 @@ The application is not yet versioned for release (`0.0.0`).
   `pnpm geo:probe-catalogs` and `PJI_GEO_LIVE=1 pnpm test:e2e:geo:live`. See
   `docs/GOVERNMENT_GEO_SOURCES.md`.
 
+### Changed
+
+- Agent turns show a collapsed work trail between the user message and the answer. While the
+  model is working, only the current action is expanded. Completed work is one summary line
+  until the user opens it. Referenced-object cards no longer dump every tool call below the
+  answer. Markdown tables longer than four rows fold in the chat transcript.
+
 ### Fixed
 
 - Replacement analysis drops previous overlay tiles and large chart series from React before the

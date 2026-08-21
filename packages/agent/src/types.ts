@@ -295,6 +295,14 @@ export interface AgentConversationTurn {
   readonly answer: string
   readonly model: string
   readonly completedAt: string
+  readonly actions: readonly AgentTurnAction[]
+}
+
+export interface AgentTurnAction {
+  readonly callId: string
+  readonly actionId: string
+  readonly actionVersion: number
+  readonly approval: AgentActionTrace['approval']
 }
 
 export interface AgentRuntimeSnapshot {
