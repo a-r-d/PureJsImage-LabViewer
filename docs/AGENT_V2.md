@@ -112,7 +112,8 @@ Build bounded context from:
 Do not invent a conversation summary through an unreviewed model call. Compaction removes old raw
 turns, retains bounded facts (goals, decisions, source/result IDs, grants), and records that
 compaction occurred. Science and Atlas share `AgentConversationShell` with restricted Markdown
-answers, structured reference cards, visible session grants, and session-only keys by default.
+answers, structured reference cards, visible session grants, and an OpenRouter key that is
+remembered in this browser unless the user unchecks that option.
 
 Use stable references (`dataset:...`, `roi:...`, `node:...`, `result:...`) so the model can refer to objects without repeating large payloads.
 
@@ -142,10 +143,10 @@ The approval card shows exact command/tool, target object, normalized parameters
 
 ## Credentials and local history
 
-- Science and Atlas both default to a session-only in-memory OpenRouter key. An explicit
-  “Remember on this browser” checkbox may persist the key through the reviewed credential store.
-- Session keys are never copied to localStorage without that explicit action. Display whether the
-  current persistence is session or browser, and always offer remove/revoke.
+- Science and Atlas both default “Remember on this browser” on. Unchecking it keeps the key
+  in this tab only and warns that a refresh will lose it. Session keys are never copied to
+  localStorage without that checkbox.
+- Display whether the current persistence is session or browser, and always offer remove/revoke.
 - The provider-independent agent core never owns storage.
 - Store conversation/event history in IndexedDB because it can exceed localStorage capacity.
 - Never store the API key in history, tools, projects, logs, error reports, URLs, telemetry, or eval traces.

@@ -9,8 +9,8 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Added
 
-- Shared `AgentConversationShell` for Science and Atlas, restricted Markdown answers, session-only
-  OpenRouter keys by default with an explicit remember-on-this-browser option, visible revocable
+- Shared `AgentConversationShell` for Science and Atlas, restricted Markdown answers, OpenRouter
+  keys remembered in this browser unless the user unchecks that option, visible revocable
   session grants, a deterministic conversation ledger, hardened replay, and
   `analysis.particle.quality.read` plus dedicated ROI/histogram/profile/FFT/surface/stack/compare
   actions. Atlas keeps labeled scripted action-contract evals and adds controller-backed grading.
@@ -41,6 +41,9 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Fixed
 
+- Agent settings no longer style the persistence label as the status dot or the remember
+  checkbox as a full-width text field. “Remember on this browser” is checked by default;
+  unchecking it warns that a refresh will lose the key.
 - Science stack alignment selects the non-display volume axis rather than the first
   non-space axis, so generated NRRD stacks can be aligned. The generated drifting-stack
   NRRD now declares `kinds: space space space`. Worker analysis errors include the nested
@@ -51,8 +54,9 @@ The application is not yet versioned for release (`0.0.0`).
   not fail CI. Chromium screenshot compare allows a 2.5% pixel ratio for remaining
   container-vs-host antialiasing. Science save/reload e2e waits until the project is
   marked saved, Atlas comparison waits until the second COG settles, and bundled example
-  opens use a 120s test timeout and 90s gallery-close wait without changing first-tile
-  budgets, so WebKit can finish connected-components on the 2100 by 1630 JPEG. JPEG/PNG
+  opens keep a 90s test timeout without changing first-tile budgets. WebKit skips
+  `cdc.staph-aureus-sem` because applying the committed JPEG connected-components preset
+  hangs in that browser; Chromium and Firefox still open that scenario. JPEG/PNG
   codec adapters share one origin-decoded plane between viewport tiles and analysis so
   opening an analyzed example does not decode the still twice. If the live dataset
   handle goes stale after the first tile, Science reopens the example once before

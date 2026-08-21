@@ -63,11 +63,12 @@ Implementation references inspected on 2026-08-20:
 - [Models API](https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties)
 - [Errors and debugging](https://openrouter.ai/docs/api_reference/errors-and-debugging)
 
-The user key is held by `OptionalPersistentOpenRouterCredentialStore`. It is session-only by
-default, never serialized into projects or tool results, and may be remembered in this browser only
-after an explicit checkbox. Unmounting Atlas disposes the runtime and its session grants; it does
-not revoke a remembered browser key. The model-independent transport interface permits a future
-server relay without coupling the runtime to OpenRouter.
+The user key is held by `OptionalPersistentOpenRouterCredentialStore`. The connect dialog defaults
+to remembering it in this browser. Unchecking that option keeps the key in this tab only and warns
+that a refresh will lose it. The store never copies a session key to localStorage without that
+checkbox. The key is never serialized into projects or tool results. Unmounting Atlas disposes the
+runtime and its session grants; it does not revoke a remembered browser key. The model-independent
+transport interface permits a future server relay without coupling the runtime to OpenRouter.
 
 ## Evaluation
 

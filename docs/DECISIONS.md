@@ -238,11 +238,12 @@ See `docs/ATLAS_PROJECT_PERSISTENCE.md` for limits, migrations, and deep-link po
 Atlas has no model-only tool list. `packages/agent` receives a live capability manifest generated
 from action descriptors and availability, while `packages/geo-workbench` supplies bounded project
 context and policy. Every call retains its action ID/version/revision and executes through the same
-controller `ActionHost` as the UI. The OpenRouter adapter is replaceable. BYOK is session-only by
-default with an explicit remember-on-this-browser option, and normal CI uses deterministic
-transports. Completed conversation turns are retained only in bounded memory. Model-visible imagery
-exists only through the bounded, approval-gated `geo.preview.create` artifact path; browser-screen
-scope also requires the native display-share picker. See `docs/ATLAS_AGENT.md`.
+controller `ActionHost` as the UI. The OpenRouter adapter is replaceable. BYOK defaults to
+remembering the key in this browser; unchecking that option keeps a session-only key and warns that
+a refresh will lose it. Normal CI uses deterministic transports. Completed conversation turns are
+retained only in bounded memory. Model-visible imagery exists only through the bounded,
+approval-gated `geo.preview.create` artifact path; browser-screen scope also requires the native
+display-share picker. See `docs/ATLAS_AGENT.md`.
 
 ## The Materials Workbench agent tunes analyses through the same science actions
 

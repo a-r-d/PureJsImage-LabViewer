@@ -380,7 +380,8 @@ Initial implementation:
 
 - IndexedDB for projects and bounded history;
 - localStorage only for tiny preferences and explicitly enabled durable credentials; Science and
-  Atlas BYOK are session-only by default;
+  Atlas BYOK default to remembering the OpenRouter key in this browser, with an explicit session-only
+  uncheck;
 - explicit JSON project export/import;
 - local files must be rebound after reload unless the browser grants persistent file handles.
 

@@ -59,7 +59,7 @@ test('keeps the agent opt-in and its OpenRouter key session-memory-only', async 
   const settings = page.getByRole('dialog', { name: 'Agent settings' })
   await expect(settings).toBeVisible()
   await expect(settings.getByText('OpenRouter key required')).toBeVisible()
-  await expect(settings.getByText('Session only', { exact: true })).toBeVisible()
+  await expect(settings.getByLabel('Remember on this browser')).toBeChecked()
   await expect(settings.getByLabel('Tool-capable model')).toHaveValue('openai/gpt-5.6-luna')
   await settings.getByLabel('Tool-capable model').selectOption('google/gemini-3.7-flash')
   await expect(settings.getByLabel('Tool-capable model')).toHaveValue('google/gemini-3.7-flash')
@@ -69,7 +69,8 @@ test('keeps the agent opt-in and its OpenRouter key session-memory-only', async 
 
   const fixtureKey = 'sk-or-playwright-session-only'
   await settings.getByLabel('OpenRouter key').fill(fixtureKey)
-  await expect(settings.getByLabel('Remember on this browser')).not.toBeChecked()
+  await settings.getByLabel('Remember on this browser').uncheck()
+  await expect(settings.getByText(/lost if this page refreshes/iu)).toBeVisible()
   await settings.getByRole('button', { name: 'Save and continue' }).click()
   await expect(settings).toBeHidden()
   await expect(panel.getByText('vendor/custom-tool-model')).toBeVisible()

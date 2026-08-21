@@ -94,7 +94,9 @@ export function AgentConversationShell({
   const initialModel = useRef(initialModelSelection(modelPreferenceKey))
   const [keyInput, setKeyInput] = useState('')
   const [keyPresent, setKeyPresent] = useState(() => credentials.has())
-  const [rememberKey, setRememberKey] = useState(() => credentials.persistence === 'browser')
+  const [rememberKey, setRememberKey] = useState(
+    () => !credentials.has() || credentials.persistence === 'browser',
+  )
   const [settingsOpen, setSettingsOpen] = useState(() => !credentials.has())
   const [models, setModels] = useState<readonly AgentModelSummary[]>([])
   const [modelChoice, setModelChoice] = useState(initialModel.current.choice)
@@ -180,7 +182,7 @@ export function AgentConversationShell({
       credentials.clear()
       setKeyInput('')
       setKeyPresent(false)
-      setRememberKey(false)
+      setRememberKey(true)
       setModels([])
       setPanelError(undefined)
       queueMicrotask(() => keyInputElement.current?.focus())
@@ -577,14 +579,19 @@ export function AgentConversationShell({
           </header>
           <p className={`${prefix}-settings__intro`}>
             {keyPresent
-              ? `The key is ${persistenceLabel.toLowerCase()}. Remembering it is optional.`
-              : 'Paste a key for this session. Check “Remember on this browser” only if you want this browser profile to keep it.'}
+              ? `The key is ${persistenceLabel.toLowerCase()}. Uncheck “Remember on this browser” to keep it in this tab only.`
+              : 'Paste a key. It is remembered in this browser unless you uncheck “Remember on this browser.”'}
           </p>
 
           <div className={`${prefix}-settings__status`}>
-            <span aria-hidden="true" className={keyPresent ? 'is-connected' : undefined} />
+            <span
+              aria-hidden="true"
+              className={`${prefix}-settings__status-dot${keyPresent ? ' is-connected' : ''}`}
+            />
             <strong>{keyPresent ? 'OpenRouter connected' : 'OpenRouter key required'}</strong>
-            <span>{persistenceLabel}</span>
+            {keyPresent ? (
+              <span className={`${prefix}-settings__persistence`}>{persistenceLabel}</span>
+            ) : null}
           </div>
 
           <label>
@@ -602,6 +609,7 @@ export function AgentConversationShell({
           </label>
           <label className={`${prefix}-settings__remember`}>
             <input
+              aria-describedby={rememberKey ? undefined : `${prefix}-session-warning`}
               checked={rememberKey}
               disabled={active}
               onChange={(event) => setRememberKey(event.currentTarget.checked)}
@@ -609,10 +617,20 @@ export function AgentConversationShell({
             />
             Remember on this browser
           </label>
+          {rememberKey ? null : (
+            <p
+              className={`${prefix}-settings__session-warning`}
+              id={`${prefix}-session-warning`}
+              role="status"
+            >
+              The key will be lost if this page refreshes. It stays only in this tab until you close
+              it.
+            </p>
+          )}
           <p className={`${prefix}-settings__privacy`}>
             Browser localStorage is not a secret vault. Prefer a separate, low-limit OpenRouter key.
             The key is never included in projects, conversations, analysis tools, exports, logs, or
-            reports. A session key is never moved to browser storage unless you check this box.
+            reports. Unchecking this box keeps the key in this tab only.
           </p>
 
           <label>

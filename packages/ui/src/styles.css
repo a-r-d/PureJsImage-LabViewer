@@ -858,16 +858,26 @@ textarea::placeholder {
   background: var(--wb-surface-raised);
   font-size: 11px;
 }
-.science-agent-settings__status > span {
+.science-agent-settings__status-dot {
+  flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--wb-warning);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--wb-warning) 12%, transparent);
 }
-.science-agent-settings__status > span.is-connected {
+.science-agent-settings__status-dot.is-connected {
   background: var(--wb-success);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--wb-success) 12%, transparent);
+}
+.science-agent-settings__status > strong {
+  min-width: 0;
+  flex: 1;
+}
+.science-agent-settings__persistence {
+  flex: none;
+  color: var(--wb-text-muted);
+  font-weight: 700;
 }
 .science-agent-settings label {
   display: grid;
@@ -876,7 +886,7 @@ textarea::placeholder {
   font-size: 11px;
   font-weight: 700;
 }
-.science-agent-settings input,
+.science-agent-settings input:not([type="checkbox"]),
 .science-agent-settings select {
   width: 100%;
   min-height: 36px;
@@ -885,6 +895,35 @@ textarea::placeholder {
   border-radius: 8px;
   background: var(--wb-surface-raised);
   color: var(--wb-text);
+}
+.science-agent-settings__remember {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.science-agent-settings__remember input[type="checkbox"] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--wb-accent);
+  cursor: pointer;
+}
+.science-agent-settings__session-warning {
+  margin-top: -6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--wb-warning) 50%, var(--wb-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--wb-warning) 12%, transparent);
+  color: var(--wb-text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
 }
 .science-agent-settings__privacy {
   margin-top: -8px;
