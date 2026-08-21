@@ -32,8 +32,10 @@ import { encodeGsf } from 'purejsimage/scientific/readers/gsf'
 import { describe, expect, it } from 'vitest'
 
 import {
+  ImagingRpcError,
   ImagingWorkerClient,
   ImagingWorkerHost,
+  isStaleIdError,
   PUREJSIMAGE_PACKAGE_VERSION,
   SUPPORTED_READERS,
 } from '../src/index.js'
@@ -308,6 +310,19 @@ function rangeFetch(bytes: Uint8Array): typeof fetch {
 }
 
 describe('PureJsImage Worker host', () => {
+  it('detects STALE_ID RPC errors without matching message text', () => {
+    expect(
+      isStaleIdError(
+        new ImagingRpcError({
+          code: 'STALE_ID',
+          message: 'Unknown or stale dataset handle',
+          retryable: false,
+        }),
+      ),
+    ).toBe(true)
+    expect(isStaleIdError(new Error('Unknown or stale dataset handle'))).toBe(false)
+  })
+
   it('composes the trusted materials catalog and renders a bounded derived preview tile', async () => {
     const host = createScienceImagingWorkerHost()
     const dataset = await openGeneratedValues(host, 3, 2, Float32Array.from([1, 2, 3, 4, 5, 6]))

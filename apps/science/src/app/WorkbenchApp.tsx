@@ -69,9 +69,10 @@ import {
   workbenchActionRegistry,
   workbenchCommands,
 } from '@pji-workbench/domain-science'
-import type { ImagingWorkerClient } from '@pji-workbench/imaging'
 import {
   authoredOmeZarrDisplayMapping,
+  type ImagingWorkerClient,
+  isStaleIdError,
   OME_ZARR_ZIP_FILE_ACCEPT,
   selectOmeZarrDirectoryRoot,
 } from '@pji-workbench/imaging'
@@ -2672,13 +2673,15 @@ function WorkbenchRuntime({
           await waitForFirstUsefulTile(signal)
           signal.throwIfAborted()
           setInspectorTab('analysis')
-          const runPreset = (): Promise<AnalysisGraphOutcome | undefined> =>
+          const runPreset = (
+            dataset: OpenedDatasetDescriptor,
+          ): Promise<AnalysisGraphOutcome | undefined> =>
             preset.kind === 'histogram'
-              ? executeAnalysisGraph(histogramGraph(openedExample.selection, preset.component), {
-                  roi: wholePlaneRoi(openedExample, openedExample.selection),
+              ? executeAnalysisGraph(histogramGraph(dataset.selection, preset.component), {
+                  roi: wholePlaneRoi(dataset, dataset.selection),
                   commit: true,
                   throwOnError: true,
-                  dataset: openedExample,
+                  dataset,
                   workerClient: client,
                 })
               : executeAnalysisGraph(
@@ -2686,26 +2689,28 @@ function WorkbenchRuntime({
                     component: preset.component,
                     threshold: preset.threshold,
                     mode: preset.mode,
-                    selection: openedExample.selection,
+                    selection: dataset.selection,
                     connectivity: preset.connectivity,
                   }),
                   {
                     overlay: preset.overlay,
                     commit: true,
                     throwOnError: true,
-                    dataset: openedExample,
+                    dataset,
                     workerClient: client,
                   },
                 )
+          const liveDataset = (): OpenedDatasetDescriptor =>
+            runtime.current?.dataset ?? openedExample
           let succeeded = false
           try {
-            succeeded = (await runPreset()) !== undefined
+            succeeded = (await runPreset(liveDataset())) !== undefined
           } catch (presetError) {
             const aborted = presetError instanceof DOMException && presetError.name === 'AbortError'
-            if (!aborted) throw presetError
+            if (!aborted && !isStaleIdError(presetError)) throw presetError
             await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
             signal.throwIfAborted()
-            succeeded = (await runPreset()) !== undefined
+            succeeded = (await runPreset(liveDataset())) !== undefined
           }
           if (!succeeded)
             throw new Error(`${preset.title} could not be applied to ${scenario.title}.`)
@@ -2715,7 +2720,7 @@ function WorkbenchRuntime({
         signal.removeEventListener('abort', cancel)
       }
     },
-    [appendLog, client, executeAnalysisGraph, openSample, runOpen, waitForFirstUsefulTile],
+    [appendLog, client, executeAnalysisGraph, openSample, runOpen, runtime, waitForFirstUsefulTile],
   )
 
   const runExampleWorkflow = useCallback(

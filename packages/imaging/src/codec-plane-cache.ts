@@ -27,11 +27,12 @@ export function usesCodecAdapterReader(readerId: string): boolean {
 export function wrapCodecAdapterDataset(
   dataset: ScientificDataset,
   readerId: string,
+  cachedNumeric?: NumericTileSource,
 ): ScientificDataset {
   if (!usesCodecAdapterReader(readerId)) return dataset
-  const cached = cacheCodecAdapterPlane(
-    resolveNumericTileSource(dataset, { targetSampleType: 'float32' }),
-  )
+  const cached =
+    cachedNumeric ??
+    cacheCodecAdapterPlane(resolveNumericTileSource(dataset, { targetSampleType: 'float32' }))
   return {
     descriptor: dataset.descriptor,
     async *readPlane(request: Readonly<ScientificPlaneReadRequest>) {

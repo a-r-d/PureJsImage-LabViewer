@@ -101,4 +101,44 @@ describe('codec adapter plane cache', () => {
     expect(blocks[0]?.data.some((value) => value > 0)).toBe(true)
     await document.close?.()
   })
+
+  it('reuses a shared numeric plane cache for analysis reads', async () => {
+    const bytes = await encodedJpeg()
+    const document = await new ScientificReaderRegistry([jpegReader]).open({
+      primary: { id: 'jpeg', name: 'pattern.jpg', source: new MemorySource(bytes) },
+    })
+    const dataset = await document.openDataset(document.datasets[0]?.id ?? 'image')
+    const numeric = cacheCodecAdapterPlane(
+      resolveNumericTileSource(dataset, { targetSampleType: 'float32' }),
+    )
+    const wrapped = wrapCodecAdapterDataset(dataset, 'purejsimage/jpeg', numeric)
+    const tiles = []
+    for await (const tile of numeric.readNumericTiles({
+      displayAxes: ['x', 'y'],
+      fixedIndices: [],
+      x: 0,
+      y: 0,
+      width: 8,
+      height: 8,
+      targetSampleType: 'float32',
+    })) {
+      tiles.push(tile)
+    }
+    const blocks = []
+    for await (const block of wrapped.readPlane({
+      displayAxes: ['x', 'y'],
+      fixedIndices: [],
+      x: 0,
+      y: 0,
+      width: 8,
+      height: 8,
+    })) {
+      blocks.push(block)
+    }
+    expect(tiles).toHaveLength(1)
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]?.data[0]).toBe(Math.round(tiles[0]?.data[0] ?? Number.NaN))
+    tiles[0]?.release()
+    await document.close?.()
+  })
 })

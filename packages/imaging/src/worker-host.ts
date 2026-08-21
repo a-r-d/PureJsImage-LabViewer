@@ -49,7 +49,11 @@ import {
 } from 'purejsimage/scientific'
 import { createScientificFileContext } from 'purejsimage/scientific/browser'
 import { HttpRangeSource } from 'purejsimage/sources/http-range'
-import { cacheCodecAdapterPlane, usesCodecAdapterReader } from './codec-plane-cache.js'
+import {
+  cacheCodecAdapterPlane,
+  usesCodecAdapterReader,
+  wrapCodecAdapterDataset,
+} from './codec-plane-cache.js'
 import { wrapFetchToExposeContentRange } from './cors-range-fetch.js'
 import { datasetDescriptor, defaultPlaneSelection, openedSourceDescriptor } from './descriptor.js'
 import { omeZarrDirectoryFingerprint } from './ome-zarr-directory.js'
@@ -1023,20 +1027,22 @@ export class ImagingWorkerHost {
               buildFingerprint: 'pji-workbench-worker-v1',
             },
           })
+          const readerId = source.document.reader.id
+          const numericSource = wrapNumericSource(
+            resolveNumericTileSource(dataset, { targetSampleType: 'float32' }),
+            readerId,
+          )
+          const analysisDataset = wrapCodecAdapterDataset(dataset, readerId, numericSource)
           const handleId = this.#id('dataset') as DatasetHandleId
           const record: DatasetRecord = {
             handleId,
             sourceId: source.id,
             summary,
             dataset,
-            readerId: source.document.reader.id,
+            analysisDataset,
+            readerId,
             runtime,
-            tileSource: numericTileSourceToTileSource(
-              wrapNumericSource(
-                resolveNumericTileSource(dataset, { targetSampleType: 'float32' }),
-                source.document.reader.id,
-              ),
-            ),
+            tileSource: numericTileSourceToTileSource(numericSource),
             tileIdentity: createTileDatasetIdentityForScientificDataset(dataset, {
               sessionId: handleId,
               generation: source.generation,

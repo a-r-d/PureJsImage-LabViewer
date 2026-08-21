@@ -22,6 +22,7 @@ export {
   ImagingRpcError,
   ImagingWorkerClient,
   type ImagingWorkerClientOptions,
+  isStaleIdError,
 } from './worker-client.js'
 export { durableOmeZarrRootUrl } from './worker-host/ome-zarr-rpc.js'
 export {

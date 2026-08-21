@@ -53,6 +53,7 @@ export interface DatasetRecord {
   readonly sourceId: SourceId
   readonly summary: ScientificDatasetSummary
   readonly dataset: ScientificDataset
+  readonly analysisDataset: ScientificDataset
   readonly readerId: string
   readonly runtime: TileRuntime
   readonly tileSource: TileSource

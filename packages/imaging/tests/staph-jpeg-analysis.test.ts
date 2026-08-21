@@ -43,6 +43,21 @@ describe('bundled JPEG analysis', () => {
     expect(datasetResult.response.ok).toBe(true)
     if (!datasetResult.response.ok) return
     const dataset = datasetResult.response.payload
+    const tileResult = await host.handle(
+      rpcRequest('first-tile', 'tile.request', {
+        tileId: 'first-tile',
+        datasetHandleId: dataset.handleId,
+        generation: 1,
+        displayAxes: dataset.selection.displayAxes,
+        fixedIndices: dataset.selection.fixedIndices,
+        resolutionLevel: dataset.selection.resolutionLevel,
+        component: 0,
+        mapping: { mode: 'linear', range: 'auto' },
+        region: { x: 0, y: 0, width: 128, height: 96 },
+        priority: 'visible',
+      }),
+    )
+    expect(tileResult.response.ok, JSON.stringify(tileResult.response)).toBe(true)
     const graph = {
       schemaVersion: 1,
       inputs: [{ name: 'source', valueType: { id: 'purejsimage.scientific.dataset', version: 1 } }],

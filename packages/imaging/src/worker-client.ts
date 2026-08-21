@@ -54,6 +54,10 @@ export class ImagingRpcError extends Error {
   }
 }
 
+export function isStaleIdError(error: unknown): boolean {
+  return error instanceof ImagingRpcError && error.detail.code === 'STALE_ID'
+}
+
 type CrashListener = (error: Error) => void
 type SuccessfulResponse = Extract<WorkerResponse, { ok: true }>
 type ResponseKind = SuccessfulResponse['kind']

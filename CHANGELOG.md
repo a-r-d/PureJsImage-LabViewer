@@ -46,11 +46,14 @@ The application is not yet versioned for release (`0.0.0`).
   NRRD now declares `kinds: space space space`. Worker analysis errors include the nested
   operation cause instead of only the graph wrapper.
 - Biome formatting for the OME-Zarr source surface. Visual goldens include the OME-Zarr
-  open controls and the shared agent conversation shell. Chromium screenshot compare allows
-  a 2.5% pixel ratio so the Playwright Linux container and a developer host can share the
-  same goldens. Science save/reload e2e waits until the project is marked saved, Atlas
-  comparison waits until the second COG settles, and bundled example opens use a 90s test
-  timeout without changing first-tile budgets.
+  open controls and the shared agent conversation shell. The empty-workspace Chromium
+  Linux golden is the Playwright `v1.62.1-noble` capture so host font rasterization does
+  not fail CI. Chromium screenshot compare allows a 2.5% pixel ratio for remaining
+  container-vs-host antialiasing. Science save/reload e2e waits until the project is
+  marked saved, Atlas comparison waits until the second COG settles, and bundled example
+  opens use a 90s test timeout without changing first-tile budgets. JPEG/PNG codec
+  adapters share one origin-decoded plane between viewport tiles and analysis so
+  opening an analyzed example does not decode the still twice.
 - Atlas catalog fetch throws are classified as a browser network block, not “Catalog
   unavailable.” CORS is claimed only when the error names CORS. LandsatLook still cannot be
   searched from `geo.purejsimage.com` until USGS allows that origin; Atlas does not proxy.
