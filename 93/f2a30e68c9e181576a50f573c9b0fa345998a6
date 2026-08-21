@@ -1,0 +1,24 @@
+CHANGELOG.md
+  s_a7ace3638d125b::t_e06d5b634ac569 55-56
+apps/science/src/ScientificViewport.tsx
+  s_a7ace3638d125b::t_b7c6f675d813a7 152
+  s_a7ace3638d125b::t_88f778ace51a8c 153-160
+  s_a7ace3638d125b::t_f6939db70b1a49 203
+  s_a7ace3638d125b::t_17ae58f871fb87 192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "93f2a30e68c9e181576a50f573c9b0fa345998a6",
+  "prompts": {},
+  "sessions": {
+    "s_a7ace3638d125b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "39a0b624-d488-4924-a89c-cd6871d11e2b",
+        "model": "grok-4.6"
+      },
+      "human_author": "aaron decker <aaron@ard.ninja>"
+    }
+  }
+}
