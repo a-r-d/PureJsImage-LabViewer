@@ -56,6 +56,7 @@ const TILE_SIZE = 256
 const PREFETCH_TILES = 1
 const DISPLAY_CACHE_BYTES = 64 * 1_024 * 1_024
 const DISPLAY_CACHE_TILES = 256
+const MAX_CONCURRENT_DISPLAY_TILES = 12
 const SAMPLE_DELAY_MS = 100
 const RETRY_DELAYS_MS = [250, 1_000, 4_000] as const
 
@@ -76,8 +77,15 @@ export interface GeoViewportPointer {
 }
 
 export interface GeoViewportStatus {
+  readonly phase: 'preparing' | 'loading' | 'ready' | 'problem'
   readonly message: string
   readonly pending: number
+  readonly requiredTiles: number
+  readonly readyTiles: number
+  readonly pendingTiles: number
+  readonly activeTileRequests: number
+  readonly statisticsPending: number
+  readonly overviewLevels: readonly number[]
   readonly transientFailures: number
   readonly permanentFailures: number
   readonly retryableFailures: number
@@ -566,6 +574,11 @@ export function GeoViewport({
   onViewportProposalRef.current = onViewportProposal
   const scheduleRef = useRef<() => void>(() => undefined)
   const retryFailedRef = useRef<() => void>(() => undefined)
+  const zoomInRef = useRef<() => void>(() => undefined)
+  const zoomOutRef = useRef<() => void>(() => undefined)
+  const fitProjectRef = useRef<() => void>(() => undefined)
+  const fitSelectedRef = useRef<() => void>(() => undefined)
+  const nativeResolutionRef = useRef<() => void>(() => undefined)
   const [status, setStatus] = useState<GeoViewportStatus | undefined>()
   const rastersIdentity = rasters
     .map((raster) => `${raster.handleId}:${raster.generation}`)
@@ -743,18 +756,36 @@ export function GeoViewport({
       ).length
       const transientFailures = states.filter((state) => state?.kind === 'failed-transient').length
       const permanentFailures = states.filter((state) => state?.kind === 'failed-permanent').length
+      const readyTiles = states.filter((state) => state?.kind === 'ready').length
       const statsFailures = statisticsErrors.size
       const settled = pendingCount === 0 && statisticsPending.size === 0
       const problemCount = transientFailures + permanentFailures + statsFailures
       const loadingCount = pendingCount + statisticsPending.size
+      const phase =
+        problemCount > 0
+          ? 'problem'
+          : statisticsPending.size > 0
+            ? 'preparing'
+            : pendingCount > 0
+              ? 'loading'
+              : 'ready'
       const next: GeoViewportStatus = {
+        phase,
         message:
           problemCount > 0
-            ? `${problemCount} display problem${problemCount === 1 ? '' : 's'}`
-            : loadingCount > 0
-              ? `Loading ${loadingCount} display item${loadingCount === 1 ? '' : 's'}`
-              : 'Viewport ready',
+            ? `${problemCount} display request${problemCount === 1 ? '' : 's'} need attention`
+            : statisticsPending.size > 0
+              ? `Preparing display range for ${statisticsPending.size} layer${statisticsPending.size === 1 ? '' : 's'}`
+              : pendingCount > 0
+                ? `Loading ${pendingCount} visible tile${pendingCount === 1 ? '' : 's'}`
+                : 'Map ready',
         pending: loadingCount,
+        requiredTiles: required.size,
+        readyTiles,
+        pendingTiles: pendingCount,
+        activeTileRequests: pending.size,
+        statisticsPending: statisticsPending.size,
+        overviewLevels: [...new Set(overviewBySource.values())].sort((left, right) => left - right),
         transientFailures,
         permanentFailures: permanentFailures + statsFailures,
         retryableFailures: transientFailures + statsFailures,
@@ -1017,7 +1048,7 @@ export function GeoViewport({
         })
         .finally(() => {
           pending.delete(tileId)
-          reportStatus()
+          scheduleRef.current()
         })
     }
 
@@ -1106,7 +1137,9 @@ export function GeoViewport({
         tileStates.set(tileId, { kind: 'superseded' })
       }
       required = nextRequired
-      for (const [context, candidate, tileId] of requests) requestTile(context, candidate, tileId)
+      const availableRequests = Math.max(0, MAX_CONCURRENT_DISPLAY_TILES - pending.size)
+      for (const [context, candidate, tileId] of requests.slice(0, availableRequests))
+        requestTile(context, candidate, tileId)
       draw()
       reportStatus()
       emitViewBbox()
@@ -1200,6 +1233,54 @@ export function GeoViewport({
       )
       scheduleTiles()
     }
+    const zoomAtCenter = (factor: number): void => {
+      camera = zoomCameraAtScreenPointInSpace(
+        camera,
+        { x: viewport.width / 2, y: viewport.height / 2 },
+        factor,
+        viewport,
+        cameraAdapter,
+        limits,
+      )
+      scheduleTiles()
+      canvas.focus()
+    }
+    const fitProject = (): void => {
+      camera = fitCameraToLayer(cameraAdapter, viewport, 24, limits)
+      scheduleTiles()
+      canvas.focus()
+    }
+    const fitSelected = (): void => {
+      const layer = layersRef.current.find(({ id }) => id === selectedLayerRef.current)
+      const raster = rastersRef.current.find(
+        ({ sourceId }) => String(sourceId) === String(layer?.sourceId),
+      )
+      const selectedAdapter = raster === undefined ? undefined : worldAdapterForDataset(raster)
+      if (selectedAdapter !== undefined)
+        camera = fitCameraToLayer(selectedAdapter, viewport, 24, limits)
+      scheduleTiles()
+      canvas.focus()
+    }
+    const showNativeResolution = (): void => {
+      const world = cameraAdapter.worldBounds()
+      const pixels = cameraAdapter.pixelBounds()
+      const nativeZoom = Math.min(pixels.width / world.width, pixels.height / world.height)
+      camera = zoomCameraAtScreenPointInSpace(
+        camera,
+        { x: viewport.width / 2, y: viewport.height / 2 },
+        nativeZoom / camera.zoom,
+        viewport,
+        cameraAdapter,
+        limits,
+      )
+      scheduleTiles()
+      canvas.focus()
+    }
+    zoomInRef.current = () => zoomAtCenter(1.25)
+    zoomOutRef.current = () => zoomAtCenter(0.8)
+    fitProjectRef.current = fitProject
+    fitSelectedRef.current = fitSelected
+    nativeResolutionRef.current = showNativeResolution
     const updateSwipe = (clientX: number): void => {
       if (comparisonState.mode !== 'swipe') return
       const bounds = canvas.getBoundingClientRect()
@@ -1337,54 +1418,19 @@ export function GeoViewport({
         scheduleTiles()
         event.preventDefault()
       } else if (event.key === '+' || event.key === '=') {
-        camera = zoomCameraAtScreenPointInSpace(
-          camera,
-          { x: viewport.width / 2, y: viewport.height / 2 },
-          1.25,
-          viewport,
-          cameraAdapter,
-          limits,
-        )
-        scheduleTiles()
+        zoomAtCenter(1.25)
         event.preventDefault()
       } else if (event.key === '-' || event.key === '_') {
-        camera = zoomCameraAtScreenPointInSpace(
-          camera,
-          { x: viewport.width / 2, y: viewport.height / 2 },
-          0.8,
-          viewport,
-          cameraAdapter,
-          limits,
-        )
-        scheduleTiles()
+        zoomAtCenter(0.8)
         event.preventDefault()
       } else if (event.key === '0') {
-        camera = fitCameraToLayer(cameraAdapter, viewport, 24, limits)
-        scheduleTiles()
+        fitProject()
         event.preventDefault()
       } else if (event.key.toLowerCase() === 'f') {
-        const layer = layersRef.current.find(({ id }) => id === selectedLayerRef.current)
-        const raster = rastersRef.current.find(
-          ({ sourceId }) => String(sourceId) === String(layer?.sourceId),
-        )
-        const selectedAdapter = raster === undefined ? undefined : worldAdapterForDataset(raster)
-        if (selectedAdapter !== undefined)
-          camera = fitCameraToLayer(selectedAdapter, viewport, 24, limits)
-        scheduleTiles()
+        fitSelected()
         event.preventDefault()
       } else if (event.key === '1') {
-        const world = cameraAdapter.worldBounds()
-        const pixels = cameraAdapter.pixelBounds()
-        const nativeZoom = Math.min(pixels.width / world.width, pixels.height / world.height)
-        camera = zoomCameraAtScreenPointInSpace(
-          camera,
-          { x: viewport.width / 2, y: viewport.height / 2 },
-          nativeZoom / camera.zoom,
-          viewport,
-          cameraAdapter,
-          limits,
-        )
-        scheduleTiles()
+        showNativeResolution()
         event.preventDefault()
       }
     }
@@ -1404,6 +1450,11 @@ export function GeoViewport({
       onViewportProposalRef.current?.(undefined)
       scheduleRef.current = () => undefined
       retryFailedRef.current = () => undefined
+      zoomInRef.current = () => undefined
+      zoomOutRef.current = () => undefined
+      fitProjectRef.current = () => undefined
+      fitSelectedRef.current = () => undefined
+      nativeResolutionRef.current = () => undefined
       resizeObserver.disconnect()
       canvas.removeEventListener('pointermove', onPointerMove)
       canvas.removeEventListener('pointerdown', onPointerDown)
@@ -1436,13 +1487,94 @@ export function GeoViewport({
         role="img"
         tabIndex={0}
       />
+      <nav aria-label="Map navigation" className="geo-map-controls">
+        <button
+          aria-label="Zoom in"
+          onClick={() => zoomInRef.current()}
+          title="Zoom in (+)"
+          type="button"
+        >
+          +
+        </button>
+        <button
+          aria-label="Zoom out"
+          onClick={() => zoomOutRef.current()}
+          title="Zoom out (-)"
+          type="button"
+        >
+          −
+        </button>
+        <span aria-hidden="true" className="geo-map-controls__divider" />
+        <button
+          aria-label="Fit project"
+          onClick={() => fitProjectRef.current()}
+          title="Fit project (0)"
+          type="button"
+        >
+          Fit
+        </button>
+        <button
+          aria-label="Fit selected layer"
+          onClick={() => fitSelectedRef.current()}
+          title="Fit selected layer (F)"
+          type="button"
+        >
+          Layer
+        </button>
+        <button
+          aria-label="Show native resolution"
+          onClick={() => nativeResolutionRef.current()}
+          title="Native resolution (1)"
+          type="button"
+        >
+          1:1
+        </button>
+        <span className="geo-map-controls__hint">Pan</span>
+      </nav>
       <div
         aria-live="polite"
-        className="geo-viewport-status"
+        className={`geo-viewport-status geo-viewport-status--${status?.phase ?? 'preparing'}`}
         id="geo-viewport-status"
         role="status"
       >
-        <span title={status?.errors.join('\n')}>{status?.message ?? 'Preparing viewport'}</span>
+        <div className="geo-viewport-status__heading">
+          <span className="geo-viewport-status__pulse" />
+          <strong title={status?.errors.join('\n')}>{status?.message ?? 'Preparing map'}</strong>
+          {status === undefined || status.requiredTiles === 0 ? null : (
+            <span>
+              {status.readyTiles} / {status.requiredTiles}
+            </span>
+          )}
+        </div>
+        {status?.phase === 'loading' || status?.phase === 'problem' ? (
+          <progress
+            aria-label={`${status.readyTiles} of ${status.requiredTiles} visible tiles ready`}
+            max={Math.max(1, status.requiredTiles)}
+            value={status.readyTiles}
+          />
+        ) : status?.phase === 'preparing' || status === undefined ? (
+          <progress aria-label="Preparing display range" />
+        ) : null}
+        {status === undefined ? null : (
+          <div className="geo-viewport-status__facts">
+            <span>
+              {status.activeTileRequests > 0
+                ? `${status.activeTileRequests} reading`
+                : 'No reads active'}
+            </span>
+            {status.pendingTiles <= status.activeTileRequests ? null : (
+              <span>{status.pendingTiles - status.activeTileRequests} queued</span>
+            )}
+            <span>
+              {status.overviewLevels.length === 0
+                ? 'Selecting level'
+                : `Level ${status.overviewLevels.join(', ')}`}
+            </span>
+            <span>
+              {status.cache.tiles} cached · {formatBytes(status.cache.bytes)}
+            </span>
+          </div>
+        )}
         {status?.errors[0] === undefined ? null : (
           <span className="geo-viewport-status__detail">{status.errors[0]}</span>
         )}
@@ -1454,6 +1586,12 @@ export function GeoViewport({
       </div>
     </div>
   )
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`
+  if (bytes < 1_024 * 1_024) return `${(bytes / 1_024).toFixed(1)} KiB`
+  return `${(bytes / (1_024 * 1_024)).toFixed(1)} MiB`
 }
 
 function runtimeInputsForDerived(

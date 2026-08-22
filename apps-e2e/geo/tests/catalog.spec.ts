@@ -208,4 +208,10 @@ test('opens a curated demo from the launch picker', async ({ page }) => {
   await expect(page.getByRole('img', { name: /Geo raster viewport/u })).toBeVisible({
     timeout: 30_000,
   })
+  await expect(page.getByRole('region', { name: 'Sources' })).toContainText('1 / 32')
+
+  await page.getByRole('button', { name: 'Demos' }).click()
+  await page.getByRole('button', { name: /Kentucky leaf-off ortho/u }).click()
+  await expect(page.locator('[data-atlas-settled="true"]')).toBeVisible({ timeout: 45_000 })
+  await expect(page.getByRole('region', { name: 'Sources' })).toContainText('1 / 32')
 })

@@ -115,6 +115,41 @@ test('supports keyboard navigation, swipe adjustment, and blink timing', async (
   await expect(page.locator('[data-atlas-settled="true"]')).toBeVisible({ timeout: 45_000 })
 })
 
+test('keeps map navigation visible and inspector destinations readable', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.setViewportSize({ width: 960, height: 720 })
+  await openRemoteFixture(page)
+
+  const navigation = page.getByRole('navigation', { name: 'Map navigation' })
+  await expect(navigation).toBeVisible()
+  for (const name of [
+    'Zoom in',
+    'Zoom out',
+    'Fit project',
+    'Fit selected layer',
+    'Show native resolution',
+  ])
+    await expect(navigation.getByRole('button', { name })).toBeVisible()
+
+  for (const tab of await page.getByRole('tab').all()) {
+    expect(await tab.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
+      true,
+    )
+  }
+
+  const status = page.getByRole('status')
+  await expect(status).toContainText('Map ready')
+  await expect(status).toContainText('Level 0')
+  await expect(status).toContainText('cached')
+
+  await navigation.getByRole('button', { name: 'Zoom in' }).click()
+  await navigation.getByRole('button', { name: 'Zoom out' }).click()
+  await navigation.getByRole('button', { name: 'Fit selected layer' }).click()
+  await navigation.getByRole('button', { name: 'Show native resolution' }).click()
+  await expect(page.locator('[data-atlas-settled="true"]')).toBeVisible({ timeout: 45_000 })
+  await expect(status).not.toContainText('need attention')
+})
+
 test('draws a map ROI, plans tiled statistics, runs them, and exports WGS84 GeoJSON', async ({
   page,
 }) => {

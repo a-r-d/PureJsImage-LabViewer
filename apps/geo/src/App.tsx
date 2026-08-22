@@ -5,12 +5,14 @@ import {
 } from '@pji-workbench/agent'
 import type { SourceId, WorkerDiagnostics } from '@pji-workbench/contracts'
 import type {
+  CatalogAssetIdentity,
   CatalogSearchPage,
   CatalogService,
   CatalogSourceCandidate,
   GeoMapGeometry,
   GeoProjectViewport,
   GeoRasterLayer,
+  GeoRasterSource,
   StacBbox,
 } from '@pji-workbench/domain-geo'
 import {
@@ -355,6 +357,28 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       inspect: boolean,
       verifiedReport?: RasterAssetPreflight,
     ) => {
+      const existing = existingCatalogSource(controller, candidate)
+      if (existing !== undefined && controller.bindingForSource(existing.id) !== undefined) {
+        const layer = controller
+          .getSnapshot()
+          .project.layers.find(({ sourceId }) => sourceId === existing.id)
+        if (layer !== undefined) controller.selectLayer(layer.id)
+        selectTab(inspect ? 'xray' : 'layers')
+        window.history.replaceState(
+          null,
+          '',
+          `${window.location.pathname}${serializeAtlasDeepLink({
+            catalogId: candidate.catalogId,
+            collectionId: candidate.collectionId,
+            itemId: candidate.itemId,
+            assetKey: candidate.assetKey,
+            href: candidate.href,
+            ...(candidate.sourceUrl === undefined ? {} : { sourceUrl: candidate.sourceUrl }),
+            ...(inspect ? { inspect: true } : {}),
+          })}`,
+        )
+        return
+      }
       if (verifiedReport?.compatibility === 'ready') {
         verifiedPreflightsRef.current.set(new URL(candidate.href).href, verifiedReport)
       }
@@ -421,9 +445,15 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       }
       const identities = link.kind === 'asset' ? [link] : link.sources
       void (async () => {
-        const openedSourceIds: string[] = []
+        const sourceIds: string[] = []
+        const newlyOpenedSourceIds: string[] = []
         try {
           for (const identity of identities) {
+            const existing = existingCatalogSource(controller, identity, new Set(sourceIds))
+            if (existing !== undefined && controller.bindingForSource(existing.id) !== undefined) {
+              sourceIds.push(existing.id)
+              continue
+            }
             const entry = catalogById(identity.catalogId)
             if (entry === undefined)
               throw new Error(`Catalog ${identity.catalogId} is unavailable.`)
@@ -448,11 +478,12 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               abort?.signal,
             )
             const sourceId = actionResultId(result, 'sourceId')
-            openedSourceIds.push(sourceId)
+            sourceIds.push(sourceId)
+            newlyOpenedSourceIds.push(sourceId)
           }
           if (cancelled || abort?.signal.aborted) return
           if (link.kind === 'comparison') {
-            const layerIds = openedSourceIds.flatMap((sourceId) =>
+            const layerIds = sourceIds.flatMap((sourceId) =>
               controller
                 .getSnapshot()
                 .project.layers.filter((layer) => layer.sourceId === sourceId)
@@ -475,7 +506,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           )
         } catch {
           await Promise.all(
-            openedSourceIds.map((sourceId) =>
+            newlyOpenedSourceIds.map((sourceId) =>
               controller.closeSource(sourceId, 'remove').catch(() => undefined),
             ),
           )
@@ -1006,6 +1037,23 @@ function sameBbox(left: StacBbox | undefined, right: StacBbox | undefined): bool
       right !== undefined &&
       left.every((value, index) => value === right[index]))
   )
+}
+
+function existingCatalogSource(
+  controller: GeoWorkbenchController,
+  identity: CatalogAssetIdentity,
+  excludedIds: ReadonlySet<string> = new Set(),
+): GeoRasterSource | undefined {
+  return controller.getSnapshot().project.sources.find((source) => {
+    if (excludedIds.has(source.id)) return false
+    const catalog = source.catalog
+    return (
+      catalog?.catalogId === identity.catalogId &&
+      catalog.collectionId === identity.collectionId &&
+      catalog.itemId === identity.itemId &&
+      catalog.assetKey === identity.assetKey
+    )
+  })
 }
 
 function clearCatalogHash(): void {
