@@ -104,6 +104,7 @@ import {
   type WorkerHostResult,
 } from './worker-host/protocol.js'
 import {
+  inFlightAdmissionLimit,
   mergeImagingResourceLimits,
   resolveImagingResourceLimits,
 } from './worker-host/resources.js'
@@ -346,13 +347,11 @@ export class ImagingWorkerHost {
       requestId = request.requestId
       if (request.kind === 'request.cancel') return this.#cancel(request)
       if (request.kind === 'worker.test-crash') throw new Error('Intentional worker crash test')
-      if (
-        this.#isBudgetedKind(request.kind) &&
-        this.#pending.size >= this.#limits.maxInFlightRequests
-      ) {
+      const admissionLimit = inFlightAdmissionLimit(request.kind, this.#limits.maxInFlightRequests)
+      if (this.#isBudgetedKind(request.kind) && this.#pending.size >= admissionLimit) {
         return errorResult(requestId, {
           code: 'LIMIT_EXCEEDED',
-          message: `In-flight request limit of ${this.#limits.maxInFlightRequests} reached.`,
+          message: `In-flight request limit of ${admissionLimit} reached.`,
           retryable: true,
         })
       }

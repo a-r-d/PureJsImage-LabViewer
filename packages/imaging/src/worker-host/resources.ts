@@ -1,4 +1,28 @@
-import { IMAGING_RESOURCE_LIMITS, type ImagingResourceLimits } from '@pji-workbench/contracts'
+import {
+  IMAGING_RESOURCE_LIMITS,
+  type ImagingResourceLimits,
+  type WorkerRequest,
+} from '@pji-workbench/contracts'
+
+const FOREGROUND_REQUEST_RESERVE = 4
+
+const BACKGROUND_RENDER_REQUESTS: ReadonlySet<WorkerRequest['kind']> = new Set([
+  'tile.request',
+  'display.tile.request',
+  'display.statistics.request',
+  'geo.analysis.tile',
+  'analysis.overlay-tile',
+  'analysis.dataset-tile',
+])
+
+/** Keep viewport rendering from starving direct user actions such as ROI measurements. */
+export function inFlightAdmissionLimit(
+  kind: WorkerRequest['kind'],
+  maxInFlightRequests: number,
+): number {
+  if (!BACKGROUND_RENDER_REQUESTS.has(kind)) return maxInFlightRequests
+  return Math.max(1, maxInFlightRequests - FOREGROUND_REQUEST_RESERVE)
+}
 
 export function resolveImagingResourceLimits(
   overrides: Partial<ImagingResourceLimits> | undefined,

@@ -31,6 +31,7 @@ import type {
   AgentRuntimeLimits,
   AgentRuntimeSnapshot,
   AgentSessionGrant,
+  AgentSessionUsage,
   AgentTokenUsage,
   AgentTurnAction,
 } from './types.js'
@@ -110,6 +111,7 @@ export class AgentRuntime {
   #artifacts: AgentArtifact[] = []
   #conversation: AgentModelMessage[][] = []
   #completedTurns: AgentConversationTurn[] = []
+  #sessionUsage: AgentSessionUsage | undefined
   #sequence = 0
 
   constructor(
@@ -166,6 +168,7 @@ export class AgentRuntime {
     this.#completedTurns = []
     this.#artifacts = []
     this.#ledger = emptyLedger()
+    this.#sessionUsage = undefined
     if (options.retainGrants !== true && this.#clearGrantsOnNewConversation) this.#grants.clear()
     this.#snapshot = idleSnapshot(this.#ledger, [...this.#grants.values()])
     for (const listener of this.#listeners) listener(this.#snapshot)
@@ -198,6 +201,7 @@ export class AgentRuntime {
     this.#completedTurns = []
     this.#artifacts = []
     this.#ledger = emptyLedger()
+    this.#sessionUsage = undefined
     this.#grants.clear()
     this.#snapshot = idleSnapshot(this.#ledger)
     for (const listener of this.#listeners) listener(this.#snapshot)
@@ -697,12 +701,34 @@ export class AgentRuntime {
   #recordModelUsage(response: AgentModelResponse, audit: MutableAudit): AgentModelResponse {
     audit.latencyMilliseconds += response.latencyMilliseconds ?? 0
     if (response.usage !== undefined) {
+      const auditCostUsd = sumOptional(audit.usage?.costUsd, response.usage.costUsd)
       audit.usage = {
         promptTokens: (audit.usage?.promptTokens ?? 0) + (response.usage.promptTokens ?? 0),
         completionTokens:
           (audit.usage?.completionTokens ?? 0) + (response.usage.completionTokens ?? 0),
         totalTokens: (audit.usage?.totalTokens ?? 0) + (response.usage.totalTokens ?? 0),
+        ...(auditCostUsd === undefined ? {} : { costUsd: auditCostUsd }),
       }
+    }
+    const previous = this.#sessionUsage
+    const costUsd = sumOptional(previous?.costUsd, response.usage?.costUsd)
+    this.#sessionUsage = {
+      modelCalls: (previous?.modelCalls ?? 0) + 1,
+      promptTokens: (previous?.promptTokens ?? 0) + (response.usage?.promptTokens ?? 0),
+      completionTokens: (previous?.completionTokens ?? 0) + (response.usage?.completionTokens ?? 0),
+      totalTokens: (previous?.totalTokens ?? 0) + (response.usage?.totalTokens ?? 0),
+      ...(response.usage?.promptTokens === undefined
+        ? previous?.latestPromptTokens === undefined
+          ? {}
+          : { latestPromptTokens: previous.latestPromptTokens }
+        : { latestPromptTokens: response.usage.promptTokens }),
+      ...(response.contextLength === undefined
+        ? previous?.contextLength === undefined
+          ? {}
+          : { contextLength: previous.contextLength }
+        : { contextLength: response.contextLength }),
+      ...(costUsd === undefined ? {} : { costUsd }),
+      costComplete: (previous?.costComplete ?? true) && response.usage?.costUsd !== undefined,
     }
     return response
   }
@@ -1055,6 +1081,7 @@ export class AgentRuntime {
       ...(patch.finalText === undefined ? {} : { finalText: patch.finalText }),
       ...(patch.error === undefined ? {} : { error: patch.error }),
       ...(patch.audit === undefined ? {} : { audit: patch.audit }),
+      ...(this.#sessionUsage === undefined ? {} : { sessionUsage: this.#sessionUsage }),
       conversation: [...this.#completedTurns],
       conversationTurnCount: this.#conversation.length,
       conversationMessageCount: this.#conversation.flat().length,
@@ -1063,6 +1090,10 @@ export class AgentRuntime {
     }
     for (const listener of this.#listeners) listener(this.#snapshot)
   }
+}
+
+function sumOptional(left: number | undefined, right: number | undefined): number | undefined {
+  return left === undefined && right === undefined ? undefined : (left ?? 0) + (right ?? 0)
 }
 
 function approvalScope(policy: Readonly<{ approvalScope?: string }>): string | undefined {

@@ -22,7 +22,7 @@ import {
 const PLAN: AgentPlan = {
   goalSummary: 'Tune particle detection from bounded evidence',
   actions: [],
-  approvalsRequired: ['particle execution', 'model preview'],
+  approvalsRequired: [],
   stoppingCondition: 'A bounded result and labels preview have been inspected.',
 }
 
@@ -125,7 +125,7 @@ describe('science agent runtime', () => {
     expect(() => gate.assertCurrent(consumed, 'settings:c')).toThrow(/current valid dry-run plan/)
   })
 
-  it('iterates through analysis and reuses the first viewport-preview approval', async () => {
+  it('iterates through local analysis and viewport previews without approval prompts', async () => {
     let workspace: WorkspaceSnapshot = createEmptyWorkspace('Agent fixture')
     const executed: string[] = []
     const host = new WorkbenchActionHost(
@@ -284,19 +284,10 @@ describe('science agent runtime', () => {
       productName: 'Science fixture',
     })
 
-    const firstTurn = runtime.start(
+    const audit = await runtime.start(
       'Count the particles and tune missed detections.',
       'fake/science-vision',
     )
-    await vi.waitFor(() =>
-      expect(runtime.getSnapshot().approval?.call.actionId).toBe('analysis.particle.execute'),
-    )
-    runtime.approve(runtime.getSnapshot().approval?.id ?? '')
-    await vi.waitFor(() =>
-      expect(runtime.getSnapshot().approval?.call.actionId).toBe('viewport.preview.create'),
-    )
-    runtime.approve(runtime.getSnapshot().approval?.id ?? '')
-    const audit = await firstTurn
 
     expect(executed).toEqual(['particle', 'preview', 'preview'])
     expect(audit.trace.map(({ actionId }) => actionId)).toEqual([
@@ -307,16 +298,9 @@ describe('science agent runtime', () => {
       'viewport.preview.create',
       'viewport.preview.create',
     ])
-    expect(audit.trace.slice(-2).map(({ approval }) => approval)).toEqual([
-      'approved',
-      'remembered',
-    ])
-    expect(
-      audit.approvals.filter(
-        ({ callId, decision }) => decision === 'approved' && callId.startsWith('preview'),
-      ),
-    ).toHaveLength(1)
-    expect(audit.approvals.some(({ decision }) => decision === 'remembered')).toBe(true)
+    expect(audit.trace.every(({ approval }) => approval === 'automatic')).toBe(true)
+    expect(audit.approvals).toEqual([])
+    expect(runtime.getSnapshot().grants).toEqual([])
     expect(runtime.getSnapshot().artifacts).toHaveLength(2)
 
     await runtime.start('Which settings changed?', 'fake/science-vision')
@@ -326,7 +310,7 @@ describe('science agent runtime', () => {
     })
   })
 
-  it('requires preview and expensive-analysis approval while allowing bounded reads', () => {
+  it('automates local analysis and viewport evidence while denying external capabilities', () => {
     const policy = createScienceAgentPolicy()
     const manifest = createScienceAgentGateway({
       currentHost: () => {
@@ -346,31 +330,60 @@ describe('science agent runtime', () => {
     ).toBe('allow')
     expect(
       policy.decide(
+        capability('script.create_draft'),
+        { id: 'local.agent-script', title: 'Agent analysis' },
+        { projectRevision: 0 },
+      ).decision,
+    ).toBe('allow')
+    expect(
+      policy.decide(
+        capability('script.execute'),
+        { id: 'local.agent-script', expectedDigest: 'a'.repeat(64) },
+        { projectRevision: 0 },
+      ).decision,
+    ).toBe('allow')
+    expect(
+      policy.decide(
+        capability('script.request_install'),
+        { id: 'local.agent-script', expectedDigest: 'a'.repeat(64) },
+        { projectRevision: 0 },
+      ).decision,
+    ).toBe('allow')
+    expect(
+      policy.decide(
         capability('analysis.particle.execute'),
         { planId: 'particle-plan-fixture', settings: {} },
         { projectRevision: 0 },
       ).decision,
-    ).toBe('require-approval')
+    ).toBe('allow')
     expect(
       policy.decide(
         capability('viewport.preview.create'),
         { scope: 'screen', width: 512, height: 512 },
         { projectRevision: 0 },
       ),
-    ).toMatchObject({
-      decision: 'require-approval',
-      approvalScope: 'science:model-preview:screen',
-    })
+    ).toMatchObject({ decision: 'deny' })
     expect(
       policy.decide(
         capability('viewport.preview.create'),
         { scope: 'viewport', width: 512, height: 512 },
         { projectRevision: 0 },
       ),
-    ).toMatchObject({
-      decision: 'require-approval',
-      approvalScope: 'science:model-preview:viewport',
-    })
+    ).toMatchObject({ decision: 'allow' })
+    expect(
+      policy.decide(
+        capability('source.open-remote'),
+        { url: 'https://example.com/image.tif' },
+        { projectRevision: 0 },
+      ).decision,
+    ).toBe('deny')
+    expect(
+      policy.decide(
+        capability('result.export.propose'),
+        { resultId: 'result:1' },
+        { projectRevision: 0 },
+      ).decision,
+    ).toBe('deny')
   })
 
   it('routes dedicated analysis actions and quality diagnostics instead of a generic dump', async () => {

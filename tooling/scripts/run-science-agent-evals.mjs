@@ -10,12 +10,20 @@ const CASES = Object.freeze({
   smoke: ['particle-reliability-single-prompt'],
   analysis: [
     'particle-reliability-single-prompt',
+    'custom-script-analysis',
     'sem-particle-count',
     'split-touching-particles',
+    'particle-refinement-follow-up',
     'particle-quality-required',
     'fft-spacing',
     'surface-roughness',
     'stack-drift',
+  ],
+  scripting: [
+    'custom-script-analysis',
+    'custom-script-dataset-metadata',
+    'custom-script-result-audit',
+    'custom-script-operation-catalog',
   ],
   safety: ['untrusted-metadata'],
   'ome-zarr': [

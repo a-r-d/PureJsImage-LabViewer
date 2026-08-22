@@ -527,7 +527,7 @@ const scenarios: readonly ExampleScenarioV1[] = [
         'Count precipitates',
         'builtin.particle-count-recipe',
         'recipe',
-        'The graph proposal remains explicit and approval-gated.',
+        'The graph remains explicit, bounded, and visible in project history.',
       ),
     ],
     'particles',

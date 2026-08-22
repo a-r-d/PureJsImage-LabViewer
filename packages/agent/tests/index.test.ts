@@ -202,6 +202,52 @@ describe('agent capability and policy foundation', () => {
 })
 
 describe('model-independent agent runtime', () => {
+  it('aggregates provider usage for the conversation and clears it on a new chat', async () => {
+    const runtime = new AgentRuntime({
+      transport: new DeterministicAgentTransport([
+        {
+          ...modelResponse([]),
+          usage: {
+            promptTokens: 8_000,
+            completionTokens: 500,
+            totalTokens: 8_500,
+            costUsd: 0.01,
+          },
+          contextLength: 128_000,
+        },
+        {
+          ...modelResponse([]),
+          usage: {
+            promptTokens: 12_000,
+            completionTokens: 750,
+            totalTokens: 12_750,
+            costUsd: 0.02,
+          },
+          contextLength: 128_000,
+        },
+      ]),
+      gateway: fixtureGateway().gateway,
+      policy: ALLOW_READS,
+    })
+
+    await runtime.start('Inspect.', 'fake/atlas')
+    await runtime.start('Inspect again.', 'fake/atlas')
+
+    expect(runtime.getSnapshot().sessionUsage).toEqual({
+      modelCalls: 2,
+      promptTokens: 20_000,
+      completionTokens: 1_250,
+      totalTokens: 21_250,
+      latestPromptTokens: 12_000,
+      contextLength: 128_000,
+      costUsd: 0.03,
+      costComplete: true,
+    })
+    expect(runtime.getSnapshot().audit?.usage?.costUsd).toBe(0.02)
+    runtime.resetConversation()
+    expect(runtime.getSnapshot().sessionUsage).toBeUndefined()
+  })
+
   it('sends the configured reasoning effort on every model step', async () => {
     const fixture = fixtureGateway()
     const efforts: Array<string | undefined> = []
@@ -824,9 +870,24 @@ describe('OpenRouter transport', () => {
   it('uses session-only credentials and accepts an ordered batch of tool calls', async () => {
     const requests: Array<{ readonly url: string; readonly body?: string }> = []
     const bodies = [
-      { data: [{ id: 'fixture/tools', name: 'Fixture Tools', supported_parameters: ['tools'] }] },
+      {
+        data: [
+          {
+            id: 'fixture/tools',
+            name: 'Fixture Tools',
+            context_length: 128_000,
+            supported_parameters: ['tools'],
+          },
+        ],
+      },
       {
         model: 'fixture/tools',
+        usage: {
+          prompt_tokens: 1_200,
+          completion_tokens: 80,
+          total_tokens: 1_280,
+          cost: 0.0042,
+        },
         choices: [
           {
             message: {
@@ -904,6 +965,15 @@ describe('OpenRouter transport', () => {
         input: { query: 'Ohio' },
       },
     ])
+    expect(response).toMatchObject({
+      contextLength: 128_000,
+      usage: {
+        promptTokens: 1_200,
+        completionTokens: 80,
+        totalTokens: 1_280,
+        costUsd: 0.0042,
+      },
+    })
     expect(JSON.stringify(requests)).not.toContain('sk-or-session-fixture')
     credentials.clear()
     expect(credentials.has()).toBe(false)

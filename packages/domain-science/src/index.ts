@@ -29,7 +29,6 @@ export {
   createScienceAgentGateway,
   createScienceAgentPolicy,
   type ScienceAgentGatewayPorts,
-  type ScienceAgentPolicySettings,
   ScienceParticlePlanGate,
 } from './agent.js'
 export {

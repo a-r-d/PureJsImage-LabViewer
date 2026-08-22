@@ -74,6 +74,7 @@ export type WorkbenchActionId =
   | 'script.apply_patch'
   | 'script.create_draft'
   | 'script.diff'
+  | 'script.execute'
   | 'script.read'
   | 'script.request_execute'
   | 'script.request_install'
@@ -174,6 +175,7 @@ function scriptActionInput(id: Extract<WorkbenchActionId, `script.${string}`>) {
       properties: {
         id: SCRIPT_ID,
         title: { type: 'string' as const, minLength: 1, maxLength: 256 },
+        source: { type: 'string' as const, maxLength: 256 * 1024 },
       },
       required: ['id', 'title'] as const,
       additionalProperties: false,
@@ -755,7 +757,20 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
       'Read analysis catalog',
       'Return bounded operation identities and titles.',
       'analysis',
-      { mutability: 'read', permissions: ['analysis.catalog'], outputSchema: { type: 'object' } },
+      {
+        mutability: 'read',
+        permissions: ['analysis.catalog'],
+        inputSchema: {
+          type: 'object',
+          properties: {
+            includeCapabilities: { type: 'boolean' },
+            offset: { type: 'integer', minimum: 0, maximum: 4_096 },
+            limit: { type: 'integer', minimum: 1, maximum: 128 },
+          },
+          additionalProperties: false,
+        },
+        outputSchema: { type: 'object' },
+      },
     ),
   },
   {
@@ -831,7 +846,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'analysis.graph.request-execute',
       'Request analysis graph execution',
-      'Validate, plan, and execute an explicit visible analysis graph after approval.',
+      'Validate, plan, and execute an explicit visible local analysis graph.',
       'analysis',
       {
         mutability: 'mutation',
@@ -909,7 +924,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'analysis.particle.quality.read',
       'Read particle segmentation quality',
-      'Calculate bounded descriptive diagnostics from the current particle result. These metrics are not a formal statistical guarantee; combine them with an approved labels preview before claiming reliability.',
+      'Calculate bounded descriptive diagnostics from the current particle result and, after a rerun, report the prior count and settings for before/after comparison. A count change alone is not improvement; combine both runs with labels previews before claiming reliability.',
       'analysis',
       {
         mutability: 'read',
@@ -995,7 +1010,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'analysis.surface.level.execute',
       'Level surface and read roughness',
-      'Apply reviewed surface leveling and return bounded roughness diagnostics.',
+      'Apply local surface leveling and return bounded roughness diagnostics.',
       'analysis',
       {
         mutability: 'mutation',
@@ -1011,7 +1026,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'analysis.stack.align.execute',
       'Align stack and read drift',
-      'Run reviewed stack alignment and return bounded drift diagnostics.',
+      'Run local stack alignment and return bounded drift diagnostics.',
       'analysis',
       {
         mutability: 'mutation',
@@ -1046,7 +1061,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'analysis.request-execute',
       'Request analysis execution',
-      'Run a reviewed preview or applied operation without bypassing approval.',
+      'Run a local preview or applied operation through the semantic action host.',
       'analysis',
       {
         mutability: 'mutation',
@@ -1232,7 +1247,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'viewport.preview.create',
       'Create bounded model preview',
-      'Create an approved bounded image of the rendered specimen viewport or a user-selected browser screen.',
+      'Create a bounded image of the rendered specimen viewport for visual inspection.',
       'viewport',
       {
         mutability: 'read',
@@ -1295,7 +1310,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
       [
         'script.create_draft',
         'Create script draft',
-        'Create a bounded local draft for review.',
+        'Create a bounded local TypeScript analysis draft, optionally with complete source ready to run.',
         'workspace.propose',
       ],
       ['script.read', 'Read script', 'Read one bounded local script or recipe.', 'workspace.read'],
@@ -1324,15 +1339,21 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
         'workspace.read',
       ],
       [
+        'script.execute',
+        'Run custom analysis script',
+        'Compile and run an exact local draft in the restricted QuickJS sandbox against the current workbench, returning bounded results and provenance.',
+        'analysis.execute',
+      ],
+      [
         'script.request_install',
-        'Request local script installation',
-        'Create an installation proposal for exact reviewed content.',
+        'Install script locally',
+        'Install the exact local content snapshot without an interactive approval step.',
         'workspace.propose',
       ],
       [
         'script.request_execute',
-        'Request script execution',
-        'Create an execution proposal for exact reviewed content.',
+        'Run custom analysis script (legacy)',
+        'Execute the exact local script through the same restricted runtime as script.execute.',
         'analysis.execute',
       ],
     ] as const
@@ -1341,14 +1362,16 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
       mutability:
         id === 'script.read' || id === 'script.typecheck' || id === 'script.diff'
           ? 'read'
-          : 'proposal',
+          : id === 'script.execute' ||
+              id === 'script.request_execute' ||
+              id === 'script.request_install'
+            ? 'mutation'
+            : 'proposal',
       cost:
-        id === 'script.run_tests' || id === 'script.request_execute'
+        id === 'script.run_tests' || id === 'script.execute' || id === 'script.request_execute'
           ? 'expensive'
-          : id === 'script.request_install'
-            ? 'external'
-            : 'interactive',
-      cancellable: false,
+          : 'interactive',
+      cancellable: id === 'script.execute' || id === 'script.request_execute',
       permissions: [permission],
       inputSchema: scriptActionInput(id),
       outputSchema: { type: 'object' },
@@ -1358,7 +1381,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'panel.agent',
       'Show agent panel',
-      'Open the approval-gated scientific agent surface.',
+      'Open the scientific agent surface.',
       'ui',
       { permissions: ['ui.propose'] },
     ),

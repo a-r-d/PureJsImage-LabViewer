@@ -6,12 +6,15 @@ The completed repository should expose:
 
 ```text
 pnpm check
+pnpm check:full
 pnpm build
 pnpm typecheck
 pnpm lint
 pnpm format:check
 pnpm test
 pnpm test:e2e
+pnpm test:e2e:quick
+pnpm test:e2e:full
 pnpm test:e2e:science
 pnpm test:e2e:geo
 pnpm test:a11y
@@ -23,7 +26,16 @@ pnpm test:sandbox:debug
 pnpm deploy:dry-run
 ```
 
-`pnpm check` is the merge gate and must include all deterministic normal-CI checks.
+`pnpm check` is the reliable local merge gate. It runs all non-browser correctness gates plus a
+fixed Chromium sample from both products, serially and with retries disabled. The sample covers
+Science Agent scripting, particle analysis, ROI measurement, local scripts, Atlas source/ROI
+behavior, and mocked catalog flows without including the long Geo composition workflows that have
+proved timing-sensitive on local WebKit.
+
+`pnpm check:full` adds every Science and Geo Playwright project. Use it for release qualification,
+browser-specific work, and diagnosing CI matrix failures. `pnpm test:e2e` and
+`pnpm test:e2e:full` are exhaustive aliases; `pnpm test:e2e:quick` owns the fixed sample used by
+`pnpm check`. A full-suite failure remains a real reported failure even when the quick gate passes.
 
 ## TypeScript
 
@@ -134,7 +146,7 @@ Every browser runs:
 - ROI measurement;
 - threshold + connected components;
 - project export/import;
-- mocked agent proposal and approval;
+- mocked Science Agent automatic local analysis plus shared approval-state coverage;
 - worker crash/restart recovery;
 - cancellation.
 

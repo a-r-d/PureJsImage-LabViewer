@@ -79,13 +79,7 @@ export function createScienceAgentGateway(ports: ScienceAgentGatewayPorts): Agen
   }
 }
 
-export interface ScienceAgentPolicySettings {
-  readonly allowProposalsWithoutApproval: boolean
-}
-
-export function createScienceAgentPolicy(
-  settings: ScienceAgentPolicySettings = { allowProposalsWithoutApproval: false },
-): AgentPolicy {
+export function createScienceAgentPolicy(): AgentPolicy {
   return {
     decide(capability, input) {
       const permissions = [...capability.permissions]
@@ -95,57 +89,27 @@ export function createScienceAgentPolicy(
           reason: capability.availability.reason ?? 'The scientific action is unavailable.',
           permissions,
         }
-      if (capability.actionId === 'viewport.preview.create')
+      if (capability.actionId === 'viewport.preview.create' && previewScope(input) === 'screen')
         return {
-          decision: 'require-approval',
-          reason:
-            previewScope(input) === 'screen'
-              ? 'The first browser screen preview in this session requires approval and the browser display-share picker; later screen previews reuse that approval.'
-              : 'The first model-visible specimen preview in this session requires approval; later viewport previews reuse that approval.',
-          permissions,
-          approvalScope: `science:model-preview:${previewScope(input) === 'screen' ? 'screen' : 'viewport'}`,
-        }
-      if (capability.actionId.startsWith('source.open-'))
-        return {
-          decision: 'require-approval',
-          reason:
-            capability.actionId === 'source.open-remote' ||
-            capability.actionId === 'source.open-ome-zarr-remote'
-              ? 'Opening a network source requires explicit network approval.'
-              : 'Selecting or opening a scientific source requires user approval.',
+          decision: 'deny',
+          reason: 'Use the automatic specimen viewport preview instead of browser screen sharing.',
           permissions,
         }
       if (
-        capability.actionId.includes('export') ||
+        permissions.some((permission) => permission.startsWith('network.')) ||
         permissions.includes('file.export') ||
         permissions.includes('plugin.install')
       )
         return {
-          decision: 'require-approval',
-          reason: 'Exporting or installing reviewed content requires explicit approval.',
-          permissions,
-        }
-      if (capability.cost === 'expensive')
-        return {
-          decision: 'require-approval',
-          reason: 'Expensive scientific analysis requires approval after bounded planning.',
-          permissions,
-        }
-      if (capability.mutability === 'mutation')
-        return {
-          decision: 'require-approval',
-          reason: 'This action changes the scientific project or visible analysis state.',
-          permissions,
-        }
-      if (capability.mutability === 'proposal' && !settings.allowProposalsWithoutApproval)
-        return {
-          decision: 'require-approval',
-          reason: 'The workbench is configured to review model proposals.',
+          decision: 'deny',
+          reason:
+            'The automatic local-analysis path does not expose network, export, or trusted-plugin capabilities.',
           permissions,
         }
       return {
         decision: 'allow',
-        reason: 'Bounded read-only scientific metadata and result summaries are automatic.',
+        reason:
+          'The requested action runs automatically on the open local workbench through the bounded semantic action host.',
         permissions,
       }
     },

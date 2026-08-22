@@ -1,5 +1,8 @@
 # Segmentation and particle-analysis reference
 
+The qualification, refinement, corpus, and release roadmap is defined in
+`docs/PARTICLE_COUNTING_NORTH_STAR.md`.
+
 ## Scope and public boundary
 
 The particle workflow is an explicit PureJsImage analysis graph:

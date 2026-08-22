@@ -22,14 +22,17 @@
   "dependencies": {
     "@pji-workbench/agent": "workspace:*",
     "@pji-workbench/ui": "workspace:*",
-    "react": "19.2.8"
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
   },
   "peerDependencies": {
-    "react": "19.2.8"
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   }
 }

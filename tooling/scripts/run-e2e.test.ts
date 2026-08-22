@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest'
 
 import {
   assertExpectedProjects,
+  GEO_QUICK_E2E_FILES,
   parseE2eArgv,
   playwrightArgvForSuite,
   projectFiltersFromArgs,
+  SCIENCE_QUICK_E2E_FILES,
   suitesToRun,
 } from './run-e2e.mjs'
 
@@ -32,15 +34,37 @@ describe('Playwright e2e runner', () => {
     expect(suitesToRun('all')).toEqual(['science', 'geo'])
   })
 
+  it('runs a fixed single-browser sample in quick mode without retries', () => {
+    expect(playwrightArgvForSuite('science', [], 'quick')).toEqual([
+      'test',
+      ...SCIENCE_QUICK_E2E_FILES,
+      '--project=chromium',
+      '--workers=1',
+      '--retries=0',
+    ])
+    expect(playwrightArgvForSuite('geo', [], 'quick')).toEqual([
+      'test',
+      '-c',
+      'playwright.geo.config.ts',
+      ...GEO_QUICK_E2E_FILES,
+      '--project=chromium',
+      '--workers=1',
+      '--retries=0',
+    ])
+  })
+
   it('strips --suite from forwarded Playwright args', () => {
     expect(parseE2eArgv(['--suite=science', '--project=firefox', '--project=webkit'])).toEqual({
       suite: 'science',
+      mode: 'full',
       extra: ['--project=firefox', '--project=webkit'],
     })
-    expect(parseE2eArgv(['--suite', 'geo', '--', '--project=chromium'])).toEqual({
+    expect(parseE2eArgv(['--suite', 'geo', '--mode', 'quick', '--project=chromium'])).toEqual({
       suite: 'geo',
+      mode: 'quick',
       extra: ['--project=chromium'],
     })
+    expect(() => parseE2eArgv(['--mode=fast'])).toThrow(/unknown mode 'fast'/u)
   })
 
   it('fails loudly when CI expected projects are missing from extra args', () => {
@@ -58,7 +82,7 @@ describe('Playwright e2e runner', () => {
 })
 
 describe('Playwright e2e scripts and CI wiring', () => {
-  it('exposes independent science/geo scripts and an unfiltered aggregate', async () => {
+  it('exposes quick and exhaustive browser gates plus independent suites', async () => {
     const packageJson: unknown = JSON.parse(await readFile(`${root}/package.json`, 'utf8'))
     if (typeof packageJson !== 'object' || packageJson === null || !('scripts' in packageJson)) {
       throw new Error('package.json scripts are missing.')
@@ -67,7 +91,10 @@ describe('Playwright e2e scripts and CI wiring', () => {
     expect(scripts['test:e2e:science']).toBe('node tooling/scripts/run-e2e.mjs --suite=science')
     expect(scripts['test:e2e:geo']).toBe('node tooling/scripts/run-e2e.mjs --suite=geo')
     expect(scripts['test:e2e']).toBe('node tooling/scripts/run-e2e.mjs')
-    expect(scripts.check).toContain('test:e2e')
+    expect(scripts['test:e2e:quick']).toBe('node tooling/scripts/run-e2e.mjs --mode=quick')
+    expect(scripts['test:e2e:full']).toBe('node tooling/scripts/run-e2e.mjs --mode=full')
+    expect(scripts.check).toContain('test:e2e:quick')
+    expect(scripts['check:full']).toContain('test:e2e:full')
     expect(scripts['test:e2e']).not.toContain('&&')
   })
 

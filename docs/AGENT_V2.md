@@ -88,11 +88,18 @@ The agent never clicks arbitrary CSS selectors or mutates the DOM.
 - `script.apply_patch`
 - `script.typecheck`
 - `script.run_tests`
+- `script.execute`
 - `script.request_install`
 - `script.request_execute`
 - `plugin.list`
 
 No unrestricted shell, JavaScript evaluation, file read, network fetch, or credential tool.
+
+When direct semantic actions are not expressive enough, the Agent may write a complete local
+TypeScript analysis, typecheck it, and call `script.execute` without interrupting the user. The
+execution still occurs in the dedicated QuickJS Worker with bounded local capabilities, content
+identity, quotas, cancellation, and provenance. Installation, export, network access, arbitrary file
+access, and trusted extension loading are not part of this automatic path.
 
 ## Context management
 
@@ -137,19 +144,23 @@ Use stable references (`dataset:...`, `roi:...`, `node:...`, `result:...`) so th
 - Never retry mutations blindly.
 - Support user cancellation while waiting for model or tool execution.
 
-## Approval policy
+## Product policy profiles
 
-Suggested defaults:
+Science is a no-friction, local-machine profile. Once the user connects the Agent and opens a
+specimen, bounded local reads, proposals, analysis execution, viewport previews, Script Studio
+authoring, typechecking, tests, execution, and exact-snapshot local installation run automatically.
+They never stop on an approval or capability dialog. The host still validates schemas, revisions,
+availability, resource limits, content identity, cancellation, sandbox quotas, and provenance.
 
-- read-only summaries: automatic;
-- proposal/dry-run: automatic;
-- reversible ROI/graph/UI mutation: approval before apply;
-- expensive compute: explicit plan/cost approval;
-- script install/execute: source/permissions/test review plus approval;
-- export, upload, or external network: approval every time.
+Science does not expose external network, export, arbitrary-file, credential, trusted-plugin, or
+browser-screen capture capabilities through this automatic path. Those actions are unavailable,
+not converted into repeated permission prompts. The specimen viewport preview remains bounded and
+automatic.
 
-The approval prompt is one line naming the action, with Approve and Deny. Input JSON stays
-behind a compact disclosure.
+Atlas retains its own explicit approval policy for remote catalog/network work, model-visible geo
+previews, export, and external side effects. The shared runtime therefore still supports an
+`awaiting-approval` state, but the normal Science local-analysis policy never emits it. See
+`docs/adr/0002-no-friction-local-science-agent.md`.
 
 ## Credentials and local history
 
@@ -157,6 +168,10 @@ behind a compact disclosure.
   in this tab only and warns that a refresh will lose it. Session keys are never copied to
   localStorage without that checkbox.
 - Display whether the current persistence is session or browser, and always offer remove/revoke.
+- Keep usage telemetry compact: show the latest request's prompt tokens against the provider's
+  advertised context window and the cumulative provider-reported USD cost for the current
+  conversation. Never estimate price from a local model table; show unavailable or partial cost
+  explicitly when OpenRouter omits accounting for any call.
 - The provider-independent agent core never owns storage.
 - Store conversation/event history in IndexedDB because it can exceed localStorage capacity.
 - Never store the API key in history, tools, projects, logs, error reports, URLs, telemetry, or eval traces.

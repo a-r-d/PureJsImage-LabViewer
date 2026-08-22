@@ -46,6 +46,21 @@
       "id": "analysis.catalog.read",
       "inputSchema": {
         "additionalProperties": false,
+        "properties": {
+          "includeCapabilities": {
+            "type": "boolean"
+          },
+          "limit": {
+            "maximum": 128,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "maximum": 4096,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "mutability": "read",
@@ -180,7 +195,7 @@
       "cancellable": true,
       "category": "analysis",
       "cost": "expensive",
-      "description": "Validate, plan, and execute an explicit visible analysis graph after approval.",
+      "description": "Validate, plan, and execute an explicit visible local analysis graph.",
       "id": "analysis.graph.request-execute",
       "inputSchema": {
         "additionalProperties": false,
@@ -611,7 +626,7 @@
       "cancellable": false,
       "category": "analysis",
       "cost": "trivial",
-      "description": "Calculate bounded descriptive diagnostics from the current particle result. These metrics are not a formal statistical guarantee; combine them with an approved labels preview before claiming reliability.",
+      "description": "Calculate bounded descriptive diagnostics from the current particle result and, after a rerun, report the prior count and settings for before/after comparison. A count change alone is not improvement; combine both runs with labels previews before claiming reliability.",
       "id": "analysis.particle.quality.read",
       "inputSchema": {
         "additionalProperties": false,
@@ -649,7 +664,7 @@
       "cancellable": true,
       "category": "analysis",
       "cost": "expensive",
-      "description": "Run a reviewed preview or applied operation without bypassing approval.",
+      "description": "Run a local preview or applied operation through the semantic action host.",
       "id": "analysis.request-execute",
       "inputSchema": {
         "additionalProperties": false,
@@ -726,7 +741,7 @@
       "cancellable": true,
       "category": "analysis",
       "cost": "expensive",
-      "description": "Run reviewed stack alignment and return bounded drift diagnostics.",
+      "description": "Run local stack alignment and return bounded drift diagnostics.",
       "id": "analysis.stack.align.execute",
       "inputSchema": {
         "additionalProperties": false,
@@ -745,7 +760,7 @@
       "cancellable": true,
       "category": "analysis",
       "cost": "expensive",
-      "description": "Apply reviewed surface leveling and return bounded roughness diagnostics.",
+      "description": "Apply local surface leveling and return bounded roughness diagnostics.",
       "id": "analysis.surface.level.execute",
       "inputSchema": {
         "additionalProperties": false,
@@ -1083,7 +1098,7 @@
       "cancellable": false,
       "category": "ui",
       "cost": "trivial",
-      "description": "Open the approval-gated scientific agent surface.",
+      "description": "Open the scientific agent surface.",
       "id": "panel.agent",
       "inputSchema": {
         "additionalProperties": false,
@@ -1493,7 +1508,7 @@
       "cancellable": false,
       "category": "scripts",
       "cost": "interactive",
-      "description": "Create a bounded local draft for review.",
+      "description": "Create a bounded local TypeScript analysis draft, optionally with complete source ready to run.",
       "id": "script.create_draft",
       "inputSchema": {
         "additionalProperties": false,
@@ -1501,6 +1516,10 @@
           "id": {
             "maxLength": 128,
             "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 262144,
             "type": "string"
           },
           "title": {
@@ -1551,6 +1570,38 @@
       "permissions": ["workspace.read"],
       "schemaVersion": 1,
       "title": "Read script diff",
+      "version": 1
+    },
+    {
+      "cancellable": true,
+      "category": "scripts",
+      "cost": "expensive",
+      "description": "Compile and run an exact local draft in the restricted QuickJS sandbox against the current workbench, returning bounded results and provenance.",
+      "id": "script.execute",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedDigest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["id", "expectedDigest"],
+        "type": "object"
+      },
+      "mutability": "mutation",
+      "outputSchema": {
+        "type": "object"
+      },
+      "permissions": ["analysis.execute"],
+      "schemaVersion": 1,
+      "title": "Run custom analysis script",
       "version": 1
     },
     {
@@ -1608,10 +1659,10 @@
       "version": 1
     },
     {
-      "cancellable": false,
+      "cancellable": true,
       "category": "scripts",
       "cost": "expensive",
-      "description": "Create an execution proposal for exact reviewed content.",
+      "description": "Execute the exact local script through the same restricted runtime as script.execute.",
       "id": "script.request_execute",
       "inputSchema": {
         "additionalProperties": false,
@@ -1630,20 +1681,20 @@
         "required": ["id", "expectedDigest"],
         "type": "object"
       },
-      "mutability": "proposal",
+      "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
       "permissions": ["analysis.execute"],
       "schemaVersion": 1,
-      "title": "Request script execution",
+      "title": "Run custom analysis script (legacy)",
       "version": 1
     },
     {
       "cancellable": false,
       "category": "scripts",
-      "cost": "external",
-      "description": "Create an installation proposal for exact reviewed content.",
+      "cost": "interactive",
+      "description": "Install the exact local content snapshot without an interactive approval step.",
       "id": "script.request_install",
       "inputSchema": {
         "additionalProperties": false,
@@ -1662,13 +1713,13 @@
         "required": ["id", "expectedDigest"],
         "type": "object"
       },
-      "mutability": "proposal",
+      "mutability": "mutation",
       "outputSchema": {
         "type": "object"
       },
       "permissions": ["workspace.propose"],
       "schemaVersion": 1,
-      "title": "Request local script installation",
+      "title": "Install script locally",
       "version": 1
     },
     {
@@ -1905,7 +1956,7 @@
       "cancellable": true,
       "category": "viewport",
       "cost": "interactive",
-      "description": "Create an approved bounded image of the rendered specimen viewport or a user-selected browser screen.",
+      "description": "Create a bounded image of the rendered specimen viewport for visual inspection.",
       "id": "viewport.preview.create",
       "inputSchema": {
         "additionalProperties": false,

@@ -3,7 +3,6 @@ import {
   importScriptStudioExport,
   normalizeStudioDocument,
   type RecipeDocumentV1,
-  type ScriptCapability,
   type ScriptStudioDocumentV1,
   type ScriptStudioRecordV1,
   type ScriptStudioRepository,
@@ -24,6 +23,7 @@ import { Button, Icon, IconButton } from '@pji-workbench/ui'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ScriptLanguageClient, type ScriptLanguageProblem } from './language-client.js'
+import { LOCAL_SCRIPT_CAPABILITIES, localInstallation } from './local-script-policy.js'
 import {
   approvedExecutionApi,
   boundedLineDiff,
@@ -38,24 +38,6 @@ import {
 const CodeMirrorEditor = lazy(() =>
   import('./CodeMirrorEditor.js').then(({ CodeMirrorEditor: Editor }) => ({ default: Editor })),
 )
-
-const ALL_CAPABILITIES: readonly ScriptCapability[] = [
-  'analysis.catalog',
-  'analysis.dry-run',
-  'analysis.execute',
-  'dataset.read-descriptor',
-  'file.export',
-  'result.read-page',
-  'result.read-summary',
-  'roi.propose',
-  'roi.read',
-  'source.read-metadata',
-  'ui.propose',
-  'viewport.propose',
-  'viewport.read',
-  'workspace.propose',
-  'workspace.read',
-]
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Script Studio operation failed.'
@@ -76,7 +58,7 @@ async function blankScript(): Promise<ScriptStudioRecordV1> {
     source: `import { lab } from '@lab/api'\n\nexport async function main() {\n  const workspace = await lab.workspace.getSummary()\n  return { workspace }\n}\n\nglobalThis.__scriptMain = main\n`,
     manifest: {
       scriptApiVersion: 1,
-      requestedCapabilities: ['workspace.read'],
+      requestedCapabilities: LOCAL_SCRIPT_CAPABILITIES,
       pureJsImageCompatibility: '^4.0.0',
       workbenchCompatibility: '^0.0.0',
       entrypoint: 'main',
@@ -141,7 +123,6 @@ export function ScriptStudioSurface({
   const [notice, setNotice] = useState('Loading local Script Studio…')
   const [running, setRunning] = useState(false)
   const [editorVersion, setEditorVersion] = useState(0)
-  const [review, setReview] = useState<'dry-run' | 'execute' | 'install'>()
   const [apiSearch, setApiSearch] = useState('')
   const importInput = useRef<HTMLInputElement>(null)
   const loadedId = useRef('')
@@ -211,7 +192,6 @@ export function ScriptStudioSurface({
       setText(documentText(selected.document))
       setProblems([])
       setOutcome(undefined)
-      setReview(undefined)
     }
   }, [selected])
 
@@ -314,10 +294,9 @@ export function ScriptStudioSurface({
       .finally(() => setRunning(false))
   }
 
-  const execute = (): void => {
-    const dryRun = review === 'dry-run'
+  const execute = (mode: 'dry-run' | 'execute'): void => {
+    const dryRun = mode === 'dry-run'
     cancelled.current = false
-    setReview(undefined)
     setRunning(true)
     setOutcome(undefined)
     void saveDraft()
@@ -327,7 +306,7 @@ export function ScriptStudioSurface({
           setNotice(
             dryRun
               ? 'Recipe dry run produced bounded action plans; no mutation was committed.'
-              : 'Approved recipe actions completed through the semantic action host.',
+              : 'Recipe actions completed through the semantic action host.',
           )
           return
         }
@@ -359,58 +338,15 @@ export function ScriptStudioSurface({
   }
 
   const install = (): void => {
-    setReview(undefined)
     void saveDraft()
       .then(async (record) => {
-        const capabilities =
-          record.document.kind === 'recipe'
-            ? record.document.requestedCapabilities
-            : record.document.manifest.requestedCapabilities
-        const installation = {
-          schemaVersion: 1 as const,
-          installation: {
-            schemaVersion: 1 as const,
-            pluginId: record.id,
-            pluginVersion: record.document.kind === 'recipe' ? record.document.version : '0.1.0',
-            contentDigest: record.document.integrity.digest,
-            installedKind:
-              record.document.kind === 'recipe'
-                ? ('recipe' as const)
-                : ('sandboxed-script' as const),
-            permissionGrant: {
-              schemaVersion: 1 as const,
-              scriptId: record.id,
-              sourceDigest: record.document.integrity.digest,
-              grantedCapabilities: capabilities,
-              deniedCapabilities: [],
-            },
-            enabled: true,
-          },
-          document: record.document,
-        }
+        const installation = localInstallation(record)
         const updated = { ...record, savedDocument: record.document, installation }
         await repository.put(updated)
         refreshRecord(updated)
-        setNotice('Installed this exact local content snapshot. Later edits require fresh review.')
+        setNotice('Installed this exact local content snapshot. Later edits remain local drafts.')
       })
       .catch((error: unknown) => setNotice(errorMessage(error)))
-  }
-
-  const toggleCapability = (capability: ScriptCapability): void => {
-    if (selected?.document.kind !== 'analysis-script') return
-    const current = selected.document.manifest.requestedCapabilities
-    const requestedCapabilities = current.includes(capability)
-      ? current.filter((entry) => entry !== capability)
-      : [...current, capability].sort()
-    const record = {
-      ...selected,
-      document: {
-        ...selected.document,
-        manifest: { ...selected.document.manifest, requestedCapabilities },
-      },
-    }
-    refreshRecord(record)
-    setNotice('Capability manifest changed; save and review the new content identity.')
   }
 
   const exportRecord = (): void => {
@@ -426,12 +362,6 @@ export function ScriptStudioSurface({
         URL.revokeObjectURL(url)
         setNotice('Exported a bounded, integrity-checked Studio record.')
       })
-      .catch((error: unknown) => setNotice(errorMessage(error)))
-  }
-
-  const prepareReview = (kind: 'dry-run' | 'execute' | 'install'): void => {
-    void saveDraft()
-      .then(() => setReview(kind))
       .catch((error: unknown) => setNotice(errorMessage(error)))
   }
 
@@ -460,10 +390,6 @@ export function ScriptStudioSurface({
     ({ api: name, description }) =>
       apiSearch === '' || `${name} ${description}`.toLowerCase().includes(apiSearch.toLowerCase()),
   )
-  const capabilities =
-    selected?.document.kind === 'recipe'
-      ? selected.document.requestedCapabilities
-      : (selected?.document.manifest.requestedCapabilities ?? [])
   const diff =
     selected === undefined
       ? []
@@ -484,9 +410,8 @@ export function ScriptStudioSurface({
         <div className="script-studio__notice" role="note">
           <Icon name="shield" />
           <span>
-            Sandboxed scripts run in a dedicated Worker and QuickJS runtime with bounded, declared
-            capabilities. Recipes are declarative. Trusted extensions are build-time application
-            code. The restricted runtime has not been independently security audited.
+            Local scripts run privately in a dedicated Worker and QuickJS runtime. Analysis APIs are
+            ready automatically—write the analysis and press Run. Recipes are declarative.
           </span>
         </div>
         <div className="script-studio__toolbar">
@@ -504,16 +429,10 @@ export function ScriptStudioSurface({
           <Button disabled={selected === undefined || running} onClick={test}>
             Test
           </Button>
-          <Button
-            disabled={selected === undefined || running}
-            onClick={() => prepareReview('dry-run')}
-          >
+          <Button disabled={selected === undefined || running} onClick={() => execute('dry-run')}>
             Dry Run
           </Button>
-          <Button
-            disabled={selected === undefined || running}
-            onClick={() => prepareReview('execute')}
-          >
+          <Button disabled={selected === undefined || running} onClick={() => execute('execute')}>
             Run
           </Button>
           <Button
@@ -528,7 +447,7 @@ export function ScriptStudioSurface({
           >
             Cancel
           </Button>
-          <Button disabled={selected === undefined} onClick={() => prepareReview('install')}>
+          <Button disabled={selected === undefined} onClick={install}>
             Install locally
           </Button>
           <Button
@@ -537,7 +456,7 @@ export function ScriptStudioSurface({
               if (selected === undefined) return
               setText(documentText(selected.savedDocument))
               setEditorVersion((version) => version + 1)
-              setNotice('Restored the last reviewed snapshot in the editor; save to apply.')
+              setNotice('Restored the last saved snapshot in the editor; save to apply.')
             }}
           >
             Revert
@@ -555,32 +474,6 @@ export function ScriptStudioSurface({
             type="file"
           />
         </div>
-        {review === undefined || selected === undefined ? null : (
-          <div className="script-studio__review" role="alertdialog" aria-label="Capability review">
-            <strong>
-              {review === 'install'
-                ? 'Review local installation'
-                : review === 'dry-run'
-                  ? 'Review dry run'
-                  : 'Review execution'}
-            </strong>
-            <span>
-              {selected.document.title} · sha256:{selected.document.integrity.digest.slice(0, 16)}…
-            </span>
-            <span>
-              {capabilities.length === 0 ? 'No capabilities requested' : capabilities.join(', ')}
-            </span>
-            <pre>{diff.join('\n')}</pre>
-            <Button onClick={() => setReview(undefined)}>Cancel review</Button>
-            <Button onClick={review === 'install' ? install : execute} variant="primary">
-              {review === 'install'
-                ? 'Approve exact snapshot'
-                : review === 'dry-run'
-                  ? 'Approve dry run'
-                  : 'Approve restricted run'}
-            </Button>
-          </div>
-        )}
         <div className="script-studio__layout">
           <aside aria-label="Local scripts and recipes" className="script-studio__library">
             <h3>Library</h3>
@@ -657,31 +550,6 @@ export function ScriptStudioSurface({
                 <pre>{api.declaration}</pre>
               </details>
             </section>
-            <section aria-label="Manifest and permissions">
-              <h3>Manifest & permissions</h3>
-              {selected !== undefined && installedState(selected) === 'changed' ? (
-                <p role="alert">
-                  Installed content differs from this draft. Replay continues to use the exact
-                  installed snapshot until this draft is reviewed again.
-                </p>
-              ) : null}
-              {selected?.document.kind === 'analysis-script' ? (
-                <div className="script-studio__capabilities">
-                  {ALL_CAPABILITIES.map((capability) => (
-                    <label key={capability}>
-                      <input
-                        checked={capabilities.includes(capability)}
-                        onChange={() => toggleCapability(capability)}
-                        type="checkbox"
-                      />
-                      {capability}
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <p>{capabilities.join(', ') || 'No capabilities requested.'}</p>
-              )}
-            </section>
             <section aria-label="Problems">
               <h3>Problems</h3>
               {problems.length === 0 ? (
@@ -723,8 +591,8 @@ export function ScriptStudioSurface({
                 </ul>
               )}
             </section>
-            <section aria-label="Diff review">
-              <h3>Diff from reviewed snapshot</h3>
+            <section aria-label="Saved changes">
+              <h3>Diff from saved snapshot</h3>
               <pre>{diff.join('\n')}</pre>
             </section>
             <section aria-label="Bounded console and results">

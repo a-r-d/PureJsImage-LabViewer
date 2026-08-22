@@ -2,6 +2,7 @@ import { validateAnalysisScriptDocument, validateRecipeDocument } from '@pji-wor
 import { describe, expect, it } from 'vitest'
 import { createBuiltInScriptStudioExamples } from '../src/examples.js'
 import { SCRIPT_API_ENDPOINTS } from '../src/index.js'
+import { testApi } from './helpers.js'
 
 describe('Script Studio built-in examples', () => {
   it('ships integrity-checked generated and real-data examples with deterministic fixtures', async () => {
@@ -57,5 +58,13 @@ describe('Script Studio built-in examples', () => {
       ]),
     )
     expect(SCRIPT_API_ENDPOINTS.every(({ actionId }) => !actionId.includes('raw'))).toBe(true)
+  })
+
+  it('generates useful bounded result types for common authored-analysis APIs', () => {
+    expect(testApi.declaration).toContain('Promise<LabAnalysisCatalog>')
+    expect(testApi.declaration).toContain('readonly operations: readonly LabOperationSummary[]')
+    expect(testApi.declaration).toContain('Promise<readonly LabDatasetDescriptor[]>')
+    expect(testApi.declaration).toContain('Promise<LabResultPage>')
+    expect(testApi.declaration).not.toContain('Promise<unknown>')
   })
 })

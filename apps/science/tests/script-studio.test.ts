@@ -53,7 +53,7 @@ describe('Script Studio operations', () => {
           actionVersion: 1,
           permission: 'analysis.execute' as const,
           mode: 'dry-run' as const,
-          description: 'Execute a graph after approval.',
+          description: 'Execute a bounded local graph.',
         },
         {
           api: 'rois.create',

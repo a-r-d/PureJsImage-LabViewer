@@ -246,20 +246,41 @@ function declaration(endpoints: readonly ScriptApiEndpointV1[]): string {
         return methods
           .sort()
           .map(
-            (method) =>
-              `    readonly ${method}: (input?: Readonly<Record<string, unknown>>) => Promise<unknown>`,
+            (method) => `    readonly ${method}: ${scriptApiSignature(`${namespace}.${method}`)}`,
           )
           .join('\n')
       return `    readonly ${namespace}: {\n${methods
         .sort()
         .map(
-          (method) =>
-            `      readonly ${method}: (input?: Readonly<Record<string, unknown>>) => Promise<unknown>`,
+          (method) => `      readonly ${method}: ${scriptApiSignature(`${namespace}.${method}`)}`,
         )
         .join('\n')}\n    }`
     })
     .join('\n')
-  return `declare var __scriptMain: (() => unknown) | undefined\ndeclare module '@lab/api' {\n  export interface LabApi {\n${fields}\n  }\n  export const lab: LabApi\n  export default lab\n}`
+  return `declare var __scriptMain: (() => unknown) | undefined\ndeclare module '@lab/api' {\n  export type LabJsonValue = null | boolean | number | string | readonly LabJsonValue[] | Readonly<Record<string, LabJsonValue>>\n  export interface LabWorkspaceSummary { readonly id: string; readonly title: string; readonly revision: number; readonly sourceCount: number; readonly datasetCount: number; readonly roiCount: number; readonly pinnedResultCount: number; readonly active: LabJsonValue }\n  export interface LabSourceDescriptor { readonly id: string; readonly label: string; readonly bound: boolean; readonly reader: Readonly<{ readonly id: string; readonly version: string; readonly format: string }>; readonly locator: LabJsonValue }\n  export interface LabAxisDescriptor { readonly id: string; readonly name: string | null; readonly length: number; readonly unit: string | null }\n  export interface LabDatasetDescriptor { readonly id: string; readonly sourceId: string; readonly datasetId: string; readonly name: string; readonly axes: readonly LabAxisDescriptor[]; readonly components: readonly Readonly<{ readonly id: string; readonly name: string | null }>[]; readonly sampleType: string; readonly spatialReference: LabJsonValue }\n  export interface LabOperationSummary { readonly id: string; readonly version: number; readonly title: string }\n  export interface LabAnalysisCatalog { readonly available: boolean; readonly operations: readonly LabOperationSummary[]; readonly totalOperations?: number; readonly offset?: number; readonly hasMore?: boolean; readonly capabilities: Readonly<Record<string, LabJsonValue>>; readonly documentation: readonly Readonly<Record<string, LabJsonValue>>[]; readonly presets: readonly Readonly<Record<string, LabJsonValue>>[] }\n  export interface LabResultSummary { readonly available: boolean; readonly busy: boolean; readonly message: string | null; readonly elapsedMilliseconds?: number; readonly outputs?: readonly LabJsonValue[]; readonly table?: Readonly<{ readonly output: LabJsonValue; readonly offset: number; readonly rowCount: number; readonly totalRows: number; readonly columns: readonly LabJsonValue[] }> | null }\n  export interface LabResultPage { readonly output: LabJsonValue; readonly offset: number; readonly rowCount: number; readonly totalRows: number; readonly columns: readonly LabJsonValue[]; readonly hasMore: boolean }\n  export interface LabApi {\n${fields}\n  }\n  export const lab: LabApi\n  export default lab\n}`
+}
+
+function scriptApiSignature(api: string): string {
+  switch (api) {
+    case 'workspace.getSummary':
+      return '(input?: Readonly<Record<string, never>>) => Promise<LabWorkspaceSummary>'
+    case 'sources.list':
+      return '(input?: Readonly<Record<string, never>>) => Promise<readonly LabSourceDescriptor[]>'
+    case 'datasets.list':
+      return '(input?: Readonly<Record<string, never>>) => Promise<readonly LabDatasetDescriptor[]>'
+    case 'datasets.describe':
+      return '(input: Readonly<{ datasetId: string }>) => Promise<LabDatasetDescriptor>'
+    case 'analysis.catalog':
+      return '(input?: Readonly<{ includeCapabilities?: boolean; offset?: number; limit?: number }>) => Promise<LabAnalysisCatalog>'
+    case 'results.summarize':
+      return '(input?: Readonly<Record<string, never>>) => Promise<LabResultSummary>'
+    case 'results.getPage':
+      return '(input: Readonly<{ offset: number; limit?: number }>) => Promise<LabResultPage>'
+    case 'root.log':
+      return '(input: Readonly<{ message: string }>) => Promise<null>'
+    default:
+      return '(input?: Readonly<Record<string, unknown>>) => Promise<LabJsonValue>'
+  }
 }
 
 export function generateScriptApi(manifest: ActionCapabilityManifestV1): GeneratedScriptApiV1 {

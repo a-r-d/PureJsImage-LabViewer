@@ -126,7 +126,7 @@ Never import `purejsimage/src/*`, copied internal types, or unpublished files.
 
 ## Versioned semantic actions are the shared invocation boundary
 
-UI commands, command-palette entries, future scripts, tests, and the approval-gated agent use one
+UI commands, command-palette entries, scripts, tests, and the policy-profiled agent use one
 versioned JSON-safe action registry and host. Descriptors live in `packages/actions`; they contain
 schemas, permissions, mutability, cost, cancellation metadata, and availability reasons but no
 React or PureJsImage runtime objects. Application composition supplies handlers and context, so the
@@ -176,8 +176,8 @@ the repository's TypeScript 7 build toolchain is not changed. Its compiler is bu
 dedicated lazy language Worker, with a measured 1,000 KiB gzip Worker budget distinct from the
 300 KiB route-chunk budget. QuickJS remains the only execution realm for sandboxed code.
 
-Local installation records retain the exact reviewed document, digest, and permission grant.
-Editing changes the digest and produces a visible `changed` state until a fresh review. Staged
+Local installation records retain the exact saved document, digest, and bounded local capability
+grant. Editing changes the digest and produces a visible `changed` state until a fresh install. Staged
 script actions use underscore-separated IDs because those names are part of the published roadmap;
 the action-ID validator accepts underscores as bounded separators without relaxing any input,
 permission, or execution policy.
@@ -191,8 +191,8 @@ and candidates are segregated as an unavailable research queue.
 
 Enabled generated scenarios resolve through semantic `sampleId` values handled by the imaging
 Worker; project replay preserves that identity without a repository path. Existing Script Studio
-recipes/scripts remain the workflow artifacts, so a gallery action opens the exact same
-approval-gated surface rather than creating a privileged execution path. Range-backed assets are
+recipes/scripts remain the workflow artifacts, so a gallery action opens the exact same local
+sandboxed surface rather than creating a privileged execution path. Range-backed assets are
 never converted into full downloads, and normal CI has no uncontrolled network dependency.
 
 ## Atlas display tiles are identity-bound RGBA; scientific samples stay in the Worker
@@ -253,14 +253,23 @@ reads now return bounded live workspace, source, dataset, ROI, operation, viewpo
 summaries instead of characterization fixtures. Particle tuning has explicit settings-read,
 dry-run, and approved-execute actions so a model does not need to invent internal graph structure.
 
-Model-visible imagery is limited to `viewport.preview.create`. Viewport scope downsizes the already
-rendered specimen canvas; screen scope invokes the browser display-share picker, captures one
-bounded frame, and stops every media track. Both require dedicated approval and an image-capable
-model. The live tool loop appends those images without rewriting earlier messages, so provider
+Model-visible imagery is limited to `viewport.preview.create`. The Science profile automatically
+downsizes the already rendered specimen canvas; browser-screen scope is unavailable there. Atlas
+retains its explicit geo-preview policy. The live tool loop appends those images without rewriting
+earlier messages, so provider
 prompt cache can stay warm. Browser memory is bounded in the workbench: chart series pulled into
 React are capped, plots downsample to a few hundred DOM points, overlay tiles are dropped before a
 replacement analysis, and preview PNGs are not cloned through JSON. The previous Worker result
 handle still swaps only after bounded result preparation succeeds. Analysis execution remains
 cancellable and commits the visible graph through normal project history. A deterministic
-fake-model test covers iterative planning, approval, execution, result interpretation, preview, and
+fake-model test covers iterative planning, automatic execution, result interpretation, preview, and
 cross-turn follow-up without OpenRouter or a key.
+
+## Science local analysis is no-friction and sandboxed
+
+The Science Agent and Script Studio do not interrupt bounded local work with approval or capability
+dialogs. Local reads, proposals, analysis, model previews, script creation, typechecking, tests,
+execution, and exact-snapshot installation are automatic. External network, export, arbitrary-file,
+credential, trusted-plugin, and browser-screen capabilities remain unavailable. Schemas, action
+availability, revisions, quotas, cancellation, content identity, QuickJS isolation, and provenance
+remain enforced behind the interface. See `docs/adr/0002-no-friction-local-science-agent.md`.

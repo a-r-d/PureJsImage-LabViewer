@@ -9,7 +9,7 @@ describe('workbench-react package boundary', () => {
       readonly dependencies?: Readonly<Record<string, string>>
     }
     const names = Object.keys(manifest.dependencies ?? {})
-    expect(names).toEqual(['@pji-workbench/agent', '@pji-workbench/ui', 'react'])
+    expect(names).toEqual(['@pji-workbench/agent', '@pji-workbench/ui', 'react', 'react-dom'])
     expect(names).not.toContain('@pji-workbench/domain-science')
     expect(names).not.toContain('@pji-workbench/domain-geo')
     expect(names).not.toContain('@pji-workbench/imaging')

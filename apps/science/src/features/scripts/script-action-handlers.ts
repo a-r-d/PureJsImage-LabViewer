@@ -11,8 +11,10 @@ import {
   normalizeStudioDocument,
   type ScriptStudioRepository,
 } from '@pji-workbench/plugin-sdk'
-import { generateScriptApi } from '@pji-workbench/scripts'
+import { generateScriptApi } from '@pji-workbench/scripts/catalog'
 import { executeOnlyAction, fixtureAction, rpcObject } from '@pji-workbench/workbench-core'
+
+import { LOCAL_SCRIPT_CAPABILITIES, localInstallation } from './local-script-policy.js'
 
 const ACTIVE_ACTION_SIGNAL: ActionAbortSignal = {
   aborted: false,
@@ -26,9 +28,80 @@ export interface ScriptActionPorts {
   appendScriptLog(message: string): void
 }
 
+function scriptExecutionHandler(ports: ScriptActionPorts): ActionHandler<CommandContext> {
+  return {
+    execute: async (input, context, signal) => {
+      const request = rpcObject(input)
+      const id = request?.['id']
+      const expectedDigest = request?.['expectedDigest']
+      if (typeof id !== 'string' || typeof expectedDigest !== 'string')
+        throw new Error('Script execution requires id and expectedDigest.')
+      const record = await ports.store.get(id)
+      if (record?.document.kind !== 'analysis-script')
+        throw new Error('Custom analysis execution requires a sandboxed script draft.')
+      if (record.document.integrity.digest !== expectedDigest)
+        throw new Error('Script changed since execution was requested.')
+      signal.throwIfAborted()
+      const host = ports.currentHost()
+      if (host === undefined) throw new Error('Script action host is unavailable.')
+      const [studio, languageModule, scriptsModule] = await Promise.all([
+        import('./studio-operations.js'),
+        import('./language-client.js'),
+        import('@pji-workbench/scripts/client'),
+      ])
+      const language = new languageModule.ScriptLanguageClient()
+      try {
+        const api = studio.approvedExecutionApi(generateScriptApi(ports.registry.manifest()))
+        const compiled = await studio.compileScript(record.document, language, api)
+        if (compiled.document === undefined)
+          return {
+            id,
+            digest: record.document.integrity.digest,
+            status: 'typecheck-failed',
+            problems: compiled.problems,
+          } as unknown as JsonValue
+        signal.throwIfAborted()
+        const client = new scriptsModule.ScriptHostClient({
+          api,
+          invoker: {
+            invoke: (actionId, version, actionInput, mode) => {
+              signal.throwIfAborted()
+              return mode === 'dry-run'
+                ? host.dryRun(actionId, version, actionInput, context, signal)
+                : host.execute(actionId, version, actionInput, context, signal)
+            },
+          },
+        })
+        const cancellation = setInterval(() => {
+          if (signal.aborted) client.cancel()
+        }, 25)
+        try {
+          const outcome = await client.run({
+            document: compiled.document,
+            permissionGrant: studio.permissionGrant(compiled.document),
+          })
+          for (const line of outcome.logs) ports.appendScriptLog(line)
+          return {
+            id,
+            digest: record.document.integrity.digest,
+            problems: compiled.problems,
+            ...outcome,
+          } as unknown as JsonValue
+        } finally {
+          clearInterval(cancellation)
+          client.dispose()
+        }
+      } finally {
+        language.dispose()
+      }
+    },
+  }
+}
+
 export function createScriptActionHandlers(
   ports: ScriptActionPorts,
 ): ReadonlyMap<string, ActionHandler<CommandContext>> {
+  const executeScript = scriptExecutionHandler(ports)
   return new Map<string, ActionHandler<CommandContext>>([
     [
       'script.log@1',
@@ -47,18 +120,23 @@ export function createScriptActionHandlers(
         const request = rpcObject(input)
         const id = request?.['id']
         const title = request?.['title']
+        const source = request?.['source']
         if (typeof id !== 'string' || typeof title !== 'string')
           throw new Error('Script draft requires bounded id and title fields.')
+        if (source !== undefined && typeof source !== 'string')
+          throw new Error('Script draft source must be bounded text.')
         const document = (await normalizeStudioDocument({
           schemaVersion: 1,
           kind: 'analysis-script',
           id,
           title,
           language: 'typescript',
-          source: `export async function main() { return {} }\nglobalThis.__scriptMain = main\n`,
+          source:
+            source ??
+            `import { lab } from '@lab/api'\n\nexport async function main() {\n  const workspace = await lab.workspace.getSummary()\n  return { workspace }\n}\n\nglobalThis.__scriptMain = main\n`,
           manifest: {
             scriptApiVersion: 1,
-            requestedCapabilities: [],
+            requestedCapabilities: LOCAL_SCRIPT_CAPABILITIES,
             pureJsImageCompatibility: '^4.0.0',
             workbenchCompatibility: '^0.0.0',
             entrypoint: 'main',
@@ -82,7 +160,16 @@ export function createScriptActionHandlers(
           },
           testResults: [],
         })
-        return { id, digest: document.integrity.digest }
+        const generatedApi = generateScriptApi(ports.registry.manifest())
+        const availableApis = generatedApi.endpoints
+          .filter(({ permission }) => LOCAL_SCRIPT_CAPABILITIES.includes(permission))
+          .map(({ api }) => api)
+        return {
+          id,
+          digest: document.integrity.digest,
+          availableApis,
+          apiDeclaration: generatedApi.declaration,
+        }
       }),
     ],
     [
@@ -230,9 +317,10 @@ export function createScriptActionHandlers(
         }
       }),
     ],
+    ['script.execute@1', executeScript],
     [
       'script.request_install@1',
-      fixtureAction(async (input) => {
+      executeOnlyAction(async (input) => {
         const request = rpcObject(input)
         const id = request?.['id']
         const expectedDigest = request?.['expectedDigest']
@@ -242,31 +330,11 @@ export function createScriptActionHandlers(
         if (record === undefined) throw new Error('Script or recipe was not found.')
         if (record.document.integrity.digest !== expectedDigest)
           throw new Error('Script changed since installation was requested.')
-        return {
-          id,
-          digest: record.document.integrity.digest,
-          status: 'requires-user-review',
-        }
+        const installation = localInstallation(record)
+        await ports.store.put({ ...record, savedDocument: record.document, installation })
+        return { id, digest: record.document.integrity.digest, status: 'installed' }
       }),
     ],
-    [
-      'script.request_execute@1',
-      fixtureAction(async (input) => {
-        const request = rpcObject(input)
-        const id = request?.['id']
-        const expectedDigest = request?.['expectedDigest']
-        if (typeof id !== 'string' || typeof expectedDigest !== 'string')
-          throw new Error('Execution request requires id and expectedDigest.')
-        const record = await ports.store.get(id)
-        if (record === undefined) throw new Error('Script or recipe was not found.')
-        if (record.document.integrity.digest !== expectedDigest)
-          throw new Error('Script changed since execution was requested.')
-        return {
-          id,
-          digest: record.document.integrity.digest,
-          status: 'requires-user-review',
-        }
-      }),
-    ],
+    ['script.request_execute@1', executeScript],
   ])
 }

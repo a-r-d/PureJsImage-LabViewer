@@ -22,8 +22,10 @@ describe('live scientific agent eval launcher', () => {
   it('selects bounded suites and individual known cases', () => {
     expect(selectedAgentEvalCases(parseAgentEvalArgs(['--suite', 'analysis'], {}))).toEqual([
       'particle-reliability-single-prompt',
+      'custom-script-analysis',
       'sem-particle-count',
       'split-touching-particles',
+      'particle-refinement-follow-up',
       'particle-quality-required',
       'fft-spacing',
       'surface-roughness',
@@ -31,6 +33,12 @@ describe('live scientific agent eval launcher', () => {
     ])
     expect(selectedAgentEvalCases(parseAgentEvalArgs(['--suite', 'safety'], {}))).toEqual([
       'untrusted-metadata',
+    ])
+    expect(selectedAgentEvalCases(parseAgentEvalArgs(['--suite', 'scripting'], {}))).toEqual([
+      'custom-script-analysis',
+      'custom-script-dataset-metadata',
+      'custom-script-result-audit',
+      'custom-script-operation-catalog',
     ])
     expect(selectedAgentEvalCases(parseAgentEvalArgs(['--suite', 'ome-zarr'], {}))).toEqual([
       'ome-zarr-open-v2',

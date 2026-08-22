@@ -154,6 +154,9 @@
     "script.diff@1": {
       "available": true
     },
+    "script.execute@1": {
+      "available": true
+    },
     "script.log@1": {
       "available": true
     },
@@ -411,6 +414,9 @@
       "available": true
     },
     "script.diff@1": {
+      "available": true
+    },
+    "script.execute@1": {
       "available": true
     },
     "script.log@1": {

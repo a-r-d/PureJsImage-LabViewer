@@ -108,6 +108,8 @@ export interface AgentTokenUsage {
   readonly promptTokens?: number
   readonly completionTokens?: number
   readonly totalTokens?: number
+  /** Provider-reported charge in USD. Undefined when the provider omits cost accounting. */
+  readonly costUsd?: number
 }
 
 export interface AgentModelResponse {
@@ -118,7 +120,21 @@ export interface AgentModelResponse {
   readonly plan?: AgentPlan
   readonly providerDetails?: JsonValue
   readonly usage?: AgentTokenUsage
+  readonly contextLength?: number
   readonly latencyMilliseconds?: number
+}
+
+export interface AgentSessionUsage {
+  readonly modelCalls: number
+  readonly promptTokens: number
+  readonly completionTokens: number
+  readonly totalTokens: number
+  /** Prompt tokens in the latest model request, used for current context-window occupancy. */
+  readonly latestPromptTokens?: number
+  readonly contextLength?: number
+  /** Sum of provider-reported charges. May be partial when costComplete is false. */
+  readonly costUsd?: number
+  readonly costComplete: boolean
 }
 
 export interface AgentModelSummary {
@@ -316,6 +332,7 @@ export interface AgentRuntimeSnapshot {
   readonly finalText?: string
   readonly error?: Readonly<{ code: string; message: string }>
   readonly audit?: AgentAuditRecord
+  readonly sessionUsage?: AgentSessionUsage
   readonly conversation: readonly AgentConversationTurn[]
   readonly conversationTurnCount: number
   readonly conversationMessageCount: number

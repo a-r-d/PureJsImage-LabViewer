@@ -1,6 +1,7 @@
 import {
   type AgentModelSummary,
   type AgentRuntime,
+  type AgentSessionUsage,
   compactTurnActions,
   DEFAULT_OPENROUTER_MODEL,
   OPENROUTER_RECOMMENDED_MODELS,
@@ -26,6 +27,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { AgentActionTrail, actionApprovalPrompt } from './AgentActionTrail.js'
 
 export interface AgentStarterPrompt {
@@ -52,11 +54,11 @@ export const SCIENCE_AGENT_COPY: AgentConversationCopy = {
   assistantName: 'Lab Assistant',
   welcomeHeading: 'What would you like to analyze?',
   welcomeBody:
-    'Ask in plain language. I can inspect metadata, run approved analyses, check the viewport, and help tune the result.',
+    'Ask in plain language. I can inspect metadata, run analyses, check the viewport, and help tune the result.',
   composerPlaceholder: 'Ask about this image…',
   connectLabel: 'Connect OpenRouter',
   newConversationLabel: 'New chat',
-  replayLabel: 'Replay approved actions',
+  replayLabel: 'Replay actions',
   grantsHeading: 'Session grants',
 }
 
@@ -70,7 +72,7 @@ export const ATLAS_AGENT_COPY: AgentConversationCopy = {
   composerPlaceholder: 'Ask about this raster or catalog…',
   connectLabel: 'Connect OpenRouter',
   newConversationLabel: 'New conversation',
-  replayLabel: 'Replay approved actions',
+  replayLabel: 'Replay actions',
   grantsHeading: 'Session grants',
 }
 
@@ -110,6 +112,7 @@ export function AgentConversationShell({
   const [modelChoice, setModelChoice] = useState(initialModel.current.choice)
   const [customModel, setCustomModel] = useState(initialModel.current.custom)
   const [request, setRequest] = useState('')
+  const [expanded, setExpanded] = useState(false)
   const [pendingRequest, setPendingRequest] = useState<
     Readonly<{ request: string; turnCount: number }> | undefined
   >()
@@ -162,6 +165,18 @@ export function AgentConversationShell({
       scroller.scrollTop = scroller.scrollHeight
     })
   }, [scrollSignal])
+
+  useEffect(() => {
+    if (!expanded) return
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setExpanded(false)
+      queueMicrotask(() => composer.current?.focus())
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [expanded])
 
   const saveSettings = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -237,16 +252,23 @@ export function AgentConversationShell({
     (entry) => !OPENROUTER_RECOMMENDED_MODELS.some(({ id }) => id === entry.id),
   )
 
-  return (
-    <div className={`inspector-content ${prefix}`} data-testid={copy.testId}>
+  const content = (
+    <section
+      aria-label={`${copy.assistantName} agent workspace`}
+      className={`inspector-content ${prefix}${expanded ? ` ${prefix}--expanded` : ''}`}
+      data-testid={copy.testId}
+    >
       <header className={`${prefix}__header`}>
         <div className={`${prefix}__identity`}>
           <span className={`${prefix}__mark`}>
             <Icon name="agent" size={17} />
           </span>
           <div>
-            <h3>{copy.assistantName}</h3>
-            <p>{keyPresent ? `${selectedModelName} · ${persistenceLabel}` : 'Not connected'}</p>
+            <h3 id={`${prefix}-assistant-heading`}>{copy.assistantName}</h3>
+            <div className={`${prefix}__metadata`}>
+              <p>{keyPresent ? `${selectedModelName} · ${persistenceLabel}` : 'Not connected'}</p>
+              <AgentUsageIndicator prefix={prefix} usage={snapshot.sessionUsage} />
+            </div>
           </div>
         </div>
         <div className={`${prefix}__header-actions`}>
@@ -263,6 +285,15 @@ export function AgentConversationShell({
               {copy.newConversationLabel}
             </Button>
           )}
+          <IconButton
+            label={expanded ? 'Exit expanded agent view' : 'Expand agent view'}
+            onClick={() => {
+              setExpanded((current) => !current)
+              queueMicrotask(() => chatScroller.current?.focus())
+            }}
+          >
+            <Icon name={expanded ? 'collapse' : 'expand'} size={16} />
+          </IconButton>
           <IconButton disabled={active} label="Agent settings" onClick={openSettings}>
             <Icon name="settings" size={16} />
           </IconButton>
@@ -331,9 +362,7 @@ export function AgentConversationShell({
                         label="Copy response"
                         text={restrictedMarkdownPlainText(turn.answer)}
                       />
-                      <div className="agent-message">
-                        <RestrictedMarkdown source={turn.answer} />
-                      </div>
+                      <AgentAnswer answer={turn.answer} prefix={prefix} />
                     </div>
                   </div>
                 </li>
@@ -666,8 +695,131 @@ export function AgentConversationShell({
           </footer>
         </form>
       </dialog>
+    </section>
+  )
+  const portalTarget =
+    typeof document === 'undefined'
+      ? undefined
+      : (document.querySelector('.workbench-theme') ?? document.body)
+  return expanded && portalTarget !== undefined ? createPortal(content, portalTarget) : content
+}
+
+const COMPACT_ANSWER_CHARACTERS = 1_200
+const COMPACT_ANSWER_PREVIEW_CHARACTERS = 520
+
+function AgentAnswer({ answer, prefix }: { readonly answer: string; readonly prefix: string }) {
+  const presentation = agentAnswerPresentation(answer)
+  if (!presentation.folded)
+    return (
+      <div className="agent-message">
+        <RestrictedMarkdown source={answer} />
+      </div>
+    )
+  return (
+    <div className={`agent-message ${prefix}__long-answer`}>
+      <p>{presentation.preview}</p>
+      <details>
+        <summary>Show full response</summary>
+        <div className={`${prefix}__long-answer-content`}>
+          <RestrictedMarkdown source={answer} />
+        </div>
+      </details>
     </div>
   )
+}
+
+export function agentAnswerPresentation(
+  answer: string,
+): Readonly<{ folded: boolean; preview: string }> {
+  const plainText = restrictedMarkdownPlainText(answer)
+  return plainText.length <= COMPACT_ANSWER_CHARACTERS
+    ? { folded: false, preview: plainText }
+    : {
+        folded: true,
+        preview: `${plainText.slice(0, COMPACT_ANSWER_PREVIEW_CHARACTERS).trimEnd()}…`,
+      }
+}
+
+function AgentUsageIndicator({
+  prefix,
+  usage,
+}: {
+  readonly prefix: string
+  readonly usage: AgentSessionUsage | undefined
+}) {
+  const presentation = agentUsagePresentation(usage)
+  if (presentation === undefined) return null
+  return (
+    <output
+      aria-label={presentation.description}
+      className={`${prefix}__usage`}
+      title={presentation.description}
+    >
+      {presentation.compact}
+    </output>
+  )
+}
+
+export function agentUsagePresentation(
+  usage: AgentSessionUsage | undefined,
+): Readonly<{ compact: string; description: string }> | undefined {
+  if (usage === undefined || usage.modelCalls === 0) return undefined
+  const context = contextUsagePresentation(usage.latestPromptTokens, usage.contextLength)
+  const cost = costUsagePresentation(usage.costUsd, usage.costComplete)
+  const callLabel = usage.modelCalls === 1 ? 'model call' : 'model calls'
+  return {
+    compact: `${context.compact} · ${cost.compact}`,
+    description: `${context.description} Session usage: ${usage.modelCalls} ${callLabel}, ${usage.promptTokens.toLocaleString('en-US')} prompt tokens and ${usage.completionTokens.toLocaleString('en-US')} completion tokens. ${cost.description}`,
+  }
+}
+
+function contextUsagePresentation(
+  latestPromptTokens: number | undefined,
+  contextLength: number | undefined,
+): Readonly<{ compact: string; description: string }> {
+  if (latestPromptTokens === undefined)
+    return {
+      compact: 'ctx —',
+      description: 'Latest request context usage is unavailable.',
+    }
+  if (contextLength === undefined || contextLength <= 0)
+    return {
+      compact: `ctx ${compactCount(latestPromptTokens)}`,
+      description: `Latest request context: ${latestPromptTokens.toLocaleString('en-US')} prompt tokens; the model context-window size is unavailable.`,
+    }
+  const ratio = latestPromptTokens / contextLength
+  const percent = ratio > 0 && ratio < 0.01 ? '<1%' : `${Math.round(ratio * 100)}%`
+  return {
+    compact: `ctx ${percent}`,
+    description: `Latest request context: ${latestPromptTokens.toLocaleString('en-US')} of ${contextLength.toLocaleString('en-US')} tokens (${percent}).`,
+  }
+}
+
+function costUsagePresentation(
+  costUsd: number | undefined,
+  complete: boolean,
+): Readonly<{ compact: string; description: string }> {
+  if (costUsd === undefined)
+    return {
+      compact: '$—',
+      description: 'The provider did not return session cost.',
+    }
+  const formatted = costUsd < 1 ? `$${costUsd.toFixed(3)}` : `$${costUsd.toFixed(2)}`
+  return complete
+    ? {
+        compact: formatted,
+        description: `Provider-reported session cost: $${costUsd.toFixed(6)} USD.`,
+      }
+    : {
+        compact: `${formatted}+`,
+        description: `Known provider-reported session cost: $${costUsd.toFixed(6)} USD; at least one model call omitted cost.`,
+      }
+}
+
+function compactCount(value: number): string {
+  if (value < 1_000) return String(value)
+  if (value < 1_000_000) return `${Number((value / 1_000).toPrecision(3))}k`
+  return `${Number((value / 1_000_000).toPrecision(3))}m`
 }
 
 function initialModelSelection(storageKey: string): Readonly<{ choice: string; custom: string }> {

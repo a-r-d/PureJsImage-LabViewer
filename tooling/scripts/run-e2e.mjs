@@ -4,19 +4,48 @@ import { pathToFileURL } from 'node:url'
 
 export const SCIENCE_PLAYWRIGHT_ARGS = ['test']
 export const GEO_PLAYWRIGHT_ARGS = ['test', '-c', 'playwright.geo.config.ts']
+export const SCIENCE_QUICK_E2E_FILES = [
+  'apps-e2e/science/tests/agent.spec.ts',
+  'apps-e2e/science/tests/particle-analysis.spec.ts',
+  'apps-e2e/science/tests/roi-measurement.spec.ts',
+  'apps-e2e/science/tests/scripts-plugins.spec.ts',
+]
+export const GEO_QUICK_E2E_FILES = [
+  'apps-e2e/geo/tests/atlas.spec.ts',
+  'apps-e2e/geo/tests/catalog.spec.ts',
+]
+const QUICK_E2E_ARGS = ['--project=chromium', '--workers=1', '--retries=0']
 
 /**
  * @param {readonly string[]} argv
- * @returns {{ suite: 'all' | 'science' | 'geo', extra: string[] }}
+ * @returns {{ suite: 'all' | 'science' | 'geo', mode: 'full' | 'quick', extra: string[] }}
  */
 export function parseE2eArgv(argv) {
   /** @type {'all' | 'science' | 'geo'} */
   let suite = 'all'
+  /** @type {'full' | 'quick'} */
+  let mode = 'full'
   /** @type {string[]} */
   const extra = []
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '--') continue
+    if (arg === '--mode=full' || arg === '--mode=quick') {
+      mode = arg.slice('--mode='.length)
+      continue
+    }
+    if (arg === '--mode') {
+      const next = argv[index + 1]
+      if (next === 'full' || next === 'quick') {
+        mode = next
+        index += 1
+        continue
+      }
+      throw new Error(`[e2e] unknown mode '${next ?? '(missing)'}'`)
+    }
+    if (arg.startsWith('--mode=')) {
+      throw new Error(`[e2e] unknown mode '${arg.slice('--mode='.length)}'`)
+    }
     if (arg === '--suite=science' || arg === '--suite=geo' || arg === '--suite=all') {
       suite = arg.slice('--suite='.length)
       continue
@@ -35,16 +64,21 @@ export function parseE2eArgv(argv) {
     }
     extra.push(arg)
   }
-  return { suite, extra }
+  return { suite, mode, extra }
 }
 
 /**
  * @param {'science' | 'geo'} suite
  * @param {readonly string[]} extraArgs
+ * @param {'full' | 'quick'} [mode]
  * @returns {string[]}
  */
-export function playwrightArgvForSuite(suite, extraArgs) {
+export function playwrightArgvForSuite(suite, extraArgs, mode = 'full') {
   const base = suite === 'geo' ? GEO_PLAYWRIGHT_ARGS : SCIENCE_PLAYWRIGHT_ARGS
+  if (mode === 'quick') {
+    const files = suite === 'geo' ? GEO_QUICK_E2E_FILES : SCIENCE_QUICK_E2E_FILES
+    return [...base, ...files, ...QUICK_E2E_ARGS, ...extraArgs]
+  }
   return [...base, ...extraArgs]
 }
 
@@ -121,7 +155,7 @@ function runPlaywright(args) {
 }
 
 async function main() {
-  const { suite, extra } = parseE2eArgv(process.argv.slice(2))
+  const { suite, mode, extra } = parseE2eArgv(process.argv.slice(2))
   try {
     // biome-ignore lint/suspicious/noUndeclaredEnvVars: CI job env; e2e is not a Turbo task
     assertExpectedProjects(extra, process.env['E2E_EXPECTED_PROJECTS'])
@@ -133,9 +167,9 @@ async function main() {
   }
 
   const extraLabel = extra.length === 0 ? '(none)' : extra.join(' ')
-  console.log(`[e2e] extra args: ${extraLabel}`)
+  console.log(`[e2e] mode: ${mode}; extra args: ${extraLabel}`)
   for (const name of suitesToRun(suite)) {
-    const args = playwrightArgvForSuite(name, extra)
+    const args = playwrightArgvForSuite(name, extra, mode)
     console.log(`[e2e] ${name}: playwright ${args.join(' ')}`)
     const code = await runPlaywright(args)
     if (code !== 0) {

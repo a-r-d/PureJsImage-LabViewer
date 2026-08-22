@@ -1,4 +1,4 @@
-import { defaultAgentDecision } from '@pji-workbench/agent'
+import type { AgentDecision, AgentPermission } from '@pji-workbench/agent'
 
 import type { DomainWorkflowRecipe } from '@pji-workbench/workbench-core'
 
@@ -101,8 +101,30 @@ export const SCIENCE_WORKFLOW_RECIPES: readonly DomainWorkflowRecipe[] = Object.
   },
 ])
 
+function scienceAgentDecision(permission: AgentPermission): AgentDecision {
+  switch (permission) {
+    case 'network.read':
+    case 'network.explicit-hosts':
+    case 'network.open-source':
+    case 'network.relay':
+    case 'source.read-pixels':
+    case 'file.export':
+    case 'plugin.install':
+      return 'deny'
+    case 'workspace.read':
+    case 'workspace.propose':
+    case 'analysis.execute':
+    case 'compute.expensive':
+    case 'source.read-metadata':
+    case 'viewport.read':
+    case 'viewport.propose':
+    case 'model.preview':
+      return 'allow'
+  }
+}
+
 export const scienceAgentPolicy = {
   enabled: true,
   liveModelEnabled: true,
-  decisionFor: defaultAgentDecision,
+  decisionFor: scienceAgentDecision,
 } as const

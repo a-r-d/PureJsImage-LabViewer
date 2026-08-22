@@ -25,6 +25,7 @@ const MAXIMUM_CHAT_REQUESTS = 20
 const DUMMY_BROWSER_KEY = 'sk-or-live-eval-node-proxy'
 
 const ALLOWED_TOOLS = new Set([
+  'analysis.catalog.read',
   'analysis.describe',
   'analysis.fft.read',
   'analysis.histogram.read',
@@ -41,19 +42,18 @@ const ALLOWED_TOOLS = new Set([
   'dataset.list',
   'result.page.read',
   'result.summary.read',
+  'script.apply_patch',
+  'script.create_draft',
+  'script.diff',
+  'script.execute',
+  'script.read',
+  'script.run_tests',
+  'script.typecheck',
   'source.list',
   'viewport.preview.create',
   'viewport.state.read',
   'workspace.summary.read',
 ])
-const APPROVABLE_TOOLS = new Set([
-  'analysis.fft.read',
-  'analysis.particle.execute',
-  'analysis.stack.align.execute',
-  'analysis.surface.level.execute',
-  'viewport.preview.create',
-])
-
 interface ModelRequestRecord {
   readonly responseId: string | null
   readonly model: string
@@ -69,6 +69,12 @@ interface ModelRequestRecord {
     actionId: string | null
     code: string | null
     message: string | null
+  }>[]
+  readonly receivedToolStatuses: readonly Readonly<{
+    actionId: string | null
+    status: string | null
+    problemCodes: readonly string[]
+    hasError: boolean
   }>[]
 }
 
@@ -110,7 +116,8 @@ function receivedToolErrors(requestBody: Readonly<Record<string, unknown>> | und
     if (message?.['role'] !== 'tool') break
     const content = stringValue(message['content'])
     if (content === null) continue
-    const result = record(JSON.parse(content) as unknown)
+    const envelope = record(JSON.parse(content) as unknown)
+    const result = record(envelope?.['result']) ?? envelope
     const error = record(result?.['error'])
     if (result?.['ok'] !== false || error === undefined) continue
     errors.unshift({
@@ -120,6 +127,36 @@ function receivedToolErrors(requestBody: Readonly<Record<string, unknown>> | und
     })
   }
   return errors
+}
+
+function receivedToolStatuses(requestBody: Readonly<Record<string, unknown>> | undefined) {
+  const messages = Array.isArray(requestBody?.['messages']) ? requestBody['messages'] : []
+  const statuses: Array<{
+    actionId: string | null
+    status: string | null
+    problemCodes: string[]
+    hasError: boolean
+  }> = []
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = record(messages[index])
+    if (message?.['role'] !== 'tool') break
+    const content = stringValue(message['content'])
+    if (content === null) continue
+    const result = record(JSON.parse(content) as unknown)
+    const problems = Array.isArray(result?.['problems']) ? result['problems'] : []
+    statuses.unshift({
+      actionId: stringValue(message['actionId']) ?? stringValue(result?.['actionId']),
+      status: stringValue(result?.['status']),
+      problemCodes: problems
+        .flatMap((problem) => {
+          const code = record(problem)?.['code']
+          return typeof code === 'string' || typeof code === 'number' ? [String(code)] : []
+        })
+        .slice(0, 16),
+      hasError: result?.['ok'] === false || result?.['error'] !== undefined,
+    })
+  }
+  return statuses
 }
 
 async function installLiveOpenRouterProxy(page: Page): Promise<ProxyState> {
@@ -197,6 +234,7 @@ async function installLiveOpenRouterProxy(page: Page): Promise<ProxyState> {
         costUsd: cost,
         returnedTools,
         receivedToolErrors: receivedToolErrors(requestBody),
+        receivedToolStatuses: receivedToolStatuses(requestBody),
       })
     }
 
@@ -255,39 +293,21 @@ async function runAgentTurn(
   await page.getByRole('button', { name: buttonName }).click()
   const status = page.locator('.science-agent__status')
   await expect(status).not.toContainText(/^completed/u, { timeout: 10_000 })
-  const approvals: string[] = []
   const deadline = Date.now() + 10 * 60_000
   while (Date.now() < deadline) {
     const statusText = ((await status.textContent()) ?? '').trim()
     const approval = page.locator('.science-agent__approval')
     if ((await approval.count()) > 0 && (await approval.isVisible())) {
       const actionId = await approval.getAttribute('data-agent-action-id')
-      if (actionId === null || !APPROVABLE_TOOLS.has(actionId)) {
-        await approval.getByRole('button', { name: 'Deny' }).click()
-        throw new Error(`The model requested unexpected approval for ${actionId ?? 'unknown'}.`)
-      }
-      if (actionId === 'viewport.preview.create') {
-        const inputText =
-          (await approval.locator('details').first().locator('pre').textContent()) ?? ''
-        const input = record(JSON.parse(inputText) as unknown)
-        if (input?.['scope'] !== 'viewport') {
-          await approval.getByRole('button', { name: 'Deny' }).click()
-          throw new Error(
-            'The live eval only approves bounded viewport previews, not screen sharing.',
-          )
-        }
-      }
-      approvals.push(actionId)
-      await approval.getByRole('button', { name: 'Approve' }).click()
-      await page.waitForTimeout(100)
-      continue
+      await approval.getByRole('button', { name: 'Deny' }).click()
+      throw new Error(`The no-friction Science Agent unexpectedly gated ${actionId ?? 'unknown'}.`)
     }
     if (statusText.startsWith('completed')) {
       const turn = page.locator('.science-agent__conversation > li').last()
       return {
         answer: ((await turn.locator('.agent-message').last().textContent()) ?? '').trim(),
         actions: await currentTraceActions(page),
-        approvals,
+        approvals: [],
       }
     }
     if (statusText.startsWith('failed') || statusText.startsWith('cancelled')) {
@@ -380,9 +400,7 @@ test('particle reliability completes from the exact natural-language prompt in o
         'viewport.preview.create',
       ]),
     )
-    expect(turn.approvals).toEqual(
-      expect.arrayContaining(['analysis.particle.execute', 'viewport.preview.create']),
-    )
+    expect(turn.approvals).toEqual([])
     expect(proxy.requests.some(({ hadImage }) => hadImage)).toBe(true)
     const countText = await resultCountText(page)
     details['uiResult'] = countText
@@ -400,6 +418,155 @@ test('particle reliability completes from the exact natural-language prompt in o
   }
 })
 
+test('custom script analysis authors, checks, executes, and reports without approval', async ({
+  page,
+}) => {
+  test.skip(!enabled('custom-script-analysis'), 'Live case was not explicitly selected.')
+  const proxy = await installLiveOpenRouterProxy(page)
+  const details: Record<string, unknown> = {}
+  let failure: unknown
+  try {
+    await openWorkbench(page)
+    await openSample(page)
+    await prepareAgent(page)
+    const turn = await runAgentTurn(
+      page,
+      'Write and run a custom local TypeScript analysis script that inventories the open datasets and returns a compact datasetCount plus workspace revision. Inspect the completed sandbox output and provenance, then tell me what it found. Do not install, export, use network access, or ask me to approve the local run.',
+      'Start task',
+    )
+    assertAllowedActions(turn.actions)
+    expect(turn.actions).toEqual(
+      expect.arrayContaining(['script.create_draft', 'script.typecheck', 'script.execute']),
+    )
+    expect(turn.approvals).toEqual([])
+    expect(turn.answer).toMatch(/1|one/iu)
+    expect(turn.answer).toMatch(/dataset/iu)
+    expect(turn.answer).toMatch(/sandbox|provenance/iu)
+    details['actions'] = turn.actions
+    details['approvals'] = turn.approvals
+    details['answers'] = [turn.answer]
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await writeReport('custom-script-analysis', proxy, details, failure)
+  }
+})
+
+test('custom script reads dataset metadata and calibration without approval', async ({ page }) => {
+  test.skip(!enabled('custom-script-dataset-metadata'), 'Live case was not explicitly selected.')
+  const proxy = await installLiveOpenRouterProxy(page)
+  const details: Record<string, unknown> = {}
+  let failure: unknown
+  try {
+    await openWorkbench(page)
+    await openSample(page)
+    await prepareAgent(page)
+    const turn = await runAgentTurn(
+      page,
+      'Make and run a custom local TypeScript analysis that lists the open sources and datasets, describes the active dataset, and returns a compact summary of its axes, dimensions, and calibration. Repair any type errors yourself, inspect the sandbox output, and tell me what it found. Keep it local: no install, export, network, arbitrary files, or approval question.',
+      'Start task',
+    )
+    assertAllowedActions(turn.actions)
+    expect(turn.actions).toEqual(
+      expect.arrayContaining(['script.create_draft', 'script.typecheck', 'script.execute']),
+    )
+    expect(turn.approvals).toEqual([])
+    expect(turn.answer).toMatch(/dataset|surface/iu)
+    expect(turn.answer).toMatch(/axis|dimension|width|height/iu)
+    expect(turn.answer).toMatch(/nm|calibrat|pixel/iu)
+    details['actions'] = turn.actions
+    details['approvals'] = turn.approvals
+    details['answers'] = [turn.answer]
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await writeReport('custom-script-dataset-metadata', proxy, details, failure)
+  }
+})
+
+test('custom script audits the current particle result and a bounded page', async ({ page }) => {
+  test.skip(!enabled('custom-script-result-audit'), 'Live case was not explicitly selected.')
+  const proxy = await installLiveOpenRouterProxy(page)
+  const details: Record<string, unknown> = {}
+  let failure: unknown
+  try {
+    await openWorkbench(page)
+    await openSample(page)
+    await prepareAgent(page)
+    const counted = await runAgentTurn(
+      page,
+      'Count the particles in the open image once using the current local particle workflow. Inspect compact quality diagnostics and the specimen preview, then give me only a brief count and reliability note.',
+      'Start task',
+    )
+    assertAllowedActions(counted.actions)
+    expect(counted.actions).toEqual(
+      expect.arrayContaining([
+        'analysis.particle.execute',
+        'analysis.particle.quality.read',
+        'viewport.preview.create',
+      ]),
+    )
+    expect(counted.approvals).toEqual([])
+    expect(await resultCountText(page)).toBe('10 particles counted')
+
+    const audited = await runAgentTurn(
+      page,
+      'Now write and run a custom local TypeScript script that reads the current result summary and one bounded result page, returns a compact count-versus-row audit, and checks whether they are consistent. Repair and typecheck it yourself, run it immediately, and explain the sandbox result without asking me anything.',
+      'Send follow-up',
+    )
+    assertAllowedActions(audited.actions)
+    expect(audited.actions).toEqual(
+      expect.arrayContaining(['script.create_draft', 'script.typecheck', 'script.execute']),
+    )
+    expect(audited.approvals).toEqual([])
+    expect(audited.answer).toContain('10')
+    expect(audited.answer).toMatch(/row|count|consisten/iu)
+    details['actions'] = [...counted.actions, ...audited.actions]
+    details['approvals'] = [...counted.approvals, ...audited.approvals]
+    details['answers'] = [counted.answer, audited.answer]
+    details['uiResult'] = await resultCountText(page)
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await writeReport('custom-script-result-audit', proxy, details, failure)
+  }
+})
+
+test('custom script summarizes the live operation catalog', async ({ page }) => {
+  test.skip(!enabled('custom-script-operation-catalog'), 'Live case was not explicitly selected.')
+  const proxy = await installLiveOpenRouterProxy(page)
+  const details: Record<string, unknown> = {}
+  let failure: unknown
+  try {
+    await openWorkbench(page)
+    await openSample(page)
+    await prepareAgent(page)
+    const turn = await runAgentTurn(
+      page,
+      'Write and run a custom local TypeScript script that reads the analysis catalog and workspace, then returns a compact object with the project title, operation count, and IDs and titles for up to five representative operations. Typecheck and repair it yourself, execute it now, and summarize the actual sandbox output. Do not install or request permission.',
+      'Start task',
+    )
+    assertAllowedActions(turn.actions)
+    expect(turn.actions).toEqual(
+      expect.arrayContaining(['script.create_draft', 'script.typecheck', 'script.execute']),
+    )
+    expect(turn.approvals).toEqual([])
+    expect(turn.answer).toMatch(/catalog|operation/iu)
+    expect(turn.answer).toMatch(/project|workspace|untitled/iu)
+    details['actions'] = turn.actions
+    details['approvals'] = turn.approvals
+    details['answers'] = [turn.answer]
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await writeReport('custom-script-operation-catalog', proxy, details, failure)
+  }
+})
+
 test('sem-particle-count uses analysis, visual evidence, and retained follow-up context', async ({
   page,
 }) => {
@@ -413,7 +580,7 @@ test('sem-particle-count uses analysis, visual evidence, and retained follow-up 
     await prepareAgent(page)
     const first = await runAgentTurn(
       page,
-      'Analyze the open calibrated particle sample. Read the current particle settings, dry-run a bounded explicit settings patch, execute only the reviewed plan after approval, inspect the bounded result summary, and create an approved 512 by 384 viewport preview with scope viewport after labels exist. Use both numerical and visual evidence. Report the final particle count, calibration units, and any limitation. Stop after one supported run; do not guess or use screen sharing.',
+      'Analyze the open calibrated particle sample. Read the current particle settings, dry-run a bounded explicit settings patch, execute it automatically, inspect the bounded result summary, and create a 512 by 384 specimen viewport preview after labels exist. Use both numerical and visual evidence. Report the final particle count, calibration units, and any limitation. Stop after one supported run; do not guess or use screen sharing.',
       'Start task',
     )
     assertAllowedActions(first.actions)
@@ -433,9 +600,7 @@ test('sem-particle-count uses analysis, visual evidence, and retained follow-up 
           actionId === 'analysis.particle.quality.read',
       ),
     ).toBe(true)
-    expect(first.approvals).toEqual(
-      expect.arrayContaining(['analysis.particle.execute', 'viewport.preview.create']),
-    )
+    expect(first.approvals).toEqual([])
     expect(proxy.requests.some(({ hadImage }) => hadImage)).toBe(true)
 
     const followUp = await runAgentTurn(
@@ -478,7 +643,7 @@ test('split-touching-particles iterates from baseline to watershed with two prev
     await prepareAgent(page)
     const turn = await runAgentTurn(
       page,
-      'Evaluate whether the three touching synthetic particles are separated. First read settings, dry-run and execute a baseline with watershed false, then inspect its result summary and an approved 512 by 384 viewport preview with scope viewport. Next dry-run and execute a tuned run with watershed true, inspect the new result summary and a second approved viewport preview, and compare the counts and labels. Change only the watershed-related settings needed. Explain whether all three particles are separated and stop if the evidence is clear; never request screen sharing.',
+      'Evaluate whether the three touching synthetic particles are separated. First read settings, dry-run and execute a baseline with watershed false, then inspect its result summary and a 512 by 384 specimen viewport preview. Next dry-run and execute a tuned run with watershed true, inspect the new result summary and a second viewport preview, and compare the counts and labels. Change only the watershed-related settings needed. Explain whether all three particles are separated and stop if the evidence is clear; never request screen sharing.',
       'Start task',
     )
     assertAllowedActions(turn.actions)
@@ -490,8 +655,7 @@ test('split-touching-particles iterates from baseline to watershed with two prev
         count(turn.actions, 'analysis.result.compare.read'),
     ).toBeGreaterThanOrEqual(2)
     expect(count(turn.actions, 'viewport.preview.create')).toBeGreaterThanOrEqual(2)
-    expect(count(turn.approvals, 'analysis.particle.execute')).toBeGreaterThanOrEqual(2)
-    expect(count(turn.approvals, 'viewport.preview.create')).toBe(1)
+    expect(turn.approvals).toEqual([])
     expect(proxy.requests.filter(({ hadImage }) => hadImage).length).toBeGreaterThanOrEqual(2)
     const countText = await resultCountText(page)
     const counted = /^(\d+)/u.exec(countText)?.[1]
@@ -513,7 +677,73 @@ test('split-touching-particles iterates from baseline to watershed with two prev
   }
 })
 
-test('particle-quality-required uses diagnostics plus an approved preview', async ({ page }) => {
+test('particle refinement follow-up improves an undercount without an unreadable answer', async ({
+  page,
+}) => {
+  test.skip(!enabled('particle-refinement-follow-up'), 'Live case was not explicitly selected.')
+  const proxy = await installLiveOpenRouterProxy(page)
+  const details: Record<string, unknown> = {}
+  let failure: unknown
+  try {
+    await openWorkbench(page)
+    await openGeneratedExample(page, 'Touching-particle watershed')
+    await prepareAgent(page)
+    const baseline = await runAgentTurn(
+      page,
+      'Count and measure these particles using a baseline with watershed false. Inspect the result and tell me whether the count looks reliable. Stop after this baseline run.',
+      'Start task',
+    )
+    assertAllowedActions(baseline.actions)
+    expect(baseline.actions).toEqual(
+      expect.arrayContaining([
+        'analysis.particle.plan',
+        'analysis.particle.execute',
+        'analysis.particle.quality.read',
+        'viewport.preview.create',
+      ]),
+    )
+    expect(baseline.approvals).toEqual([])
+    expect(await resultCountText(page)).toBe('2 particles counted')
+
+    const refined = await runAgentTurn(
+      page,
+      "Can you do the refinement and run it again? It's undercounted.",
+      'Send follow-up',
+    )
+    assertAllowedActions(refined.actions)
+    expect(refined.actions).toEqual(
+      expect.arrayContaining([
+        'analysis.particle.settings.read',
+        'analysis.particle.plan',
+        'analysis.particle.execute',
+        'analysis.particle.quality.read',
+        'viewport.preview.create',
+      ]),
+    )
+    expect(count(refined.actions, 'analysis.particle.execute')).toBe(1)
+    expect(refined.approvals).toEqual([])
+    expect(await resultCountText(page)).toBe('3 particles counted')
+    expect(refined.answer).toMatch(/\b2\b/u)
+    expect(refined.answer).toMatch(/\b3\b/u)
+    expect(refined.answer).toMatch(/improv|better|separat/iu)
+    expect(refined.answer.trim().split(/\s+/u).length).toBeLessThanOrEqual(220)
+    expect(proxy.requests.filter(({ hadImage }) => hadImage).length).toBeGreaterThanOrEqual(2)
+    const usage = page.getByLabel(/Latest request context:/u)
+    await expect(usage).toHaveText(/ctx (?:<1|\d+)% · \$\d/u)
+    await expect(usage).toHaveAttribute('title', /Provider-reported session cost: \$\d/u)
+    details['actions'] = [...baseline.actions, ...refined.actions]
+    details['approvals'] = [...baseline.approvals, ...refined.approvals]
+    details['answers'] = [baseline.answer, refined.answer]
+    details['uiResult'] = await resultCountText(page)
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await writeReport('particle-refinement-follow-up', proxy, details, failure)
+  }
+})
+
+test('particle-quality-required uses diagnostics plus an automatic preview', async ({ page }) => {
   test.skip(!enabled('particle-quality-required'), 'Live case was not explicitly selected.')
   const proxy = await installLiveOpenRouterProxy(page)
   const details: Record<string, unknown> = {}
@@ -524,7 +754,7 @@ test('particle-quality-required uses diagnostics plus an approved preview', asyn
     await prepareAgent(page)
     const turn = await runAgentTurn(
       page,
-      'Run reviewed particle analysis, then call analysis.particle.quality.read and an approved viewport preview before claiming the segmentation looks reliable. Summarize the quality metrics and cite the result ID instead of dumping the object table. State that the diagnostics are not a formal statistical guarantee.',
+      'Run particle analysis automatically, then call analysis.particle.quality.read and inspect a specimen viewport preview before claiming the segmentation looks reliable. Summarize the quality metrics and cite the result ID instead of dumping the object table. State that the diagnostics are not a formal statistical guarantee.',
       'Start task',
     )
     assertAllowedActions(turn.actions)
@@ -539,6 +769,7 @@ test('particle-quality-required uses diagnostics plus an approved preview', asyn
       /not a formal statistical guarantee|not a statistical guarantee/u,
     )
     expect(turn.answer).not.toMatch(/sk-or-/u)
+    expect(turn.approvals).toEqual([])
     details['actions'] = turn.actions
     details['answers'] = [turn.answer]
   } catch (error) {
@@ -587,12 +818,13 @@ test('surface-roughness levels the AFM fixture and reports roughness units', asy
     await prepareAgent(page)
     const turn = await runAgentTurn(
       page,
-      'Level the surface with the reviewed action and report Ra or Rq with units. Do not claim a statistical guarantee.',
+      'Level the surface automatically and report Ra or Rq with units. Do not claim a statistical guarantee.',
       'Start task',
     )
     assertAllowedActions(turn.actions)
     expect(turn.actions).toEqual(expect.arrayContaining(['analysis.surface.level.execute']))
     expect(turn.answer).toMatch(/nm|µm|um/iu)
+    expect(turn.approvals).toEqual([])
     details['actions'] = turn.actions
     details['answers'] = [turn.answer]
   } catch (error) {
@@ -614,12 +846,13 @@ test('stack-drift reports bounded alignment diagnostics', async ({ page }) => {
     await prepareAgent(page)
     const turn = await runAgentTurn(
       page,
-      'Call analysis.stack.align.execute after approval. Align the drifting stack and report bounded drift with units. Stop after the reviewed alignment action.',
+      'Align the drifting stack automatically and report bounded drift with units. Stop after the alignment action.',
       'Start task',
     )
     assertAllowedActions(turn.actions)
     expect(turn.actions).toEqual(expect.arrayContaining(['analysis.stack.align.execute']))
     expect(turn.answer).toMatch(/nm|pixel/iu)
+    expect(turn.approvals).toEqual([])
     details['actions'] = turn.actions
     details['answers'] = [turn.answer]
   } catch (error) {

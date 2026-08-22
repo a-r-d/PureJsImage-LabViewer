@@ -412,6 +412,8 @@ export function RoiInspector({
   onVisibility,
   onDelete,
   onMeasure,
+  analysisBusy,
+  analysisMessage,
   calibration,
   onCalibration,
   opened,
@@ -425,6 +427,8 @@ export function RoiInspector({
   readonly onVisibility: (roi: ViewportRoi, visible: boolean) => void
   readonly onDelete: (id: string) => void
   readonly onMeasure: (kind: 'statistics' | 'histogram' | 'profile') => void
+  readonly analysisBusy?: boolean | undefined
+  readonly analysisMessage?: string | undefined
   readonly calibration?: CalibrationOverride | undefined
   readonly onCalibration: (calibration?: Omit<CalibrationOverride, 'datasetReferenceId'>) => void
   readonly opened: OpenedDatasetDescriptor
@@ -476,15 +480,22 @@ export function RoiInspector({
         selected ROI.
       </p>
       <div className="button-row">
-        <Button disabled={selected === undefined} onClick={() => onMeasure('statistics')}>
+        <Button
+          disabled={selected === undefined || analysisBusy === true}
+          onClick={() => onMeasure('statistics')}
+        >
           Statistics
         </Button>
-        <Button disabled={selected === undefined} onClick={() => onMeasure('histogram')}>
+        <Button
+          disabled={selected === undefined || analysisBusy === true}
+          onClick={() => onMeasure('histogram')}
+        >
           Histogram
         </Button>
         <Button
           disabled={
             selected === undefined ||
+            analysisBusy === true ||
             (selected.geometry.kind !== 'line-segment' && selected.geometry.kind !== 'polyline')
           }
           onClick={() => onMeasure('profile')}
@@ -492,6 +503,11 @@ export function RoiInspector({
           Line profile
         </Button>
       </div>
+      {analysisMessage === undefined ? null : (
+        <p aria-live="polite" className="analysis-message">
+          {analysisMessage}
+        </p>
+      )}
       <ul className="roi-list" aria-label="Regions of interest">
         {rois.length === 0 ? <li>No ROIs yet.</li> : null}
         {rois.map((roi) => {

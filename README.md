@@ -70,7 +70,8 @@ Useful while you work:
 pnpm lint           # biome check + architecture/security (this is what CI runs after format)
 pnpm format:check   # formatting only — not a substitute for pnpm lint
 pnpm test           # Vitest
-pnpm check          # full merge gate (format, lint, types, tests, build, e2e, deploy dry-run)
+pnpm check          # reliable local gate with a deterministic Chromium browser sample
+pnpm check:full     # exhaustive cross-browser gate for release/CI investigation
 ```
 
 ## Commands
@@ -84,7 +85,8 @@ pnpm check          # full merge gate (format, lint, types, tests, build, e2e, d
 | `pnpm build` | Build every package and app, then enforce bundle budgets |
 | `pnpm build:science` / `build:gallery` / `build:geo` | Build one application |
 | `pnpm test:science` / `test:gallery` / `test:geo` | Run that app's Vitest project |
-| `pnpm check` | Run the deterministic normal-CI merge gate |
+| `pnpm check` | Run code/build gates, the reliable Chromium E2E sample, and deployment dry-runs |
+| `pnpm check:full` | Run code/build gates and every Science/Geo browser project before deployment dry-runs |
 | `pnpm typecheck` | Type-check every workspace project |
 | `pnpm lint` | Run `biome check`, architecture boundaries, and static security checks. This is not `format:check`. |
 | `pnpm format` | Format the repository with Biome |
@@ -92,6 +94,8 @@ pnpm check          # full merge gate (format, lint, types, tests, build, e2e, d
 | `pnpm test` | Run all Vitest projects |
 | `pnpm test:watch` | Run Vitest in watch mode |
 | `pnpm test:e2e` | Run all Playwright science and geo browser projects |
+| `pnpm test:e2e:quick` | Run the fixed Science/Geo Chromium sample, serially and without retries |
+| `pnpm test:e2e:full` | Explicit alias for the exhaustive Science/Geo browser matrix |
 | `pnpm test:e2e:science` | Run the science Playwright suite |
 | `pnpm test:e2e:geo` | Run the geo Atlas Playwright suite |
 | `pnpm test:a11y` | Run accessibility-tagged Chromium checks |

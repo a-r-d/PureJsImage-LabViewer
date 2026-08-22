@@ -77,7 +77,7 @@ export interface ScienceActionPorts {
   datasetList(): JsonValue
   datasetDescription(input: JsonValue): JsonValue
   roiList(): JsonValue
-  analysisCatalogSummary(): JsonValue
+  analysisCatalogSummary(input: JsonValue): JsonValue
   analysisDescription(input: JsonValue): JsonValue
   resultSummary(): JsonValue
   resultPage(input: JsonValue, signal: ActionAbortSignal): Promise<JsonValue>
@@ -176,7 +176,7 @@ export function createScienceActionHandlers(
         execute: (input, _context, signal) => ports.updateRoi(input, signal),
       },
     ],
-    ['analysis.catalog.read@1', symmetricAction(() => ports.analysisCatalogSummary())],
+    ['analysis.catalog.read@1', symmetricAction((input) => ports.analysisCatalogSummary(input))],
     ['analysis.describe@1', symmetricAction((input) => ports.analysisDescription(input))],
     [
       'analysis.normalize@1',

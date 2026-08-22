@@ -19,10 +19,12 @@ export const DEFAULT_PREFERENCES: WorkbenchPreferences = {
   bottomPanelHeight: 188,
 }
 
+export const COLLAPSED_BOTTOM_PANEL_HEIGHT = 36
+
 export const PREFERENCE_BOUNDS = {
   leftPanelWidth: { minimum: 184, maximum: 380 },
   rightPanelWidth: { minimum: 300, maximum: 480 },
-  bottomPanelHeight: { minimum: 126, maximum: 720 },
+  bottomPanelHeight: { minimum: COLLAPSED_BOTTOM_PANEL_HEIGHT, maximum: 720 },
 } as const
 
 const PREFERENCE_KEY = 'purejsimage.workbench.preferences.v1'

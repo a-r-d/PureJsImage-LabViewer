@@ -114,9 +114,7 @@ export function particleQualityDiagnostics(input: ParticleQualityInput): Particl
   if (tinyObjectFraction > 0.25)
     warnings.push('Many retained objects are much smaller than the median.')
   if (likelyMergedObjectCount > 0)
-    warnings.push(
-      'Large irregular objects may indicate merges; inspect an approved labels preview.',
-    )
+    warnings.push('Large irregular objects may indicate merges; inspect a labels preview.')
   if (input.nodataPixels > 0)
     warnings.push('Nodata pixels were present and are excluded from foreground fraction.')
   const sampled = input.sampledObjectCount ?? input.areas.length

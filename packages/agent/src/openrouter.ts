@@ -229,6 +229,8 @@ export class OpenRouterTransport implements AgentModelTransport {
     const promptTokens = finiteInteger(usageRecord?.['prompt_tokens'])
     const completionTokens = finiteInteger(usageRecord?.['completion_tokens'])
     const totalTokens = finiteInteger(usageRecord?.['total_tokens'])
+    const costUsd = finiteNonNegativeNumber(usageRecord?.['cost'])
+    const contextLength = this.#models?.get(request.model)?.contextLength
     return {
       provider: 'openrouter',
       model: typeof root?.['model'] === 'string' ? root['model'] : request.model,
@@ -238,6 +240,7 @@ export class OpenRouterTransport implements AgentModelTransport {
       ...(message['reasoning_details'] === undefined
         ? {}
         : { providerDetails: jsonValue(message['reasoning_details']) }),
+      ...(contextLength === undefined ? {} : { contextLength }),
       latencyMilliseconds: Math.max(0, Date.now() - started),
       ...(usageRecord === undefined
         ? {}
@@ -246,6 +249,7 @@ export class OpenRouterTransport implements AgentModelTransport {
               ...(promptTokens === undefined ? {} : { promptTokens }),
               ...(completionTokens === undefined ? {} : { completionTokens }),
               ...(totalTokens === undefined ? {} : { totalTokens }),
+              ...(costUsd === undefined ? {} : { costUsd }),
             },
           }),
     }
@@ -601,4 +605,8 @@ function jsonValue(value: unknown, depth = 0): JsonValue {
 
 function finiteInteger(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+}
+
+function finiteNonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
 }

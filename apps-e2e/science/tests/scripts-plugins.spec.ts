@@ -9,7 +9,7 @@ test.afterEach(async ({ page }, testInfo) => {
   })
 })
 
-test('authors, typechecks, tests, reviews, and runs a built-in script through lazy Workers', async ({
+test('authors, typechecks, tests, and runs a built-in script through lazy Workers', async ({
   page,
 }) => {
   const runtimeRequests: string[] = []
@@ -61,16 +61,14 @@ test('authors, typechecks, tests, reviews, and runs a built-in script through la
 
   await dialog.getByRole('button', { name: 'Run', exact: true }).click()
   const review = dialog.getByRole('alertdialog', { name: 'Capability review' })
-  await expect(review).toContainText('analysis.dry-run')
-  await review.getByRole('button', { name: 'Approve restricted run' }).click()
+  await expect(review).toHaveCount(0)
   await expect(dialog).toContainText('Sandbox run completed.', { timeout: 15_000 })
   await expect(dialog).toContainText('Action analysis.dry-run@1')
   expect(runtimeRequests.length).toBeGreaterThan(0)
   expect(await page.evaluate(() => window.localStorage.getItem('OPENROUTER_API_KEY'))).toBeNull()
 
   await dialog.getByRole('button', { name: 'Install locally' }).click()
-  await expect(review).toContainText('Review local installation')
-  await review.getByRole('button', { name: 'Approve exact snapshot' }).click()
+  await expect(review).toHaveCount(0)
   await expect(dialog).toContainText('Installed this exact local content snapshot.')
   await expect(dialog.getByRole('button', { name: /Watershed particle script/u })).toContainText(
     'installed',
@@ -110,11 +108,7 @@ test('cancels hostile code without changing the workspace revision', async ({ pa
   await page.keyboard.press('Enter')
   await dialog.getByRole('button', { name: 'Run', exact: true }).focus()
   await page.keyboard.press('Enter')
-  await expect(dialog.getByRole('alertdialog', { name: 'Capability review' })).toContainText(
-    'while',
-  )
-  await dialog.getByRole('button', { name: 'Approve restricted run' }).focus()
-  await page.keyboard.press('Enter')
+  await expect(dialog.getByRole('alertdialog', { name: 'Capability review' })).toHaveCount(0)
   await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeEnabled()
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).focus()
   await page.keyboard.press('Enter')

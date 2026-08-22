@@ -69,6 +69,7 @@ describe('workbench commands', () => {
         'script.typecheck',
         'script.run_tests',
         'script.diff',
+        'script.execute',
         'script.request_install',
         'script.request_execute',
       ]),
@@ -80,6 +81,12 @@ describe('workbench commands', () => {
         source: 'x'.repeat(256 * 1024 + 1),
       }),
     ).toContainEqual({ path: '/source', message: 'Value must contain at most 262144 characters.' })
+    expect(
+      workbenchActionRegistry.validate('script.execute', 1, {
+        id: 'local.script',
+        expectedDigest: 'short',
+      }),
+    ).not.toEqual([])
     expect(
       workbenchActionRegistry.validate('script.request_execute', 1, {
         id: 'local.script',

@@ -315,7 +315,7 @@ export function AdvancedMaterialsWorkflows({
           <p className="eyebrow">Materials extension bundle</p>
           <h3>Frequency · stack · AFM · batch</h3>
         </div>
-        <span className="analysis-cost-badge">Global · approval plan</span>
+        <span className="analysis-cost-badge">Global · planned</span>
       </div>
       <p>
         Quantitative transforms stay in the imaging Worker. Raw/log spectrum display is

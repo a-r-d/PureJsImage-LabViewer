@@ -114,7 +114,10 @@ file.export
 network.explicit-hosts
 ```
 
-Read-only actions may run automatically. Mutations, expensive compute, export, plugin installation, and external network actions follow host policy and user approval.
+The Science host grants the bounded local set above automatically for Script Studio and Agent-made
+scripts. Local analysis mutations and expensive compute run immediately through the same semantic
+action host. Export, arbitrary files, external network, credentials, and trusted plugin loading are
+not available to these scripts.
 
 ## Sandbox
 
@@ -142,15 +145,15 @@ without weakening the interrupt deadline applied to untrusted execution.
 
 The Scripts rail now opens the first-class, local-first Script Studio. It provides a CodeMirror 6
 editor, generated API search and completion, TypeScript/JavaScript checking in a dedicated language
-Worker, Problems, manifest/capability review, deterministic fixture tests, bounded output and
-provenance, saved-snapshot diff, import/export, duplication, revert, cancellation, and two-step
-execution and local-installation review. The editor, TypeScript compiler Worker, sandbox Worker, and
-QuickJS-WASM runtime remain separate lazy assets and are not requested during normal startup.
+Worker, Problems, an advanced capability manifest, deterministic fixture tests, bounded output and
+provenance, saved-snapshot diff, import/export, duplication, revert, cancellation, one-click local
+execution, and one-click local installation. The editor, TypeScript compiler Worker, sandbox Worker,
+and QuickJS-WASM runtime remain separate lazy assets and are not requested during normal startup.
 
 `ScriptStudioRepository` is the versioned storage boundary. The browser implementation stores at
 most 256 validated records in IndexedDB database `purejsimage-lab-script-studio-v1`; records include
-the current and reviewed documents, bounded editor state, bounded test results, and an optional
-exact installation snapshot. Import/export is capped at 768 KiB and rechecks document, reviewed,
+the current and saved documents, bounded editor state, bounded test results, and an optional
+exact installation snapshot. Import/export is capped at 768 KiB and rechecks document, saved,
 and installation identities and hashes. Corrupt records are skipped with a user-visible warning.
 Credentials and arbitrary unknown export fields are not part of the normalized record.
 
@@ -158,15 +161,18 @@ Five built-ins cover a particle-count recipe and sandboxed watershed, FFT radial
 leveling/roughness, and bounded batch-measurement scripts. Their tests use the generated calibrated
 materials fixture. The action registry also exposes the staged `script.create_draft`, `script.read`,
 `script.apply_patch`, `script.typecheck`, `script.run_tests`, `script.diff`,
-`script.request_install`, and `script.request_execute` actions. Install and execute actions produce
-review requests; they do not bypass the Studio approval surface. No model transport is connected.
+`script.execute`, `script.request_install`, and legacy `script.request_execute` actions. The Agent
+can create complete source, typecheck it, invoke `script.execute`, and install an exact local
+snapshot without a user-facing approval step. The legacy request-execute action invokes the same
+restricted runtime. The host still enforces exact content identity, local-only capabilities,
+schemas, quotas, cancellation, and provenance.
 
 Known limits are explicit: the language Worker uses a browser-bundled TypeScript 6 compiler alias
 and a small generated declaration prelude, not the complete DOM/Node library surface. Recipe dry
-runs remain proposal-only; an approved Run invokes each declared operation through the same
-semantic action host. Network capability remains unavailable, and trusted extensions remain
-developer-installed build-time code. This is a restricted environment, not an independent security
-audit or a claim that arbitrary code is safe.
+runs remain proposal-only; Run invokes each declared operation through the same semantic action
+host. Network capability remains unavailable, and trusted extensions remain developer-installed
+build-time code. This is a restricted environment, not an independent security audit or a claim
+that arbitrary code is safe.
 
 ## Determinism and provenance
 
@@ -187,7 +193,7 @@ The Script Studio should include:
 - CodeMirror editor with TypeScript language support loaded lazily;
 - generated API declarations and documentation search;
 - Problems panel with parse/type/schema errors;
-- manifest and permissions panel;
+- compact local-capability summary;
 - fixture/example selector;
 - Run, Dry Run, Test, Cancel, Install Locally, Export, Duplicate, and Revert actions;
 - diff view for AI- or user-proposed changes;
@@ -199,7 +205,7 @@ Scripts are stored in IndexedDB, not localStorage. Credentials never enter the s
 
 ## AI authoring
 
-The later agent does not receive an unrestricted “execute code” tool. It receives staged tools:
+The Agent receives a simple local-analysis path backed by the restricted runtime:
 
 ```text
 script.create_draft
@@ -207,8 +213,13 @@ script.read
 script.apply_patch
 script.typecheck
 script.run_tests
+script.execute
 script.request_install
 script.request_execute
 ```
 
-The user can inspect source, diff, requested capabilities, tests, and dry-run plan before installation or execution.
+For custom local analysis, the normal flow is ask, create complete source, typecheck, execute, and
+report the bounded output. Creation, checking, tests, execution, and exact-snapshot local
+installation are automatic. The user can open Script Studio afterward to inspect the source, diff,
+output, and provenance. Export, network access, arbitrary file access, credentials, and trusted
+extensions remain unavailable to this path.
