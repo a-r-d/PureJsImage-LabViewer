@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { particleQualityDiagnostics } from '../src/particle-quality.js'
+import {
+  compareParticleQualityDiagnostics,
+  particleQualityDiagnostics,
+} from '../src/particle-quality.js'
 
 describe('particle quality diagnostics', () => {
   it('summarizes distributions and flags likely merges without guaranteeing quality', () => {
@@ -24,6 +27,8 @@ describe('particle quality diagnostics', () => {
         fillHoles: true,
         clearBorder: false,
         watershed: true,
+        minimumPeakDistance: 20,
+        minimumPeakHeight: 4,
         backgroundRadius: 0,
       },
       calibration: { unit: 'nm', xSpacing: 1, ySpacing: 1 },
@@ -31,6 +36,41 @@ describe('particle quality diagnostics', () => {
     expect(report.objectCount).toBe(4)
     expect(report.likelyMergedObjectCount).toBeGreaterThan(0)
     expect(report.calibration.unit).toBe('nm')
+    expect(report.minimumPeakDistance).toBe(20)
+    expect(report.minimumPeakHeight).toBe(4)
     expect(report.limitations[0]).toContain('not a formal statistical guarantee')
+  })
+
+  it('compares bounded diagnostics without turning a count increase into improvement', () => {
+    const diagnostics = (objectCount: number, areas: readonly number[]) =>
+      particleQualityDiagnostics({
+        objectCount,
+        validPixels: 100,
+        nodataPixels: 0,
+        planeWidth: 10,
+        planeHeight: 10,
+        areas,
+        equivalentDiameters: areas.map((area) => Math.sqrt(area)),
+        circularities: areas.map(() => 0.9),
+        solidities: areas.map(() => 0.95),
+        borderCount: 0,
+        settings: {
+          thresholdMethod: 'otsu',
+          polarity: 'light',
+          openRadius: 0,
+          closeRadius: 0,
+          fillHoles: false,
+          clearBorder: false,
+          watershed: false,
+        },
+      })
+    const comparison = compareParticleQualityDiagnostics(
+      diagnostics(2, [10, 10]),
+      diagnostics(4, [0.001, 0.1, 10, 10]),
+    )
+    expect(comparison.countDelta).toBe(2)
+    expect(comparison.classification).toBe('not-determined-without-oracle-or-visual-adjudication')
+    expect(comparison.likelySplitOrNoiseCountDelta).toBeGreaterThan(0)
+    expect(comparison.limitation).toContain('do not establish improvement')
   })
 })

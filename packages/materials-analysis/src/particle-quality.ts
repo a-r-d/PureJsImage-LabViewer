@@ -2,11 +2,14 @@ export interface ParticleQualitySettings {
   readonly thresholdMethod: string
   readonly thresholdValue?: number
   readonly polarity?: string
+  readonly minimumCoefficientOfVariation?: number
   readonly openRadius: number
   readonly closeRadius: number
   readonly fillHoles: boolean
   readonly clearBorder: boolean
   readonly watershed: boolean
+  readonly minimumPeakDistance?: number
+  readonly minimumPeakHeight?: number
   readonly backgroundRadius?: number
 }
 
@@ -63,6 +66,7 @@ export interface ParticleQualityReport {
   readonly thresholdMethod: string
   readonly thresholdValue: number | null
   readonly polarity: string | null
+  readonly minimumCoefficientOfVariation: number | null
   readonly morphology: Readonly<{
     openRadius: number
     closeRadius: number
@@ -71,6 +75,8 @@ export interface ParticleQualityReport {
     backgroundRadius: number | null
   }>
   readonly watershed: boolean
+  readonly minimumPeakDistance: number | null
+  readonly minimumPeakHeight: number | null
   readonly calibration: Readonly<{
     unit: string | null
     xSpacing: number | null
@@ -78,6 +84,46 @@ export interface ParticleQualityReport {
   }>
   readonly warnings: readonly string[]
   readonly limitations: readonly string[]
+}
+
+export interface ParticleQualityComparison {
+  readonly schemaVersion: 1
+  readonly classification: 'not-determined-without-oracle-or-visual-adjudication'
+  readonly countDelta: number
+  readonly foregroundFractionDelta: number
+  readonly borderObjectFractionDelta: number
+  readonly tinyObjectFractionDelta: number
+  readonly largeObjectFractionDelta: number
+  readonly likelyMergedObjectCountDelta: number
+  readonly likelySplitOrNoiseCountDelta: number
+  readonly warningsAdded: readonly string[]
+  readonly warningsResolved: readonly string[]
+  readonly limitation: string
+}
+
+export function compareParticleQualityDiagnostics(
+  previous: ParticleQualityReport,
+  current: ParticleQualityReport,
+): ParticleQualityComparison {
+  const previousWarnings = new Set(previous.warnings)
+  const currentWarnings = new Set(current.warnings)
+  return {
+    schemaVersion: 1,
+    classification: 'not-determined-without-oracle-or-visual-adjudication',
+    countDelta: current.objectCount - previous.objectCount,
+    foregroundFractionDelta: current.foregroundFraction - previous.foregroundFraction,
+    borderObjectFractionDelta: current.borderObjectFraction - previous.borderObjectFraction,
+    tinyObjectFractionDelta: current.tinyObjectFraction - previous.tinyObjectFraction,
+    largeObjectFractionDelta: current.largeObjectFraction - previous.largeObjectFraction,
+    likelyMergedObjectCountDelta:
+      current.likelyMergedObjectCount - previous.likelyMergedObjectCount,
+    likelySplitOrNoiseCountDelta:
+      current.likelySplitOrNoiseCount - previous.likelySplitOrNoiseCount,
+    warningsAdded: current.warnings.filter((warning) => !previousWarnings.has(warning)),
+    warningsResolved: previous.warnings.filter((warning) => !currentWarnings.has(warning)),
+    limitation:
+      'Descriptive diagnostic deltas do not establish improvement. Inspect both labels previews or use an independent instance-mask oracle.',
+  }
 }
 
 export function particleQualityDiagnostics(input: ParticleQualityInput): ParticleQualityReport {
@@ -146,6 +192,7 @@ export function particleQualityDiagnostics(input: ParticleQualityInput): Particl
     thresholdMethod: input.settings.thresholdMethod,
     thresholdValue: input.settings.thresholdValue ?? null,
     polarity: input.settings.polarity ?? null,
+    minimumCoefficientOfVariation: input.settings.minimumCoefficientOfVariation ?? null,
     morphology: {
       openRadius: input.settings.openRadius,
       closeRadius: input.settings.closeRadius,
@@ -154,6 +201,8 @@ export function particleQualityDiagnostics(input: ParticleQualityInput): Particl
       backgroundRadius: input.settings.backgroundRadius ?? null,
     },
     watershed: input.settings.watershed,
+    minimumPeakDistance: input.settings.minimumPeakDistance ?? null,
+    minimumPeakHeight: input.settings.minimumPeakHeight ?? null,
     calibration: {
       unit: input.calibration?.unit ?? null,
       xSpacing: input.calibration?.xSpacing ?? null,

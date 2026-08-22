@@ -415,6 +415,7 @@ export const TOOLBOX_PRESETS = Object.freeze([
       windowRadius: 15,
       sauvolaK: 0.2,
       dynamicRange: 128,
+      minimumCoefficientOfVariation: 0,
       noDataPolicy: 'background',
     },
   },

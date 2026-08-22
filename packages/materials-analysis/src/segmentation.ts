@@ -31,6 +31,7 @@ export interface ThresholdOptions {
   readonly windowRadius: number
   readonly sauvolaK: number
   readonly dynamicRange: number
+  readonly minimumCoefficientOfVariation?: number
   readonly noDataPolicy: ThresholdNoDataPolicy
   readonly signal?: AbortSignal
 }
@@ -40,6 +41,8 @@ export interface ThresholdResult {
   readonly threshold: number
   readonly foregroundCount: number
   readonly selectedCount: number
+  readonly coefficientOfVariation: number
+  readonly lowInformationRejected: boolean
 }
 
 const checkpoint = (signal: AbortSignal | undefined, ordinal: number): void => {
@@ -68,6 +71,25 @@ function finiteSelectedValues(
     count += 1
   }
   return values.slice(0, count)
+}
+
+function coefficientOfVariation(values: Float64Array, signal?: AbortSignal): number {
+  let mean = 0
+  let squaredDeviation = 0
+  let maximumMagnitude = 0
+  for (let index = 0; index < values.length; index += 1) {
+    checkpoint(signal, index)
+    const value = values[index] ?? 0
+    const count = index + 1
+    const delta = value - mean
+    mean += delta / count
+    squaredDeviation += delta * (value - mean)
+    maximumMagnitude = Math.max(maximumMagnitude, Math.abs(value))
+  }
+  if (values.length === 0) return 0
+  const standardDeviation = Math.sqrt(Math.max(0, squaredDeviation / values.length))
+  const scaleFloor = Math.max(Number.MIN_VALUE, maximumMagnitude * 1e-12)
+  return standardDeviation / Math.max(Math.abs(mean), scaleFloor)
 }
 
 export function thresholdHistogram(
@@ -340,6 +362,15 @@ export function applyThreshold(
 ): ThresholdResult & { readonly histogram: ThresholdHistogram } {
   const pixels = plane.width * plane.height
   const selectedValues = finiteSelectedValues(plane, component, selection, options.signal)
+  const minimumCoefficientOfVariation = options.minimumCoefficientOfVariation ?? 0
+  if (
+    !Number.isFinite(minimumCoefficientOfVariation) ||
+    minimumCoefficientOfVariation < 0 ||
+    minimumCoefficientOfVariation > 10
+  )
+    throw new Error('Minimum coefficient of variation must be between 0 and 10.')
+  const inputCoefficientOfVariation = coefficientOfVariation(selectedValues, options.signal)
+  const lowInformationRejected = inputCoefficientOfVariation < minimumCoefficientOfVariation
   const histogram = thresholdHistogram(
     plane,
     component,
@@ -386,6 +417,10 @@ export function applyThreshold(
       if (mask[pixel] === 1) foregroundCount += 1
       continue
     }
+    if (lowInformationRejected) {
+      mask[pixel] = 0
+      continue
+    }
     const automatic = localThresholds?.[pixel] ?? threshold
     const foreground =
       options.method === 'manual'
@@ -398,7 +433,15 @@ export function applyThreshold(
     mask[pixel] = selectedForeground ? 1 : 0
     if (selectedForeground) foregroundCount += 1
   }
-  return { mask, threshold, foregroundCount, selectedCount, histogram }
+  return {
+    mask,
+    threshold,
+    foregroundCount,
+    selectedCount,
+    histogram,
+    coefficientOfVariation: inputCoefficientOfVariation,
+    lowInformationRejected,
+  }
 }
 
 const neighbors = (connectivity: 4 | 8): readonly (readonly [number, number])[] =>
@@ -780,15 +823,27 @@ export function watershedSeparate(
   input: Uint8Array,
   width: number,
   height: number,
-  options: Readonly<{ minimumPeakDistance: number; signal?: AbortSignal }>,
+  options: Readonly<{
+    minimumPeakDistance: number
+    minimumPeakHeight?: number
+    signal?: AbortSignal
+  }>,
 ): Uint8Array {
+  const minimumPeakHeight = options.minimumPeakHeight ?? 0
+  if (!Number.isFinite(minimumPeakHeight) || minimumPeakHeight < 0)
+    throw new Error('Minimum watershed peak height must be finite and non-negative.')
   const distances = euclideanDistanceTransform(input, width, height, options.signal)
   const offsets = neighbors(8)
   const candidates = new Uint32Array(input.length)
   let candidateCount = 0
   for (let index = 0; index < input.length; index += 1) {
     checkpoint(options.signal, index)
-    if (input[index] === 0 || (distances[index] ?? 0) <= 0) continue
+    if (
+      input[index] === 0 ||
+      (distances[index] ?? 0) <= 0 ||
+      (distances[index] ?? 0) < minimumPeakHeight
+    )
+      continue
     const x = index % width
     const y = Math.floor(index / width)
     let maximum = true
@@ -873,5 +928,7 @@ export function watershedSeparate(
       } else if (labels[neighbor] !== entry.label) labels[neighbor] = -1
     }
   }
-  return Uint8Array.from(input, (value, index) => (value !== 0 && (labels[index] ?? 0) > 0 ? 1 : 0))
+  return Uint8Array.from(input, (value, index) =>
+    value !== 0 && (labels[index] ?? 0) !== -1 ? 1 : 0,
+  )
 }

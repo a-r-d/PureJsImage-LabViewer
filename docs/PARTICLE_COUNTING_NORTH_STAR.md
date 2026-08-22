@@ -35,9 +35,11 @@ Required gates:
 - deterministic repeat equality;
 - time, memory, cancellation, and maximum-object admission.
 
-The initial checked-in gate establishes count coverage and a controlled undercount-to-improvement
-case. Precision/recall, merge/split, mask IoU, and performance budgets remain required before this
-suite can be called a complete algorithm qualification.
+The checked-in gate now measures count, one-to-one instance precision/recall/F1, merge/split rate,
+mask IoU, boundary F1, deterministic retained-byte estimates, and runtime across the full generated
+suite. Area, equivalent-diameter, aspect-ratio, orientation, centroid, ignore-mask, and edge-policy
+metrics are covered by focused evaluator tests. This closes the original metric-infrastructure gap;
+it does not turn generated data or upstream preview masks into a complete algorithm qualification.
 
 ### Tier 2: curated real images with adjudicated masks
 
@@ -54,6 +56,67 @@ Target strata:
 - uniform and strongly shaded fields;
 - low contrast, charging, texture, debris, scale bars, and cropped edge objects;
 - calibrated and explicitly uncalibrated images from multiple instruments and laboratories.
+
+The fixture-level foundation now lives at
+`packages/materials-analysis/testdata/corpus/manifest.v1.json`. Corpus `0.2.0` checks in 41 unique
+assets (18,703,137 bytes): sixteen deterministic native BBBC039 16-bit TIFF/instance-mask pairs,
+two BBBC039 preview pairs, the BBBC005 focus-control trio, a NIST asbestos montage, and a USGS
+anthophyllite SEM. BBBC039 remains `upstream-unreviewed`, not locally adjudicated gold; the asbestos
+files remain `smoke-test-only`. All 38 calibrated NIST lipid-nanoparticle pairs are still required
+before release claims.
+
+Core source definitions cover NIST lipid nanoparticle cryoEM, BBBC039, BBBC005, the two asbestos
+smoke sources, and NIST SEM detection-limit controls. Dryad HRTEM nanoparticles, RODARE carbide SEM,
+concrete cracks, DeepParticle, kaolin masks, and directional-reflectance grains are opt-in extended
+sources. EMPS is quarantined pending a per-image permission chain. BAM CC BY-NC-ND, BBBC004, and
+BBBC020 are excluded.
+
+### Corpus policy and selection
+
+The manifest fails on unknown keys and records source title/authors, landing page, license evidence,
+attribution, commercial-use/redistribution/derivative rights, access date, exact downloads, and
+checksums. A fixture records original and local identity, native/derived format, dimensions, bit
+depth, calibration, instance/semantic/ignore masks, both border counts, transforms, review state,
+tasks, failure modes, split, domain group, and exact source selection. Review states are
+`upstream-unreviewed`, `reviewed`, `adjudicated-gold`, `weak-label`, and `smoke-test-only`.
+
+Partial border objects remain in masks and inclusive counts but are excluded from default
+morphometry and size distributions. Reports expose both counts. Ambiguous pixels, text, scale bars,
+panel separators, and unresolved contacts belong in an ignore mask. Gold counting fixtures require
+an instance mask, ignore mask, and reviewer evidence.
+
+`computeParticleCorpusFeatures` calculates object count, foreground fraction, area quantiles and
+variation, edge fraction, near-touching graph density at 1/2/4 pixels, eccentricity, solidity,
+perimeter-to-area, illumination gradient, boundary contrast, focus, estimated SNR, bit depth, and
+channel count. `selectParticleCorpusHardCases` deterministically retains a multivariate median,
+every feature minimum/maximum, and cluster medoids; every selection carries its reasons.
+When a source-specific fixture budget is supplied, the selector retains the median and medoids,
+then greedily maximizes coverage of the remaining extreme reasons with stable ID tie-breaking.
+BBBC039 applies that policy independently to the published partitions, freezing eight training,
+four validation, and four held-out test fields so later tuning cannot change the test composition.
+
+### Corpus commands
+
+```text
+pnpm corpus:verify:particles
+pnpm test:particle-corpus
+pnpm corpus:report:particles -- --output .local/particle-corpus
+pnpm corpus:fetch:particles -- --source bbbc039
+pnpm corpus:fetch:particles -- --source dryad-hrtem-nanoparticles --extended
+pnpm corpus:select:particles -- features.json selection.json
+pnpm corpus:benchmark:bbbc039 -- --split validation --output .local/bbbc039-validation.json
+```
+
+Verification and normal tests perform no network access. Fetching is explicit, refuses blocked or
+checksum-incomplete records, requires `--extended` for extended sources, and caches outside the
+repository. The report emits JSON and Markdown with exact settings, before/after refinement,
+inclusive/exclusive count error, instance precision/recall/F1, merge/split, mask IoU/Dice, boundary
+F1, centroid and morphology biases, foreground error, runtime, and managed-memory estimate.
+
+The current BBBC039 evidence and its leakage/qualification limits are frozen in
+`docs/PARTICLE_ANALYSIS_BBBC039_EVAL.md`. The particle workflow now exposes a low-information ROI
+guard and a watershed minimum-peak-height control. Both are explicit, schema-validated settings and
+are retained in Agent diagnostics; no specimen-dependent watershed scale is silently applied.
 
 ### Tier 3: local live-agent evals
 

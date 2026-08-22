@@ -78,6 +78,8 @@ import {
 } from '@pji-workbench/imaging'
 import {
   type BatchRecipeRow,
+  compareParticleQualityDiagnostics,
+  type ParticleQualityReport,
   particleQualityDiagnostics,
   runBatchRecipe,
 } from '@pji-workbench/materials-analysis'
@@ -657,7 +659,12 @@ function WorkbenchRuntime({
     particleAgentPlanRef.current = new ScienceParticlePlanGate()
   const particleAgentPlan = particleAgentPlanRef.current
   const priorParticleRun = useRef<
-    Readonly<{ result: JsonValue; settings: ParticleWorkflowSettings }> | undefined
+    | Readonly<{
+        result: JsonValue
+        settings: ParticleWorkflowSettings
+        quality: ParticleQualityReport | undefined
+      }>
+    | undefined
   >(undefined)
   const viewportApi = useRef<ScientificViewportApi | null>(null)
   const workbenchRoot = useRef<HTMLDivElement>(null)
@@ -1543,6 +1550,67 @@ function WorkbenchRuntime({
     ],
   )
 
+  const currentParticleQuality = useCallback((): ParticleQualityReport | undefined => {
+    const table = analysisState.table
+    if (table === undefined || analysisState.tableOutput !== 'objects') return undefined
+    const rows = Array.from({ length: table.rowCount }, (_value, row) =>
+      Object.fromEntries(table.columns.map((column) => [column.name, column.values[row] ?? null])),
+    )
+    const numbers = (name: string): number[] =>
+      rows.flatMap((row) => {
+        const value = row[name]
+        return typeof value === 'number' && Number.isFinite(value) ? [value] : []
+      })
+    const openedPlane = opened?.dataset.axes ?? []
+    const width = openedPlane.find((axis) => axis.id === selection?.displayAxes[0])?.length ?? 1
+    const height = openedPlane.find((axis) => axis.id === selection?.displayAxes[1])?.length ?? 1
+    return particleQualityDiagnostics({
+      objectCount: table.totalRows,
+      sampledObjectCount: rows.length,
+      validPixels: width * height,
+      nodataPixels: 0,
+      planeWidth: width,
+      planeHeight: height,
+      areas: numbers('pixelArea').length > 0 ? numbers('pixelArea') : numbers('physicalArea'),
+      equivalentDiameters: numbers('equivalentCircularDiameter'),
+      circularities: numbers('circularity'),
+      solidities: numbers('solidity'),
+      borderCount: rows.filter((row) => row['edge'] === true).length,
+      settings: {
+        thresholdMethod: particleSettings.thresholdMethod,
+        ...(particleSettings.lower === undefined ? {} : { thresholdValue: particleSettings.lower }),
+        ...(particleSettings.polarity === undefined ? {} : { polarity: particleSettings.polarity }),
+        minimumCoefficientOfVariation: particleSettings.minimumCoefficientOfVariation,
+        openRadius: particleSettings.openRadius,
+        closeRadius: particleSettings.closeRadius,
+        fillHoles: particleSettings.fillHoles,
+        clearBorder: particleSettings.clearBorder,
+        watershed: particleSettings.watershed,
+        minimumPeakDistance: particleSettings.minimumPeakDistance,
+        minimumPeakHeight: particleSettings.minimumPeakHeight,
+        ...(particleSettings.backgroundRadius === undefined
+          ? {}
+          : { backgroundRadius: particleSettings.backgroundRadius }),
+      },
+      ...(analysisCalibration === undefined
+        ? {}
+        : {
+            calibration: {
+              unit: analysisCalibration.unit,
+              xSpacing: analysisCalibration.unitsPerPixel[0],
+              ySpacing: analysisCalibration.unitsPerPixel[1],
+            },
+          }),
+    })
+  }, [
+    analysisCalibration,
+    analysisState.table,
+    analysisState.tableOutput,
+    opened,
+    particleSettings,
+    selection,
+  ])
+
   const planParticleAnalysisForAction = useCallback(
     async (input: JsonValue, actionSignal: ActionAbortSignal): Promise<JsonValue> => {
       const target = opened
@@ -1590,6 +1658,7 @@ function WorkbenchRuntime({
       particleAgentPlan.assertCurrent(planId, identity)
       const previousResult = boundedResultSummary(analysisState)
       const previousCount = particleCountFromSummary(previousResult)
+      const previousQuality = currentParticleQuality()
       const outcome = await executeAnalysisGraph(graph, {
         roi,
         overlay: 'labels',
@@ -1602,7 +1671,11 @@ function WorkbenchRuntime({
       })
       if (outcome === undefined) throw new Error('Particle analysis did not produce a result.')
       if (previousCount !== undefined)
-        priorParticleRun.current = { result: previousResult, settings: particleSettings }
+        priorParticleRun.current = {
+          result: previousResult,
+          settings: particleSettings,
+          quality: previousQuality,
+        }
       particleAgentPlan.consume()
       setParticleSettings(settings)
       setParticleDryRun(outcome.dryRun)
@@ -1611,6 +1684,7 @@ function WorkbenchRuntime({
     },
     [
       analysisState,
+      currentParticleQuality,
       executeAnalysisGraph,
       particleSettings,
       particleRequestForAction,
@@ -1620,58 +1694,12 @@ function WorkbenchRuntime({
   )
 
   const particleQualityForAction = useCallback((): JsonValue => {
-    const table = analysisState.table
-    if (table === undefined || analysisState.tableOutput !== 'objects')
+    const report = currentParticleQuality()
+    if (report === undefined)
       return json({
         available: false,
         message: 'No particle object table is loaded. Run particle analysis first.',
       })
-    const rows = Array.from({ length: table.rowCount }, (_value, row) =>
-      Object.fromEntries(table.columns.map((column) => [column.name, column.values[row] ?? null])),
-    )
-    const numbers = (name: string): number[] =>
-      rows.flatMap((row) => {
-        const value = row[name]
-        return typeof value === 'number' && Number.isFinite(value) ? [value] : []
-      })
-    const openedPlane = opened?.dataset.axes ?? []
-    const width = openedPlane.find((axis) => axis.id === selection?.displayAxes[0])?.length ?? 1
-    const height = openedPlane.find((axis) => axis.id === selection?.displayAxes[1])?.length ?? 1
-    const report = particleQualityDiagnostics({
-      objectCount: table.totalRows,
-      sampledObjectCount: rows.length,
-      validPixels: width * height,
-      nodataPixels: 0,
-      planeWidth: width,
-      planeHeight: height,
-      areas: numbers('pixelArea').length > 0 ? numbers('pixelArea') : numbers('physicalArea'),
-      equivalentDiameters: numbers('equivalentCircularDiameter'),
-      circularities: numbers('circularity'),
-      solidities: numbers('solidity'),
-      borderCount: rows.filter((row) => row['edge'] === true).length,
-      settings: {
-        thresholdMethod: particleSettings.thresholdMethod,
-        ...(particleSettings.lower === undefined ? {} : { thresholdValue: particleSettings.lower }),
-        ...(particleSettings.polarity === undefined ? {} : { polarity: particleSettings.polarity }),
-        openRadius: particleSettings.openRadius,
-        closeRadius: particleSettings.closeRadius,
-        fillHoles: particleSettings.fillHoles,
-        clearBorder: particleSettings.clearBorder,
-        watershed: particleSettings.watershed,
-        ...(particleSettings.backgroundRadius === undefined
-          ? {}
-          : { backgroundRadius: particleSettings.backgroundRadius }),
-      },
-      ...(analysisCalibration === undefined
-        ? {}
-        : {
-            calibration: {
-              unit: analysisCalibration.unit,
-              xSpacing: analysisCalibration.unitsPerPixel[0],
-              ySpacing: analysisCalibration.unitsPerPixel[1],
-            },
-          }),
-    })
     const previous = priorParticleRun.current
     const previousCount =
       previous === undefined ? undefined : particleCountFromSummary(previous.result)
@@ -1690,18 +1718,17 @@ function WorkbenchRuntime({
               countDelta: report.objectCount - previousCount,
               previousSettings: previous.settings,
               currentSettings: particleSettings,
+              previousDiagnostics: previous.quality ?? null,
+              currentDiagnostics: report,
+              diagnosticComparison:
+                previous.quality === undefined
+                  ? null
+                  : compareParticleQualityDiagnostics(previous.quality, report),
               interpretation:
-                'A count change alone does not prove improvement. Compare both labels previews and diagnostics against visible missed, merged, split, and noise objects.',
+                'A count change alone does not prove improvement. Compare both labels previews and the before/after diagnostic distributions against visible missed, merged, split, and noise objects. Without an independent instance mask the conclusion remains provisional.',
             },
     })
-  }, [
-    analysisCalibration,
-    analysisState.table,
-    analysisState.tableOutput,
-    opened,
-    particleSettings,
-    selection,
-  ])
+  }, [currentParticleQuality, particleSettings])
 
   const priorCommittedResult = useRef<JsonValue>({ available: false })
 

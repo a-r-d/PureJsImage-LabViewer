@@ -392,6 +392,11 @@
                 "minimum": 0,
                 "type": "number"
               },
+              "minimumCoefficientOfVariation": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              },
               "minimumObjectPixels": {
                 "maximum": 1000000000,
                 "minimum": 1,
@@ -401,6 +406,11 @@
                 "maximum": 4096,
                 "minimum": 1,
                 "type": "integer"
+              },
+              "minimumPeakHeight": {
+                "maximum": 4096,
+                "minimum": 0,
+                "type": "number"
               },
               "minimumSolidity": {
                 "maximum": 1,
@@ -549,6 +559,11 @@
                 "minimum": 0,
                 "type": "number"
               },
+              "minimumCoefficientOfVariation": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              },
               "minimumObjectPixels": {
                 "maximum": 1000000000,
                 "minimum": 1,
@@ -558,6 +573,11 @@
                 "maximum": 4096,
                 "minimum": 1,
                 "type": "integer"
+              },
+              "minimumPeakHeight": {
+                "maximum": 4096,
+                "minimum": 0,
+                "type": "number"
               },
               "minimumSolidity": {
                 "maximum": 1,

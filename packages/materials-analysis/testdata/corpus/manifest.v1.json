@@ -1,0 +1,2224 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "0.2.0",
+  "generatedAt": "2026-08-22",
+  "policy": {
+    "requireCommercialUse": true,
+    "requireRedistribution": true,
+    "requireDerivativeWorks": true,
+    "failClosedOnUnknownLicense": true,
+    "requireSha256": true,
+    "requireTransformProvenance": true,
+    "requireAdjudicationForGold": true
+  },
+  "sources": [
+    {
+      "id": "nist-lnp-cryoem",
+      "tier": "core",
+      "fetchPolicy": "blocked",
+      "title": "Segmentation of lipid nanoparticles from cryogenic electron microscopy images",
+      "authors": "National Institute of Standards and Technology",
+      "landingUrl": "https://data.nist.gov/od/id/mds2-2753",
+      "license": {
+        "id": "LicenseRef-NIST-Open",
+        "evidenceUrl": "https://www.nist.gov/open/license",
+        "attribution": "Acknowledge NIST, identify every modification, and do not imply NIST endorsement.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [
+        {
+          "filename": "R111_S404_pH4_1p5pcPEG_noRNA.zip",
+          "url": "https://data.nist.gov/od/ds/mds2-2753/R111_S404_pH4_1p5pcPEG_noRNA.zip",
+          "role": "archive"
+        },
+        {
+          "filename": "R111_S405_pH7_1p5pcPEG_noRNA.zip",
+          "url": "https://data.nist.gov/od/ds/mds2-2753/R111_S405_pH7_1p5pcPEG_noRNA.zip",
+          "role": "archive"
+        },
+        {
+          "filename": "R111_S406_pH4_1p5pcPEG_RNA.zip",
+          "url": "https://data.nist.gov/od/ds/mds2-2753/R111_S406_pH4_1p5pcPEG_RNA.zip",
+          "role": "archive"
+        },
+        {
+          "filename": "R111_S407_pH7_1p5pcPEG_RNA.zip",
+          "url": "https://data.nist.gov/od/ds/mds2-2753/R111_S407_pH7_1p5pcPEG_RNA.zip",
+          "role": "archive"
+        }
+      ],
+      "notes": "Target all 38 native TIFF image-mask pairs at 0.223 nm per pixel, grouped by pH and RNA condition. Fetch remains blocked until every archive checksum is independently pinned."
+    },
+    {
+      "id": "bbbc039",
+      "tier": "core",
+      "fetchPolicy": "core-explicit",
+      "title": "Nuclei of U2OS cells in a chemical screen",
+      "authors": "Broad Bioimage Benchmark Collection",
+      "landingUrl": "https://bbbc.broadinstitute.org/BBBC039",
+      "license": {
+        "id": "CC0-1.0",
+        "evidenceUrl": "https://bbbc.broadinstitute.org/BBBC039",
+        "attribution": "BBBC039, Broad Bioimage Benchmark Collection.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [
+        {
+          "filename": "images.zip",
+          "url": "https://data.broadinstitute.org/bbbc/BBBC039/images.zip",
+          "sizeBytes": 77915748,
+          "sha256": "6f30a5d4fe38c928ded972704f085975f8dc0d65d9aa366df00e5a9d449fddd7",
+          "role": "archive"
+        },
+        {
+          "filename": "masks.zip",
+          "url": "https://data.broadinstitute.org/bbbc/BBBC039/masks.zip",
+          "sizeBytes": 2753811,
+          "sha256": "f9e6043d8ca56344a4886f96a700d804d6ee982f31e2b2cd3194af2a053c2710",
+          "role": "archive"
+        },
+        {
+          "filename": "metadata.zip",
+          "url": "https://data.broadinstitute.org/bbbc/BBBC039/metadata.zip",
+          "sizeBytes": 17816,
+          "sha256": "a2c1f900bed9ba92a99553efd4c2ae98598433691c7401d818653ab61110deb2",
+          "role": "metadata"
+        },
+        {
+          "filename": "BBBC039exampleimage1.png",
+          "url": "https://data.broadinstitute.org/bbbc/BBBC039/BBBC039exampleimage1.png",
+          "sha256": "f92357666a4baa97ea1618375062ef94f5c03a13bb262c6eea61fce0018a5179",
+          "sizeBytes": 140383,
+          "role": "image"
+        },
+        {
+          "filename": "BBBC039exampleimage2.png",
+          "url": "https://data.broadinstitute.org/bbbc/BBBC039/BBBC039exampleimage2.png",
+          "sha256": "02274c83e8e0641155d4d4c099f8ad50db7133199ad43c028fe882e50290bfe6",
+          "sizeBytes": 7776,
+          "role": "mask"
+        },
+        {
+          "filename": "BBBC039exampleimage3.png",
+          "url": "https://data.broadinstitute.org/bbbc/BBBC039/BBBC039exampleimage3.png",
+          "sha256": "75793c14a581a6a03bd1a2cfb8843cf92b6f72620c39bf6d6b7766f94a24ea26",
+          "sizeBytes": 163474,
+          "role": "image"
+        },
+        {
+          "filename": "BBBC039exampleimage4.png",
+          "url": "https://data.broadinstitute.org/bbbc/BBBC039/BBBC039exampleimage4.png",
+          "sha256": "10c79af8f06d38e113503e039dcbec1771bae137f9d1dd0c942de2cc52fb029c",
+          "sizeBytes": 10297,
+          "role": "mask"
+        }
+      ],
+      "notes": "The official native archives are checksum-pinned. Sixteen native 16-bit TIFF and instance-mask pairs are selected deterministically across the published 8 training, 4 validation, and 4 held-out test fields in this corpus; the two web previews remain lightweight wiring fixtures."
+    },
+    {
+      "id": "bbbc005",
+      "tier": "core",
+      "fetchPolicy": "core-explicit",
+      "title": "Synthetic cells with known counts and focus variation",
+      "authors": "Broad Bioimage Benchmark Collection",
+      "landingUrl": "https://bbbc.broadinstitute.org/BBBC005",
+      "license": {
+        "id": "LicenseRef-BBBC-Copyright-Waiver",
+        "evidenceUrl": "https://bbbc.broadinstitute.org/BBBC005",
+        "attribution": "BBBC005, Broad Bioimage Benchmark Collection; copyright waived to the extent possible.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [
+        {
+          "filename": "synthetic2_in_focus_image.png",
+          "url": "https://data.broadinstitute.org/bbbc/BBBC005/synthetic2_in_focus_image.png",
+          "sha256": "72e1fd72b4d33ea2b86460c33b57a1ea57c0ee3fc4d7ff8c0ad176b92917253b",
+          "sizeBytes": 56594,
+          "role": "image"
+        },
+        {
+          "filename": "synthetic2_out_of_focus_image.png",
+          "url": "https://data.broadinstitute.org/bbbc/BBBC005/synthetic2_out_of_focus_image.png",
+          "sha256": "a8e73255500c65e4e3eee3b9d91b5eb1f2a3aea900a02f42f252e0162efef8de",
+          "sizeBytes": 18442,
+          "role": "image"
+        },
+        {
+          "filename": "synthetic2_ground_truth_image.png",
+          "url": "https://data.broadinstitute.org/bbbc/BBBC005/synthetic2_ground_truth_image.png",
+          "sha256": "a28d3867d9683e77497ca417af7e0c240927e7b67226bd6be2cac1d39ff23136",
+          "sizeBytes": 3630,
+          "role": "mask"
+        }
+      ],
+      "notes": "Checked-in web previews exercise focus invariance. A native orthogonal count-by-blur subset remains future work."
+    },
+    {
+      "id": "nist-asbestos-montage",
+      "tier": "core",
+      "fetchPolicy": "core-explicit",
+      "title": "NIST asbestos SEM image montage",
+      "authors": "National Institute of Standards and Technology",
+      "landingUrl": "https://www.nist.gov/image/asbestos-images-sem",
+      "license": {
+        "id": "LicenseRef-NIST-Open",
+        "evidenceUrl": "https://www.nist.gov/open/license",
+        "attribution": "NIST asbestos SEM montage; renamed without pixel modification on 2026-08-22. No NIST endorsement is implied.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [
+        {
+          "filename": "Picture3.png",
+          "url": "https://www.nist.gov/sites/default/files/images/2024/06/21/Picture3.png",
+          "sha256": "bc5c0294a08e11ba523c466932731aeb7d2be8909b1512941f930ab451ff609d",
+          "sizeBytes": 6097574,
+          "role": "image"
+        }
+      ],
+      "notes": "Unlabeled montage for scale-bar, text, divider, debris, crossing-fiber, and border exclusion smoke tests only."
+    },
+    {
+      "id": "usgs-anthophyllite-asbestos",
+      "tier": "core",
+      "fetchPolicy": "core-explicit",
+      "title": "Anthophyllite asbestos SEM",
+      "authors": "United States Geological Survey",
+      "landingUrl": "https://commons.wikimedia.org/wiki/File:Anthophyllite_asbestos_SEM.jpg",
+      "license": {
+        "id": "LicenseRef-PD-USGov-USGS",
+        "evidenceUrl": "https://commons.wikimedia.org/wiki/File:Anthophyllite_asbestos_SEM.jpg",
+        "attribution": "United States Geological Survey public-domain work.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [
+        {
+          "filename": "Anthophyllite_asbestos_SEM.jpg",
+          "url": "https://upload.wikimedia.org/wikipedia/commons/c/c7/Anthophyllite_asbestos_SEM.jpg",
+          "sha256": "8805765b5184495269657abe26790ab401fb3d6432505282574f8440b95d4084",
+          "sizeBytes": 431848,
+          "role": "image"
+        }
+      ],
+      "notes": "Unlabeled elongated-object and edge-policy smoke test until a reviewed mask exists."
+    },
+    {
+      "id": "nist-sem-detection-limits",
+      "tier": "core",
+      "fetchPolicy": "blocked",
+      "title": "Detection Limits for SEM Image Segmentation",
+      "authors": "Peter Bajcsy, Pushkar Sathe, and Andras Vladar",
+      "landingUrl": "https://doi.org/10.18434/mds2-3838",
+      "license": {
+        "id": "LicenseRef-NIST-Open",
+        "evidenceUrl": "https://www.nist.gov/open/license",
+        "attribution": "Bajcsy, Sathe, and Vladar, NIST, Detection Limits for SEM Image Segmentation. Record modifications and do not imply NIST endorsement.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [
+        {
+          "filename": "mask_sets.zip",
+          "url": "https://data.nist.gov/od/ds/mds2-3838/mask_sets.zip",
+          "sha256": "5925dc95478e2cfc3c9ec54bfef888c7596db35fdf41bb929d6b96b8562ab562",
+          "role": "archive"
+        },
+        {
+          "filename": "metrics_sets.zip",
+          "url": "https://data.nist.gov/od/ds/mds2-3838/metrics_sets.zip",
+          "sha256": "a2b89522c6d8d3fae6afefa97dd99932b564d6455beb96ae0c69083622cffa36",
+          "role": "archive"
+        },
+        {
+          "filename": "intensity_sets.zip",
+          "url": "https://data.nist.gov/od/ds/mds2-3838/intensity_sets.zip",
+          "sha256": "5cd9f4caff80e9afab83515032347a17e9974554ea148f01280090504807e078",
+          "role": "archive"
+        }
+      ],
+      "notes": "Controlled noise and contrast sweeps. The 343 MB trained-model archive is deliberately excluded. Fetch remains blocked until the exact direct artifact URLs are verified live against the pinned record checksums."
+    },
+    {
+      "id": "dryad-hrtem-nanoparticles",
+      "tier": "extended",
+      "fetchPolicy": "extended-opt-in",
+      "title": "Segmented high-resolution TEM images of nanoparticles",
+      "authors": "Dryad dataset authors",
+      "landingUrl": "https://doi.org/10.7941/D1SP93",
+      "license": {
+        "id": "CC0-1.0",
+        "evidenceUrl": "https://doi.org/10.7941/D1SP93",
+        "attribution": "Cite the Dryad HRTEM nanoparticle dataset and originating publication.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [],
+      "notes": "Do not vendor the 33.69 GB source. Extract 24 to 32 deterministic patches from the exact HDF5/DM3 pairs named in the corpus research plan."
+    },
+    {
+      "id": "rodare-carbide-sem",
+      "tier": "extended",
+      "fetchPolicy": "extended-opt-in",
+      "title": "Carbide microstructures in SEM images of steel alloys",
+      "authors": "RODARE dataset authors",
+      "landingUrl": "https://doi.org/10.14278/rodare.4124",
+      "license": {
+        "id": "CC-BY-4.0",
+        "evidenceUrl": "https://doi.org/10.14278/rodare.4124",
+        "attribution": "Cite and attribute the RODARE carbide SEM dataset under CC BY 4.0.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [
+        {
+          "filename": "data.zip",
+          "url": "https://rodare.hzdr.de/api/files/fd67404b-3f61-4559-8792-3c3119a8c5da/data.zip",
+          "role": "archive"
+        }
+      ],
+      "notes": "Keep all 13 paired SE2/InLens fields together. Fetch is opt-in and remains unusable until the archive checksum is pinned."
+    },
+    {
+      "id": "concrete-cracks-mendeley",
+      "tier": "extended",
+      "fetchPolicy": "extended-opt-in",
+      "title": "Concrete Crack Segmentation Dataset",
+      "authors": "Mendeley Data dataset authors",
+      "landingUrl": "https://doi.org/10.17632/jwsn7tfbrp.1",
+      "license": {
+        "id": "CC-BY-4.0",
+        "evidenceUrl": "https://doi.org/10.17632/jwsn7tfbrp.1",
+        "attribution": "Cite and attribute the Concrete Crack Segmentation Dataset under CC BY 4.0.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [],
+      "notes": "Select exact hard cases 609.JPG, 468.JPG, 460.JPG, 133.jpg, and 112.jpg after download identity and checksums are pinned."
+    },
+    {
+      "id": "deep-particle",
+      "tier": "extended",
+      "fetchPolicy": "extended-opt-in",
+      "title": "DeepParticle marine plastic particle dataset",
+      "authors": "DeepParticle dataset authors",
+      "landingUrl": "https://doi.org/10.6084/m9.figshare.26511253",
+      "license": {
+        "id": "Apache-2.0",
+        "evidenceUrl": "https://doi.org/10.6084/m9.figshare.26511253",
+        "attribution": "Cite the DeepParticle dataset and preserve its Apache 2.0 notice.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [],
+      "notes": "Start with 08_03_micro_line_only1.JPG plus TSV, then add one negative, mixed, macro, and dense micro case after exact checksums are pinned."
+    },
+    {
+      "id": "kaolin-particle-masks",
+      "tier": "extended",
+      "fetchPolicy": "extended-opt-in",
+      "title": "Real and synthetic 2D binary masks of kaolin clay particles",
+      "authors": "Mendeley Data dataset authors",
+      "landingUrl": "https://doi.org/10.17632/45rtjx6pdt.1",
+      "license": {
+        "id": "CC-BY-4.0",
+        "evidenceUrl": "https://doi.org/10.17632/45rtjx6pdt.1",
+        "attribution": "Cite and attribute the kaolin particle-mask dataset under CC BY 4.0.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [],
+      "notes": "SAM-assisted experimental masks are weak labels until independently reviewed."
+    },
+    {
+      "id": "grain-directional-reflectance",
+      "tier": "extended",
+      "fetchPolicy": "extended-opt-in",
+      "title": "Grain segmentation by directional reflectance microscopy",
+      "authors": "Mendeley Data dataset authors",
+      "landingUrl": "https://doi.org/10.17632/t4wvpy29fz.4",
+      "license": {
+        "id": "CC-BY-4.0",
+        "evidenceUrl": "https://doi.org/10.17632/t4wvpy29fz.4",
+        "attribution": "Cite and attribute the directional-reflectance grain dataset under CC BY 4.0.",
+        "commercialUse": true,
+        "redistribution": true,
+        "derivativeWorks": true
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [],
+      "notes": "Extended multidimensional grain-map source; not a particle-count gold set."
+    },
+    {
+      "id": "emps",
+      "tier": "quarantined",
+      "fetchPolicy": "blocked",
+      "title": "Electron Microscopy Particle Segmentation dataset",
+      "authors": "EMPS dataset authors and source-figure authors",
+      "landingUrl": "https://github.com/by256/emps",
+      "license": {
+        "id": "LicenseRef-PerImage-Permission-Unresolved",
+        "evidenceUrl": "https://github.com/by256/emps",
+        "attribution": "Per-image DOI and permission chain required before use.",
+        "commercialUse": false,
+        "redistribution": false,
+        "derivativeWorks": false
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [],
+      "notes": "Repository and aggregate labels do not settle every Elsevier source-figure right. Preserve per-image provenance and unblock only after documented review."
+    },
+    {
+      "id": "bam-sem-segmentation",
+      "tier": "excluded",
+      "fetchPolicy": "blocked",
+      "title": "BAM automatic SEM segmentation data",
+      "authors": "BAM dataset authors",
+      "landingUrl": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+      "license": {
+        "id": "CC-BY-NC-ND-4.0",
+        "evidenceUrl": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+        "attribution": "Excluded: non-commercial and no-derivatives restrictions conflict with corpus policy.",
+        "commercialUse": false,
+        "redistribution": true,
+        "derivativeWorks": false
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [],
+      "notes": "Permanently excluded from the commercial redistributable corpus under the current license."
+    },
+    {
+      "id": "bbbc004",
+      "tier": "excluded",
+      "fetchPolicy": "blocked",
+      "title": "BBBC004",
+      "authors": "Broad Bioimage Benchmark Collection",
+      "landingUrl": "https://bbbc.broadinstitute.org/BBBC004",
+      "license": {
+        "id": "LicenseRef-NonCommercial",
+        "evidenceUrl": "https://bbbc.broadinstitute.org/BBBC004",
+        "attribution": "Excluded because the primary record includes non-commercial restrictions.",
+        "commercialUse": false,
+        "redistribution": false,
+        "derivativeWorks": false
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [],
+      "notes": "Excluded from the commercial redistributable core."
+    },
+    {
+      "id": "bbbc020",
+      "tier": "excluded",
+      "fetchPolicy": "blocked",
+      "title": "BBBC020",
+      "authors": "Broad Bioimage Benchmark Collection",
+      "landingUrl": "https://bbbc.broadinstitute.org/BBBC020",
+      "license": {
+        "id": "LicenseRef-NonCommercial",
+        "evidenceUrl": "https://bbbc.broadinstitute.org/BBBC020",
+        "attribution": "Excluded because the primary record includes non-commercial restrictions.",
+        "commercialUse": false,
+        "redistribution": false,
+        "derivativeWorks": false
+      },
+      "accessDate": "2026-08-22",
+      "downloads": [],
+      "notes": "Excluded from the commercial redistributable core."
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "bbbc039-preview-a",
+      "sourceId": "bbbc039",
+      "originalFilename": "BBBC039exampleimage1.png",
+      "sourceSha256": "f92357666a4baa97ea1618375062ef94f5c03a13bb262c6eea61fce0018a5179",
+      "image": {
+        "path": "core/images/bbbc039-example-a.png",
+        "sha256": "f92357666a4baa97ea1618375062ef94f5c03a13bb262c6eea61fce0018a5179",
+        "sizeBytes": 140383,
+        "format": "PNG"
+      },
+      "nativeFormat": "PNG preview",
+      "derivedFormat": "PNG",
+      "dimensions": {
+        "width": 587,
+        "height": 496,
+        "channels": 4,
+        "bitDepth": 8
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/masks/bbbc039-example-a-instance.png",
+          "sha256": "02274c83e8e0641155d4d4c099f8ad50db7133199ad43c028fe882e50290bfe6",
+          "sizeBytes": 7776,
+          "format": "PNG RGBA instance colors"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 42,
+        "objectCountExcludingBorder": null
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "rename-without-pixel-change",
+          "parameters": {
+            "date": "2026-08-22"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation", "corpus-wiring"],
+      "failureModes": ["touching-objects", "intensity-heterogeneity", "transparent-canvas-region"],
+      "split": "wiring",
+      "domainGroup": "bbbc039-preview",
+      "sourceSelection": {
+        "arrayIndex": null,
+        "crop": null,
+        "selection": null
+      }
+    },
+    {
+      "id": "bbbc039-preview-b",
+      "sourceId": "bbbc039",
+      "originalFilename": "BBBC039exampleimage3.png",
+      "sourceSha256": "75793c14a581a6a03bd1a2cfb8843cf92b6f72620c39bf6d6b7766f94a24ea26",
+      "image": {
+        "path": "core/images/bbbc039-example-b.png",
+        "sha256": "75793c14a581a6a03bd1a2cfb8843cf92b6f72620c39bf6d6b7766f94a24ea26",
+        "sizeBytes": 163474,
+        "format": "PNG"
+      },
+      "nativeFormat": "PNG preview",
+      "derivedFormat": "PNG",
+      "dimensions": {
+        "width": 587,
+        "height": 496,
+        "channels": 4,
+        "bitDepth": 8
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/masks/bbbc039-example-b-instance.png",
+          "sha256": "10c79af8f06d38e113503e039dcbec1771bae137f9d1dd0c942de2cc52fb029c",
+          "sizeBytes": 10297,
+          "format": "PNG RGBA instance colors"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 59,
+        "objectCountExcludingBorder": null
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "rename-without-pixel-change",
+          "parameters": {
+            "date": "2026-08-22"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation", "corpus-wiring"],
+      "failureModes": [
+        "touching-objects",
+        "high-density",
+        "intensity-heterogeneity",
+        "transparent-canvas-region"
+      ],
+      "split": "wiring",
+      "domainGroup": "bbbc039-preview",
+      "sourceSelection": {
+        "arrayIndex": null,
+        "crop": null,
+        "selection": null
+      }
+    },
+    {
+      "id": "bbbc005-focus-in",
+      "sourceId": "bbbc005",
+      "originalFilename": "synthetic2_in_focus_image.png",
+      "sourceSha256": "72e1fd72b4d33ea2b86460c33b57a1ea57c0ee3fc4d7ff8c0ad176b92917253b",
+      "image": {
+        "path": "core/images/bbbc005-focus-in.png",
+        "sha256": "72e1fd72b4d33ea2b86460c33b57a1ea57c0ee3fc4d7ff8c0ad176b92917253b",
+        "sizeBytes": 56594,
+        "format": "PNG"
+      },
+      "nativeFormat": "PNG preview",
+      "derivedFormat": "PNG",
+      "dimensions": {
+        "width": 348,
+        "height": 260,
+        "channels": 3,
+        "bitDepth": 8
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": null,
+        "semanticMask": {
+          "path": "core/masks/bbbc005-focus-semantic.png",
+          "sha256": "a28d3867d9683e77497ca417af7e0c240927e7b67226bd6be2cac1d39ff23136",
+          "sizeBytes": 3630,
+          "format": "PNG grayscale semantic mask"
+        },
+        "ignoreMask": null,
+        "objectCountIncludingBorder": null,
+        "objectCountExcludingBorder": null
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "rename-without-pixel-change",
+          "parameters": {
+            "date": "2026-08-22"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["focus-quality", "semantic-segmentation", "focus-invariance"],
+      "failureModes": ["synthetic-scene", "preview-only"],
+      "split": "wiring",
+      "domainGroup": "bbbc005-synthetic2-focus",
+      "sourceSelection": {
+        "arrayIndex": null,
+        "crop": null,
+        "selection": null
+      }
+    },
+    {
+      "id": "bbbc005-focus-out",
+      "sourceId": "bbbc005",
+      "originalFilename": "synthetic2_out_of_focus_image.png",
+      "sourceSha256": "a8e73255500c65e4e3eee3b9d91b5eb1f2a3aea900a02f42f252e0162efef8de",
+      "image": {
+        "path": "core/images/bbbc005-focus-out.png",
+        "sha256": "a8e73255500c65e4e3eee3b9d91b5eb1f2a3aea900a02f42f252e0162efef8de",
+        "sizeBytes": 18442,
+        "format": "PNG"
+      },
+      "nativeFormat": "PNG preview",
+      "derivedFormat": "PNG",
+      "dimensions": {
+        "width": 348,
+        "height": 260,
+        "channels": 3,
+        "bitDepth": 8
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": null,
+        "semanticMask": {
+          "path": "core/masks/bbbc005-focus-semantic.png",
+          "sha256": "a28d3867d9683e77497ca417af7e0c240927e7b67226bd6be2cac1d39ff23136",
+          "sizeBytes": 3630,
+          "format": "PNG grayscale semantic mask"
+        },
+        "ignoreMask": null,
+        "objectCountIncludingBorder": null,
+        "objectCountExcludingBorder": null
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "rename-without-pixel-change",
+          "parameters": {
+            "date": "2026-08-22"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["focus-quality", "semantic-segmentation", "focus-invariance"],
+      "failureModes": ["defocus", "low-boundary-contrast", "preview-only"],
+      "split": "wiring",
+      "domainGroup": "bbbc005-synthetic2-focus",
+      "sourceSelection": {
+        "arrayIndex": null,
+        "crop": null,
+        "selection": null
+      }
+    },
+    {
+      "id": "nist-asbestos-montage-smoke",
+      "sourceId": "nist-asbestos-montage",
+      "originalFilename": "Picture3.png",
+      "sourceSha256": "bc5c0294a08e11ba523c466932731aeb7d2be8909b1512941f930ab451ff609d",
+      "image": {
+        "path": "core/images/nist-asbestos-montage.png",
+        "sha256": "bc5c0294a08e11ba523c466932731aeb7d2be8909b1512941f930ab451ff609d",
+        "sizeBytes": 6097574,
+        "format": "PNG"
+      },
+      "nativeFormat": "PNG",
+      "derivedFormat": "PNG",
+      "dimensions": {
+        "width": 2134,
+        "height": 2977,
+        "channels": 4,
+        "bitDepth": 8
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": null,
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": null,
+        "objectCountExcludingBorder": null
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "rename-without-pixel-change",
+          "parameters": {
+            "date": "2026-08-22",
+            "modified": false
+          }
+        }
+      ],
+      "review": {
+        "status": "smoke-test-only",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["fiber-segmentation", "scale-bar-exclusion", "text-exclusion", "panel-detection"],
+      "failureModes": [
+        "scale-bars",
+        "text",
+        "panel-dividers",
+        "crossing-fibers",
+        "debris",
+        "mixed-magnification",
+        "border-objects"
+      ],
+      "split": "smoke",
+      "domainGroup": "nist-asbestos-montage",
+      "sourceSelection": {
+        "arrayIndex": null,
+        "crop": null,
+        "selection": null
+      }
+    },
+    {
+      "id": "usgs-anthophyllite-asbestos-smoke",
+      "sourceId": "usgs-anthophyllite-asbestos",
+      "originalFilename": "Anthophyllite_asbestos_SEM.jpg",
+      "sourceSha256": "8805765b5184495269657abe26790ab401fb3d6432505282574f8440b95d4084",
+      "image": {
+        "path": "core/images/usgs-anthophyllite-asbestos-sem.jpg",
+        "sha256": "8805765b5184495269657abe26790ab401fb3d6432505282574f8440b95d4084",
+        "sizeBytes": 431848,
+        "format": "JPEG"
+      },
+      "nativeFormat": "JPEG",
+      "derivedFormat": "JPEG",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024,
+        "channels": 1,
+        "bitDepth": 8
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": null,
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": null,
+        "objectCountExcludingBorder": null
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [],
+      "review": {
+        "status": "smoke-test-only",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["fiber-segmentation", "skeletonization", "orientation-distribution", "edge-policy"],
+      "failureModes": [
+        "elongated-objects",
+        "crossing-fibers",
+        "scale-bar",
+        "border-objects",
+        "lossy-source"
+      ],
+      "split": "smoke",
+      "domainGroup": "usgs-asbestos",
+      "sourceSelection": {
+        "arrayIndex": null,
+        "crop": null,
+        "selection": null
+      }
+    },
+    {
+      "id": "bbbc039-native-validation-01",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_A02_s1_w1051DAA7C-7042-435F-99F0-1E847D9B42CB.tif",
+      "sourceSha256": "9eacee0e5a4c29af70307af4d310320632e31ed84b4d8b5fd4fce42930f780ec",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_A02_s1_w1051DAA7C-7042-435F-99F0-1E847D9B42CB.tif",
+        "sha256": "9eacee0e5a4c29af70307af4d310320632e31ed84b4d8b5fd4fce42930f780ec",
+        "sizeBytes": 726354,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_A02_s1_w1051DAA7C-7042-435F-99F0-1E847D9B42CB.png",
+          "sha256": "c56c246edcd456f81fb0d61d318c2b7a378afba207bd0b409834db16d30cfb72",
+          "sizeBytes": 13080,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 110,
+        "objectCountExcludingBorder": 87
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": ["selector-bitDepth:minimum", "selector-channelCount:minimum"],
+      "split": "validation",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 0,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": ["bitDepth:minimum", "channelCount:minimum"],
+          "features": {
+            "objectCount": 110,
+            "foregroundFraction": 0.1952973032714412,
+            "objectAreaMedian": 649,
+            "objectAreaP10": 215.4,
+            "objectAreaP90": 997.6000000000001,
+            "objectAreaCoefficientOfVariation": 0.4552320052472018,
+            "edgeTouchingInstanceFraction": 0.20909090909090908,
+            "nearTouchingGraphDensity1": 0.0026688907422852378,
+            "nearTouchingGraphDensity2": 0.002835696413678065,
+            "nearTouchingGraphDensity4": 0.003836530442035029,
+            "eccentricityP90": 0.8835314516913713,
+            "solidityP10": 0.9224966024215469,
+            "perimeterToAreaP90": 0.34955094157411887,
+            "intensityGradient": 0.024379424942396356,
+            "localBoundaryContrast": 0.023412425507437606,
+            "focusScore": 0.00011940668309489508,
+            "estimatedSnr": 2.9023181911223253,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-train-01",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_A06_s6_w1B9577918-4973-4A87-BA73-A168AA755527.tif",
+      "sourceSha256": "f9a51ae558e53416980ca152c740ad9dced85eedbd105261841139aada16b77d",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_A06_s6_w1B9577918-4973-4A87-BA73-A168AA755527.tif",
+        "sha256": "f9a51ae558e53416980ca152c740ad9dced85eedbd105261841139aada16b77d",
+        "sizeBytes": 726350,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_A06_s6_w1B9577918-4973-4A87-BA73-A168AA755527.png",
+          "sha256": "e0737550efe11dc9969971947d9095ac0971bf77cfd0f448eeb7592cea7969b3",
+          "sizeBytes": 10002,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 71,
+        "objectCountExcludingBorder": 58
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": ["selector-bitDepth:minimum", "selector-channelCount:minimum"],
+      "split": "train",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 0,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": ["bitDepth:minimum", "channelCount:minimum"],
+          "features": {
+            "objectCount": 71,
+            "foregroundFraction": 0.13033819628647214,
+            "objectAreaMedian": 659,
+            "objectAreaP10": 359,
+            "objectAreaP90": 1037,
+            "objectAreaCoefficientOfVariation": 0.4353716522923516,
+            "edgeTouchingInstanceFraction": 0.18309859154929578,
+            "nearTouchingGraphDensity1": 0.0016096579476861167,
+            "nearTouchingGraphDensity2": 0.0016096579476861167,
+            "nearTouchingGraphDensity4": 0.0036217303822937627,
+            "eccentricityP90": 0.9256760190959958,
+            "solidityP10": 0.9285714285714286,
+            "perimeterToAreaP90": 0.2785515320334262,
+            "intensityGradient": 0.036118897846833115,
+            "localBoundaryContrast": 0.06281479261025649,
+            "focusScore": 0.0005100869685269653,
+            "estimatedSnr": 3.84044234385121,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-test-01",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_A12_s7_w1EAEEA614-51ED-43B3-A4FF-088730911E4C.tif",
+      "sourceSha256": "d49d90f12cde7176191b0acbf2ed783c39fe8bdf0caf968ca5f8a1627429b8f1",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_A12_s7_w1EAEEA614-51ED-43B3-A4FF-088730911E4C.tif",
+        "sha256": "d49d90f12cde7176191b0acbf2ed783c39fe8bdf0caf968ca5f8a1627429b8f1",
+        "sizeBytes": 726350,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_A12_s7_w1EAEEA614-51ED-43B3-A4FF-088730911E4C.png",
+          "sha256": "471aa3c33f45be0ca829d7de49acebcc0fa4bcbf2d4dbadc2d6de0665d45c9c9",
+          "sizeBytes": 6067,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 69,
+        "objectCountExcludingBorder": 67
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": [
+        "selector-cluster-medoid",
+        "selector-estimatedSnr:minimum",
+        "selector-focusScore:minimum",
+        "selector-localBoundaryContrast:minimum",
+        "selector-objectAreaCoefficientOfVariation:maximum",
+        "selector-objectAreaMedian:minimum",
+        "selector-objectAreaP10:minimum",
+        "selector-objectAreaP90:minimum",
+        "selector-perimeterToAreaP90:maximum",
+        "selector-solidityP10:minimum"
+      ],
+      "split": "test",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 1,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": [
+            "cluster-medoid",
+            "estimatedSnr:minimum",
+            "focusScore:minimum",
+            "localBoundaryContrast:minimum",
+            "objectAreaCoefficientOfVariation:maximum",
+            "objectAreaMedian:minimum",
+            "objectAreaP10:minimum",
+            "objectAreaP90:minimum",
+            "perimeterToAreaP90:maximum",
+            "solidityP10:minimum"
+          ],
+          "features": {
+            "objectCount": 69,
+            "foregroundFraction": 0.04531664456233422,
+            "objectAreaMedian": 131,
+            "objectAreaP10": 21.8,
+            "objectAreaP90": 600.0000000000001,
+            "objectAreaCoefficientOfVariation": 1.3044020163420398,
+            "edgeTouchingInstanceFraction": 0.028985507246376812,
+            "nearTouchingGraphDensity1": 0.030690537084398978,
+            "nearTouchingGraphDensity2": 0.030690537084398978,
+            "nearTouchingGraphDensity4": 0.03495311167945439,
+            "eccentricityP90": 0.8517834586076323,
+            "solidityP10": 0.8187006678809958,
+            "perimeterToAreaP90": 0.9523809523809523,
+            "intensityGradient": 0.012985639139808203,
+            "localBoundaryContrast": 0.023593789749032333,
+            "focusScore": 0.00005210818069124931,
+            "estimatedSnr": 2.02153486079786,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-test-02",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_B05_s5_w10296BEF4-0F48-4EC8-BC24-6C604871398B.tif",
+      "sourceSha256": "9789dd00d103bbfc9356d1f6503a9c1210b12abaefa6d6050fb3fd74f6338cd6",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_B05_s5_w10296BEF4-0F48-4EC8-BC24-6C604871398B.tif",
+        "sha256": "9789dd00d103bbfc9356d1f6503a9c1210b12abaefa6d6050fb3fd74f6338cd6",
+        "sizeBytes": 726350,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_B05_s5_w10296BEF4-0F48-4EC8-BC24-6C604871398B.png",
+          "sha256": "eb777726e6b482b72e5b55d3d39d7ab3495bd1e3e23b4ca577ebccc2ef90eb5e",
+          "sizeBytes": 13484,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 115,
+        "objectCountExcludingBorder": 95
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": [
+        "selector-multivariate-median",
+        "selector-nearTouchingGraphDensity1:minimum"
+      ],
+      "split": "test",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 6,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": ["multivariate-median", "nearTouchingGraphDensity1:minimum"],
+          "features": {
+            "objectCount": 115,
+            "foregroundFraction": 0.1986184792219275,
+            "objectAreaMedian": 665,
+            "objectAreaP10": 194.6,
+            "objectAreaP90": 903.6,
+            "objectAreaCoefficientOfVariation": 0.4262672507353077,
+            "edgeTouchingInstanceFraction": 0.17391304347826086,
+            "nearTouchingGraphDensity1": 0.0012204424103737605,
+            "nearTouchingGraphDensity2": 0.0018306636155606408,
+            "nearTouchingGraphDensity4": 0.003203661327231121,
+            "eccentricityP90": 0.9060315320772434,
+            "solidityP10": 0.9150023432818997,
+            "perimeterToAreaP90": 0.3482973594524951,
+            "intensityGradient": 0.0161704772316684,
+            "localBoundaryContrast": 0.03439906640221797,
+            "focusScore": 0.0002125199850831539,
+            "estimatedSnr": 3.5152997365125125,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-validation-02",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_B12_s2_w19F7E0279-D087-4B5E-9899-61971C29CB78.tif",
+      "sourceSha256": "d7888558da0167835ee5fd0455f16316f131ec2056a37927ce240ba71ce91d59",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_B12_s2_w19F7E0279-D087-4B5E-9899-61971C29CB78.tif",
+        "sha256": "d7888558da0167835ee5fd0455f16316f131ec2056a37927ce240ba71ce91d59",
+        "sizeBytes": 726354,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_B12_s2_w19F7E0279-D087-4B5E-9899-61971C29CB78.png",
+          "sha256": "2a3e4c546941f6b6bb124d01447618ae139f401e9ae729d51bc0c8a191203481",
+          "sizeBytes": 14055,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 120,
+        "objectCountExcludingBorder": 104
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": ["selector-cluster-medoid", "selector-multivariate-median"],
+      "split": "validation",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 2,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": ["cluster-medoid", "multivariate-median"],
+          "features": {
+            "objectCount": 120,
+            "foregroundFraction": 0.197618258178603,
+            "objectAreaMedian": 636.5,
+            "objectAreaP10": 202.1,
+            "objectAreaP90": 859,
+            "objectAreaCoefficientOfVariation": 0.4118708187557768,
+            "edgeTouchingInstanceFraction": 0.13333333333333333,
+            "nearTouchingGraphDensity1": 0.0029411764705882353,
+            "nearTouchingGraphDensity2": 0.0033613445378151263,
+            "nearTouchingGraphDensity4": 0.0036414565826330533,
+            "eccentricityP90": 0.8959179268907337,
+            "solidityP10": 0.9023912003825921,
+            "perimeterToAreaP90": 0.3220471552664236,
+            "intensityGradient": 0.02271320229095129,
+            "localBoundaryContrast": 0.04129581491111051,
+            "focusScore": 0.00028554271087839436,
+            "estimatedSnr": 3.2174041058223994,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-train-02",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_C02_s4_w1661FF37C-AB9B-4038-BDF3-D21DFD2811BE.tif",
+      "sourceSha256": "da771f81e81847163adf4c9810baddf28e19cf221f5f7d015c20c1684ddf71bb",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_C02_s4_w1661FF37C-AB9B-4038-BDF3-D21DFD2811BE.tif",
+        "sha256": "da771f81e81847163adf4c9810baddf28e19cf221f5f7d015c20c1684ddf71bb",
+        "sizeBytes": 726354,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_C02_s4_w1661FF37C-AB9B-4038-BDF3-D21DFD2811BE.png",
+          "sha256": "2799c8373828bdc2c5bf73e1519897c3c21abfd157e3bf26f81e277a9b64f3d6",
+          "sizeBytes": 8934,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 49,
+        "objectCountExcludingBorder": 41
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": ["selector-objectAreaMedian:maximum", "selector-objectAreaP90:maximum"],
+      "split": "train",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 15,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": ["objectAreaMedian:maximum", "objectAreaP90:maximum"],
+          "features": {
+            "objectCount": 49,
+            "foregroundFraction": 0.12984637488947834,
+            "objectAreaMedian": 994,
+            "objectAreaP10": 36.60000000000001,
+            "objectAreaP90": 1611.6000000000001,
+            "objectAreaCoefficientOfVariation": 0.6094180783428419,
+            "edgeTouchingInstanceFraction": 0.16326530612244897,
+            "nearTouchingGraphDensity1": 0.008503401360544218,
+            "nearTouchingGraphDensity2": 0.008503401360544218,
+            "nearTouchingGraphDensity4": 0.01020408163265306,
+            "eccentricityP90": 0.9076924764356592,
+            "solidityP10": 0.9055911189211051,
+            "perimeterToAreaP90": 0.7587044534412958,
+            "intensityGradient": 0.008301017443163614,
+            "localBoundaryContrast": 0.08797612944761342,
+            "focusScore": 0.0012343894809095798,
+            "estimatedSnr": 3.8335359693435636,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-test-03",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_D10_s2_w1BB72A093-72AB-476C-9513-2FF43BFB2134.tif",
+      "sourceSha256": "5e5a9ce5cb911d222bffcd9c82ed129a561d1513a8eea0473d7e83c0d356774e",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_D10_s2_w1BB72A093-72AB-476C-9513-2FF43BFB2134.tif",
+        "sha256": "5e5a9ce5cb911d222bffcd9c82ed129a561d1513a8eea0473d7e83c0d356774e",
+        "sizeBytes": 726350,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_D10_s2_w1BB72A093-72AB-476C-9513-2FF43BFB2134.png",
+          "sha256": "d24aef6ae45a1ee25882dc7f0c1488ed33ae769a0e9bd2c0f49a1390e4416749",
+          "sizeBytes": 16034,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 141,
+        "objectCountExcludingBorder": 118
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": ["selector-cluster-medoid"],
+      "split": "test",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 13,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": ["cluster-medoid"],
+          "features": {
+            "objectCount": 141,
+            "foregroundFraction": 0.2390113837312113,
+            "objectAreaMedian": 629,
+            "objectAreaP10": 241,
+            "objectAreaP90": 867,
+            "objectAreaCoefficientOfVariation": 0.3853069172144336,
+            "edgeTouchingInstanceFraction": 0.16312056737588654,
+            "nearTouchingGraphDensity1": 0.0024316109422492403,
+            "nearTouchingGraphDensity2": 0.002735562310030395,
+            "nearTouchingGraphDensity4": 0.003850050658561297,
+            "eccentricityP90": 0.9037534359296807,
+            "solidityP10": 0.9175686927560366,
+            "perimeterToAreaP90": 0.3070539419087137,
+            "intensityGradient": 0.028978523960036563,
+            "localBoundaryContrast": 0.0445578103007484,
+            "focusScore": 0.0005094912651406942,
+            "estimatedSnr": 3.733215857625841,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-train-03",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_D20_s9_w1588B4C42-5A0D-4B93-9A80-A6527CC1C411.tif",
+      "sourceSha256": "7cdb4040907032a489f5b31457f615fdf573d166bd881073596fee852c3d2848",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_D20_s9_w1588B4C42-5A0D-4B93-9A80-A6527CC1C411.tif",
+        "sha256": "7cdb4040907032a489f5b31457f615fdf573d166bd881073596fee852c3d2848",
+        "sizeBytes": 726354,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_D20_s9_w1588B4C42-5A0D-4B93-9A80-A6527CC1C411.png",
+          "sha256": "d2d39706b9db4b04383ff95ddedea10f032479239fd308f7fbf0c226d3ba0a35",
+          "sizeBytes": 14778,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 154,
+        "objectCountExcludingBorder": 133
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": ["selector-cluster-medoid"],
+      "split": "train",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 23,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": ["cluster-medoid"],
+          "features": {
+            "objectCount": 154,
+            "foregroundFraction": 0.2119225243147657,
+            "objectAreaMedian": 578,
+            "objectAreaP10": 24,
+            "objectAreaP90": 862.4000000000007,
+            "objectAreaCoefficientOfVariation": 0.609966522379974,
+            "edgeTouchingInstanceFraction": 0.13636363636363635,
+            "nearTouchingGraphDensity1": 0.0038197097020626434,
+            "nearTouchingGraphDensity2": 0.004074357015533486,
+            "nearTouchingGraphDensity4": 0.0059417706476530005,
+            "eccentricityP90": 0.8830765977595356,
+            "solidityP10": 0.8844602832902188,
+            "perimeterToAreaP90": 0.9416666666666672,
+            "intensityGradient": 0.010359517491239739,
+            "localBoundaryContrast": 0.03921445189870918,
+            "focusScore": 0.000363808755324383,
+            "estimatedSnr": 3.51322913941118,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-test-04",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_F12_s8_w1DBD80811-5297-4415-ACD1-EC9286BE76A4.tif",
+      "sourceSha256": "5c34b879cb7103c334cfc9de3f8ff21d128d09504771de8f8cf8b0250b9a46d4",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_F12_s8_w1DBD80811-5297-4415-ACD1-EC9286BE76A4.tif",
+        "sha256": "5c34b879cb7103c334cfc9de3f8ff21d128d09504771de8f8cf8b0250b9a46d4",
+        "sizeBytes": 726354,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_F12_s8_w1DBD80811-5297-4415-ACD1-EC9286BE76A4.png",
+          "sha256": "a303f63bc80b3618028b41ad19129a2db353ac1b3fc174a18df36aed58b88825",
+          "sizeBytes": 3683,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 7,
+        "objectCountExcludingBorder": 7
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": [
+        "selector-edgeTouchingInstanceFraction:minimum",
+        "selector-foregroundFraction:minimum",
+        "selector-nearTouchingGraphDensity1:maximum",
+        "selector-nearTouchingGraphDensity2:maximum",
+        "selector-nearTouchingGraphDensity4:maximum",
+        "selector-objectCount:minimum"
+      ],
+      "split": "test",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 19,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": [
+            "edgeTouchingInstanceFraction:minimum",
+            "foregroundFraction:minimum",
+            "nearTouchingGraphDensity1:maximum",
+            "nearTouchingGraphDensity2:maximum",
+            "nearTouchingGraphDensity4:maximum",
+            "objectCount:minimum"
+          ],
+          "features": {
+            "objectCount": 7,
+            "foregroundFraction": 0.012342506631299734,
+            "objectAreaMedian": 648,
+            "objectAreaP10": 295.8,
+            "objectAreaP90": 883.8000000000001,
+            "objectAreaCoefficientOfVariation": 0.3780009245633167,
+            "edgeTouchingInstanceFraction": 0,
+            "nearTouchingGraphDensity1": 0.047619047619047616,
+            "nearTouchingGraphDensity2": 0.047619047619047616,
+            "nearTouchingGraphDensity4": 0.09523809523809523,
+            "eccentricityP90": 0.9187780260602362,
+            "solidityP10": 0.9020025839793282,
+            "perimeterToAreaP90": 0.2790902219473648,
+            "intensityGradient": 0.004045312997552,
+            "localBoundaryContrast": 0.09197189164849624,
+            "focusScore": 0.0001801239391771926,
+            "estimatedSnr": 3.374089844032331,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-train-04",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_F13_s7_w13C1B1D8C-293E-454F-B0FD-6C2C3F9F5173.tif",
+      "sourceSha256": "97ecd7bcff6e74cc92e7d945f13adddb218776b0de1ac0a5bfac8bcf1a42fc95",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_F13_s7_w13C1B1D8C-293E-454F-B0FD-6C2C3F9F5173.tif",
+        "sha256": "97ecd7bcff6e74cc92e7d945f13adddb218776b0de1ac0a5bfac8bcf1a42fc95",
+        "sizeBytes": 726350,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_F13_s7_w13C1B1D8C-293E-454F-B0FD-6C2C3F9F5173.png",
+          "sha256": "cbeed30abeabe0402abe1b33b09c5cd849cfac5bc065d2b01611c977d83f8a5b",
+          "sizeBytes": 2750,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 0,
+        "objectCountExcludingBorder": 0
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": [
+        "selector-cluster-medoid",
+        "selector-eccentricityP90:minimum",
+        "selector-edgeTouchingInstanceFraction:minimum",
+        "selector-foregroundFraction:minimum",
+        "selector-intensityGradient:maximum",
+        "selector-localBoundaryContrast:minimum",
+        "selector-nearTouchingGraphDensity1:minimum",
+        "selector-nearTouchingGraphDensity2:minimum",
+        "selector-nearTouchingGraphDensity4:minimum",
+        "selector-objectAreaCoefficientOfVariation:minimum",
+        "selector-objectAreaMedian:minimum",
+        "selector-objectAreaP10:minimum",
+        "selector-objectAreaP90:minimum",
+        "selector-objectCount:minimum",
+        "selector-perimeterToAreaP90:minimum",
+        "selector-solidityP10:minimum"
+      ],
+      "split": "train",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 34,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": [
+            "cluster-medoid",
+            "eccentricityP90:minimum",
+            "edgeTouchingInstanceFraction:minimum",
+            "foregroundFraction:minimum",
+            "intensityGradient:maximum",
+            "localBoundaryContrast:minimum",
+            "nearTouchingGraphDensity1:minimum",
+            "nearTouchingGraphDensity2:minimum",
+            "nearTouchingGraphDensity4:minimum",
+            "objectAreaCoefficientOfVariation:minimum",
+            "objectAreaMedian:minimum",
+            "objectAreaP10:minimum",
+            "objectAreaP90:minimum",
+            "objectCount:minimum",
+            "perimeterToAreaP90:minimum",
+            "solidityP10:minimum"
+          ],
+          "features": {
+            "objectCount": 0,
+            "foregroundFraction": 0,
+            "objectAreaMedian": 0,
+            "objectAreaP10": 0,
+            "objectAreaP90": 0,
+            "objectAreaCoefficientOfVariation": 0,
+            "edgeTouchingInstanceFraction": 0,
+            "nearTouchingGraphDensity1": 0,
+            "nearTouchingGraphDensity2": 0,
+            "nearTouchingGraphDensity4": 0,
+            "eccentricityP90": 0,
+            "solidityP10": 0,
+            "perimeterToAreaP90": 0,
+            "intensityGradient": 0.19241750015810127,
+            "localBoundaryContrast": 0,
+            "focusScore": 0.052054441907124875,
+            "estimatedSnr": 25.52462948355055,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-train-05",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_J20_s5_w15709AA91-01B9-4959-963A-9D1D574D12E4.tif",
+      "sourceSha256": "b3cc4cbefefec1dcbc1a715b8216777a97a26d5c752db37afb3d25239a5c1eaa",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_J20_s5_w15709AA91-01B9-4959-963A-9D1D574D12E4.tif",
+        "sha256": "b3cc4cbefefec1dcbc1a715b8216777a97a26d5c752db37afb3d25239a5c1eaa",
+        "sizeBytes": 726350,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_J20_s5_w15709AA91-01B9-4959-963A-9D1D574D12E4.png",
+          "sha256": "8316fcc6370779fc260c07e20fdbf048bcf78e133b542007857583cec944575b",
+          "sizeBytes": 15936,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 143,
+        "objectCountExcludingBorder": 119
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": ["selector-cluster-medoid"],
+      "split": "train",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 62,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": ["cluster-medoid"],
+          "features": {
+            "objectCount": 143,
+            "foregroundFraction": 0.2363395225464191,
+            "objectAreaMedian": 621,
+            "objectAreaP10": 253.2,
+            "objectAreaP90": 905.4,
+            "objectAreaCoefficientOfVariation": 0.4099651215996268,
+            "edgeTouchingInstanceFraction": 0.16783216783216784,
+            "nearTouchingGraphDensity1": 0.0027578055747069833,
+            "nearTouchingGraphDensity2": 0.0028562986309465183,
+            "nearTouchingGraphDensity4": 0.003939722249581405,
+            "eccentricityP90": 0.8945928165332659,
+            "solidityP10": 0.9045002398438047,
+            "perimeterToAreaP90": 0.3103995748497027,
+            "intensityGradient": 0.02969005915235789,
+            "localBoundaryContrast": 0.05179384188418869,
+            "focusScore": 0.0006093383826026799,
+            "estimatedSnr": 3.1081372241768275,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-validation-03",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_L10_s6_w12D12D64C-2639-4CA8-9BB4-99F92C9B7068.tif",
+      "sourceSha256": "9cfed38c3581400464c6d29d73880b70e3fffdcd921ba6923b9788d2d0f232bf",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_L10_s6_w12D12D64C-2639-4CA8-9BB4-99F92C9B7068.tif",
+        "sha256": "9cfed38c3581400464c6d29d73880b70e3fffdcd921ba6923b9788d2d0f232bf",
+        "sizeBytes": 726350,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_L10_s6_w12D12D64C-2639-4CA8-9BB4-99F92C9B7068.png",
+          "sha256": "cbeed30abeabe0402abe1b33b09c5cd849cfac5bc065d2b01611c977d83f8a5b",
+          "sizeBytes": 2750,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 0,
+        "objectCountExcludingBorder": 0
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": [
+        "selector-cluster-medoid",
+        "selector-eccentricityP90:minimum",
+        "selector-edgeTouchingInstanceFraction:minimum",
+        "selector-estimatedSnr:maximum",
+        "selector-focusScore:maximum",
+        "selector-foregroundFraction:minimum",
+        "selector-intensityGradient:maximum",
+        "selector-localBoundaryContrast:minimum",
+        "selector-nearTouchingGraphDensity1:minimum",
+        "selector-nearTouchingGraphDensity2:minimum",
+        "selector-nearTouchingGraphDensity4:minimum",
+        "selector-objectAreaCoefficientOfVariation:minimum",
+        "selector-objectAreaMedian:minimum",
+        "selector-objectAreaP10:minimum",
+        "selector-objectAreaP90:minimum",
+        "selector-objectCount:minimum",
+        "selector-perimeterToAreaP90:minimum",
+        "selector-solidityP10:minimum"
+      ],
+      "split": "validation",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 36,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": [
+            "cluster-medoid",
+            "eccentricityP90:minimum",
+            "edgeTouchingInstanceFraction:minimum",
+            "estimatedSnr:maximum",
+            "focusScore:maximum",
+            "foregroundFraction:minimum",
+            "intensityGradient:maximum",
+            "localBoundaryContrast:minimum",
+            "nearTouchingGraphDensity1:minimum",
+            "nearTouchingGraphDensity2:minimum",
+            "nearTouchingGraphDensity4:minimum",
+            "objectAreaCoefficientOfVariation:minimum",
+            "objectAreaMedian:minimum",
+            "objectAreaP10:minimum",
+            "objectAreaP90:minimum",
+            "objectCount:minimum",
+            "perimeterToAreaP90:minimum",
+            "solidityP10:minimum"
+          ],
+          "features": {
+            "objectCount": 0,
+            "foregroundFraction": 0,
+            "objectAreaMedian": 0,
+            "objectAreaP10": 0,
+            "objectAreaP90": 0,
+            "objectAreaCoefficientOfVariation": 0,
+            "edgeTouchingInstanceFraction": 0,
+            "nearTouchingGraphDensity1": 0,
+            "nearTouchingGraphDensity2": 0,
+            "nearTouchingGraphDensity4": 0,
+            "eccentricityP90": 0,
+            "solidityP10": 0,
+            "perimeterToAreaP90": 0,
+            "intensityGradient": 0.19723831377547388,
+            "localBoundaryContrast": 0,
+            "focusScore": 0.104163158079701,
+            "estimatedSnr": 26.97711292542778,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-validation-04",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_O10_s8_w18F4DB020-BFB7-4F13-B99C-C39F8E54F85D.tif",
+      "sourceSha256": "8a6a917ed6b9aabccdaf42de755d0e5a4b9eba3e64157f06a15c7208cd0f7b06",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_O10_s8_w18F4DB020-BFB7-4F13-B99C-C39F8E54F85D.tif",
+        "sha256": "8a6a917ed6b9aabccdaf42de755d0e5a4b9eba3e64157f06a15c7208cd0f7b06",
+        "sizeBytes": 726354,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_O10_s8_w18F4DB020-BFB7-4F13-B99C-C39F8E54F85D.png",
+          "sha256": "54ad2ac5cfa96a52d70b54cb5d255ef43424f7e5b860e6732338b3d1ba58d366",
+          "sizeBytes": 4797,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 20,
+        "objectCountExcludingBorder": 17
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": [
+        "selector-focusScore:minimum",
+        "selector-nearTouchingGraphDensity1:maximum",
+        "selector-nearTouchingGraphDensity2:maximum",
+        "selector-nearTouchingGraphDensity4:maximum"
+      ],
+      "split": "validation",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 44,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": [
+            "focusScore:minimum",
+            "nearTouchingGraphDensity1:maximum",
+            "nearTouchingGraphDensity2:maximum",
+            "nearTouchingGraphDensity4:maximum"
+          ],
+          "features": {
+            "objectCount": 20,
+            "foregroundFraction": 0.030584106984969054,
+            "objectAreaMedian": 631,
+            "objectAreaP10": 88.60000000000001,
+            "objectAreaP90": 841.3000000000001,
+            "objectAreaCoefficientOfVariation": 0.4904377412931381,
+            "edgeTouchingInstanceFraction": 0.15,
+            "nearTouchingGraphDensity1": 0.015789473684210527,
+            "nearTouchingGraphDensity2": 0.021052631578947368,
+            "nearTouchingGraphDensity4": 0.021052631578947368,
+            "eccentricityP90": 0.8742604581660531,
+            "solidityP10": 0.9290712012158404,
+            "perimeterToAreaP90": 0.46297872340425583,
+            "intensityGradient": 0.02045676698855876,
+            "localBoundaryContrast": 0.04243245542909196,
+            "focusScore": 0.00008193573003788094,
+            "estimatedSnr": 3.3801068331436603,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-train-06",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_O15_s6_w1A4844AB3-6D66-4B9A-8212-758E061C349F.tif",
+      "sourceSha256": "23b8285e37bcec8a96764719a3ea62f0fafcd96b525f01329002b7cb90efaa08",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_O15_s6_w1A4844AB3-6D66-4B9A-8212-758E061C349F.tif",
+        "sha256": "23b8285e37bcec8a96764719a3ea62f0fafcd96b525f01329002b7cb90efaa08",
+        "sizeBytes": 726350,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_O15_s6_w1A4844AB3-6D66-4B9A-8212-758E061C349F.png",
+          "sha256": "2acf22c54ac2801a81c7cbde8a75a474b7de269d5ec9eeb3fd3bb9efafafbae5",
+          "sizeBytes": 5887,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 33,
+        "objectCountExcludingBorder": 29
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": ["selector-cluster-medoid"],
+      "split": "train",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 87,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": ["cluster-medoid"],
+          "features": {
+            "objectCount": 33,
+            "foregroundFraction": 0.04937002652519894,
+            "objectAreaMedian": 526,
+            "objectAreaP10": 50.6,
+            "objectAreaP90": 1206.8,
+            "objectAreaCoefficientOfVariation": 0.8239403141730176,
+            "edgeTouchingInstanceFraction": 0.12121212121212122,
+            "nearTouchingGraphDensity1": 0.020833333333333332,
+            "nearTouchingGraphDensity2": 0.020833333333333332,
+            "nearTouchingGraphDensity4": 0.026515151515151516,
+            "eccentricityP90": 0.9099687715303119,
+            "solidityP10": 0.8608921671935371,
+            "perimeterToAreaP90": 0.6846994535519126,
+            "intensityGradient": 0.017013341954970194,
+            "localBoundaryContrast": 0.037639862489857935,
+            "focusScore": 0.00015762947750867684,
+            "estimatedSnr": 1.8122864320099952,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-train-07",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_O18_s1_w1C2EE9CCF-5055-4E56-BB3A-212A63545A90.tif",
+      "sourceSha256": "6c2004c1ecf54041833bfe92404f747541624f73ac5f6bd50b0e7accff1ba2f8",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_O18_s1_w1C2EE9CCF-5055-4E56-BB3A-212A63545A90.tif",
+        "sha256": "6c2004c1ecf54041833bfe92404f747541624f73ac5f6bd50b0e7accff1ba2f8",
+        "sizeBytes": 726354,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_O18_s1_w1C2EE9CCF-5055-4E56-BB3A-212A63545A90.png",
+          "sha256": "0ecf6fdeb7ad6e54416df22f7cc587191f1891920cfeafbc986624962a54ed65",
+          "sizeBytes": 14855,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 130,
+        "objectCountExcludingBorder": 107
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": ["selector-multivariate-median"],
+      "split": "train",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 89,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": ["multivariate-median"],
+          "features": {
+            "objectCount": 130,
+            "foregroundFraction": 0.20989997789566756,
+            "objectAreaMedian": 597,
+            "objectAreaP10": 252.5,
+            "objectAreaP90": 862.8000000000001,
+            "objectAreaCoefficientOfVariation": 0.4426426999176652,
+            "edgeTouchingInstanceFraction": 0.17692307692307693,
+            "nearTouchingGraphDensity1": 0.002146690518783542,
+            "nearTouchingGraphDensity2": 0.0025044722719141325,
+            "nearTouchingGraphDensity4": 0.0033392963625521765,
+            "eccentricityP90": 0.8853471852542196,
+            "solidityP10": 0.9000571993544925,
+            "perimeterToAreaP90": 0.2899988008154455,
+            "intensityGradient": 0.017934140194713594,
+            "localBoundaryContrast": 0.041389672501568484,
+            "focusScore": 0.0003258250415232749,
+            "estimatedSnr": 3.248430691374979,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "bbbc039-native-train-08",
+      "sourceId": "bbbc039",
+      "originalFilename": "IXMtest_P09_s4_w11E382363-8C26-4A73-9D8A-8193D66E5785.tif",
+      "sourceSha256": "0df845d706ea4f0fb9ab8cb148017f75a333369c249da96b1911b5281f2896ec",
+      "image": {
+        "path": "core/native/bbbc039/images/IXMtest_P09_s4_w11E382363-8C26-4A73-9D8A-8193D66E5785.tif",
+        "sha256": "0df845d706ea4f0fb9ab8cb148017f75a333369c249da96b1911b5281f2896ec",
+        "sizeBytes": 726354,
+        "format": "TIFF"
+      },
+      "nativeFormat": "TIFF uint16",
+      "derivedFormat": "TIFF uint16 identity copy",
+      "dimensions": {
+        "width": 696,
+        "height": 520,
+        "channels": 1,
+        "bitDepth": 16
+      },
+      "calibration": null,
+      "labels": {
+        "instanceMask": {
+          "path": "core/native/bbbc039/masks/IXMtest_P09_s4_w11E382363-8C26-4A73-9D8A-8193D66E5785.png",
+          "sha256": "dceca9dbb670bb4878595c8741d195b7b0f0678673dd9076e63b977570d7f028",
+          "sizeBytes": 4395,
+          "format": "PNG RGBA indexed-instance mask"
+        },
+        "semanticMask": null,
+        "ignoreMask": null,
+        "objectCountIncludingBorder": 17,
+        "objectCountExcludingBorder": 12
+      },
+      "edgePolicy": "include-mask-exclude-morphometry",
+      "derivation": [
+        {
+          "operation": "identity-copy-from-bbbc039-v1-archive",
+          "parameters": {
+            "imageArchive": "images.zip",
+            "maskArchive": "masks.zip"
+          }
+        }
+      ],
+      "review": {
+        "status": "upstream-unreviewed",
+        "reviewer": null,
+        "reviewedAt": null
+      },
+      "tasks": ["instance-segmentation", "counting", "touching-object-separation"],
+      "failureModes": [
+        "selector-edgeTouchingInstanceFraction:maximum",
+        "selector-focusScore:minimum",
+        "selector-nearTouchingGraphDensity1:maximum",
+        "selector-nearTouchingGraphDensity2:maximum",
+        "selector-nearTouchingGraphDensity4:maximum"
+      ],
+      "split": "train",
+      "domainGroup": "bbbc039-u2os-nuclei",
+      "sourceSelection": {
+        "arrayIndex": 93,
+        "crop": null,
+        "selection": {
+          "selectorVersion": "particle-hard-case-selector-v1",
+          "reasons": [
+            "edgeTouchingInstanceFraction:maximum",
+            "focusScore:minimum",
+            "nearTouchingGraphDensity1:maximum",
+            "nearTouchingGraphDensity2:maximum",
+            "nearTouchingGraphDensity4:maximum"
+          ],
+          "features": {
+            "objectCount": 17,
+            "foregroundFraction": 0.023731763925729444,
+            "objectAreaMedian": 324,
+            "objectAreaP10": 110.8,
+            "objectAreaP90": 862.2000000000002,
+            "objectAreaCoefficientOfVariation": 0.9543820235763765,
+            "edgeTouchingInstanceFraction": 0.29411764705882354,
+            "nearTouchingGraphDensity1": 0.03676470588235294,
+            "nearTouchingGraphDensity2": 0.03676470588235294,
+            "nearTouchingGraphDensity4": 0.04411764705882353,
+            "eccentricityP90": 0.9076917509800448,
+            "solidityP10": 0.8737798347107438,
+            "perimeterToAreaP90": 0.4337636544190665,
+            "intensityGradient": 0.009680315612899263,
+            "localBoundaryContrast": 0.02728974887002178,
+            "focusScore": 0.00005785580138348125,
+            "estimatedSnr": 1.6885636518336118,
+            "bitDepth": 16,
+            "channelCount": 1
+          }
+        }
+      }
+    }
+  ]
+}

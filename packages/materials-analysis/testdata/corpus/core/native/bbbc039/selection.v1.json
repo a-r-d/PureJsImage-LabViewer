@@ -1,0 +1,749 @@
+{
+  "schemaVersion": 1,
+  "selectorVersion": "particle-hard-case-selector-v1",
+  "source": "bbbc039-v1",
+  "candidates": 200,
+  "selectionPolicy": {
+    "training": {
+      "maximumCount": 8,
+      "clusterCount": 4
+    },
+    "validation": {
+      "maximumCount": 4,
+      "clusterCount": 2
+    },
+    "test": {
+      "maximumCount": 4,
+      "clusterCount": 2
+    }
+  },
+  "splitCounts": {
+    "training": 8,
+    "validation": 4,
+    "test": 4
+  },
+  "archives": {
+    "images": {
+      "filename": "images.zip",
+      "sizeBytes": 77915748,
+      "sha256": "6f30a5d4fe38c928ded972704f085975f8dc0d65d9aa366df00e5a9d449fddd7"
+    },
+    "masks": {
+      "filename": "masks.zip",
+      "sizeBytes": 2753811,
+      "sha256": "f9e6043d8ca56344a4886f96a700d804d6ee982f31e2b2cd3194af2a053c2710"
+    },
+    "metadata": {
+      "filename": "metadata.zip",
+      "sizeBytes": 17816,
+      "sha256": "a2c1f900bed9ba92a99553efd4c2ae98598433691c7401d818653ab61110deb2"
+    }
+  },
+  "selection": [
+    {
+      "id": "IXMtest_A02_s1_w1051DAA7C-7042-435F-99F0-1E847D9B42CB",
+      "split": "validation",
+      "arrayIndex": 0,
+      "imageName": "IXMtest_A02_s1_w1051DAA7C-7042-435F-99F0-1E847D9B42CB.tif",
+      "maskName": "IXMtest_A02_s1_w1051DAA7C-7042-435F-99F0-1E847D9B42CB.png",
+      "objectCount": 110,
+      "features": {
+        "objectCount": 110,
+        "foregroundFraction": 0.1952973032714412,
+        "objectAreaMedian": 649,
+        "objectAreaP10": 215.4,
+        "objectAreaP90": 997.6000000000001,
+        "objectAreaCoefficientOfVariation": 0.4552320052472018,
+        "edgeTouchingInstanceFraction": 0.20909090909090908,
+        "nearTouchingGraphDensity1": 0.0026688907422852378,
+        "nearTouchingGraphDensity2": 0.002835696413678065,
+        "nearTouchingGraphDensity4": 0.003836530442035029,
+        "eccentricityP90": 0.8835314516913713,
+        "solidityP10": 0.9224966024215469,
+        "perimeterToAreaP90": 0.34955094157411887,
+        "intensityGradient": 0.024379424942396356,
+        "localBoundaryContrast": 0.023412425507437606,
+        "focusScore": 0.00011940668309489508,
+        "estimatedSnr": 2.9023181911223253,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": ["bitDepth:minimum", "channelCount:minimum"],
+      "image": {
+        "filename": "IXMtest_A02_s1_w1051DAA7C-7042-435F-99F0-1E847D9B42CB.tif",
+        "sizeBytes": 726354,
+        "sha256": "9eacee0e5a4c29af70307af4d310320632e31ed84b4d8b5fd4fce42930f780ec"
+      },
+      "mask": {
+        "filename": "IXMtest_A02_s1_w1051DAA7C-7042-435F-99F0-1E847D9B42CB.png",
+        "sizeBytes": 13080,
+        "sha256": "c56c246edcd456f81fb0d61d318c2b7a378afba207bd0b409834db16d30cfb72"
+      }
+    },
+    {
+      "id": "IXMtest_A06_s6_w1B9577918-4973-4A87-BA73-A168AA755527",
+      "split": "training",
+      "arrayIndex": 0,
+      "imageName": "IXMtest_A06_s6_w1B9577918-4973-4A87-BA73-A168AA755527.tif",
+      "maskName": "IXMtest_A06_s6_w1B9577918-4973-4A87-BA73-A168AA755527.png",
+      "objectCount": 71,
+      "features": {
+        "objectCount": 71,
+        "foregroundFraction": 0.13033819628647214,
+        "objectAreaMedian": 659,
+        "objectAreaP10": 359,
+        "objectAreaP90": 1037,
+        "objectAreaCoefficientOfVariation": 0.4353716522923516,
+        "edgeTouchingInstanceFraction": 0.18309859154929578,
+        "nearTouchingGraphDensity1": 0.0016096579476861167,
+        "nearTouchingGraphDensity2": 0.0016096579476861167,
+        "nearTouchingGraphDensity4": 0.0036217303822937627,
+        "eccentricityP90": 0.9256760190959958,
+        "solidityP10": 0.9285714285714286,
+        "perimeterToAreaP90": 0.2785515320334262,
+        "intensityGradient": 0.036118897846833115,
+        "localBoundaryContrast": 0.06281479261025649,
+        "focusScore": 0.0005100869685269653,
+        "estimatedSnr": 3.84044234385121,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": ["bitDepth:minimum", "channelCount:minimum"],
+      "image": {
+        "filename": "IXMtest_A06_s6_w1B9577918-4973-4A87-BA73-A168AA755527.tif",
+        "sizeBytes": 726350,
+        "sha256": "f9a51ae558e53416980ca152c740ad9dced85eedbd105261841139aada16b77d"
+      },
+      "mask": {
+        "filename": "IXMtest_A06_s6_w1B9577918-4973-4A87-BA73-A168AA755527.png",
+        "sizeBytes": 10002,
+        "sha256": "e0737550efe11dc9969971947d9095ac0971bf77cfd0f448eeb7592cea7969b3"
+      }
+    },
+    {
+      "id": "IXMtest_A12_s7_w1EAEEA614-51ED-43B3-A4FF-088730911E4C",
+      "split": "test",
+      "arrayIndex": 1,
+      "imageName": "IXMtest_A12_s7_w1EAEEA614-51ED-43B3-A4FF-088730911E4C.tif",
+      "maskName": "IXMtest_A12_s7_w1EAEEA614-51ED-43B3-A4FF-088730911E4C.png",
+      "objectCount": 69,
+      "features": {
+        "objectCount": 69,
+        "foregroundFraction": 0.04531664456233422,
+        "objectAreaMedian": 131,
+        "objectAreaP10": 21.8,
+        "objectAreaP90": 600.0000000000001,
+        "objectAreaCoefficientOfVariation": 1.3044020163420398,
+        "edgeTouchingInstanceFraction": 0.028985507246376812,
+        "nearTouchingGraphDensity1": 0.030690537084398978,
+        "nearTouchingGraphDensity2": 0.030690537084398978,
+        "nearTouchingGraphDensity4": 0.03495311167945439,
+        "eccentricityP90": 0.8517834586076323,
+        "solidityP10": 0.8187006678809958,
+        "perimeterToAreaP90": 0.9523809523809523,
+        "intensityGradient": 0.012985639139808203,
+        "localBoundaryContrast": 0.023593789749032333,
+        "focusScore": 0.00005210818069124931,
+        "estimatedSnr": 2.02153486079786,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": [
+        "cluster-medoid",
+        "estimatedSnr:minimum",
+        "focusScore:minimum",
+        "localBoundaryContrast:minimum",
+        "objectAreaCoefficientOfVariation:maximum",
+        "objectAreaMedian:minimum",
+        "objectAreaP10:minimum",
+        "objectAreaP90:minimum",
+        "perimeterToAreaP90:maximum",
+        "solidityP10:minimum"
+      ],
+      "image": {
+        "filename": "IXMtest_A12_s7_w1EAEEA614-51ED-43B3-A4FF-088730911E4C.tif",
+        "sizeBytes": 726350,
+        "sha256": "d49d90f12cde7176191b0acbf2ed783c39fe8bdf0caf968ca5f8a1627429b8f1"
+      },
+      "mask": {
+        "filename": "IXMtest_A12_s7_w1EAEEA614-51ED-43B3-A4FF-088730911E4C.png",
+        "sizeBytes": 6067,
+        "sha256": "471aa3c33f45be0ca829d7de49acebcc0fa4bcbf2d4dbadc2d6de0665d45c9c9"
+      }
+    },
+    {
+      "id": "IXMtest_B05_s5_w10296BEF4-0F48-4EC8-BC24-6C604871398B",
+      "split": "test",
+      "arrayIndex": 6,
+      "imageName": "IXMtest_B05_s5_w10296BEF4-0F48-4EC8-BC24-6C604871398B.tif",
+      "maskName": "IXMtest_B05_s5_w10296BEF4-0F48-4EC8-BC24-6C604871398B.png",
+      "objectCount": 115,
+      "features": {
+        "objectCount": 115,
+        "foregroundFraction": 0.1986184792219275,
+        "objectAreaMedian": 665,
+        "objectAreaP10": 194.6,
+        "objectAreaP90": 903.6,
+        "objectAreaCoefficientOfVariation": 0.4262672507353077,
+        "edgeTouchingInstanceFraction": 0.17391304347826086,
+        "nearTouchingGraphDensity1": 0.0012204424103737605,
+        "nearTouchingGraphDensity2": 0.0018306636155606408,
+        "nearTouchingGraphDensity4": 0.003203661327231121,
+        "eccentricityP90": 0.9060315320772434,
+        "solidityP10": 0.9150023432818997,
+        "perimeterToAreaP90": 0.3482973594524951,
+        "intensityGradient": 0.0161704772316684,
+        "localBoundaryContrast": 0.03439906640221797,
+        "focusScore": 0.0002125199850831539,
+        "estimatedSnr": 3.5152997365125125,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": ["multivariate-median", "nearTouchingGraphDensity1:minimum"],
+      "image": {
+        "filename": "IXMtest_B05_s5_w10296BEF4-0F48-4EC8-BC24-6C604871398B.tif",
+        "sizeBytes": 726350,
+        "sha256": "9789dd00d103bbfc9356d1f6503a9c1210b12abaefa6d6050fb3fd74f6338cd6"
+      },
+      "mask": {
+        "filename": "IXMtest_B05_s5_w10296BEF4-0F48-4EC8-BC24-6C604871398B.png",
+        "sizeBytes": 13484,
+        "sha256": "eb777726e6b482b72e5b55d3d39d7ab3495bd1e3e23b4ca577ebccc2ef90eb5e"
+      }
+    },
+    {
+      "id": "IXMtest_B12_s2_w19F7E0279-D087-4B5E-9899-61971C29CB78",
+      "split": "validation",
+      "arrayIndex": 2,
+      "imageName": "IXMtest_B12_s2_w19F7E0279-D087-4B5E-9899-61971C29CB78.tif",
+      "maskName": "IXMtest_B12_s2_w19F7E0279-D087-4B5E-9899-61971C29CB78.png",
+      "objectCount": 120,
+      "features": {
+        "objectCount": 120,
+        "foregroundFraction": 0.197618258178603,
+        "objectAreaMedian": 636.5,
+        "objectAreaP10": 202.1,
+        "objectAreaP90": 859,
+        "objectAreaCoefficientOfVariation": 0.4118708187557768,
+        "edgeTouchingInstanceFraction": 0.13333333333333333,
+        "nearTouchingGraphDensity1": 0.0029411764705882353,
+        "nearTouchingGraphDensity2": 0.0033613445378151263,
+        "nearTouchingGraphDensity4": 0.0036414565826330533,
+        "eccentricityP90": 0.8959179268907337,
+        "solidityP10": 0.9023912003825921,
+        "perimeterToAreaP90": 0.3220471552664236,
+        "intensityGradient": 0.02271320229095129,
+        "localBoundaryContrast": 0.04129581491111051,
+        "focusScore": 0.00028554271087839436,
+        "estimatedSnr": 3.2174041058223994,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": ["cluster-medoid", "multivariate-median"],
+      "image": {
+        "filename": "IXMtest_B12_s2_w19F7E0279-D087-4B5E-9899-61971C29CB78.tif",
+        "sizeBytes": 726354,
+        "sha256": "d7888558da0167835ee5fd0455f16316f131ec2056a37927ce240ba71ce91d59"
+      },
+      "mask": {
+        "filename": "IXMtest_B12_s2_w19F7E0279-D087-4B5E-9899-61971C29CB78.png",
+        "sizeBytes": 14055,
+        "sha256": "2a3e4c546941f6b6bb124d01447618ae139f401e9ae729d51bc0c8a191203481"
+      }
+    },
+    {
+      "id": "IXMtest_C02_s4_w1661FF37C-AB9B-4038-BDF3-D21DFD2811BE",
+      "split": "training",
+      "arrayIndex": 15,
+      "imageName": "IXMtest_C02_s4_w1661FF37C-AB9B-4038-BDF3-D21DFD2811BE.tif",
+      "maskName": "IXMtest_C02_s4_w1661FF37C-AB9B-4038-BDF3-D21DFD2811BE.png",
+      "objectCount": 49,
+      "features": {
+        "objectCount": 49,
+        "foregroundFraction": 0.12984637488947834,
+        "objectAreaMedian": 994,
+        "objectAreaP10": 36.60000000000001,
+        "objectAreaP90": 1611.6000000000001,
+        "objectAreaCoefficientOfVariation": 0.6094180783428419,
+        "edgeTouchingInstanceFraction": 0.16326530612244897,
+        "nearTouchingGraphDensity1": 0.008503401360544218,
+        "nearTouchingGraphDensity2": 0.008503401360544218,
+        "nearTouchingGraphDensity4": 0.01020408163265306,
+        "eccentricityP90": 0.9076924764356592,
+        "solidityP10": 0.9055911189211051,
+        "perimeterToAreaP90": 0.7587044534412958,
+        "intensityGradient": 0.008301017443163614,
+        "localBoundaryContrast": 0.08797612944761342,
+        "focusScore": 0.0012343894809095798,
+        "estimatedSnr": 3.8335359693435636,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": ["objectAreaMedian:maximum", "objectAreaP90:maximum"],
+      "image": {
+        "filename": "IXMtest_C02_s4_w1661FF37C-AB9B-4038-BDF3-D21DFD2811BE.tif",
+        "sizeBytes": 726354,
+        "sha256": "da771f81e81847163adf4c9810baddf28e19cf221f5f7d015c20c1684ddf71bb"
+      },
+      "mask": {
+        "filename": "IXMtest_C02_s4_w1661FF37C-AB9B-4038-BDF3-D21DFD2811BE.png",
+        "sizeBytes": 8934,
+        "sha256": "2799c8373828bdc2c5bf73e1519897c3c21abfd157e3bf26f81e277a9b64f3d6"
+      }
+    },
+    {
+      "id": "IXMtest_D10_s2_w1BB72A093-72AB-476C-9513-2FF43BFB2134",
+      "split": "test",
+      "arrayIndex": 13,
+      "imageName": "IXMtest_D10_s2_w1BB72A093-72AB-476C-9513-2FF43BFB2134.tif",
+      "maskName": "IXMtest_D10_s2_w1BB72A093-72AB-476C-9513-2FF43BFB2134.png",
+      "objectCount": 141,
+      "features": {
+        "objectCount": 141,
+        "foregroundFraction": 0.2390113837312113,
+        "objectAreaMedian": 629,
+        "objectAreaP10": 241,
+        "objectAreaP90": 867,
+        "objectAreaCoefficientOfVariation": 0.3853069172144336,
+        "edgeTouchingInstanceFraction": 0.16312056737588654,
+        "nearTouchingGraphDensity1": 0.0024316109422492403,
+        "nearTouchingGraphDensity2": 0.002735562310030395,
+        "nearTouchingGraphDensity4": 0.003850050658561297,
+        "eccentricityP90": 0.9037534359296807,
+        "solidityP10": 0.9175686927560366,
+        "perimeterToAreaP90": 0.3070539419087137,
+        "intensityGradient": 0.028978523960036563,
+        "localBoundaryContrast": 0.0445578103007484,
+        "focusScore": 0.0005094912651406942,
+        "estimatedSnr": 3.733215857625841,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": ["cluster-medoid"],
+      "image": {
+        "filename": "IXMtest_D10_s2_w1BB72A093-72AB-476C-9513-2FF43BFB2134.tif",
+        "sizeBytes": 726350,
+        "sha256": "5e5a9ce5cb911d222bffcd9c82ed129a561d1513a8eea0473d7e83c0d356774e"
+      },
+      "mask": {
+        "filename": "IXMtest_D10_s2_w1BB72A093-72AB-476C-9513-2FF43BFB2134.png",
+        "sizeBytes": 16034,
+        "sha256": "d24aef6ae45a1ee25882dc7f0c1488ed33ae769a0e9bd2c0f49a1390e4416749"
+      }
+    },
+    {
+      "id": "IXMtest_D20_s9_w1588B4C42-5A0D-4B93-9A80-A6527CC1C411",
+      "split": "training",
+      "arrayIndex": 23,
+      "imageName": "IXMtest_D20_s9_w1588B4C42-5A0D-4B93-9A80-A6527CC1C411.tif",
+      "maskName": "IXMtest_D20_s9_w1588B4C42-5A0D-4B93-9A80-A6527CC1C411.png",
+      "objectCount": 154,
+      "features": {
+        "objectCount": 154,
+        "foregroundFraction": 0.2119225243147657,
+        "objectAreaMedian": 578,
+        "objectAreaP10": 24,
+        "objectAreaP90": 862.4000000000007,
+        "objectAreaCoefficientOfVariation": 0.609966522379974,
+        "edgeTouchingInstanceFraction": 0.13636363636363635,
+        "nearTouchingGraphDensity1": 0.0038197097020626434,
+        "nearTouchingGraphDensity2": 0.004074357015533486,
+        "nearTouchingGraphDensity4": 0.0059417706476530005,
+        "eccentricityP90": 0.8830765977595356,
+        "solidityP10": 0.8844602832902188,
+        "perimeterToAreaP90": 0.9416666666666672,
+        "intensityGradient": 0.010359517491239739,
+        "localBoundaryContrast": 0.03921445189870918,
+        "focusScore": 0.000363808755324383,
+        "estimatedSnr": 3.51322913941118,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": ["cluster-medoid"],
+      "image": {
+        "filename": "IXMtest_D20_s9_w1588B4C42-5A0D-4B93-9A80-A6527CC1C411.tif",
+        "sizeBytes": 726354,
+        "sha256": "7cdb4040907032a489f5b31457f615fdf573d166bd881073596fee852c3d2848"
+      },
+      "mask": {
+        "filename": "IXMtest_D20_s9_w1588B4C42-5A0D-4B93-9A80-A6527CC1C411.png",
+        "sizeBytes": 14778,
+        "sha256": "d2d39706b9db4b04383ff95ddedea10f032479239fd308f7fbf0c226d3ba0a35"
+      }
+    },
+    {
+      "id": "IXMtest_F12_s8_w1DBD80811-5297-4415-ACD1-EC9286BE76A4",
+      "split": "test",
+      "arrayIndex": 19,
+      "imageName": "IXMtest_F12_s8_w1DBD80811-5297-4415-ACD1-EC9286BE76A4.tif",
+      "maskName": "IXMtest_F12_s8_w1DBD80811-5297-4415-ACD1-EC9286BE76A4.png",
+      "objectCount": 7,
+      "features": {
+        "objectCount": 7,
+        "foregroundFraction": 0.012342506631299734,
+        "objectAreaMedian": 648,
+        "objectAreaP10": 295.8,
+        "objectAreaP90": 883.8000000000001,
+        "objectAreaCoefficientOfVariation": 0.3780009245633167,
+        "edgeTouchingInstanceFraction": 0,
+        "nearTouchingGraphDensity1": 0.047619047619047616,
+        "nearTouchingGraphDensity2": 0.047619047619047616,
+        "nearTouchingGraphDensity4": 0.09523809523809523,
+        "eccentricityP90": 0.9187780260602362,
+        "solidityP10": 0.9020025839793282,
+        "perimeterToAreaP90": 0.2790902219473648,
+        "intensityGradient": 0.004045312997552,
+        "localBoundaryContrast": 0.09197189164849624,
+        "focusScore": 0.0001801239391771926,
+        "estimatedSnr": 3.374089844032331,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": [
+        "edgeTouchingInstanceFraction:minimum",
+        "foregroundFraction:minimum",
+        "nearTouchingGraphDensity1:maximum",
+        "nearTouchingGraphDensity2:maximum",
+        "nearTouchingGraphDensity4:maximum",
+        "objectCount:minimum"
+      ],
+      "image": {
+        "filename": "IXMtest_F12_s8_w1DBD80811-5297-4415-ACD1-EC9286BE76A4.tif",
+        "sizeBytes": 726354,
+        "sha256": "5c34b879cb7103c334cfc9de3f8ff21d128d09504771de8f8cf8b0250b9a46d4"
+      },
+      "mask": {
+        "filename": "IXMtest_F12_s8_w1DBD80811-5297-4415-ACD1-EC9286BE76A4.png",
+        "sizeBytes": 3683,
+        "sha256": "a303f63bc80b3618028b41ad19129a2db353ac1b3fc174a18df36aed58b88825"
+      }
+    },
+    {
+      "id": "IXMtest_F13_s7_w13C1B1D8C-293E-454F-B0FD-6C2C3F9F5173",
+      "split": "training",
+      "arrayIndex": 34,
+      "imageName": "IXMtest_F13_s7_w13C1B1D8C-293E-454F-B0FD-6C2C3F9F5173.tif",
+      "maskName": "IXMtest_F13_s7_w13C1B1D8C-293E-454F-B0FD-6C2C3F9F5173.png",
+      "objectCount": 0,
+      "features": {
+        "objectCount": 0,
+        "foregroundFraction": 0,
+        "objectAreaMedian": 0,
+        "objectAreaP10": 0,
+        "objectAreaP90": 0,
+        "objectAreaCoefficientOfVariation": 0,
+        "edgeTouchingInstanceFraction": 0,
+        "nearTouchingGraphDensity1": 0,
+        "nearTouchingGraphDensity2": 0,
+        "nearTouchingGraphDensity4": 0,
+        "eccentricityP90": 0,
+        "solidityP10": 0,
+        "perimeterToAreaP90": 0,
+        "intensityGradient": 0.19241750015810127,
+        "localBoundaryContrast": 0,
+        "focusScore": 0.052054441907124875,
+        "estimatedSnr": 25.52462948355055,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": [
+        "cluster-medoid",
+        "eccentricityP90:minimum",
+        "edgeTouchingInstanceFraction:minimum",
+        "foregroundFraction:minimum",
+        "intensityGradient:maximum",
+        "localBoundaryContrast:minimum",
+        "nearTouchingGraphDensity1:minimum",
+        "nearTouchingGraphDensity2:minimum",
+        "nearTouchingGraphDensity4:minimum",
+        "objectAreaCoefficientOfVariation:minimum",
+        "objectAreaMedian:minimum",
+        "objectAreaP10:minimum",
+        "objectAreaP90:minimum",
+        "objectCount:minimum",
+        "perimeterToAreaP90:minimum",
+        "solidityP10:minimum"
+      ],
+      "image": {
+        "filename": "IXMtest_F13_s7_w13C1B1D8C-293E-454F-B0FD-6C2C3F9F5173.tif",
+        "sizeBytes": 726350,
+        "sha256": "97ecd7bcff6e74cc92e7d945f13adddb218776b0de1ac0a5bfac8bcf1a42fc95"
+      },
+      "mask": {
+        "filename": "IXMtest_F13_s7_w13C1B1D8C-293E-454F-B0FD-6C2C3F9F5173.png",
+        "sizeBytes": 2750,
+        "sha256": "cbeed30abeabe0402abe1b33b09c5cd849cfac5bc065d2b01611c977d83f8a5b"
+      }
+    },
+    {
+      "id": "IXMtest_J20_s5_w15709AA91-01B9-4959-963A-9D1D574D12E4",
+      "split": "training",
+      "arrayIndex": 62,
+      "imageName": "IXMtest_J20_s5_w15709AA91-01B9-4959-963A-9D1D574D12E4.tif",
+      "maskName": "IXMtest_J20_s5_w15709AA91-01B9-4959-963A-9D1D574D12E4.png",
+      "objectCount": 143,
+      "features": {
+        "objectCount": 143,
+        "foregroundFraction": 0.2363395225464191,
+        "objectAreaMedian": 621,
+        "objectAreaP10": 253.2,
+        "objectAreaP90": 905.4,
+        "objectAreaCoefficientOfVariation": 0.4099651215996268,
+        "edgeTouchingInstanceFraction": 0.16783216783216784,
+        "nearTouchingGraphDensity1": 0.0027578055747069833,
+        "nearTouchingGraphDensity2": 0.0028562986309465183,
+        "nearTouchingGraphDensity4": 0.003939722249581405,
+        "eccentricityP90": 0.8945928165332659,
+        "solidityP10": 0.9045002398438047,
+        "perimeterToAreaP90": 0.3103995748497027,
+        "intensityGradient": 0.02969005915235789,
+        "localBoundaryContrast": 0.05179384188418869,
+        "focusScore": 0.0006093383826026799,
+        "estimatedSnr": 3.1081372241768275,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": ["cluster-medoid"],
+      "image": {
+        "filename": "IXMtest_J20_s5_w15709AA91-01B9-4959-963A-9D1D574D12E4.tif",
+        "sizeBytes": 726350,
+        "sha256": "b3cc4cbefefec1dcbc1a715b8216777a97a26d5c752db37afb3d25239a5c1eaa"
+      },
+      "mask": {
+        "filename": "IXMtest_J20_s5_w15709AA91-01B9-4959-963A-9D1D574D12E4.png",
+        "sizeBytes": 15936,
+        "sha256": "8316fcc6370779fc260c07e20fdbf048bcf78e133b542007857583cec944575b"
+      }
+    },
+    {
+      "id": "IXMtest_L10_s6_w12D12D64C-2639-4CA8-9BB4-99F92C9B7068",
+      "split": "validation",
+      "arrayIndex": 36,
+      "imageName": "IXMtest_L10_s6_w12D12D64C-2639-4CA8-9BB4-99F92C9B7068.tif",
+      "maskName": "IXMtest_L10_s6_w12D12D64C-2639-4CA8-9BB4-99F92C9B7068.png",
+      "objectCount": 0,
+      "features": {
+        "objectCount": 0,
+        "foregroundFraction": 0,
+        "objectAreaMedian": 0,
+        "objectAreaP10": 0,
+        "objectAreaP90": 0,
+        "objectAreaCoefficientOfVariation": 0,
+        "edgeTouchingInstanceFraction": 0,
+        "nearTouchingGraphDensity1": 0,
+        "nearTouchingGraphDensity2": 0,
+        "nearTouchingGraphDensity4": 0,
+        "eccentricityP90": 0,
+        "solidityP10": 0,
+        "perimeterToAreaP90": 0,
+        "intensityGradient": 0.19723831377547388,
+        "localBoundaryContrast": 0,
+        "focusScore": 0.104163158079701,
+        "estimatedSnr": 26.97711292542778,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": [
+        "cluster-medoid",
+        "eccentricityP90:minimum",
+        "edgeTouchingInstanceFraction:minimum",
+        "estimatedSnr:maximum",
+        "focusScore:maximum",
+        "foregroundFraction:minimum",
+        "intensityGradient:maximum",
+        "localBoundaryContrast:minimum",
+        "nearTouchingGraphDensity1:minimum",
+        "nearTouchingGraphDensity2:minimum",
+        "nearTouchingGraphDensity4:minimum",
+        "objectAreaCoefficientOfVariation:minimum",
+        "objectAreaMedian:minimum",
+        "objectAreaP10:minimum",
+        "objectAreaP90:minimum",
+        "objectCount:minimum",
+        "perimeterToAreaP90:minimum",
+        "solidityP10:minimum"
+      ],
+      "image": {
+        "filename": "IXMtest_L10_s6_w12D12D64C-2639-4CA8-9BB4-99F92C9B7068.tif",
+        "sizeBytes": 726350,
+        "sha256": "9cfed38c3581400464c6d29d73880b70e3fffdcd921ba6923b9788d2d0f232bf"
+      },
+      "mask": {
+        "filename": "IXMtest_L10_s6_w12D12D64C-2639-4CA8-9BB4-99F92C9B7068.png",
+        "sizeBytes": 2750,
+        "sha256": "cbeed30abeabe0402abe1b33b09c5cd849cfac5bc065d2b01611c977d83f8a5b"
+      }
+    },
+    {
+      "id": "IXMtest_O10_s8_w18F4DB020-BFB7-4F13-B99C-C39F8E54F85D",
+      "split": "validation",
+      "arrayIndex": 44,
+      "imageName": "IXMtest_O10_s8_w18F4DB020-BFB7-4F13-B99C-C39F8E54F85D.tif",
+      "maskName": "IXMtest_O10_s8_w18F4DB020-BFB7-4F13-B99C-C39F8E54F85D.png",
+      "objectCount": 20,
+      "features": {
+        "objectCount": 20,
+        "foregroundFraction": 0.030584106984969054,
+        "objectAreaMedian": 631,
+        "objectAreaP10": 88.60000000000001,
+        "objectAreaP90": 841.3000000000001,
+        "objectAreaCoefficientOfVariation": 0.4904377412931381,
+        "edgeTouchingInstanceFraction": 0.15,
+        "nearTouchingGraphDensity1": 0.015789473684210527,
+        "nearTouchingGraphDensity2": 0.021052631578947368,
+        "nearTouchingGraphDensity4": 0.021052631578947368,
+        "eccentricityP90": 0.8742604581660531,
+        "solidityP10": 0.9290712012158404,
+        "perimeterToAreaP90": 0.46297872340425583,
+        "intensityGradient": 0.02045676698855876,
+        "localBoundaryContrast": 0.04243245542909196,
+        "focusScore": 0.00008193573003788094,
+        "estimatedSnr": 3.3801068331436603,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": [
+        "focusScore:minimum",
+        "nearTouchingGraphDensity1:maximum",
+        "nearTouchingGraphDensity2:maximum",
+        "nearTouchingGraphDensity4:maximum"
+      ],
+      "image": {
+        "filename": "IXMtest_O10_s8_w18F4DB020-BFB7-4F13-B99C-C39F8E54F85D.tif",
+        "sizeBytes": 726354,
+        "sha256": "8a6a917ed6b9aabccdaf42de755d0e5a4b9eba3e64157f06a15c7208cd0f7b06"
+      },
+      "mask": {
+        "filename": "IXMtest_O10_s8_w18F4DB020-BFB7-4F13-B99C-C39F8E54F85D.png",
+        "sizeBytes": 4797,
+        "sha256": "54ad2ac5cfa96a52d70b54cb5d255ef43424f7e5b860e6732338b3d1ba58d366"
+      }
+    },
+    {
+      "id": "IXMtest_O15_s6_w1A4844AB3-6D66-4B9A-8212-758E061C349F",
+      "split": "training",
+      "arrayIndex": 87,
+      "imageName": "IXMtest_O15_s6_w1A4844AB3-6D66-4B9A-8212-758E061C349F.tif",
+      "maskName": "IXMtest_O15_s6_w1A4844AB3-6D66-4B9A-8212-758E061C349F.png",
+      "objectCount": 33,
+      "features": {
+        "objectCount": 33,
+        "foregroundFraction": 0.04937002652519894,
+        "objectAreaMedian": 526,
+        "objectAreaP10": 50.6,
+        "objectAreaP90": 1206.8,
+        "objectAreaCoefficientOfVariation": 0.8239403141730176,
+        "edgeTouchingInstanceFraction": 0.12121212121212122,
+        "nearTouchingGraphDensity1": 0.020833333333333332,
+        "nearTouchingGraphDensity2": 0.020833333333333332,
+        "nearTouchingGraphDensity4": 0.026515151515151516,
+        "eccentricityP90": 0.9099687715303119,
+        "solidityP10": 0.8608921671935371,
+        "perimeterToAreaP90": 0.6846994535519126,
+        "intensityGradient": 0.017013341954970194,
+        "localBoundaryContrast": 0.037639862489857935,
+        "focusScore": 0.00015762947750867684,
+        "estimatedSnr": 1.8122864320099952,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": ["cluster-medoid"],
+      "image": {
+        "filename": "IXMtest_O15_s6_w1A4844AB3-6D66-4B9A-8212-758E061C349F.tif",
+        "sizeBytes": 726350,
+        "sha256": "23b8285e37bcec8a96764719a3ea62f0fafcd96b525f01329002b7cb90efaa08"
+      },
+      "mask": {
+        "filename": "IXMtest_O15_s6_w1A4844AB3-6D66-4B9A-8212-758E061C349F.png",
+        "sizeBytes": 5887,
+        "sha256": "2acf22c54ac2801a81c7cbde8a75a474b7de269d5ec9eeb3fd3bb9efafafbae5"
+      }
+    },
+    {
+      "id": "IXMtest_O18_s1_w1C2EE9CCF-5055-4E56-BB3A-212A63545A90",
+      "split": "training",
+      "arrayIndex": 89,
+      "imageName": "IXMtest_O18_s1_w1C2EE9CCF-5055-4E56-BB3A-212A63545A90.tif",
+      "maskName": "IXMtest_O18_s1_w1C2EE9CCF-5055-4E56-BB3A-212A63545A90.png",
+      "objectCount": 130,
+      "features": {
+        "objectCount": 130,
+        "foregroundFraction": 0.20989997789566756,
+        "objectAreaMedian": 597,
+        "objectAreaP10": 252.5,
+        "objectAreaP90": 862.8000000000001,
+        "objectAreaCoefficientOfVariation": 0.4426426999176652,
+        "edgeTouchingInstanceFraction": 0.17692307692307693,
+        "nearTouchingGraphDensity1": 0.002146690518783542,
+        "nearTouchingGraphDensity2": 0.0025044722719141325,
+        "nearTouchingGraphDensity4": 0.0033392963625521765,
+        "eccentricityP90": 0.8853471852542196,
+        "solidityP10": 0.9000571993544925,
+        "perimeterToAreaP90": 0.2899988008154455,
+        "intensityGradient": 0.017934140194713594,
+        "localBoundaryContrast": 0.041389672501568484,
+        "focusScore": 0.0003258250415232749,
+        "estimatedSnr": 3.248430691374979,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": ["multivariate-median"],
+      "image": {
+        "filename": "IXMtest_O18_s1_w1C2EE9CCF-5055-4E56-BB3A-212A63545A90.tif",
+        "sizeBytes": 726354,
+        "sha256": "6c2004c1ecf54041833bfe92404f747541624f73ac5f6bd50b0e7accff1ba2f8"
+      },
+      "mask": {
+        "filename": "IXMtest_O18_s1_w1C2EE9CCF-5055-4E56-BB3A-212A63545A90.png",
+        "sizeBytes": 14855,
+        "sha256": "0ecf6fdeb7ad6e54416df22f7cc587191f1891920cfeafbc986624962a54ed65"
+      }
+    },
+    {
+      "id": "IXMtest_P09_s4_w11E382363-8C26-4A73-9D8A-8193D66E5785",
+      "split": "training",
+      "arrayIndex": 93,
+      "imageName": "IXMtest_P09_s4_w11E382363-8C26-4A73-9D8A-8193D66E5785.tif",
+      "maskName": "IXMtest_P09_s4_w11E382363-8C26-4A73-9D8A-8193D66E5785.png",
+      "objectCount": 17,
+      "features": {
+        "objectCount": 17,
+        "foregroundFraction": 0.023731763925729444,
+        "objectAreaMedian": 324,
+        "objectAreaP10": 110.8,
+        "objectAreaP90": 862.2000000000002,
+        "objectAreaCoefficientOfVariation": 0.9543820235763765,
+        "edgeTouchingInstanceFraction": 0.29411764705882354,
+        "nearTouchingGraphDensity1": 0.03676470588235294,
+        "nearTouchingGraphDensity2": 0.03676470588235294,
+        "nearTouchingGraphDensity4": 0.04411764705882353,
+        "eccentricityP90": 0.9076917509800448,
+        "solidityP10": 0.8737798347107438,
+        "perimeterToAreaP90": 0.4337636544190665,
+        "intensityGradient": 0.009680315612899263,
+        "localBoundaryContrast": 0.02728974887002178,
+        "focusScore": 0.00005785580138348125,
+        "estimatedSnr": 1.6885636518336118,
+        "bitDepth": 16,
+        "channelCount": 1
+      },
+      "reasons": [
+        "edgeTouchingInstanceFraction:maximum",
+        "focusScore:minimum",
+        "nearTouchingGraphDensity1:maximum",
+        "nearTouchingGraphDensity2:maximum",
+        "nearTouchingGraphDensity4:maximum"
+      ],
+      "image": {
+        "filename": "IXMtest_P09_s4_w11E382363-8C26-4A73-9D8A-8193D66E5785.tif",
+        "sizeBytes": 726354,
+        "sha256": "0df845d706ea4f0fb9ab8cb148017f75a333369c249da96b1911b5281f2896ec"
+      },
+      "mask": {
+        "filename": "IXMtest_P09_s4_w11E382363-8C26-4A73-9D8A-8193D66E5785.png",
+        "sizeBytes": 4395,
+        "sha256": "dceca9dbb670bb4878595c8741d195b7b0f0678673dd9076e63b977570d7f028"
+      }
+    }
+  ]
+}

@@ -23,6 +23,7 @@ export interface ParticleAnalysisGraphOptions {
   readonly windowRadius: number
   readonly sauvolaK: number
   readonly dynamicRange: number
+  readonly minimumCoefficientOfVariation: number
   readonly noDataPolicy: 'background' | 'foreground' | 'propagate'
   readonly backgroundRadius: number
   readonly openRadius: number
@@ -32,6 +33,7 @@ export interface ParticleAnalysisGraphOptions {
   readonly minimumObjectPixels: number
   readonly watershed: boolean
   readonly minimumPeakDistance: number
+  readonly minimumPeakHeight: number
   readonly connectivity: 4 | 8
   readonly edgePolicy: 'include' | 'exclude'
   readonly minimumArea: number
@@ -102,6 +104,7 @@ export function particleThresholdGraph(options: ParticleAnalysisGraphOptions): A
       windowRadius: options.windowRadius,
       sauvolaK: options.sauvolaK,
       dynamicRange: options.dynamicRange,
+      minimumCoefficientOfVariation: options.minimumCoefficientOfVariation,
       noDataPolicy: options.noDataPolicy,
     },
   })
@@ -192,6 +195,7 @@ export function particleAnalysisGraph(options: ParticleAnalysisGraphOptions): An
       MATERIALS_OPERATION_IDS.watershed,
       {
         minimumPeakDistance: options.minimumPeakDistance,
+        minimumPeakHeight: options.minimumPeakHeight,
       },
     )
   nodes.push({

@@ -81,60 +81,6 @@ export function generatedParticleBenchmarkFixture(
   }
 }
 
-export function labelBinaryMask(
-  mask: Uint8Array,
-  width: number,
-  height: number,
-  connectivity: 4 | 8 = 8,
-): Uint32Array {
-  const labels = new Uint32Array(mask.length)
-  const queue = new Uint32Array(mask.length)
-  const offsets =
-    connectivity === 4
-      ? ([
-          [1, 0],
-          [-1, 0],
-          [0, 1],
-          [0, -1],
-        ] as const)
-      : ([
-          [1, 0],
-          [-1, 0],
-          [0, 1],
-          [0, -1],
-          [1, 1],
-          [-1, -1],
-          [1, -1],
-          [-1, 1],
-        ] as const)
-  let label = 0
-  for (let start = 0; start < mask.length; start += 1) {
-    if (mask[start] === 0 || labels[start] !== 0) continue
-    label += 1
-    let head = 0
-    let tail = 1
-    queue[0] = start
-    labels[start] = label
-    while (head < tail) {
-      const index = queue[head] ?? 0
-      head += 1
-      const x = index % width
-      const y = Math.floor(index / width)
-      for (const [dx, dy] of offsets) {
-        const nx = x + dx
-        const ny = y + dy
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
-        const next = ny * width + nx
-        if (mask[next] === 0 || labels[next] !== 0) continue
-        labels[next] = label
-        queue[tail] = next
-        tail += 1
-      }
-    }
-  }
-  return labels
-}
-
 function seededRandom(seed: number): () => number {
   let state = seed >>> 0
   return () => {

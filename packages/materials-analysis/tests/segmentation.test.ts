@@ -110,6 +110,50 @@ describe('reference threshold methods', () => {
     expect(result.mask[3 * 7 + 2]).toBe(1)
     expect(result.mask[3 * 7 + 5]).toBe(1)
   })
+
+  it('rejects low-information finite fields only when the explicit guard is enabled', () => {
+    const options = {
+      method: 'otsu' as const,
+      polarity: 'light' as const,
+      lower: 0,
+      upper: 255,
+      histogramBins: 16,
+      windowRadius: 1,
+      sauvolaK: 0.2,
+      dynamicRange: 128,
+      noDataPolicy: 'background' as const,
+    }
+    const fixture = plane(4, 2, [100, 101, 99, 100, 101, 100, 99, 100])
+    const unguarded = applyThreshold(fixture, 0, options)
+    const guarded = applyThreshold(fixture, 0, {
+      ...options,
+      minimumCoefficientOfVariation: 0.1,
+    })
+
+    expect(unguarded.foregroundCount).toBeGreaterThan(0)
+    expect(unguarded.lowInformationRejected).toBe(false)
+    expect(guarded.coefficientOfVariation).toBeLessThan(0.01)
+    expect(guarded.lowInformationRejected).toBe(true)
+    expect(guarded.foregroundCount).toBe(0)
+    expect([...guarded.mask]).toEqual(Array.from({ length: 8 }, () => 0))
+  })
+
+  it('validates the low-information threshold independently of schema callers', () => {
+    expect(() =>
+      applyThreshold(fixture, 0, {
+        method: 'otsu',
+        polarity: 'light',
+        lower: 0,
+        upper: 255,
+        histogramBins: 16,
+        windowRadius: 1,
+        sauvolaK: 0.2,
+        dynamicRange: 128,
+        minimumCoefficientOfVariation: -0.1,
+        noDataPolicy: 'background',
+      }),
+    ).toThrow('Minimum coefficient of variation must be between 0 and 10.')
+  })
 })
 
 describe('binary cleanup and watershed', () => {
@@ -154,6 +198,31 @@ describe('binary cleanup and watershed', () => {
     expect(componentCount(mask, width, height)).toBe(1)
     const separated = watershedSeparate(mask, width, height, { minimumPeakDistance: 3 })
     expect(componentCount(separated, width, height)).toBe(2)
+    const rejectedPeaks = watershedSeparate(mask, width, height, {
+      minimumPeakDistance: 3,
+      minimumPeakHeight: 10,
+    })
+    expect(rejectedPeaks).toEqual(mask)
+  })
+
+  it('preserves disconnected components whose peaks are not admitted', () => {
+    const width = 24
+    const height = 7
+    const mask = new Uint8Array(width * height)
+    for (const [left, top, size] of [
+      [1, 2, 2],
+      [5, 2, 2],
+      [15, 1, 4],
+    ] as const)
+      for (let y = top; y < top + size; y += 1)
+        for (let x = left; x < left + size; x += 1) mask[y * width + x] = 1
+
+    const separated = watershedSeparate(mask, width, height, {
+      minimumPeakDistance: 5,
+      minimumPeakHeight: 1,
+    })
+    expect(componentCount(separated, width, height)).toBe(3)
+    expect(separated).toEqual(mask)
   })
 
   it('honors cancellation checkpoints', () => {

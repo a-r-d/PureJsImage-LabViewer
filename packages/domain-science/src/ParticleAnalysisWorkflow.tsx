@@ -29,6 +29,7 @@ export const DEFAULT_PARTICLE_WORKFLOW: ParticleWorkflowSettings = Object.freeze
   windowRadius: 15,
   sauvolaK: 0.2,
   dynamicRange: 128,
+  minimumCoefficientOfVariation: 0.1,
   noDataPolicy: 'background',
   backgroundRadius: 0,
   openRadius: 1,
@@ -38,6 +39,7 @@ export const DEFAULT_PARTICLE_WORKFLOW: ParticleWorkflowSettings = Object.freeze
   minimumObjectPixels: 64,
   watershed: false,
   minimumPeakDistance: 3,
+  minimumPeakHeight: 0,
   connectivity: 8,
   edgePolicy: 'exclude',
   minimumArea: 0,
@@ -271,6 +273,12 @@ export function ParticleAnalysisWorkflow({
             <option value="propagate">Propagate as NaN</option>
           </select>
         </label>
+        {numeric(
+          'Minimum coefficient of variation (0 disables)',
+          settings.minimumCoefficientOfVariation,
+          (value) => patch('minimumCoefficientOfVariation', value),
+          { min: 0, max: 10, step: 0.01 },
+        )}
         <div className="button-row">
           <Button disabled={busy} onClick={onPreview}>
             Preview histogram and mask
@@ -305,6 +313,12 @@ export function ParticleAnalysisWorkflow({
             settings.minimumPeakDistance,
             (value) => patch('minimumPeakDistance', value),
             { min: 1, step: 1 },
+          )}
+          {numeric(
+            'Watershed minimum peak height (0 disables)',
+            settings.minimumPeakHeight,
+            (value) => patch('minimumPeakHeight', value),
+            { min: 0, step: 0.5 },
           )}
         </div>
         <div className="inline-check-grid">

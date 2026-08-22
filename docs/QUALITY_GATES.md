@@ -274,6 +274,12 @@ budget change.
 - expected tests declared;
 - no large corpus committed to Git.
 
+`pnpm test:particle-corpus` additionally gates the strict fixture manifest, exact local hashes,
+published-reader dimension parity, upstream instance-ID preservation, ignore/edge behavior,
+deterministic hard-case selection, full instance and mask metrics, stable report rendering, and the
+generated grayscale-to-measurement benchmark. `pnpm corpus:verify:particles` is offline. Extended
+fetches are never an implicit test dependency.
+
 ## CI layout
 
 Suggested jobs:

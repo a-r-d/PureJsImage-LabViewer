@@ -1,0 +1,176 @@
+schema_version: 1.0.0
+corpus_version: 0.1.0
+policy:
+  require_commercial_use: true
+  require_redistribution: true
+  require_derivatives: true
+  fail_closed_on_unknown_license: true
+  require_sha256: true
+  require_transform_provenance: true
+  require_adjudication_for_gold: true
+
+sources:
+  - id: nist-lnp-cryoem
+    title: Segmentation of lipid nanoparticles from cryogenic electron microscopy images
+    landing_url: https://data.nist.gov/od/id/mds2-2753
+    license_spdx: LicenseRef-NIST-Open
+    redistribution: allowed
+    attribution_required: true
+    source_tier: core
+    downloads:
+      - filename: R111_S404_pH4_1p5pcPEG_noRNA.zip
+        url: https://data.nist.gov/od/ds/mds2-2753/R111_S404_pH4_1p5pcPEG_noRNA.zip
+        sha256: null
+      - filename: R111_S405_pH7_1p5pcPEG_noRNA.zip
+        url: https://data.nist.gov/od/ds/mds2-2753/R111_S405_pH7_1p5pcPEG_noRNA.zip
+        sha256: null
+      - filename: R111_S406_pH4_1p5pcPEG_RNA.zip
+        url: https://data.nist.gov/od/ds/mds2-2753/R111_S406_pH4_1p5pcPEG_RNA.zip
+        sha256: null
+      - filename: R111_S407_pH7_1p5pcPEG_RNA.zip
+        url: https://data.nist.gov/od/ds/mds2-2753/R111_S407_pH7_1p5pcPEG_RNA.zip
+        sha256: null
+    selection:
+      method: include-all-pairs
+      expected_pairs: 38
+    metadata:
+      pixel_size: 0.223
+      pixel_unit: nm
+      width: 4096
+      height: 4096
+    tasks: [counting, semantic-segmentation, morphology, calibration, domain-shift]
+
+  - id: dryad-hrtem-nanoparticles
+    title: Segmented high-resolution transmission electron microscopy images of nanoparticles
+    landing_url: https://doi.org/10.7941/D1SP93
+    license_spdx: CC0-1.0
+    redistribution: allowed
+    source_tier: extended
+    extraction:
+      selector: mask-feature-extremes-and-medoids-v1
+      target_patch_count: 28
+      preserve_native_examples: [DM3, HDF5]
+      exact_pairs:
+        - Au_2p2nm_330kx_423e_Std_UTC_FFCorr_Team05
+        - Au_10nm_330kx_425e_Std_UTC_FFCorr_Team05
+        - Au_5nm_160kx_425e_Std_UTC_FFCorr_Team05
+        - Au_5nm_205kx_420e_Std_UTC_FFCorr_Team05
+        - Au_5nm_260kx_450e_Std_UTC_FFCorr_Team05
+        - Au_5nm_330kx_80e_Std_UTC_FFCorr_Team05
+        - Au_5nm_330kx_884e_Std_UTC_FFCorr_Team05
+        - Ag_5nm_330kx_423e_Std_UTC_FFCorr_Team05
+        - CdSe_5nm_330kx_421e_Std_UTC_FFCorr_Team05
+    tasks: [instance-segmentation, morphology, scale-shift, noise-shift, material-shift, native-format]
+
+  - id: bbbc039
+    title: Nuclei of U2OS cells in a chemical screen
+    landing_url: https://bbbc.broadinstitute.org/BBBC039
+    license_spdx: CC0-1.0
+    redistribution: allowed
+    source_tier: core
+    extraction:
+      selector: mask-feature-extremes-and-medoids-v1
+      target_pair_count: 16
+      preserve_native_bit_depth: true
+    tasks: [instance-segmentation, counting, touching-objects, 16-bit]
+
+  - id: rodare-carbide-sem
+    title: Data-efficient U-Net for Segmentation of Carbide Microstructures in SEM Images of Steel Alloys
+    landing_url: https://doi.org/10.14278/rodare.4124
+    download_url: https://rodare.hzdr.de/api/files/fd67404b-3f61-4559-8792-3c3119a8c5da/data.zip
+    license_spdx: CC-BY-4.0
+    redistribution: allowed
+    attribution_required: true
+    source_tier: core
+    selection:
+      method: include-all-whole-image-pairs
+      expected_field_pairs: 13
+      preserve_paired_channels: [SE2, InLens]
+    tasks: [semantic-segmentation, paired-channel-robustness, morphology]
+
+  - id: nist-sem-detection-limits
+    title: Detection Limits for SEM Image Segmentation
+    landing_url: https://doi.org/10.18434/mds2-3838
+    license_spdx: LicenseRef-NIST-Open
+    redistribution: allowed
+    attribution_required: true
+    source_tier: core
+    downloads:
+      - filename: mask_sets.zip
+        sha256: 5925dc95478e2cfc3c9ec54bfef888c7596db35fdf41bb929d6b96b8562ab562
+      - filename: metrics_sets.zip
+        sha256: a2b89522c6d8d3fae6afefa97dd99932b564d6455beb96ae0c69083622cffa36
+      - filename: intensity_sets.zip
+        sha256: 5cd9f4caff80e9afab83515032347a17e9974554ea148f01280090504807e078
+    tasks: [noise-sweep, contrast-sweep, quality-diagnostics, semantic-segmentation]
+
+  - id: concrete-cracks-mendeley
+    title: Concrete Crack Segmentation Dataset
+    landing_url: https://doi.org/10.17632/jwsn7tfbrp.1
+    license_spdx: CC-BY-4.0
+    redistribution: allowed
+    attribution_required: true
+    source_tier: core
+    exact_files: [609.JPG, 468.JPG, 460.JPG, 133.jpg, 112.jpg]
+    tasks: [thin-structure, topology, edge-policy, skeletonization]
+
+  - id: deep-particle
+    title: DeepParticle marine plastic particle dataset
+    landing_url: https://doi.org/10.6084/m9.figshare.26511253
+    license_spdx: Apache-2.0
+    redistribution: allowed
+    source_tier: core
+    exact_files:
+      - image: 08_03_micro_line_only1.JPG
+        annotation: 08_03_micro_line_only1.JPG.tsv
+    selection_requirements:
+      include_noise_negative: true
+      include_mixed_morphology: true
+      include_micro_meso_macro: true
+    tasks: [detection, classification, fibers, irregular-fragments, negatives]
+
+  - id: kaolin-particle-masks
+    title: Real and synthetic 2D binary masks of kaolin clay particles
+    landing_url: https://doi.org/10.17632/45rtjx6pdt.1
+    license_spdx: CC-BY-4.0
+    redistribution: allowed
+    attribution_required: true
+    source_tier: extended
+    ground_truth_status: weak-labels-require-review
+    tasks: [morphology, shape-distribution, synthetic-vs-real]
+
+fixtures:
+  # One entry per exact image, mask, or native file after extraction.
+  # Every gold fixture must supply source_sha256, local_sha256, derivation,
+  # mask paths, ignore mask, edge policy, calibration, and review status.
+  - id: example-placeholder
+    enabled: false
+    source_id: nist-lnp-cryoem
+    original_filename: null
+    source_sha256: null
+    local_path: null
+    local_sha256: null
+    image:
+      width: null
+      height: null
+      channels: null
+      bit_depth: null
+      pixel_size: null
+      pixel_unit: null
+    labels:
+      instance_mask_path: null
+      semantic_mask_path: null
+      ignore_mask_path: null
+      edge_policy: include-mask-exclude-morphometry
+      object_count_including_edges: null
+      object_count_excluding_edges: null
+    derivation:
+      is_derived: false
+      operations: []
+    review:
+      status: unreviewed
+      reviewer: null
+      reviewed_at: null
+    tasks: []
+    failure_modes: []
+    split: null

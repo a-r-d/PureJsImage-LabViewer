@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
+import {
+  evaluateParticleSegmentation,
+  labelBinaryMaskForEvaluation,
+} from '../src/particle-evaluation.js'
 import { analyzeParticles } from '../src/particles.js'
 import { applyThreshold, binaryMorphology } from '../src/segmentation.js'
-import {
-  generatedParticleBenchmarkFixture,
-  labelBinaryMask,
-} from './particle-benchmark-fixtures.js'
+import { generatedParticleBenchmarkFixture } from './particle-benchmark-fixtures.js'
 
 const FILTERS = {
   edgePolicy: 'include' as const,
@@ -36,6 +37,16 @@ describe('particle grayscale-to-measurement benchmark corpus', () => {
   it('counts more than 900 seeded particles across density, shading, noise, and polarity cases', () => {
     let totalTruth = 0
     let totalPredicted = 0
+    let totalMatched = 0
+    let totalTruthObjects = 0
+    let totalPredictedObjects = 0
+    let totalMaskIntersection = 0
+    let totalMaskUnion = 0
+    let maximumMergeRate = 0
+    let maximumSplitRate = 0
+    let minimumBoundaryF1 = 1
+    let retainedBytes = 0
+    const started = performance.now()
     const failures: string[] = []
     for (const [id, seed, polarity, columns, rows, gradient, noise] of SCENARIOS) {
       const fixture = generatedParticleBenchmarkFixture(id, {
@@ -63,7 +74,7 @@ describe('particle grayscale-to-measurement benchmark corpus', () => {
         fixture.height,
         { kind: 'remove-small-objects', minimumSize: 12, connectivity: 8 },
       )
-      const labels = labelBinaryMask(cleaned, fixture.width, fixture.height)
+      const labels = labelBinaryMaskForEvaluation(cleaned, fixture.width, fixture.height)
       const result = analyzeParticles(
         labels,
         Float64Array.from(fixture.image.values),
@@ -73,12 +84,47 @@ describe('particle grayscale-to-measurement benchmark corpus', () => {
       )
       totalTruth += fixture.objectCount
       totalPredicted += result.measurements.length
+      const evaluation = evaluateParticleSegmentation({
+        predictedLabels: labels,
+        truthLabels: fixture.truth,
+        width: fixture.width,
+        height: fixture.height,
+      })
+      totalMatched += evaluation.matches.length
+      totalTruthObjects += evaluation.truthCount.includingBorder
+      totalPredictedObjects += evaluation.predictedCount.includingBorder
+      maximumMergeRate = Math.max(maximumMergeRate, evaluation.mergeRate)
+      maximumSplitRate = Math.max(maximumSplitRate, evaluation.splitRate)
+      minimumBoundaryF1 = Math.min(minimumBoundaryF1, evaluation.boundaryF1)
+      for (let index = 0; index < labels.length; index += 1) {
+        const predictedForeground = labels[index] !== 0
+        const truthForeground = fixture.truth[index] !== 0
+        if (predictedForeground && truthForeground) totalMaskIntersection += 1
+        if (predictedForeground || truthForeground) totalMaskUnion += 1
+      }
+      retainedBytes = Math.max(
+        retainedBytes,
+        fixture.image.values.byteLength +
+          fixture.truth.byteLength +
+          threshold.mask.byteLength +
+          cleaned.byteLength +
+          labels.byteLength +
+          result.filteredLabels.byteLength,
+      )
       if (result.measurements.length !== fixture.objectCount)
         failures.push(`${id}: expected ${fixture.objectCount}, got ${result.measurements.length}`)
     }
     expect(totalTruth).toBeGreaterThan(900)
     expect(failures, failures.join('\n')).toEqual([])
     expect(totalPredicted).toBe(totalTruth)
+    expect(totalMatched / totalPredictedObjects).toBeGreaterThanOrEqual(0.99)
+    expect(totalMatched / totalTruthObjects).toBeGreaterThanOrEqual(0.99)
+    expect(maximumMergeRate).toBe(0)
+    expect(maximumSplitRate).toBe(0)
+    expect(totalMaskIntersection / totalMaskUnion).toBeGreaterThanOrEqual(0.9)
+    expect(minimumBoundaryF1).toBeGreaterThanOrEqual(0.9)
+    expect(performance.now() - started).toBeLessThan(5_000)
+    expect(retainedBytes).toBeLessThan(16 * 1_024 * 1_024)
   })
 
   it('records a controlled undercount and proves a local-threshold refinement improves recall', () => {
@@ -110,7 +156,7 @@ describe('particle grayscale-to-measurement benchmark corpus', () => {
         { kind: 'remove-small-objects', minimumSize: 12, connectivity: 8 },
       )
       return analyzeParticles(
-        labelBinaryMask(cleaned, fixture.width, fixture.height),
+        labelBinaryMaskForEvaluation(cleaned, fixture.width, fixture.height),
         Float64Array.from(fixture.image.values),
         fixture.width,
         fixture.height,

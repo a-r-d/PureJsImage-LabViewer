@@ -479,6 +479,7 @@ function implementation(operationId: MaterialsOperationId): OperationImplementat
             windowRadius: numberParameter(value, 'windowRadius'),
             sauvolaK: numberParameter(value, 'sauvolaK'),
             dynamicRange: numberParameter(value, 'dynamicRange'),
+            minimumCoefficientOfVariation: numberParameter(value, 'minimumCoefficientOfVariation'),
             noDataPolicy: stringParameter(value, 'noDataPolicy') as ThresholdNoDataPolicy,
             signal: request.signal,
           },
@@ -509,7 +510,12 @@ function implementation(operationId: MaterialsOperationId): OperationImplementat
           valueType: scalarResultValueTypeId,
           value: result.threshold,
           nanPolicy: Number.isNaN(result.threshold) ? 'allow' : 'forbid',
-          metadata: { adaptive: value['method'] === 'sauvola' },
+          metadata: {
+            adaptive: value['method'] === 'sauvola',
+            coefficientOfVariation: result.coefficientOfVariation,
+            lowInformationRejected: result.lowInformationRejected,
+            minimumCoefficientOfVariation: value['minimumCoefficientOfVariation'] ?? 0,
+          },
         })
         return [
           { value: owned.dataset, ownershipIdentity: result.mask, release: () => owned.release() },
@@ -594,6 +600,7 @@ function implementation(operationId: MaterialsOperationId): OperationImplementat
         operationId === MATERIALS_OPERATION_IDS.watershed
           ? watershedSeparate(binary.data, binary.width, binary.height, {
               minimumPeakDistance: numberParameter(value, 'minimumPeakDistance'),
+              minimumPeakHeight: numberParameter(value, 'minimumPeakHeight'),
               signal: request.signal,
             })
           : binaryMorphology(binary.data, binary.width, binary.height, {

@@ -124,6 +124,7 @@ async function executeThreshold(
       windowRadius: 2,
       sauvolaK: 0.2,
       dynamicRange: 128,
+      minimumCoefficientOfVariation: 0,
       noDataPolicy: 'background',
     },
     inputs: [source, roi],

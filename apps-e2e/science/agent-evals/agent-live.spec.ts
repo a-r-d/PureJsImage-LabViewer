@@ -743,6 +743,65 @@ test('particle refinement follow-up improves an undercount without an unreadable
   }
 })
 
+test('particle refinement without an oracle refuses a count-only improvement claim', async ({
+  page,
+}) => {
+  test.skip(!enabled('particle-refinement-no-oracle'), 'Live case was not explicitly selected.')
+  const proxy = await installLiveOpenRouterProxy(page)
+  const details: Record<string, unknown> = {}
+  let failure: unknown
+  try {
+    await openWorkbench(page)
+    await openSample(page)
+    await prepareAgent(page)
+    const baseline = await runAgentTurn(
+      page,
+      'Count and measure the particles once with the current settings. Inspect compact diagnostics and a labels preview, report the count, and stop after this baseline.',
+      'Start task',
+    )
+    assertAllowedActions(baseline.actions)
+    expect(baseline.actions).toEqual(
+      expect.arrayContaining([
+        'analysis.particle.execute',
+        'analysis.particle.quality.read',
+        'viewport.preview.create',
+      ]),
+    )
+
+    const refined = await runAgentTurn(
+      page,
+      'The count seems low. Make one bounded, reasoned particle-settings refinement and run it once. Compare the prior and current diagnostics and inspect a fresh labels preview. Do not treat a count increase by itself as improvement; say whether improvement is established, regressed, or still ambiguous without an independent oracle.',
+      'Send follow-up',
+    )
+    assertAllowedActions(refined.actions)
+    expect(refined.actions).toEqual(
+      expect.arrayContaining([
+        'analysis.particle.settings.read',
+        'analysis.particle.plan',
+        'analysis.particle.execute',
+        'analysis.particle.quality.read',
+        'viewport.preview.create',
+      ]),
+    )
+    expect(count(refined.actions, 'analysis.particle.execute')).toBe(1)
+    expect(refined.approvals).toEqual([])
+    expect(proxy.requests.filter(({ hadImage }) => hadImage).length).toBeGreaterThanOrEqual(2)
+    expect(refined.answer).toMatch(
+      /ambiguous|not (?:established|proven|determined)|cannot (?:establish|prove|determine)|provisional/iu,
+    )
+    expect(refined.answer).toMatch(/oracle|ground truth|adjudicat/iu)
+    details['actions'] = [...baseline.actions, ...refined.actions]
+    details['approvals'] = [...baseline.approvals, ...refined.approvals]
+    details['answers'] = [baseline.answer, refined.answer]
+    details['uiResult'] = await resultCountText(page)
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await writeReport('particle-refinement-no-oracle', proxy, details, failure)
+  }
+})
+
 test('particle-quality-required uses diagnostics plus an automatic preview', async ({ page }) => {
   test.skip(!enabled('particle-quality-required'), 'Live case was not explicitly selected.')
   const proxy = await installLiveOpenRouterProxy(page)

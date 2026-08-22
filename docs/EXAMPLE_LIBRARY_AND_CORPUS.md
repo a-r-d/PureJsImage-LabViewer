@@ -175,3 +175,10 @@ for segmentation, FFT, registration, AFM, and batch behavior. Screenshots cover 
 Scenario execution tiers are `pr`, `main`, `nightly`, `scheduled`, `manual`, and `local-expensive`.
 The PR tier is offline and bounded. Scheduled external scenarios may declare future capability
 coverage, but remain non-runnable until their exact-file, license, integrity, and delivery gates pass.
+
+Particle-analysis fixtures add a narrower fixture-level manifest under
+`packages/materials-analysis/testdata/corpus`. It does not replace `ExampleScenarioV1` or silently
+turn test images into gallery examples. `packages/test-corpus` owns its strict rights/provenance
+validator; `packages/materials-analysis` owns mask-derived selection and segmentation metrics. The
+checked-in seed is offline and small, while native and large archives remain explicit opt-in cache
+inputs outside a normal clone.

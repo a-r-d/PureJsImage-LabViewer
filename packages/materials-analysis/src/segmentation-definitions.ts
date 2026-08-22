@@ -174,6 +174,12 @@ const thresholdDescriptor = {
     windowRadius: integer('Sauvola window radius', 15, 1, 128),
     sauvolaK: number('Sauvola k', 0.2, -1, 1),
     dynamicRange: number('Sauvola dynamic range', 128, 0.000001),
+    minimumCoefficientOfVariation: number(
+      'Minimum coefficient of variation (0 disables)',
+      0,
+      0,
+      10,
+    ),
     noDataPolicy: choice(
       'No-data handling',
       ['background', 'foreground', 'propagate'] as const,
@@ -318,6 +324,7 @@ const watershedDescriptor = {
   outputs: [datasetPort('dataset')],
   parameters: objectSchema({
     minimumPeakDistance: integer('Minimum peak distance', 3, 1, 1_024),
+    minimumPeakHeight: number('Minimum peak height (0 disables)', 0, 0, 1_024),
   }),
   execution: 'global-transform' as const,
   reproducibility: { class: 'bit-exact' as const },

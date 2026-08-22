@@ -188,7 +188,17 @@ describe('science agent runtime', () => {
           workspace = { ...workspace, revision: workspace.revision + 1 }
           return { status: 'completed', particleCount: 17 }
         },
-        particleQuality: () => ({ available: true, objectCount: 17 }),
+        particleQuality: () => ({
+          available: true,
+          objectCount: 17,
+          comparison: {
+            countDelta: 2,
+            diagnosticComparison: {
+              classification: 'not-determined-without-oracle-or-visual-adjudication',
+              likelySplitOrNoiseCountDelta: 2,
+            },
+          },
+        }),
         runNamedAnalysis: async () => ({ status: 'completed' }),
         createModelPreview: async () => {
           executed.push('preview')
@@ -234,13 +244,19 @@ describe('science agent runtime', () => {
           }),
         ]),
         response([call('result', 'result.summary.read', 1, {})]),
-        response([
-          call('preview', 'viewport.preview.create', 1, {
-            scope: 'viewport',
-            width: 64,
-            height: 64,
-          }),
-        ]),
+        response([call('quality', 'analysis.particle.quality.read', 1, {})]),
+        (request: AgentModelRequest) => {
+          expect(JSON.stringify(request.messages.at(-1))).toContain(
+            'not-determined-without-oracle-or-visual-adjudication',
+          )
+          return response([
+            call('preview', 'viewport.preview.create', 1, {
+              scope: 'viewport',
+              width: 64,
+              height: 64,
+            }),
+          ])
+        },
         (request: AgentModelRequest) => {
           expect(request.messages.at(-1)).toMatchObject({ role: 'user' })
           expect(JSON.stringify(request.messages.at(-1))).toContain('data:image/png;base64')
@@ -257,12 +273,12 @@ describe('science agent runtime', () => {
           expect(JSON.stringify(request.messages.at(-1))).toContain('data:image/png;base64')
           return response(
             [],
-            'The tuned run counted 17 particles and two labels previews were inspected.',
+            'The tuned run counted 17 particles and two labels previews were inspected, but improvement remains ambiguous without an independent oracle.',
           )
         },
         (request: AgentModelRequest) => {
           expect(JSON.stringify(request.messages)).toContain(
-            'The tuned run counted 17 particles and two labels previews were inspected.',
+            'improvement remains ambiguous without an independent oracle',
           )
           expect(JSON.stringify(request.messages)).not.toContain('data:image/png;base64')
           return response([], 'The prior tuning used watershed and a 24-pixel minimum.')
@@ -295,6 +311,7 @@ describe('science agent runtime', () => {
       'analysis.particle.plan',
       'analysis.particle.execute',
       'result.summary.read',
+      'analysis.particle.quality.read',
       'viewport.preview.create',
       'viewport.preview.create',
     ])

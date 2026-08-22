@@ -26,6 +26,7 @@ describe('live scientific agent eval launcher', () => {
       'sem-particle-count',
       'split-touching-particles',
       'particle-refinement-follow-up',
+      'particle-refinement-no-oracle',
       'particle-quality-required',
       'fft-spacing',
       'surface-roughness',
