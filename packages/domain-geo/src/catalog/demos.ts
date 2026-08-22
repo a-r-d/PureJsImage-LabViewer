@@ -2,7 +2,7 @@ import type { RasterStyle } from '../model.js'
 import { KY_FROM_ABOVE_CATALOG_ID } from './ky-from-above.js'
 import {
   NOAA_DIGITAL_COAST_CATALOG_ID,
-  NOAA_PUERTO_RICO_COLLECTION_ID,
+  NOAA_PALM_COAST_COLLECTION_ID,
 } from './noaa-digital-coast.js'
 import type { CatalogAssetIdentity, CatalogDisplayPreset } from './types.js'
 
@@ -22,8 +22,8 @@ const KENTUCKY_ORTHO_STYLE: RasterStyle = Object.freeze({
   stretch: 'minmax' as const,
 })
 
-const NOAA_TERRAIN_STYLE: RasterStyle = Object.freeze({
-  mapping: { gray: 0 },
+const PALM_COAST_STYLE: RasterStyle = Object.freeze({
+  mapping: { red: 0, green: 1, blue: 2 },
   stretch: 'percentile' as const,
   percentileLow: 2,
   percentileHigh: 98,
@@ -33,6 +33,8 @@ const NOAA_TERRAIN_STYLE: RasterStyle = Object.freeze({
 /**
  * Pinned HTTPS catalog identities that open as Ready layers from Atlas.
  * Collection IDs stay in registry entries; these item IDs are curated demos.
+ * Palm Coast uses a filled inland tile (`474000e3303000n`). The mosaic origin
+ * cell `456000e3342000n` is ~99% zero-fill and renders as a white sliver.
  */
 export const ATLAS_START_DEMOS: readonly AtlasStartDemo[] = Object.freeze([
   Object.freeze({
@@ -65,17 +67,36 @@ export const ATLAS_START_DEMOS: readonly AtlasStartDemo[] = Object.freeze([
     ]),
   }),
   Object.freeze({
-    id: 'noaa-puerto-rico-cudem',
-    title: 'NOAA Puerto Rico terrain',
+    id: 'noaa-palm-coast-rgbn',
+    title: 'Palm Coast aerial',
     summary:
-      'CUDEM 1/3 arc-second topobathy over eastern Puerto Rico. Grayscale 2–98 percentile stretch with nodata transparent.',
+      'NOAA Digital Coast 4-band RGBN over Palm Coast, Florida. Natural color on samples 0,1,2 with a 2–98 percentile stretch. This item is a filled 25 cm tile, not the empty origin cell of the mosaic. Band 4 is gray, not NIR, so color infrared is not offered.',
     catalogTitle: 'NOAA Digital Coast',
     identity: Object.freeze({
       catalogId: NOAA_DIGITAL_COAST_CATALOG_ID,
-      collectionId: NOAA_PUERTO_RICO_COLLECTION_ID,
-      itemId: 'ncei13_n17x75_w065x75_2022v1',
-      assetKey: 'ncei13_n17x75_w065x75_2022v1',
+      collectionId: NOAA_PALM_COAST_COLLECTION_ID,
+      itemId: '474000e3303000n',
+      assetKey: '474000e3303000n',
     }),
-    style: NOAA_TERRAIN_STYLE,
+    style: PALM_COAST_STYLE,
+    presets: Object.freeze([
+      Object.freeze({
+        id: 'natural-color',
+        label: 'Natural color',
+        style: PALM_COAST_STYLE,
+      }),
+    ]),
   }),
 ])
+
+export function curatedPresetsForIdentity(
+  identity: CatalogAssetIdentity,
+): readonly CatalogDisplayPreset[] | undefined {
+  return ATLAS_START_DEMOS.find(
+    (demo) =>
+      demo.identity.catalogId === identity.catalogId &&
+      demo.identity.collectionId === identity.collectionId &&
+      demo.identity.itemId === identity.itemId &&
+      demo.identity.assetKey === identity.assetKey,
+  )?.presets
+}

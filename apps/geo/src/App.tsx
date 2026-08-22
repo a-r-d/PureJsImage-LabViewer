@@ -6,6 +6,7 @@ import {
 import type { SourceId, WorkerDiagnostics } from '@pji-workbench/contracts'
 import type {
   CatalogAssetIdentity,
+  CatalogDisplayPreset,
   CatalogSearchPage,
   CatalogService,
   CatalogSourceCandidate,
@@ -21,10 +22,12 @@ import {
   CATALOG_REGISTRY,
   catalogById,
   createCatalogService,
+  curatedPresetsForIdentity,
   displayPresetsForCandidate,
   formatGeoCursorReadout,
   GEO_FILE_ACCEPT,
   geoUiContributions,
+  mergeDisplayPresets,
   parseAtlasDeepLink,
   registerCrsDefinition,
   serializeAtlasDeepLink,
@@ -32,6 +35,7 @@ import {
 import {
   createGeoAgentGateway,
   createGeoAgentPolicy,
+  GeoControllerError,
   type GeoViewportPort,
   GeoWorkbenchController,
   GeoWorkflowRunner,
@@ -213,6 +217,9 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [viewBbox, setViewBbox] = useState<StacBbox | undefined>()
   const [blinkInterval, setBlinkInterval] = useState(750)
   const [drawingTool, setDrawingTool] = useState<GeoDrawingTool>('pan')
+  const [openFailure, setOpenFailure] = useState<
+    Readonly<{ code: string; message: string }> | undefined
+  >()
   const inspectorProjectRef = useRef(snapshot.project.id)
   const lifecycleGenerationRef = useRef(0)
 
@@ -356,7 +363,9 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       candidate: CatalogSourceCandidate,
       inspect: boolean,
       verifiedReport?: RasterAssetPreflight,
+      curatedPresets?: readonly CatalogDisplayPreset[],
     ) => {
+      setOpenFailure(undefined)
       const existing = existingCatalogSource(controller, candidate)
       if (existing !== undefined && controller.bindingForSource(existing.id) !== undefined) {
         const layer = controller
@@ -382,7 +391,10 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       if (verifiedReport?.compatibility === 'ready') {
         verifiedPreflightsRef.current.set(new URL(candidate.href).href, verifiedReport)
       }
-      const presets = displayPresetsForCandidate(candidate)
+      const presets = mergeDisplayPresets(
+        displayPresetsForCandidate(candidate),
+        curatedPresets ?? curatedPresetsForIdentity(candidate),
+      )
       openAbortRef.current?.abort()
       const abort = new AbortController()
       openAbortRef.current = abort
@@ -404,7 +416,10 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             })}`,
           )
         })
-        .catch(() => undefined)
+        .catch((error: unknown) => {
+          if (isAbortFailure(error)) return
+          // The controller publishes a typed error snapshot for executeAction failures.
+        })
     },
     [controller, selectTab],
   )
@@ -413,15 +428,56 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
     (demoId: string) => {
       const demo = ATLAS_START_DEMOS.find(({ id }) => id === demoId)
       const entry = demo === undefined ? undefined : catalogById(demo.identity.catalogId)
-      if (demo === undefined || entry === undefined) return
+      if (demo === undefined || entry === undefined) {
+        setOpenFailure({
+          code: 'CATALOG_NOT_FOUND',
+          message:
+            demo === undefined
+              ? `Demo ${demoId} is unavailable.`
+              : `Catalog ${demo.identity.catalogId} is unavailable.`,
+        })
+        return
+      }
       setDemoOpen(false)
-      void semanticCatalogService.resolveDeepLink(entry, demo.identity).then((candidate) => {
-        if (candidate !== undefined) {
-          openCatalogAsset({ ...candidate, style: demo.style }, demo.inspect === true)
+      setOpenFailure(undefined)
+      openAbortRef.current?.abort()
+      const abort = new AbortController()
+      openAbortRef.current = abort
+      void (async () => {
+        try {
+          await replaceProjectIfNeeded(controller, demo.identity, demo.title, abort.signal, () => {
+            projectViewportRef.current = { kind: 'auto' }
+          })
+          const candidate = await semanticCatalogService.resolveDeepLink(
+            entry,
+            demo.identity,
+            abort.signal,
+          )
+          if (abort.signal.aborted) return
+          if (candidate === undefined) {
+            setOpenFailure({
+              code: 'CATALOG_NOT_FOUND',
+              message: `Catalog asset ${demo.identity.assetKey} was not found.`,
+            })
+            return
+          }
+          openCatalogAsset(
+            { ...candidate, style: demo.style },
+            demo.inspect === true,
+            undefined,
+            demo.presets,
+          )
+        } catch (error: unknown) {
+          if (isAbortFailure(error)) return
+          setOpenFailure({
+            code: 'CATALOG_NOT_FOUND',
+            message:
+              error instanceof Error ? error.message : 'Demo catalog asset could not be resolved.',
+          })
         }
-      })
+      })()
     },
-    [openCatalogAsset, semanticCatalogService],
+    [controller, openCatalogAsset, semanticCatalogService],
   )
 
   useEffect(() => {
@@ -433,6 +489,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       if (link === undefined) return
       abort?.abort()
       abort = new AbortController()
+      const signal = abort.signal
       if (link.kind === 'workflow') {
         void workflowRunner
           .startFromIdentities(link.workflowId, link.parameters, link.sources)
@@ -448,6 +505,12 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
         const sourceIds: string[] = []
         const newlyOpenedSourceIds: string[] = []
         try {
+          if (link.kind === 'asset') {
+            await replaceProjectIfNeeded(controller, link, undefined, signal, () => {
+              projectViewportRef.current = { kind: 'auto' }
+            })
+            if (cancelled || signal.aborted) return
+          }
           for (const identity of identities) {
             const existing = existingCatalogSource(controller, identity, new Set(sourceIds))
             if (existing !== undefined && controller.bindingForSource(existing.id) !== undefined) {
@@ -457,14 +520,13 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             const entry = catalogById(identity.catalogId)
             if (entry === undefined)
               throw new Error(`Catalog ${identity.catalogId} is unavailable.`)
-            const candidate = await semanticCatalogService.resolveDeepLink(
-              entry,
-              identity,
-              abort?.signal,
-            )
+            const candidate = await semanticCatalogService.resolveDeepLink(entry, identity, signal)
             if (candidate === undefined)
               throw new Error(`Catalog asset ${identity.assetKey} was not found.`)
-            const presets = displayPresetsForCandidate(candidate)
+            const presets = mergeDisplayPresets(
+              displayPresetsForCandidate(candidate),
+              curatedPresetsForIdentity(identity),
+            )
             const selectedPreset = presets.find(({ id }) => id === link.presetId)
             const result = await controller.executeAction(
               'geo.source.open_catalog_asset',
@@ -475,13 +537,13 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                     : { ...candidate, style: selectedPreset.style },
                 presets,
               },
-              abort?.signal,
+              signal,
             )
             const sourceId = actionResultId(result, 'sourceId')
             sourceIds.push(sourceId)
             newlyOpenedSourceIds.push(sourceId)
           }
-          if (cancelled || abort?.signal.aborted) return
+          if (cancelled || signal.aborted) return
           if (link.kind === 'comparison') {
             const layerIds = sourceIds.flatMap((sourceId) =>
               controller
@@ -504,12 +566,21 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               ? 'xray'
               : (link.inspector ?? (link.kind === 'asset' && link.inspect ? 'xray' : 'layers')),
           )
-        } catch {
+        } catch (error) {
           await Promise.all(
             newlyOpenedSourceIds.map((sourceId) =>
               controller.closeSource(sourceId, 'remove').catch(() => undefined),
             ),
           )
+          if (!cancelled && !isAbortFailure(error)) {
+            setOpenFailure({
+              code: 'CATALOG_NOT_FOUND',
+              message:
+                error instanceof Error
+                  ? error.message
+                  : 'Catalog asset could not be opened from this link.',
+            })
+          }
         }
       })()
     }
@@ -559,6 +630,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
           diagnostics,
           activeOverview: selectedBinding.activeOverview,
         })
+  const publishedError = snapshot.error ?? openFailure
 
   const invoke = useCallback(
     (id: Parameters<GeoWorkbenchController['executeAction']>[0], input: unknown) => {
@@ -911,9 +983,9 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
             xray={xray}
           />
         </main>
-        {snapshot.error === undefined ? null : (
+        {publishedError === undefined ? null : (
           <div className="geo-error" data-testid="open-error">
-            <ErrorState message={snapshot.error.message} title={errorTitle(snapshot.error.code)} />
+            <ErrorState message={publishedError.message} title={errorTitle(publishedError.code)} />
           </div>
         )}
         <footer className="status-bar">
@@ -927,8 +999,8 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
                 ? `${snapshot.project.sources.length}/32 sources`
                 : `${xray.rangeRequests} ranges · ${
                     xray.percentFetched === undefined
-                      ? 'n/a fetched'
-                      : `${xray.percentFetched.toFixed(1)}% fetched`
+                      ? 'n/a of object'
+                      : `${xray.percentFetched.toFixed(1)}% of object`
                   }`}
           </span>
         </footer>
@@ -1056,15 +1128,35 @@ function existingCatalogSource(
   })
 }
 
+async function replaceProjectIfNeeded(
+  controller: GeoWorkbenchController,
+  identity: CatalogAssetIdentity,
+  title: string | undefined,
+  signal: AbortSignal,
+  resetViewport: () => void,
+): Promise<void> {
+  const current = existingCatalogSource(controller, identity)
+  if (current !== undefined && controller.bindingForSource(current.id) !== undefined) return
+  if (controller.getSnapshot().project.sources.length === 0) return
+  await controller.executeAction('geo.project.new', title === undefined ? {} : { title }, signal)
+  resetViewport()
+}
+
 function clearCatalogHash(): void {
   if (parseAtlasDeepLink(window.location.hash) !== undefined) {
     window.history.replaceState(null, '', window.location.pathname)
   }
 }
 
+function isAbortFailure(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') return true
+  return error instanceof GeoControllerError && error.code === 'ABORTED'
+}
+
 function errorTitle(code: string): string {
   if (code === 'CRS_INCOMPATIBLE') return 'Raster CRS is incompatible'
   if (code === 'SOURCE_LIMIT') return 'Source limit reached'
+  if (code === 'CATALOG_NOT_FOUND') return 'Catalog asset was not found'
   return 'Could not complete this Atlas action'
 }
 

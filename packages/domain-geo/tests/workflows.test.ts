@@ -6,6 +6,7 @@ import {
   displayPresetsForCandidate,
   GEO_WORKFLOW_RECIPES,
   geoDomainProfile,
+  mergeDisplayPresets,
   workflowAvailability,
 } from '../src/index.js'
 
@@ -77,6 +78,36 @@ describe('GeoWorkflowRecipe registry', () => {
         bands: [...candidate.bands.slice(0, 3), { index: 3, commonName: 'nir' }],
       }).map(({ id }) => id),
     ).toEqual(['natural-color', 'color-infrared'])
+  })
+
+  it('keeps curated CIR when STAC band names omit NIR', () => {
+    const candidate = {
+      catalogId: 'fixture',
+      catalogTitle: 'Fixture',
+      collectionId: 'imagery',
+      itemId: 'four-band',
+      assetKey: 'data',
+      href: 'https://fixtures.invalid/four-band.tif',
+      label: 'Four band',
+      roles: ['data'],
+      bandCount: 4,
+      bands: [
+        { index: 0, commonName: 'red' },
+        { index: 1, commonName: 'green' },
+        { index: 2, commonName: 'blue' },
+        { index: 3, commonName: 'gray' },
+      ],
+    }
+    const curated = [
+      {
+        id: 'color-infrared',
+        label: 'Color infrared',
+        style: { mapping: { red: 3, green: 0, blue: 1 }, stretch: 'minmax' as const },
+      },
+    ]
+    expect(
+      mergeDisplayPresets(displayPresetsForCandidate(candidate), curated).map(({ id }) => id),
+    ).toEqual(['color-infrared', 'natural-color'])
   })
 
   it('records terrain and Landsat scientific constraints explicitly', () => {

@@ -13,6 +13,7 @@ import {
   collectionSummariesFromRegistry,
   createGeoProject,
   createGeoRasterSource,
+  curatedPresetsForIdentity,
   GeoValidationError,
   KY_FROM_ABOVE_CATALOG,
   parseAtlasCatalogSession,
@@ -58,12 +59,27 @@ describe('catalog registry', () => {
   it('pins launch demos to registry catalog identities', () => {
     expect(ATLAS_START_DEMOS.map((demo) => demo.id)).toEqual([
       'kentucky-frankfort-ortho',
-      'noaa-puerto-rico-cudem',
+      'noaa-palm-coast-rgbn',
     ])
+    expect(ATLAS_START_DEMOS[0]?.presets?.map(({ id }) => id)).toEqual([
+      'natural-color',
+      'color-infrared',
+    ])
+    expect(ATLAS_START_DEMOS[1]?.identity).toMatchObject({
+      collectionId: 'noaa-rgbn-palm-coast-10213',
+      itemId: '474000e3303000n',
+      assetKey: '474000e3303000n',
+    })
     for (const demo of ATLAS_START_DEMOS) {
       expect(catalogById(demo.identity.catalogId)?.id).toBe(demo.identity.catalogId)
       expect(demo.style.mapping).toBeDefined()
     }
+    const kentucky = ATLAS_START_DEMOS.find(({ id }) => id === 'kentucky-frankfort-ortho')
+    if (kentucky === undefined) throw new Error('Kentucky demo is missing')
+    expect(curatedPresetsForIdentity(kentucky.identity)?.map(({ id }) => id)).toEqual([
+      'natural-color',
+      'color-infrared',
+    ])
   })
 
   it('surfaces Landsat origin limits through the generic protocol hint', () => {

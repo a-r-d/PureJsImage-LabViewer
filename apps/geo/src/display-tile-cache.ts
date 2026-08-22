@@ -60,6 +60,10 @@ export class DisplayTileCache<T> {
     return this.#records.get(key)?.value
   }
 
+  forEach(callback: (key: string, value: T) => void): void {
+    for (const [key, record] of this.#records) callback(key, record.value)
+  }
+
   set(
     key: string,
     entry: DisplayTileCacheEntry<T>,

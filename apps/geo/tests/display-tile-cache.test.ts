@@ -27,4 +27,19 @@ describe('DisplayTileCache', () => {
     expect(cache.peek('old')).toBeUndefined()
     expect(cache.diagnostics()).toMatchObject({ bytes: 10, tiles: 2 })
   })
+
+  it('enumerates cached tiles without counting hits', () => {
+    const cache = new DisplayTileCache<string>(8, 2)
+    const dispose = () => undefined
+    cache.set('a', { value: 'a', bytes: 4, dispose })
+    cache.set('b', { value: 'b', bytes: 4, dispose })
+    const seen: string[] = []
+    cache.forEach((key, value) => {
+      seen.push(`${key}:${value}`)
+    })
+    expect(seen.sort()).toEqual(['a:a', 'b:b'])
+    expect(cache.diagnostics()).toMatchObject({ hits: 0, misses: 0, tiles: 2 })
+    expect(cache.peek('a')).toBe('a')
+    expect(cache.diagnostics()).toMatchObject({ hits: 0 })
+  })
 })

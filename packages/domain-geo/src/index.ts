@@ -7,7 +7,7 @@ export {
 } from './catalog/candidates.js'
 export { parseAtlasDeepLink, serializeAtlasDeepLink } from './catalog/deep-link.js'
 export type { AtlasStartDemo } from './catalog/demos.js'
-export { ATLAS_START_DEMOS } from './catalog/demos.js'
+export { ATLAS_START_DEMOS, curatedPresetsForIdentity } from './catalog/demos.js'
 export {
   KY_FROM_ABOVE_CATALOG,
   KY_FROM_ABOVE_CATALOG_ID,
@@ -231,6 +231,7 @@ export {
   GEO_WORKFLOW_RECIPES,
   GEO_WORKFLOW_SCHEMA_VERSION,
   geoWorkflowById,
+  mergeDisplayPresets,
   workflowAssetIdentity,
   workflowAvailability,
 } from './workflows.js'

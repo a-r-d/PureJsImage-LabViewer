@@ -353,6 +353,13 @@ class CanvasGeoRenderer {
       this.#context.clip()
     }
     for (const layer of layers) {
+      const placeholders: CachedTile[] = []
+      this.#cache.forEach((tileId, cached) => {
+        if (cached.layerId !== layer.id || required.has(tileId)) return
+        placeholders.push(cached)
+      })
+      placeholders.sort((left, right) => cachedTileWorldArea(right) - cachedTileWorldArea(left))
+      for (const cached of placeholders) this.#drawTile(cached, projectAdapter, camera, layer)
       for (const tileId of required) {
         const cached = this.#cache.peek(tileId)
         if (cached?.layerId !== layer.id) continue
@@ -1293,6 +1300,7 @@ export function GeoViewport({
     const endPointerInteraction = (): void => {
       dragPoint = undefined
       swipeDragging = false
+      setPanPointer(canvas, 'idle')
     }
     const eventWorld = (event: PointerEvent): Point => {
       const bounds = canvas.getBoundingClientRect()
@@ -1336,6 +1344,7 @@ export function GeoViewport({
       swipeDragging = Math.abs(event.clientX - divider) <= 12
       dragPoint = { x: event.clientX, y: event.clientY }
       canvas.setPointerCapture(event.pointerId)
+      setPanPointer(canvas, swipeDragging ? 'swipe' : 'panning')
       if (swipeDragging) updateSwipe(event.clientX)
     }
     const onPointerMove = (event: PointerEvent): void => {
@@ -1344,12 +1353,15 @@ export function GeoViewport({
       if (dragPoint === undefined) return
       if (swipeDragging) updateSwipe(event.clientX)
       else {
-        camera = panCameraInSpace(
-          camera,
-          { x: event.clientX - dragPoint.x, y: event.clientY - dragPoint.y },
-          viewport,
-          cameraAdapter,
-          limits,
+        const screenDelta = { x: event.clientX - dragPoint.x, y: event.clientY - dragPoint.y }
+        if (screenDelta.x === 0 && screenDelta.y === 0) return
+        const previous = camera
+        camera = panCameraInSpace(camera, screenDelta, viewport, cameraAdapter, limits)
+        setPanPointer(
+          canvas,
+          previous.center.x === camera.center.x && previous.center.y === camera.center.y
+            ? 'pan-edge'
+            : 'panning',
         )
         dragPoint = { x: event.clientX, y: event.clientY }
         scheduleTiles()
@@ -1482,6 +1494,9 @@ export function GeoViewport({
         aria-label="Geo raster viewport. Arrow keys pan, plus and minus zoom, 0 fits the project, F fits the selected layer, and 1 shows native resolution. Shift plus left or right arrow adjusts a swipe divider."
         data-comparison-mode={comparison.mode}
         data-drawing-tool={drawingTool}
+        data-pan-edge="false"
+        data-panning="false"
+        data-swipe-dragging="false"
         data-swipe-position={comparison.mode === 'swipe' ? comparison.swipePosition : undefined}
         ref={canvasRef}
         role="img"
@@ -1814,6 +1829,15 @@ function bandTransform(
   return { scale: band?.scale ?? 1, offset: band?.offset ?? 0 }
 }
 
+function cachedTileWorldArea(cached: CachedTile): number {
+  const origin = cached.adapter.pixelToWorld({ x: cached.region.x, y: cached.region.y })
+  const opposite = cached.adapter.pixelToWorld({
+    x: cached.region.x + cached.width,
+    y: cached.region.y + cached.height,
+  })
+  return Math.abs((opposite.x - origin.x) * (opposite.y - origin.y))
+}
+
 function displayTileId(
   context: LayerContext,
   candidate: Readonly<{ x: number; y: number; width: number; height: number }>,
@@ -2120,4 +2144,16 @@ function finiteUnknown(value: unknown, label: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value))
     throw new Error(`Viewport ${label} must be finite.`)
   return value
+}
+
+function setPanPointer(
+  canvas: HTMLCanvasElement,
+  state: 'idle' | 'panning' | 'pan-edge' | 'swipe',
+): void {
+  canvas.setAttribute(
+    'data-panning',
+    state === 'panning' || state === 'pan-edge' ? 'true' : 'false',
+  )
+  canvas.setAttribute('data-pan-edge', state === 'pan-edge' ? 'true' : 'false')
+  canvas.setAttribute('data-swipe-dragging', state === 'swipe' ? 'true' : 'false')
 }

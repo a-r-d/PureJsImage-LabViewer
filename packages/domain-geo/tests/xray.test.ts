@@ -184,6 +184,83 @@ describe('COG X-ray and readout', () => {
     expect(report.issues[0]?.code).toBe('STRIPED_IMAGE')
   })
 
+  it('reports unique object coverage, not transferred bytes, as percent fetched', () => {
+    const source = {
+      sourceId: 'source-1' as SourceId,
+      documentId: 'document-1',
+      generation: 1,
+      identity: {},
+      source: {
+        kind: 'remote' as const,
+        name: 'north-up.tif',
+        size: 1_000,
+        url: 'https://x/n.tif',
+      },
+      reader: { id: 'purejsimage/tiff', version: '1.0.0', format: 'TIFF' },
+      metadata: {},
+      datasets: [],
+    } as unknown as OpenedSourceDescriptor
+    const dataset = {
+      id: 'series-0',
+      identity: {},
+      sampleType: 'uint8',
+      axes: [
+        { id: 'x', kind: 'spatial', length: 4, coordinates: { type: 'index' } },
+        { id: 'y', kind: 'spatial', length: 2, coordinates: { type: 'index' } },
+      ],
+      components: [{ id: '0', kind: 'intensity' }],
+      levels: [],
+      capabilities: {
+        regionReads: true,
+        resolutionLevels: false,
+        planeReads: { kind: 'any-axis-pair' },
+      },
+    } satisfies DatasetDescriptor
+    const diagnostics: WorkerDiagnostics = {
+      epoch: 1,
+      sources: [
+        {
+          id: source.sourceId,
+          kind: 'remote',
+          size: 1_000,
+          revision: 1,
+          rangeRequests: 604,
+          rangeBytesFetched: 2_292,
+          rangeCacheBytes: 80,
+          rangeCacheHits: 40,
+          rangeCacheMisses: 564,
+          uniqueBytes: 80,
+          openDatasets: 1,
+        },
+      ],
+      aggregate: {
+        openSources: 1,
+        openDatasets: 1,
+        pendingRequests: 0,
+        rangeCacheBytes: 80,
+        tileRuntimeBytes: 0,
+      },
+      pendingRequests: 0,
+      tileRuntime: null,
+      releases: { documents: 0, datasets: 0, tiles: 0, runtimes: 0 },
+      limits: {
+        maxOpenSources: 8,
+        maxDatasetsPerSource: 8,
+        maxRangeCacheBytes: 32 * 1_024 * 1_024,
+        maxTileRuntimeBytes: 192 * 1_024 * 1_024,
+        maxInFlightRequests: 32,
+      },
+    }
+    const report = buildCogXrayReport({
+      source,
+      dataset,
+      diagnostics,
+      activeOverview: 0,
+    })
+    expect(report.bytesFetched).toBe(2_292)
+    expect(report.percentFetched).toBe(8)
+  })
+
   it('does not treat the GeoZarr root metadata size as the complete store size', () => {
     const source = {
       sourceId: 'source-zarr' as SourceId,

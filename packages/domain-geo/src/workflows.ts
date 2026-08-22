@@ -9,6 +9,7 @@ import {
 } from './catalog/noaa-digital-coast.js'
 import type {
   CatalogAssetIdentity,
+  CatalogDisplayPreset,
   CatalogRegistryEntry,
   CatalogSourceCandidate,
 } from './catalog/types.js'
@@ -1014,6 +1015,22 @@ export function displayPresetsForCandidate(
     })
   }
   return presets
+}
+
+/** Curated demo presets win on id collision so advertised CIR is not dropped. */
+export function mergeDisplayPresets(
+  discovered: readonly CatalogDisplayPreset[],
+  curated: readonly CatalogDisplayPreset[] | undefined,
+): readonly CatalogDisplayPreset[] {
+  if (curated === undefined || curated.length === 0) return discovered
+  const merged: CatalogDisplayPreset[] = []
+  const seen = new Set<string>()
+  for (const preset of [...curated, ...discovered]) {
+    if (seen.has(preset.id)) continue
+    seen.add(preset.id)
+    merged.push(preset)
+  }
+  return merged
 }
 
 export function workflowAssetIdentity(candidate: CatalogSourceCandidate): CatalogAssetIdentity {

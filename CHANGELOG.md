@@ -53,6 +53,23 @@ The application is not yet versioned for release (`0.0.0`).
 
 ### Fixed
 
+- Atlas map chrome fills the main pane after a layer opens. `.geo-viewport-stack` used
+  `auto` plus `1fr` even when the opening banner was gone, so the canvas sat in the auto
+  row and left a black strip under the map. See `docs/ATLAS_UX_ASSESSMENT.md`.
+- Atlas launch demos keep Kentucky ortho as the hero and open a filled Palm Coast FL
+  RGBN tile (`474000e3303000n`) instead of unshaded NOAA Puerto Rico CUDEM. The mosaic
+  origin cell `456000e3342000n` is ~99% zero-fill and is not used as a launch demo.
+  CUDEM stays in Terrain Lab. Demo catalog resolve failures are visible. Kentucky CIR
+  is the curated demo preset, not inferred from STAC band names.
+- Atlas imaging Workers prefer 16 MiB of HTTP range cache per source (still capped by the
+  32 MiB global budget). COG X-ray “Source fetched” is unique object coverage, so transfer
+  above 100% of the object is no longer presented as healthy coverage.
+- Atlas keeps last-overview display tiles on screen while the required zoom/style tiles
+  load, so the map does not flash black.
+- Atlas pan uses a grab cursor, grabbing while dragging, and not-allowed when the camera
+  is already at the raster edge so a stuck pan is visible.
+- Atlas launch demos start a new project when the current sources are a different scene,
+  so Kentucky after Palm Coast is not refused as mixed-CRS composition.
 - Overlay tiles copy into an ArrayBuffer-backed `ImageData` buffer so Science typecheck accepts
   the canvas constructor.
 - Replacement analysis drops previous overlay tiles and large chart series from React before the

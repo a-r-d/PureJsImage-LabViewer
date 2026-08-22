@@ -256,7 +256,8 @@ export interface ImagingWorkerHostOptions {
 }
 
 const MiB = 1_024 * 1_024
-const PREFERRED_RANGE_CACHE_BYTES = 512 * 1_024
+/** 512 KiB per source forced COG overview/full-res rereads; 16 MiB holds a working set. */
+const PREFERRED_RANGE_CACHE_BYTES = 16 * MiB
 const MINIMUM_RANGE_CACHE_BYTES = 64 * 1_024
 const RANGE_BLOCK_BYTES = 64 * 1_024
 

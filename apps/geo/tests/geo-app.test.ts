@@ -42,6 +42,10 @@ describe('geo application', () => {
     expect(viewportSource).toContain('cached.adapter.pixelToWorld')
     expect(viewportSource).toContain('pixelToWorldForOverview')
     expect(viewportSource).toContain('cameraLimitsForWorldLayer')
+    expect(viewportSource).toContain('cachedTileWorldArea')
+    expect(viewportSource).toContain('this.#cache.forEach(')
+    expect(viewportSource).toContain("setPanPointer(canvas, 'idle')")
+    expect(viewportSource).toContain("'pan-edge'")
     expect(viewportSource).not.toContain('opened.handleId')
     expect(appSource).not.toContain('orthos-phase2')
     expect(appSource).not.toContain('dem-phase2')
@@ -62,8 +66,14 @@ describe('geo application', () => {
     expect(catalogSource).not.toContain('tnmaccess')
     expect(catalogSource).not.toContain('KyFromAbove')
     expect(appSource).toContain('ATLAS_START_DEMOS')
+    expect(appSource).toContain('replaceProjectIfNeeded')
+    expect(appSource).toContain("'geo.project.new'")
+    expect(appSource).toContain('mergeDisplayPresets')
+    expect(appSource).toContain('curatedPresetsForIdentity')
+    expect(appSource).toContain('CATALOG_NOT_FOUND')
+    expect(appSource).toContain('isAbortFailure')
     expect(appSource).toContain('DemoPicker')
-    expect(appSource).toContain('geo-opening')
+    expect(appSource).toContain('% of object')
     expect(appSource).toContain('setSearchNonce')
     expect(appSource).not.toContain('domain-science')
     expect(appSource).not.toContain('ParticleAnalysis')
@@ -94,6 +104,31 @@ describe('geo application', () => {
     )
     expect(names).not.toContain('@pji-workbench/domain-science')
     expect(names).not.toContain('@pji-workbench/materials-analysis')
+  })
+
+  it('stretches the map viewport to fill the main pane', async () => {
+    const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8')
+    expect(styles).toMatch(
+      /\.geo-viewport-stack\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)/u,
+    )
+    expect(styles).toMatch(
+      /\.geo-viewport-stack:has\(\.geo-opening-banner\)\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/u,
+    )
+    expect(styles).toMatch(/\.geo-viewport\s*\{[^}]*height:\s*100%/u)
+    expect(styles).not.toMatch(
+      /\.geo-viewport-stack\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/u,
+    )
+  })
+
+  it('uses grab, grabbing, and not-allowed cursors for pan versus the raster edge', async () => {
+    const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8')
+    expect(styles).toMatch(/\.geo-viewport canvas\s*\{[^}]*cursor:\s*grab/u)
+    expect(styles).toMatch(
+      /\.geo-viewport canvas\[data-panning="true"\]\s*\{[^}]*cursor:\s*grabbing/u,
+    )
+    expect(styles).toMatch(
+      /\.geo-viewport canvas\[data-pan-edge="true"\]\s*\{[^}]*cursor:\s*not-allowed/u,
+    )
   })
 
   it('hosts the imaging Worker from the Atlas app entry, not the package Worker URL', async () => {

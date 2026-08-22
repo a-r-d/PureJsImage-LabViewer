@@ -99,7 +99,9 @@ Worker resource budgets (overridable at `worker.initialize`) default to:
 
 - 8 open sources;
 - 8 datasets per source;
-- 32 MiB total HTTP range cache;
+- 32 MiB total HTTP range cache, with a 16 MiB preferred budget per newly opened source
+  (512 KiB per source was too small for Cloud Optimized GeoTIFF working sets and caused
+  range-cache thrash);
 - 192 MiB total tile-runtime memory;
 - 32 in-flight budgeted requests.
 - 4,096 OME-Zarr directory files.

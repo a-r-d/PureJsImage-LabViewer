@@ -96,11 +96,23 @@ export function buildCogXrayReport(input: {
     bytesFetched,
     cacheHits: range?.rangeCacheHits ?? 0,
     cacheMisses: range?.rangeCacheMisses ?? 0,
-    percentFetched: percentFetchedApplies && size > 0 ? (100 * bytesFetched) / size : undefined,
+    percentFetched:
+      percentFetchedApplies && size > 0
+        ? (100 * coverageBytes(range?.uniqueBytes, bytesFetched, size)) / size
+        : undefined,
     activeOverview: input.activeOverview,
     likelyCog: inspection?.likelyCog ?? false,
     issues: inspection?.issues ?? [],
   }
+}
+
+function coverageBytes(
+  uniqueBytes: number | undefined,
+  bytesFetched: number,
+  size: number,
+): number {
+  if (uniqueBytes !== undefined) return uniqueBytes
+  return Math.min(bytesFetched, size)
 }
 
 function primaryDirectory(
