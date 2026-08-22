@@ -43,11 +43,16 @@ export function northUpGeoTiffFixture(options = {}) {
     { length: width * height * components },
     (_, index) => (index * 17 + 1) % 256,
   )
+  const geographic = (options.epsg ?? 4_326) === 4_326
   const extraEntries = [
-    { tag: 33_550, type: 12, values: [10, 20, 0] },
-    { tag: 33_922, type: 12, values: [0, 0, 0, 100, 200, 0] },
+    { tag: 33_550, type: 12, values: geographic ? [0.1, 0.1, 0] : [10, 20, 0] },
+    {
+      tag: 33_922,
+      type: 12,
+      values: geographic ? [0, 0, 0, -100, 40, 0] : [0, 0, 0, 100, 200, 0],
+    },
     ...geoKeyEntries(options.epsg ?? 4_326),
-    geoAsciiEntry(42_113, '-9999'),
+    geoAsciiEntry(42_113, '255'),
   ]
   const defaults = [
     { tag: 256, type: 4, values: [width] },

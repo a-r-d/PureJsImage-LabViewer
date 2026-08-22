@@ -138,6 +138,20 @@ class FakeRuntime implements GeoImagingRuntime {
       nodataPolicy: request.recipe.outputNoData,
       expectedOutput: { sampleType: 'float32' as const, componentCount: 1 },
       warnings: [],
+      execution: {
+        schemaVersion: 1 as const,
+        engine: 'purejsimage/geo' as const,
+        packageVersion: '0.16.0',
+        cacheSchemaVersion: 2 as const,
+        inputs: request.inputs.map((input) => ({
+          layerId: input.layerId,
+          relationship: 'exact-grid' as const,
+          pixelAligned: true,
+          pyramidCompatible: true,
+          sourceGridIdentity: `source:${input.layerId}`,
+          targetGridIdentity: 'target',
+        })),
+      },
     }
   }
 
@@ -512,6 +526,11 @@ describe('GeoWorkbenchController', () => {
       recipe,
     })
     expect(workbench.getSnapshot().project.provenance).toHaveLength(1)
+    expect(workbench.getSnapshot().project.provenance[0]?.execution).toMatchObject({
+      engine: 'purejsimage/geo',
+      packageVersion: '0.16.0',
+      cacheSchemaVersion: 2,
+    })
 
     await workbench.executeAction('geo.derived_layer.remove', { layerId: created.layerId })
     expect(workbench.getSnapshot().project.layers).toHaveLength(2)

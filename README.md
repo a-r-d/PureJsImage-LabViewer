@@ -2,7 +2,7 @@
 
 This repository is the **product showcase** for [PureJsImage](https://www.npmjs.com/package/purejsimage): browser-native, local-first imaging apps. It is not the library itself.
 
-The library (`purejsimage@0.15.0`) owns codecs, scientific rasters, GeoTIFF/COG reading, OME-Zarr, and analysis. These apps consume it only through public package exports and turn that into end-user workflows. Original files stay in the browser unless you deliberately choose a network action.
+The library (`purejsimage@0.16.0`) owns codecs, scientific rasters, GeoTIFF/COG and GeoZarr reading, OME-Zarr, and analysis. These apps consume it only through public package exports and turn that into end-user workflows. Original files stay in the browser unless you deliberately choose a network action.
 
 | What | Link |
 | --- | --- |

@@ -116,7 +116,7 @@ packages/imaging
   preflight lives here so domain-geo never imports PureJsImage. Its selected-asset path reuses one
   bounded range source for container inspection, documented reader selection, scientific-document
   open, and a bounded native sample read; Atlas only opens catalog URLs that reach decoder-ready.
-  Geo analysis uses PureJsImage 0.15.0 public raster plans for band math, target-grid resampling,
+  Geo analysis uses PureJsImage 0.16.0 public raster plans for band math, target-grid resampling,
   terrain derivatives, region statistics, and line profiles. It evaluates virtual results per
   requested tile and refuses undeclared grid transforms.
 

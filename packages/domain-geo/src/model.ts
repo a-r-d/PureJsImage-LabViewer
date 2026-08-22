@@ -190,6 +190,7 @@ export interface GeoProvenanceReference {
   readonly recipe?: GeoRecipeReference
   readonly createdAt: string
   readonly note?: string
+  readonly execution?: import('@pji-workbench/contracts').DerivedRasterGeoExecutionProvenanceV1
 }
 
 export interface GeoWorkflowProvenanceRecord {
@@ -1257,6 +1258,67 @@ function normalizeProvenance(value: GeoProvenanceReference): GeoProvenanceRefere
         }),
     createdAt: boundedString(value.createdAt, 'provenance createdAt'),
     ...(value.note === undefined ? {} : { note: boundedString(value.note, 'provenance note') }),
+    ...(value.execution === undefined ? {} : { execution: normalizeGeoExecution(value.execution) }),
+  }
+}
+
+function normalizeGeoExecution(
+  value: import('@pji-workbench/contracts').DerivedRasterGeoExecutionProvenanceV1,
+): import('@pji-workbench/contracts').DerivedRasterGeoExecutionProvenanceV1 {
+  if (
+    value.schemaVersion !== 1 ||
+    value.engine !== 'purejsimage/geo' ||
+    value.cacheSchemaVersion !== 2
+  )
+    throw new GeoValidationError('INVALID_PROJECT', 'Derived Geo execution provenance is invalid')
+  const relationships = new Set(['exact-grid', 'same-crs-different-grid', 'different-crs'])
+  return {
+    schemaVersion: 1,
+    engine: 'purejsimage/geo',
+    packageVersion: boundedString(value.packageVersion, 'Geo execution package version'),
+    cacheSchemaVersion: 2,
+    inputs: value.inputs.map((input) => {
+      if (
+        !relationships.has(input.relationship) ||
+        typeof input.pixelAligned !== 'boolean' ||
+        typeof input.pyramidCompatible !== 'boolean'
+      )
+        throw new GeoValidationError('INVALID_PROJECT', 'Derived Geo input provenance is invalid')
+      return {
+        layerId: boundedString(input.layerId, 'Geo execution layer id'),
+        relationship: input.relationship,
+        pixelAligned: input.pixelAligned,
+        pyramidCompatible: input.pyramidCompatible,
+        sourceGridIdentity: boundedString(input.sourceGridIdentity, 'Geo source grid identity'),
+        targetGridIdentity: boundedString(input.targetGridIdentity, 'Geo target grid identity'),
+        ...(input.transform === undefined
+          ? {}
+          : {
+              transform: {
+                descriptorId: boundedString(
+                  input.transform.descriptorId,
+                  'transform descriptor id',
+                ),
+                descriptorVersion: boundedString(
+                  input.transform.descriptorVersion,
+                  'transform descriptor version',
+                ),
+                transformIdentity: boundedString(
+                  input.transform.transformIdentity,
+                  'transform identity',
+                ),
+                implementationIdentity: boundedString(
+                  input.transform.implementationIdentity,
+                  'transform implementation identity',
+                ),
+                accuracy: { ...input.transform.accuracy },
+                warnings: input.transform.warnings.map((warning) =>
+                  boundedString(warning, 'transform warning'),
+                ),
+              },
+            }),
+      }
+    }),
   }
 }
 

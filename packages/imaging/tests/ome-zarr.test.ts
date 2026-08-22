@@ -413,13 +413,13 @@ describe('OME-Zarr imaging worker', () => {
     await host.dispose()
   })
 
-  it('pins the published 0.15.0 package', async () => {
+  it('pins the published 0.16.0 package', async () => {
     const { readFile } = await import('node:fs/promises')
     const imaging = JSON.parse(
       await readFile(new URL('../package.json', import.meta.url), 'utf8'),
     ) as { dependencies: { purejsimage: string } }
-    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.15.0')
-    expect(imaging.dependencies.purejsimage).toBe('0.15.0')
+    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.16.0')
+    expect(imaging.dependencies.purejsimage).toBe('0.16.0')
   })
 })
 

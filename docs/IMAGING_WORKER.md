@@ -13,7 +13,7 @@ handles do not cross the boundary.
 
 ## Public PureJsImage imports
 
-The integration uses these documented `purejsimage@0.15.0` paths and symbols:
+The integration uses these documented `purejsimage@0.16.0` paths and symbols:
 
 | Package path | Symbols |
 | --- | --- |
@@ -54,8 +54,14 @@ The integration uses these documented `purejsimage@0.15.0` paths and symbols:
 | `purejsimage/analysis/runtime` | `createTileRuntime`, `numericTileSourceToTileSource`, `createTileDatasetIdentityForScientificDataset` |
 | `purejsimage/analysis` | `createBuiltInAnalysisBundle`, `createAnalysisController` |
 | `purejsimage/sources/http-range` | `HttpRangeSource` |
+| `purejsimage/geo` | Geo raster document, dataset, descriptor, grid, CRS, band, level, and diagnostic types |
+| `purejsimage/geo/browser` | Browser-safe Geo source-adapter compile-time probe |
+| `purejsimage/geo/readers/geotiff` | `createGeoTiffReader`, `GeoTiffDocument.inspectStructure` |
+| `purejsimage/geo/readers/geozarr` | `openGeoZarrHttp`, `openGeoZarrObjectStore`, `GeoZarrDocument.inspectStructure` |
 
-Each of the 32 readers is behind an explicit dynamic import. The Vite Worker uses ES module
+Each of the 32 Science readers is behind an explicit dynamic import. Atlas additionally loads the
+GeoTIFF and GeoZarr readers through direct dynamic imports when its explicit Geo Worker profile is
+enabled; neither Worker imports `purejsimage/geo/readers/all`. The Vite Worker uses ES module
 output so individual format chunks stay independently loadable. Filename extensions choose a
 probe set; unknown extensions load the ordinary single-file catalog and do not select OME-Zarr.
 OME-Zarr opens only through explicit source kinds and `readerId` `purejsimage/ome-zarr`. One-dimensional series-only documents such
@@ -69,10 +75,12 @@ materializes one cached plane and crops viewport tiles and analysis plane reads 
 
 `packages/contracts` defines schema version 2 and validates unknown input before dispatch. Requests
 cover initialization (optional resource limits), local/sample/remote/bundled source opening,
-OME-Zarr remote store / local directory / ZIP opening, source
+GeoZarr remote store / bounded bundled fixture opening, OME-Zarr remote store / local directory / ZIP opening, source
 and dataset close, dataset open, plane selection, tile request, request cancellation, diagnostics
 (optional `sourceId` filter), and the crash-only test seam. Dataset descriptors may include an
-optional JSON-safe `spatialReference` copied from PureJsImage. That field does not bump the RPC
+optional JSON-safe `spatialReference` compatibility projection and an additive versioned `geo`
+descriptor copied from PureJsImage. GeoZarr also projects bounded logical chunk/shard structural
+diagnostics. These fields do not bump the RPC
 envelope by itself; the schema version 2 bump covers multi-source diagnostics, initialize limits,
 and `sourceId` on opened datasets. Local files and remote range sources produce the same application
 descriptor. Science datasets without georeferencing omit the field. UI code reads the typed spatial

@@ -966,7 +966,7 @@ describe('PureJsImage Worker host', () => {
   })
 
   it('pins the package and exposes the thirty-two explicit reader descriptors', async () => {
-    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.15.0')
+    expect(PUREJSIMAGE_PACKAGE_VERSION).toBe('0.16.0')
     expect(SUPPORTED_READERS.map(({ id }) => id)).toEqual([
       'purejsimage/png',
       'purejsimage/jpeg',

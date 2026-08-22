@@ -70,6 +70,26 @@ describe('imaging RPC validation', () => {
         targetGrid: { ...recipe.targetGrid, affine: [1, 2, 0, 2, 4, 0] },
       }),
     ).toThrow(RpcValidationError)
+    expect(() =>
+      assertDerivedRasterRecipe({
+        ...recipe,
+        targetGrid: {
+          ...recipe.targetGrid,
+          sampleType: 'uint64',
+          noData: { kind: 'integer64', value: '18446744073709551615' },
+        },
+      }),
+    ).not.toThrow()
+    expect(() =>
+      assertDerivedRasterRecipe({
+        ...recipe,
+        targetGrid: {
+          ...recipe.targetGrid,
+          sampleType: 'uint64',
+          noData: { kind: 'integer64', value: '18446744073709551616' },
+        },
+      }),
+    ).toThrow(RpcValidationError)
   })
 
   it('accepts every field of a bounded tile request', () => {

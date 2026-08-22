@@ -55,26 +55,29 @@ import {
   wrapCodecAdapterDataset,
 } from './codec-plane-cache.js'
 import { wrapFetchToExposeContentRange } from './cors-range-fetch.js'
-import { datasetDescriptor, defaultPlaneSelection, openedSourceDescriptor } from './descriptor.js'
+import {
+  datasetDescriptor,
+  defaultPlaneSelection,
+  geoDatasetDescriptor,
+  geoZarrStructuralDiagnostics,
+  openedSourceDescriptor,
+} from './descriptor.js'
 import { omeZarrDirectoryFingerprint } from './ome-zarr-directory.js'
 import { composeOmeZarrDisplayTile } from './ome-zarr-display.js'
 import { PUREJSIMAGE_PACKAGE_VERSION } from './package-version.js'
+import { tiffOpenLimits } from './tiff-open-limits.js'
 import { createAnalysisBindings, isScientificDataset } from './worker-host/analysis-rpc.js'
 import {
   blobSourceFromFile,
   classifyTiffOpenFailure,
+  cogInspectionFromGeoTiffStructure,
   inspectReadableTiff,
   looksLikeTiffName,
   tryInspectTiffSource,
 } from './worker-host/cog-inspect.js'
-import {
-  type BoundDerivedRasterInput,
-  computeDerivedRasterStatistics,
-  type DerivedRasterTransformProvider,
-  derivedRasterCacheKey,
-  dryRunDerivedRaster,
-  evaluateDerivedRasterTile,
-  sampleDerivedRasterLine,
+import type {
+  BoundDerivedRasterInput,
+  DerivedRasterTransformProvider,
 } from './worker-host/derived-raster.js'
 import {
   computeDisplayStatistics,
@@ -248,6 +251,8 @@ export interface ImagingWorkerHostOptions {
   readonly analysisCatalog?: ImagingAnalysisCatalogExtras
   readonly limits?: Partial<ImagingResourceLimits>
   readonly rasterTransforms?: DerivedRasterTransformProvider
+  /** Geo loads direct GeoTIFF/GeoZarr readers; the default Science profile never does. */
+  readonly profile?: 'science' | 'geo'
 }
 
 const MiB = 1_024 * 1_024
@@ -317,6 +322,7 @@ export class ImagingWorkerHost {
   readonly #analysisExtensions: readonly PureJsImageExtension[]
   readonly #catalogExtras: ImagingAnalysisCatalogExtras
   readonly #rasterTransforms: DerivedRasterTransformProvider | undefined
+  readonly #profile: 'science' | 'geo'
 
   constructor(options: Readonly<ImagingWorkerHostOptions> = {}) {
     this.#fetch = options.fetch
@@ -328,6 +334,7 @@ export class ImagingWorkerHost {
     this.#analysisExtensions = options.analysisExtensions ?? []
     this.#catalogExtras = options.analysisCatalog ?? { documentation: [], presets: [] }
     this.#rasterTransforms = options.rasterTransforms
+    this.#profile = options.profile ?? 'science'
     this.#limits = resolveImagingResourceLimits(options.limits)
   }
 
@@ -410,6 +417,10 @@ export class ImagingWorkerHost {
         return this.#openBundled(request, signal)
       case 'source.open-remote':
         return this.#openRemote(request, signal)
+      case 'source.open-geozarr-remote':
+        return this.#openGeoZarrRemote(request, signal)
+      case 'source.open-geozarr-bundled':
+        return this.#openGeoZarrBundled(request, signal)
       case 'source.open-ome-zarr-remote':
         return this.#openOmeZarrRemote(request, signal)
       case 'source.open-ome-zarr-directory':
@@ -641,30 +652,57 @@ export class ImagingWorkerHost {
     signal: AbortSignal,
   ): Promise<SourceRecord> {
     const lifetime = new AbortController()
-    let document: ScientificDocument | undefined
+    let document: SourceRecord['document'] | undefined
     try {
-      const readers = await loadReadersForSource(primary.name, { maxInputBytes: primary.size })
-      try {
-        document = await createScientificLibrary({ readers }).open(
-          createScientificFileContext(primary, { companions: files, signal }),
-        )
-      } catch (error) {
-        throw await this.#enrichTiffOpenFailure(
-          error,
-          blobSourceFromFile(primary),
-          primary.name,
-          signal,
-        )
-      }
+      const geoTiff = this.#profile === 'geo' && looksLikeTiffName(primary.name)
+      let geoTiffStructure: SourceRecord['geoTiffStructure']
       let cogInspection: Awaited<ReturnType<typeof inspectReadableTiff>>
-      try {
+      if (geoTiff) {
+        const { createGeoTiffReader } = await import('purejsimage/geo/readers/geotiff')
+        let opened: Awaited<ReturnType<ReturnType<typeof createGeoTiffReader>['open']>>
+        try {
+          opened = await createGeoTiffReader({ limits: tiffOpenLimits(primary.size) }).open(
+            createScientificFileContext(primary, { companions: files, signal }),
+          )
+        } catch (error) {
+          throw await this.#enrichTiffOpenFailure(
+            error,
+            blobSourceFromFile(primary),
+            primary.name,
+            signal,
+          )
+        }
+        document = {
+          kind: 'geo',
+          value: opened,
+          identity: {
+            kind: 'geo-source',
+            reader: opened.reader,
+            name: primary.name,
+            size: primary.size,
+            lastModified: primary.lastModified,
+          },
+        }
+        geoTiffStructure = await opened.inspectStructure()
+        cogInspection = cogInspectionFromGeoTiffStructure(geoTiffStructure)
+      } else {
+        const readers = await loadReadersForSource(primary.name, { maxInputBytes: primary.size })
+        try {
+          const opened = await createScientificLibrary({ readers }).open(
+            createScientificFileContext(primary, { companions: files, signal }),
+          )
+          document = { kind: 'scientific', value: opened }
+        } catch (error) {
+          throw await this.#enrichTiffOpenFailure(
+            error,
+            blobSourceFromFile(primary),
+            primary.name,
+            signal,
+          )
+        }
         cogInspection = looksLikeTiffName(primary.name)
           ? await inspectReadableTiff(blobSourceFromFile(primary), signal)
           : undefined
-      } catch (error) {
-        await document.close?.()
-        document = undefined
-        throw error
       }
       return {
         id: this.#id('source') as SourceId,
@@ -678,12 +716,13 @@ export class ImagingWorkerHost {
         lifetime,
         lastUsedAt: this.#now(),
         ...(cogInspection === undefined ? {} : { cogInspection }),
+        ...(geoTiffStructure === undefined ? {} : { geoTiffStructure }),
         datasets: new Map(),
         closed: false,
       }
     } catch (error) {
       lifetime.abort(abortError('Source open failed'))
-      if (document !== undefined) await document.close?.()
+      if (document !== undefined) await document.value.close?.()
       throw error
     }
   }
@@ -693,7 +732,7 @@ export class ImagingWorkerHost {
     signal: AbortSignal,
   ): Promise<WorkerHostResult> {
     const lifetime = new AbortController()
-    let document: ScientificDocument | undefined
+    let document: SourceRecord['document'] | undefined
     try {
       const url = assertRemoteUrl(request.payload.url)
       const maxCacheBytes = this.#rangeCacheBudgetForNewSource()
@@ -733,25 +772,46 @@ export class ImagingWorkerHost {
         },
       }
       const name = sourceName(url)
-      const readers = await loadReadersForSource(name, { maxInputBytes: primary.size })
-      try {
-        document = await createScientificLibrary({ readers }).open({
-          primary: { id: 'remote-primary', name, source: primary },
-          companions: resolver,
-          signal,
-        })
-      } catch (error) {
-        throw await this.#enrichTiffOpenFailure(error, primary, name, signal)
+      const context = {
+        primary: { id: 'remote-primary', name, source: primary },
+        companions: resolver,
+        signal,
       }
+      const geoTiff = this.#profile === 'geo' && looksLikeTiffName(name)
+      let geoTiffStructure: SourceRecord['geoTiffStructure']
       let cogInspection: Awaited<ReturnType<typeof inspectReadableTiff>>
-      try {
+      if (geoTiff) {
+        const { createGeoTiffReader } = await import('purejsimage/geo/readers/geotiff')
+        let opened: Awaited<ReturnType<ReturnType<typeof createGeoTiffReader>['open']>>
+        try {
+          opened = await createGeoTiffReader({ limits: tiffOpenLimits(primary.size) }).open(context)
+        } catch (error) {
+          throw await this.#enrichTiffOpenFailure(error, primary, name, signal)
+        }
+        document = {
+          kind: 'geo',
+          value: opened,
+          identity: {
+            kind: 'geo-source',
+            reader: opened.reader,
+            url: url.href,
+            size: primary.size,
+            ...(primary.validator === undefined ? {} : { validator: primary.validator }),
+          },
+        }
+        geoTiffStructure = await opened.inspectStructure()
+        cogInspection = cogInspectionFromGeoTiffStructure(geoTiffStructure)
+      } else {
+        const readers = await loadReadersForSource(name, { maxInputBytes: primary.size })
+        try {
+          const opened = await createScientificLibrary({ readers }).open(context)
+          document = { kind: 'scientific', value: opened }
+        } catch (error) {
+          throw await this.#enrichTiffOpenFailure(error, primary, name, signal)
+        }
         cogInspection = looksLikeTiffName(name)
           ? await inspectReadableTiff(primary, signal)
           : undefined
-      } catch (error) {
-        await document.close?.()
-        document = undefined
-        throw error
       }
       const record: SourceRecord = {
         id: this.#id('source') as SourceId,
@@ -766,6 +826,7 @@ export class ImagingWorkerHost {
         lifetime,
         lastUsedAt: this.#now(),
         ...(cogInspection === undefined ? {} : { cogInspection }),
+        ...(geoTiffStructure === undefined ? {} : { geoTiffStructure }),
         datasets: new Map(),
         closed: false,
       }
@@ -773,7 +834,7 @@ export class ImagingWorkerHost {
       return success(request.requestId, 'source.opened', this.#describe(record))
     } catch (error) {
       lifetime.abort(abortError('Source open failed'))
-      if (document !== undefined) await document.close?.()
+      if (document !== undefined) await document.value.close?.()
       return errorResult(request.requestId, this.#openFailure(error))
     }
   }
@@ -806,7 +867,7 @@ export class ImagingWorkerHost {
         name: name.length === 0 ? 'ome-zarr' : name,
         size: identity.rootObjectSize,
         url: durableOmeZarrRootUrl(httpStore.normalized.storeRootUrl),
-        document,
+        document: { kind: 'scientific', value: document },
         rangeSources: [],
         lifetime,
         lastUsedAt: this.#now(),
@@ -822,6 +883,141 @@ export class ImagingWorkerHost {
       lifetime.abort(abortError('Source open failed'))
       store?.close()
       if (document !== undefined) await document.close?.()
+      return errorResult(request.requestId, this.#openFailure(error))
+    }
+  }
+
+  async #openGeoZarrRemote(
+    request: Extract<WorkerRequest, { kind: 'source.open-geozarr-remote' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    const lifetime = new AbortController()
+    let document: SourceRecord['document'] | undefined
+    try {
+      if (this.#profile !== 'geo') {
+        throw new RpcValidationError(
+          'INVALID_PAYLOAD',
+          'GeoZarr sources require the Geo imaging Worker profile',
+        )
+      }
+      const url = assertRemoteUrl(request.payload.url)
+      const { openGeoZarrHttp } = await import('purejsimage/geo/readers/geozarr')
+      const opened = await openGeoZarrHttp(url, {
+        signal: AbortSignal.any([signal, lifetime.signal]),
+        http: {
+          ...(this.#fetch === undefined ? {} : { fetch: this.#fetch }),
+          blockBytes: RANGE_BLOCK_BYTES,
+          maxCacheBytesPerSource: this.#rangeCacheBudgetForNewSource(),
+        },
+      })
+      const structure = opened.inspectStructure()
+      document = {
+        kind: 'geo',
+        value: opened,
+        identity: {
+          kind: 'geo-zarr-source',
+          reader: opened.reader,
+          rootUrl: url.href,
+          rootMetadataObject: structure.rootMetadataObject,
+        },
+      }
+      const record: SourceRecord = {
+        id: this.#id('source') as SourceId,
+        documentId: this.#id('document') as DocumentId,
+        generation: request.payload.generation,
+        kind: 'geo-zarr-remote',
+        name: sourceName(url) || 'geozarr',
+        size: structure.io.metadataBytes,
+        url: url.href,
+        document,
+        rangeSources: [],
+        lifetime,
+        lastUsedAt: this.#now(),
+        geoZarrStructure: structure,
+        geoZarrDiagnostics: () => opened.inspectStructure(),
+        datasets: new Map(),
+        closed: false,
+      }
+      await this.#commitSource(record)
+      return success(request.requestId, 'source.opened', this.#describe(record))
+    } catch (error) {
+      lifetime.abort(abortError('Source open failed'))
+      if (document !== undefined) await document.value.close?.()
+      return errorResult(request.requestId, this.#openFailure(error))
+    }
+  }
+
+  async #openGeoZarrBundled(
+    request: Extract<WorkerRequest, { kind: 'source.open-geozarr-bundled' }>,
+    signal: AbortSignal,
+  ): Promise<WorkerHostResult> {
+    const lifetime = new AbortController()
+    let document: SourceRecord['document'] | undefined
+    try {
+      if (this.#profile !== 'geo') {
+        throw new RpcValidationError(
+          'INVALID_PAYLOAD',
+          'GeoZarr sources require the Geo imaging Worker profile',
+        )
+      }
+      const files = filesFromOmeZarrAttachments(request.payload.files)
+      const primaryIndex = request.payload.files.findIndex(
+        ({ id }) => id === request.payload.primaryId,
+      )
+      const primary = files[primaryIndex]
+      if (primary === undefined)
+        throw new RpcValidationError('INVALID_PAYLOAD', 'bundled GeoZarr root metadata is missing')
+      const members = new Map(
+        files.map((file) => [normalizeScientificRelativeName(file.name), file] as const),
+      )
+      const objectStore: import('purejsimage/geo/readers/geozarr').GeoZarrObjectStore = {
+        resolve: async (relative, readSignal) => {
+          readSignal?.throwIfAborted()
+          const name = normalizeScientificRelativeName(relative)
+          const file = members.get(name)
+          return file === undefined
+            ? undefined
+            : { id: `bundled-geozarr:${name}`, source: blobSourceFromFile(file) }
+        },
+      }
+      const { openGeoZarrObjectStore } = await import('purejsimage/geo/readers/geozarr')
+      const opened = await openGeoZarrObjectStore(objectStore, {
+        primaryName: normalizeScientificRelativeName(primary.name),
+        storeKind: 'object-store',
+        signal: AbortSignal.any([signal, lifetime.signal]),
+      })
+      const structure = opened.inspectStructure()
+      document = {
+        kind: 'geo',
+        value: opened,
+        identity: {
+          kind: 'geo-zarr-bundled',
+          reader: opened.reader,
+          primary: primary.name,
+          members: files.map((file) => ({ name: file.name, size: file.size })),
+        },
+      }
+      const record: SourceRecord = {
+        id: this.#id('source') as SourceId,
+        documentId: this.#id('document') as DocumentId,
+        generation: request.payload.generation,
+        kind: 'geo-zarr-bundled',
+        name: primary.name,
+        size: files.reduce((total, file) => total + file.size, 0),
+        document,
+        rangeSources: [],
+        lifetime,
+        lastUsedAt: this.#now(),
+        geoZarrStructure: structure,
+        geoZarrDiagnostics: () => opened.inspectStructure(),
+        datasets: new Map(),
+        closed: false,
+      }
+      await this.#commitSource(record)
+      return success(request.requestId, 'source.opened', this.#describe(record))
+    } catch (error) {
+      lifetime.abort(abortError('Source open failed'))
+      if (document !== undefined) await document.value.close?.()
       return errorResult(request.requestId, this.#openFailure(error))
     }
   }
@@ -854,7 +1050,7 @@ export class ImagingWorkerHost {
         kind: 'ome-zarr-directory',
         name: selected.root.length === 0 ? selected.metadataName : selected.root,
         size: files.reduce((sum, file) => sum + file.size, 0),
-        document,
+        document: { kind: 'scientific', value: document },
         rangeSources: [],
         lifetime,
         lastUsedAt: this.#now(),
@@ -916,7 +1112,7 @@ export class ImagingWorkerHost {
         kind: 'ome-zarr-zip',
         name: primary.name,
         size: primary.size,
-        document,
+        document: { kind: 'scientific', value: document },
         rangeSources: [],
         lifetime,
         lastUsedAt: this.#now(),
@@ -938,7 +1134,7 @@ export class ImagingWorkerHost {
       record.lifetime.abort(abortError('Open source limit reached'))
       record.omeZarrHttpStore?.close()
       record.directoryDisposer?.()
-      await record.document.close?.()
+      await record.document.value.close?.()
       throw this.#limitError(`Open source limit of ${this.#limits.maxOpenSources} reached.`)
     }
     this.#sources.set(record.id, record)
@@ -962,11 +1158,23 @@ export class ImagingWorkerHost {
         ? {}
         : { [COG_INSPECTION_METADATA_KEY]: record.cogInspection }),
     }
-    if (Object.keys(extra).length === 0) return base
+    const withGeoZarr =
+      record.geoZarrStructure === undefined
+        ? base
+        : {
+            ...base,
+            datasets: base.datasets.map((dataset) => ({
+              ...dataset,
+              geoZarrStructure: geoZarrStructuralDiagnostics(
+                record.geoZarrStructure as NonNullable<SourceRecord['geoZarrStructure']>,
+              ),
+            })),
+          }
+    if (Object.keys(extra).length === 0) return withGeoZarr
     return {
-      ...base,
+      ...withGeoZarr,
       metadata: {
-        ...base.metadata,
+        ...withGeoZarr.metadata,
         ...extra,
       },
     }
@@ -987,14 +1195,28 @@ export class ImagingWorkerHost {
           `Dataset limit of ${this.#limits.maxDatasetsPerSource} reached for this source.`,
         )
       }
-      const summary = source.document.datasets.find(({ id }) => id === request.payload.datasetId)
+      const summary = source.document.value.datasets.find(
+        ({ id }) => id === request.payload.datasetId,
+      )
       if (summary === undefined) throw this.#stale('dataset summary')
       const remainingTileBytes = this.#remainingTileRuntimeBytes()
       if (remainingTileBytes < 8 * MiB) {
         throw this.#limitError('Tile-runtime memory budget is exhausted.')
       }
       const managedBytes = Math.min(96 * MiB, Math.max(8 * MiB, remainingTileBytes))
-      const dataset = await source.document.openDataset(summary.id, { signal })
+      const openedDataset = await source.document.value.openDataset(summary.id, { signal })
+      const geoDataset = source.document.kind === 'geo' ? openedDataset : undefined
+      const dataset =
+        source.document.kind === 'geo'
+          ? (openedDataset as import('purejsimage/geo').GeoRasterDataset).scientificDataset
+          : (openedDataset as import('purejsimage/scientific').ScientificDataset)
+      const projectedDescriptor =
+        source.document.kind === 'geo'
+          ? geoDatasetDescriptor(
+              summary as import('purejsimage/geo').GeoRasterDatasetSummary,
+              source.document.identity,
+            )
+          : datasetDescriptor(summary as import('purejsimage/scientific').ScientificDatasetSummary)
       const runtime = createTileRuntime({
         limits: {
           maxCacheBytes: Math.min(48 * MiB, managedBytes),
@@ -1027,7 +1249,7 @@ export class ImagingWorkerHost {
               buildFingerprint: 'pji-workbench-worker-v1',
             },
           })
-          const readerId = source.document.reader.id
+          const readerId = source.document.value.reader.id
           const numericSource = wrapNumericSource(
             resolveNumericTileSource(dataset, { targetSampleType: 'float32' }),
             readerId,
@@ -1039,6 +1261,15 @@ export class ImagingWorkerHost {
             sourceId: source.id,
             summary,
             dataset,
+            ...(geoDataset === undefined
+              ? {}
+              : {
+                  geo: {
+                    dataset: geoDataset as import('purejsimage/geo').GeoRasterDataset,
+                    descriptor: (geoDataset as import('purejsimage/geo').GeoRasterDataset)
+                      .descriptor,
+                  },
+                }),
             analysisDataset,
             readerId,
             runtime,
@@ -1051,7 +1282,7 @@ export class ImagingWorkerHost {
             analysis,
             disposeExtensions: () => prepared.dispose(),
             results: new Map(),
-            selection: defaultPlaneSelection(datasetDescriptor(summary)),
+            selection: defaultPlaneSelection(projectedDescriptor),
             closed: false,
           }
           source.datasets.set(handleId, record)
@@ -1061,7 +1292,13 @@ export class ImagingWorkerHost {
             handleId,
             sourceId: source.id,
             generation: source.generation,
-            dataset: datasetDescriptor(summary),
+            dataset:
+              source.geoZarrStructure === undefined
+                ? projectedDescriptor
+                : {
+                    ...projectedDescriptor,
+                    geoZarrStructure: geoZarrStructuralDiagnostics(source.geoZarrStructure),
+                  },
             selection: record.selection,
           }
           return success(request.requestId, 'dataset.opened', payload)
@@ -1385,10 +1622,12 @@ export class ImagingWorkerHost {
     })
   }
 
-  #dryRunDerivedRaster(
+  async #dryRunDerivedRaster(
     request: Extract<WorkerRequest, { kind: 'geo.analysis.dry_run' }>,
-  ): WorkerHostResult {
+  ): Promise<WorkerHostResult> {
     try {
+      this.#requireGeoAnalysisProfile()
+      const { dryRunDerivedRaster } = await import('./worker-host/derived-raster.js')
       return success(
         request.requestId,
         'geo.analysis.dry_run',
@@ -1410,6 +1649,10 @@ export class ImagingWorkerHost {
     const started = performance.now()
     let tile: NumericTile | undefined
     try {
+      this.#requireGeoAnalysisProfile()
+      const { derivedRasterCacheKey, evaluateDerivedRasterTile } = await import(
+        './worker-host/derived-raster.js'
+      )
       tile = await evaluateDerivedRasterTile(
         request.payload,
         this.#derivedBindings(request.payload),
@@ -1430,7 +1673,7 @@ export class ImagingWorkerHost {
         payload: {
           tileId: request.payload.tileId,
           layerId: request.payload.layerId,
-          cacheKey: derivedRasterCacheKey(request.payload),
+          cacheKey: derivedRasterCacheKey(request.payload, this.#rasterTransforms),
           styleRevision: request.payload.styleRevision,
           statisticsRevision: request.payload.statisticsRevision,
           region: request.payload.region,
@@ -1458,6 +1701,8 @@ export class ImagingWorkerHost {
     signal: AbortSignal,
   ): Promise<WorkerHostResult> {
     try {
+      this.#requireGeoAnalysisProfile()
+      const { computeDerivedRasterStatistics } = await import('./worker-host/derived-raster.js')
       const result = await computeDerivedRasterStatistics(
         request.payload,
         this.#derivedBindings(request.payload),
@@ -1484,6 +1729,8 @@ export class ImagingWorkerHost {
     signal: AbortSignal,
   ): Promise<WorkerHostResult> {
     try {
+      this.#requireGeoAnalysisProfile()
+      const { sampleDerivedRasterLine } = await import('./worker-host/derived-raster.js')
       const result = await sampleDerivedRasterLine(
         request.payload,
         this.#derivedBindings(request.payload),
@@ -1508,6 +1755,14 @@ export class ImagingWorkerHost {
   #releaseDerivedRaster(
     request: Extract<WorkerRequest, { kind: 'geo.analysis.release' }>,
   ): WorkerHostResult {
+    if (this.#profile !== 'geo')
+      return errorResult(
+        request.requestId,
+        structuredError(
+          new RpcValidationError('INVALID_PAYLOAD', 'Geo analysis requires the Geo Worker profile'),
+          'INVALID_PAYLOAD',
+        ),
+      )
     for (const pending of this.#pending.values()) {
       if (pending.derivedLayerId === request.payload.layerId)
         pending.controller.abort(abortError('Derived raster released'))
@@ -1515,6 +1770,14 @@ export class ImagingWorkerHost {
     return success(request.requestId, 'geo.analysis.released', {
       layerId: request.payload.layerId,
     })
+  }
+
+  #requireGeoAnalysisProfile(): void {
+    if (this.#profile !== 'geo')
+      throw new RpcValidationError(
+        'INVALID_PAYLOAD',
+        'Geo analysis requires the Geo Worker profile',
+      )
   }
 
   #analysisRecord(payload: {
@@ -2072,24 +2335,35 @@ export class ImagingWorkerHost {
     const rangeRequests = rangeStats.requests
     const rangeCacheHits = rangeStats.cacheHits
     const omeZarrNetwork = source.omeZarrNetwork?.()
+    const geoZarrStructure = source.geoZarrDiagnostics?.()
+    const geoZarrIo = geoZarrStructure?.io
+    const geoZarrRequests =
+      geoZarrIo === undefined ? undefined : geoZarrIo.metadataRequests + geoZarrIo.chunkRequests
     return {
       id: source.id,
       kind: source.kind,
       size: source.size,
       revision: source.generation,
-      rangeRequests: omeZarrNetwork?.rangeRequests ?? rangeRequests,
-      rangeBytesFetched: omeZarrNetwork?.bytesFetched ?? rangeStats.bytesFetched,
-      rangeCacheBytes: omeZarrNetwork?.sourceCacheBytes ?? rangeStats.cacheBytes,
-      rangeCacheHits: omeZarrNetwork?.sourceCacheHits ?? rangeCacheHits,
+      rangeRequests: geoZarrRequests ?? omeZarrNetwork?.rangeRequests ?? rangeRequests,
+      rangeBytesFetched:
+        geoZarrIo?.metadataBytes === undefined
+          ? (omeZarrNetwork?.bytesFetched ?? rangeStats.bytesFetched)
+          : geoZarrIo.metadataBytes + geoZarrIo.chunkBytes,
+      rangeCacheBytes:
+        geoZarrIo?.sourceCacheBytes ?? omeZarrNetwork?.sourceCacheBytes ?? rangeStats.cacheBytes,
+      rangeCacheHits: geoZarrIo?.cacheHits ?? omeZarrNetwork?.sourceCacheHits ?? rangeCacheHits,
       rangeCacheMisses: Math.max(
         0,
-        (omeZarrNetwork?.rangeRequests ?? rangeRequests) -
-          (omeZarrNetwork?.sourceCacheHits ?? rangeCacheHits),
+        (geoZarrRequests ?? omeZarrNetwork?.rangeRequests ?? rangeRequests) -
+          (geoZarrIo?.cacheHits ?? omeZarrNetwork?.sourceCacheHits ?? rangeCacheHits),
       ),
-      uniqueBytes: omeZarrNetwork?.uniqueBytes ?? rangeStats.uniqueBytes,
+      uniqueBytes: geoZarrIo?.uniqueBytes ?? omeZarrNetwork?.uniqueBytes ?? rangeStats.uniqueBytes,
       openDatasets: source.datasets.size,
       ...(omeZarrNetwork === undefined ? {} : { omeZarrNetwork }),
       ...(source.omeZarrIdentity === undefined ? {} : { omeZarrIdentity: source.omeZarrIdentity }),
+      ...(geoZarrStructure === undefined
+        ? {}
+        : { geoZarrStructure: geoZarrStructuralDiagnostics(geoZarrStructure) }),
     }
   }
 
@@ -2190,7 +2464,7 @@ export class ImagingWorkerHost {
       if (pending.sourceId === record.id) pending.controller.abort(abortError('Source closed'))
     }
     for (const dataset of [...record.datasets.values()]) await this.#releaseDataset(record, dataset)
-    await record.document.close?.()
+    await record.document.value.close?.()
     record.omeZarrHttpStore?.close()
     record.directoryDisposer?.()
     this.#sources.delete(record.id)
@@ -2232,6 +2506,8 @@ export class ImagingWorkerHost {
       kind === 'source.open-local' ||
       kind === 'source.open-bundled' ||
       kind === 'source.open-remote' ||
+      kind === 'source.open-geozarr-remote' ||
+      kind === 'source.open-geozarr-bundled' ||
       kind === 'source.open-ome-zarr-remote' ||
       kind === 'source.open-ome-zarr-directory' ||
       kind === 'source.open-ome-zarr-zip' ||

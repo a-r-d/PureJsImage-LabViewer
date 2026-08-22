@@ -94,6 +94,11 @@ export interface GeoImagingRuntime {
     signal?: AbortSignal,
   ): Promise<OpenedSourceDescriptor>
   openRemote(url: string, generation: number, signal?: AbortSignal): Promise<OpenedSourceDescriptor>
+  openGeoZarrRemote?(
+    url: string,
+    generation: number,
+    signal?: AbortSignal,
+  ): Promise<OpenedSourceDescriptor>
   openDataset(
     documentId: OpenedSourceDescriptor['documentId'],
     datasetId: string,
@@ -361,7 +366,7 @@ export class GeoWorkbenchController {
         ? ({ kind: 'remote-url', url: input.url } as const)
         : locatorFromCandidate(input.candidate)
     return this.#transactionalOpen(
-      () => this.#runtime.openRemote(input.url, this.#nextGeneration(), signal),
+      () => openRemoteRaster(this.#runtime, input.url, this.#nextGeneration(), signal),
       locator,
       input.label ?? remoteName(input.url),
       input.style,
@@ -428,7 +433,7 @@ export class GeoWorkbenchController {
     }
     return this.#transactionalRebind(
       source,
-      () => this.#runtime.openRemote(url, this.#nextGeneration(), signal),
+      () => openRemoteRaster(this.#runtime, url, this.#nextGeneration(), signal),
       locator,
       this.#bindings.get(source.id)?.presets ?? [],
       signal,
@@ -922,7 +927,7 @@ export class GeoWorkbenchController {
         generation: binding.dataset.generation,
         sourceIdentity: JSON.stringify(binding.source.identity),
         sourceRevision: sourceRevision(source),
-        grid: targetGridForSource(source, binding.dataset.dataset.sampleType),
+        grid: targetGridForSource(source, binding.dataset.dataset.sampleType, binding.dataset),
       }
     })
     return { layerId, recipe, inputs }
@@ -956,7 +961,7 @@ export class GeoWorkbenchController {
         `Action requires a ${terrainOperation} terrain recipe.`,
       )
     }
-    await this.#runtime.dryRunDerivedRaster(request, signal)
+    const dryRun = await this.#runtime.dryRunDerivedRaster(request, signal)
     signal?.throwIfAborted()
     const inputLayers = request.recipe.inputs.map((input) =>
       this.#requireRasterLayer(input.layerId),
@@ -970,6 +975,7 @@ export class GeoWorkbenchController {
       sourceIds,
       recipe: { recipeId: `geo.analysis.${operationKind}`, recipeVersion: '1' },
       createdAt: this.#now(),
+      execution: dryRun.execution,
     }
     const derived = createDerivedGeoRasterLayer({
       id,
@@ -1215,7 +1221,7 @@ export class GeoWorkbenchController {
           (saved.locator.kind === 'remote-url' ? saved.locator.url : undefined)
         if (url === undefined)
           throw new GeoControllerError('UNAVAILABLE', `${saved.label} has no refreshed URL.`)
-        opened = await this.#runtime.openRemote(url, this.#nextGeneration(), signal)
+        opened = await openRemoteRaster(this.#runtime, url, this.#nextGeneration(), signal)
       }
       signal?.throwIfAborted()
       const descriptor = opened.datasets[0]
@@ -2575,7 +2581,37 @@ function defaultStyleFor(dataset: OpenedDatasetDescriptor): RasterStyle {
 function targetGridForSource(
   source: GeoRasterSource,
   sampleType: OpenedDatasetDescriptor['dataset']['sampleType'],
+  opened?: OpenedDatasetDescriptor,
 ): DerivedRasterRecipeV1['targetGrid'] {
+  const selectedGeoLevel = opened?.dataset.geo?.levels.find(
+    ({ sourceResolutionLevel }) => sourceResolutionLevel === opened.selection.resolutionLevel,
+  )
+  if (selectedGeoLevel !== undefined && opened?.dataset.geo !== undefined) {
+    const reference = opened.dataset.geo.spatialReference
+    const crs =
+      reference.authority !== undefined && reference.code !== undefined
+        ? `${reference.authority.toUpperCase()}:${String(reference.code)}`
+        : crsKey(source.spatialReference.crs)
+    if (crs === undefined)
+      throw new GeoControllerError(
+        'CRS_INCOMPATIBLE',
+        `Source ${source.id} needs an identified CRS.`,
+      )
+    const bounds = selectedGeoLevel.geometry.worldBounds
+    return {
+      schemaVersion: 1,
+      crs,
+      width: selectedGeoLevel.width,
+      height: selectedGeoLevel.height,
+      affine: selectedGeoLevel.geometry.pixelToWorld,
+      pixelInterpretation:
+        selectedGeoLevel.geometry.pixelRegistration === 'pixel-is-point' ? 'point' : 'area',
+      extent: [bounds.minX, bounds.minY, bounds.maxX, bounds.maxY],
+      sampleType: rasterSampleType(sampleType),
+      noData: geoNoDataPolicy(selectedGeoLevel.geometry.noData, rasterSampleType(sampleType)),
+      resampling: 'nearest',
+    }
+  }
   const affine = source.spatialReference.pixelToModel
   const crs = crsKey(source.spatialReference.crs)
   if (affine === undefined || crs === undefined)
@@ -2605,6 +2641,20 @@ function targetGridForSource(
     noData: nodata === undefined ? { kind: 'none' } : { kind: 'value', value: nodata },
     resampling: 'nearest',
   }
+}
+
+function geoNoDataPolicy(
+  value: NonNullable<OpenedDatasetDescriptor['dataset']['geo']>['grid']['noData'],
+  sampleType: RasterSampleType,
+): DerivedRasterRecipeV1['targetGrid']['noData'] {
+  if (value.kind !== 'scalar') return { kind: 'none' }
+  if (typeof value.value === 'number')
+    return Number.isNaN(value.value) ? { kind: 'nan' } : { kind: 'value', value: value.value }
+  if (value.value.trim().toLowerCase() === 'nan') return { kind: 'nan' }
+  if (sampleType === 'int64' || sampleType === 'uint64')
+    return { kind: 'integer64', value: value.value }
+  const parsed = Number(value.value)
+  return Number.isFinite(parsed) ? { kind: 'value', value: parsed } : { kind: 'none' }
 }
 
 function rasterSampleType(value: string): RasterSampleType {
@@ -2708,6 +2758,31 @@ function remoteName(url: string): string {
   } catch {
     return url
   }
+}
+
+function isGeoZarrUrl(url: string): boolean {
+  try {
+    const path = new URL(url).pathname.toLowerCase().replace(/\/+$/u, '')
+    return (
+      path.endsWith('.zarr') ||
+      path.endsWith('/zarr.json') ||
+      path.endsWith('/.zgroup') ||
+      path.endsWith('/.zattrs')
+    )
+  } catch {
+    return false
+  }
+}
+
+function openRemoteRaster(
+  runtime: GeoImagingRuntime,
+  url: string,
+  generation: number,
+  signal?: AbortSignal,
+): Promise<OpenedSourceDescriptor> {
+  return isGeoZarrUrl(url) && runtime.openGeoZarrRemote !== undefined
+    ? runtime.openGeoZarrRemote(url, generation, signal)
+    : runtime.openRemote(url, generation, signal)
 }
 
 function geometryField(value: unknown): GeoMapGeometry {
@@ -2914,7 +2989,11 @@ function identityRasterRecipe(
 ): DerivedRasterRecipeV1 {
   if (binding === undefined)
     throw new GeoControllerError('UNAVAILABLE', 'Raster source is not open.')
-  const targetGrid = targetGridForSource(source, binding.dataset.dataset.sampleType)
+  const targetGrid = targetGridForSource(
+    source,
+    binding.dataset.dataset.sampleType,
+    binding.dataset,
+  )
   const band = source.bands[component]
   const noData =
     band?.nodata === undefined ? targetGrid.noData : { kind: 'value' as const, value: band.nodata }

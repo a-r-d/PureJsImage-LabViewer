@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@pji-workbench/contracts": "workspace:*",
-    "purejsimage": "0.15.0"
+    "purejsimage": "0.16.0"
   },
   "devDependencies": {
     "@pji-workbench/materials-analysis": "workspace:*",

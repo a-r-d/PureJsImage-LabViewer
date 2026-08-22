@@ -10,6 +10,16 @@ const FORBIDDEN_CODE = [
 const FORBIDDEN_BUNDLE_CODE = FORBIDDEN_CODE.slice(0, 2)
 const SCIENCE_APP = 'science'
 
+async function isWorkspaceDirectory(directory) {
+  try {
+    await readFile(path.join(directory, 'package.json'), 'utf8')
+    return true
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false
+    throw error
+  }
+}
+
 async function collectFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true })
   const files = []
@@ -23,15 +33,17 @@ async function collectFiles(directory) {
 
 const root = process.cwd()
 const sourceDirectories = []
+const appEntries = []
 for (const appEntry of await readdir(path.join(root, 'apps'), { withFileTypes: true })) {
-  if (appEntry.isDirectory()) {
-    sourceDirectories.push(path.join(root, 'apps', appEntry.name, 'src'))
-  }
+  const directory = path.join(root, 'apps', appEntry.name)
+  if (!appEntry.isDirectory() || !(await isWorkspaceDirectory(directory))) continue
+  appEntries.push(appEntry)
+  sourceDirectories.push(path.join(directory, 'src'))
 }
 for (const packageEntry of await readdir(path.join(root, 'packages'), { withFileTypes: true })) {
-  if (packageEntry.isDirectory()) {
-    sourceDirectories.push(path.join(root, 'packages', packageEntry.name, 'src'))
-  }
+  const directory = path.join(root, 'packages', packageEntry.name)
+  if (!packageEntry.isDirectory() || !(await isWorkspaceDirectory(directory))) continue
+  sourceDirectories.push(path.join(directory, 'src'))
 }
 
 const files = []
@@ -45,8 +57,7 @@ for (const file of files) {
   }
 }
 
-for (const appEntry of await readdir(path.join(root, 'apps'), { withFileTypes: true })) {
-  if (!appEntry.isDirectory()) continue
+for (const appEntry of appEntries) {
   try {
     const bundleFiles = await collectFiles(path.join(root, 'apps', appEntry.name, 'dist'))
     for (const file of bundleFiles) {

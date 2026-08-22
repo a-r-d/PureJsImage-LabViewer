@@ -38,6 +38,7 @@ describe('architecture boundary checker', () => {
     ['packages/workspace/src/index.ts', "import { validateGraph } from 'purejsimage/analysis'"],
     ['packages/imaging/src/index.ts', "import value from 'purejsimage/src/internal'"],
     ['packages/imaging/src/worker.ts', "const privateModule = import('purejsimage/src/reader')"],
+    ['packages/imaging/src/worker.ts', "const geoReaders = import('purejsimage/geo/readers/all')"],
     ['packages/contracts/src/index.ts', "import app from '../../../apps/science/src/app'"],
     ['apps/science/src/app.tsx', "import value from '@pji-workbench/contracts/src/private'"],
     [

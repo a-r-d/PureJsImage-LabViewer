@@ -4,6 +4,7 @@ import type {
   StructuredRpcError,
 } from '@pji-workbench/contracts'
 import { BlobSource, type ImageSource } from 'purejsimage'
+import type { GeoTiffStructuralReport } from 'purejsimage/geo/readers/geotiff'
 import { inspectCog, openTiffDocument } from 'purejsimage/tiff'
 
 import { tiffOpenLimits } from '../tiff-open-limits.js'
@@ -11,6 +12,20 @@ import { tiffOpenLimits } from '../tiff-open-limits.js'
 export function looksLikeTiffName(name: string): boolean {
   const lower = name.toLowerCase()
   return lower.endsWith('.tif') || lower.endsWith('.tiff') || lower.endsWith('.cog')
+}
+
+/** Compatibility adapter for the existing Atlas COG X-ray UI and telemetry contract. */
+export function cogInspectionFromGeoTiffStructure(
+  report: GeoTiffStructuralReport,
+): CogInspectionReport {
+  return {
+    container: report.container,
+    byteOrder: report.byteOrder,
+    topLevelDirectoryCount: report.topLevelDirectoryCount,
+    directories: report.directories.map((directory) => ({ ...directory })),
+    issues: report.issues.map((issue) => ({ ...issue })),
+    likelyCog: report.likelyCog,
+  }
 }
 
 export async function inspectReadableTiff(

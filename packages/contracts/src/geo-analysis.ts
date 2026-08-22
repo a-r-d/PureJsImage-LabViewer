@@ -11,6 +11,7 @@ export type RasterSampleType =
   | 'int8'
   | 'int16'
   | 'int32'
+  | 'int64'
   | 'float32'
   | 'float64'
 
@@ -18,6 +19,7 @@ export type RasterNoDataPolicy =
   | Readonly<{ kind: 'none' }>
   | Readonly<{ kind: 'nan' }>
   | Readonly<{ kind: 'value'; value: number }>
+  | Readonly<{ kind: 'integer64'; value: string }>
 
 export interface RasterTargetGridV1 {
   readonly schemaVersion: 1
@@ -105,7 +107,34 @@ export interface DerivedRasterRecipeV1 {
     maxTilePixels: number
     maxOutputBytes: number
     maxWorkingBytes: number
+    /** Bounded source mosaic admitted by package Geo reprojection. Older v1 recipes omit it. */
+    readonly maxSourcePixels?: number
   }>
+}
+
+export interface DerivedRasterGeoInputProvenanceV1 {
+  readonly layerId: string
+  readonly relationship: 'exact-grid' | 'same-crs-different-grid' | 'different-crs'
+  readonly pixelAligned: boolean
+  readonly pyramidCompatible: boolean
+  readonly sourceGridIdentity: string
+  readonly targetGridIdentity: string
+  readonly transform?: Readonly<{
+    descriptorId: string
+    descriptorVersion: string
+    transformIdentity: string
+    implementationIdentity: string
+    accuracy: RasterTransformAccuracyV1 | Readonly<{ kind: 'unknown' }>
+    warnings: readonly string[]
+  }>
+}
+
+export interface DerivedRasterGeoExecutionProvenanceV1 {
+  readonly schemaVersion: 1
+  readonly engine: 'purejsimage/geo'
+  readonly packageVersion: string
+  readonly cacheSchemaVersion: 2
+  readonly inputs: readonly DerivedRasterGeoInputProvenanceV1[]
 }
 
 export interface DerivedRasterRuntimeInputV1 {
@@ -151,6 +180,7 @@ export interface DerivedRasterDryRunReport {
     componentCount: number
   }>
   readonly warnings: readonly string[]
+  readonly execution: DerivedRasterGeoExecutionProvenanceV1
 }
 
 export interface DerivedDisplayTileRequest extends DerivedRasterRequestBase {

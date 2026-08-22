@@ -10,40 +10,48 @@ import type {
   DerivedRasterStatisticsRequest,
   DerivedRasterStatisticsResponse,
   RasterTargetGridV1,
-  RasterTransformDescriptorV1,
   Region,
 } from '@pji-workbench/contracts'
 import {
+  areGeoGridsPixelAligned,
+  areGeoPyramidLevelsCompatible,
+  canonicalizeGeoReprojectionPlan,
+  canonicalizeGeoTargetGrid,
+  classifyGeoGridRelationship,
+  createGeoReprojectionPlan,
   createLinearCombinationPlan,
   createNormalizedDifferencePlan,
   createRasterBandMathPlan,
   createRasterLineProfilePlan,
   createRasterSubtractionPlan,
-  createRasterTargetGridPlan,
   createRasterTerrainPlan,
   evaluateRasterBandMathTile,
   evaluateRasterTerrainTile,
-  type NumericRasterGrid,
-  normalizeNumericRasterGrid,
-  numericRasterGridsEqual,
-  type RasterCoordinateTransform,
+  type GeoRasterDescriptor,
+  type GeoRasterView,
+  type GeoTargetGrid,
+  geoTargetGridFromGeometry,
+  geoTargetGridsEqual,
   type RasterLengthUnit,
   type RasterNoData,
   type RasterOperationLimits,
-  resampleRasterTileToGrid,
+  readReprojectedGeoRegion,
   sampleRasterLineProfile,
-} from 'purejsimage/analysis'
+} from 'purejsimage/geo'
 import { type NumericTile, numericTileSampleOffset } from 'purejsimage/scientific'
 
+import {
+  type ApplicationRasterTransformAdapter,
+  createApplicationGeoTransformProvider,
+  geoReprojectionProvenanceToApplication,
+  rasterNoDataToGeoReprojectionNoData,
+  rasterTargetGridToGeoTargetGrid,
+  spatialReferenceMatches,
+} from '../geo-analysis-adapters.js'
+import { PUREJSIMAGE_PACKAGE_VERSION } from '../package-version.js'
 import type { DatasetRecord } from './runtime.js'
 
-export interface DerivedRasterTransformProvider {
-  resolve(
-    descriptor: RasterTransformDescriptorV1,
-    sourceCrs: string,
-    targetCrs: string,
-  ): RasterCoordinateTransform | undefined
-}
+export type DerivedRasterTransformProvider = ApplicationRasterTransformAdapter
 
 export interface BoundDerivedRasterInput {
   readonly recipe: DerivedRasterRecipeInputV1
@@ -56,10 +64,15 @@ interface EvaluatedInput {
   readonly component: number
 }
 
-export function derivedRasterCacheKey(request: DerivedRasterRequestBase): string {
+export function derivedRasterCacheKey(
+  request: DerivedRasterRequestBase,
+  transforms?: DerivedRasterTransformProvider,
+): string {
   return stableHash(
     canonicalJson({
-      schema: 'pji-workbench.derived-raster-cache.v1',
+      schema: 'pji-workbench.derived-raster-cache.v2',
+      engine: `purejsimage/geo@${PUREJSIMAGE_PACKAGE_VERSION}`,
+      transformImplementation: transforms?.implementationIdentity ?? null,
       layerId: request.layerId,
       recipe: request.recipe,
       inputs: request.inputs.map((input) => ({
@@ -79,37 +92,49 @@ export function dryRunDerivedRaster(
 ): DerivedRasterDryRunReport {
   validateBindings(request, inputs)
   validateRecipeOperation(request.recipe)
-  const requirements = inputs.flatMap((input) => {
-    const source = grid(input.runtime.grid)
-    const target = grid(request.recipe.targetGrid)
-    if (numericRasterGridsEqual(source, target)) return []
+  const sharedTarget = targetApplicationGeoGrid(request.recipe.targetGrid, inputs)
+  const plannedInputs = inputs.map((input) => {
+    const source = applicationGeoGrid(input.runtime.grid, input.record)
+    const target = sharedTarget
+    const relationship = classifyGeoGridRelationship(source, target)
+    const descriptor = input.recipe.transform
+    if (relationship === 'exact-grid') {
+      return { input, source, target, relationship }
+    }
     if (request.recipe.alignment === 'exact') {
       throw new Error(`Input ${input.recipe.layerId} does not exactly match the target grid.`)
     }
-    if (source.crs === target.crs) return []
-    const descriptor = input.recipe.transform
-    if (descriptor === undefined)
+    if (relationship === 'different-crs' && descriptor === undefined)
       throw new Error(`Input ${input.recipe.layerId} requires a coordinate transform.`)
-    const transform = transforms?.resolve(descriptor, source.crs, target.crs)
-    if (transform === undefined)
-      throw new Error(`Transform ${descriptor.id}@${descriptor.version} is unavailable.`)
-    return [
-      {
-        layerId: input.recipe.layerId,
-        sourceCrs: source.crs,
-        targetCrs: target.crs,
-        descriptor,
-      },
-    ]
+    if (relationship === 'different-crs' && descriptor !== undefined) {
+      if (
+        transforms === undefined ||
+        !transforms.supports(descriptor, input.runtime.grid.crs, request.recipe.targetGrid.crs)
+      )
+        throw new Error(`Transform ${descriptor.id}@${descriptor.version} is unavailable.`)
+    }
+    return { input, source, target, relationship }
   })
-  const target = grid(request.recipe.targetGrid)
+  const requirements = plannedInputs.flatMap(({ input, relationship }) =>
+    relationship !== 'different-crs' || input.recipe.transform === undefined
+      ? []
+      : [
+          {
+            layerId: input.recipe.layerId,
+            sourceCrs: input.runtime.grid.crs,
+            targetCrs: request.recipe.targetGrid.crs,
+            descriptor: input.recipe.transform,
+          },
+        ],
+  )
+  const target = request.recipe.targetGrid
   const componentCount = outputComponentCount(request.recipe)
   const tilePixels = Math.min(256, target.width) * Math.min(256, target.height)
   const estimatedTiles = Math.ceil(target.width / 256) * Math.ceil(target.height / 256)
   const perTileInputBytes = tilePixels * 4 * inputs.length
   return {
     valid: true,
-    cacheKey: derivedRasterCacheKey(request),
+    cacheKey: derivedRasterCacheKey(request, transforms),
     sources: inputs.map(({ runtime }) => ({
       layerId: runtime.layerId,
       sourceIdentity: runtime.sourceIdentity,
@@ -131,6 +156,37 @@ export function dryRunDerivedRaster(
           ]
         : [],
     ),
+    execution: {
+      schemaVersion: 1,
+      engine: 'purejsimage/geo',
+      packageVersion: PUREJSIMAGE_PACKAGE_VERSION,
+      cacheSchemaVersion: 2,
+      inputs: plannedInputs.map(({ input, source, target: inputTarget, relationship }) => ({
+        layerId: input.recipe.layerId,
+        relationship,
+        pixelAligned: areGeoGridsPixelAligned(source, inputTarget),
+        pyramidCompatible: areGeoPyramidLevelsCompatible(source, inputTarget),
+        sourceGridIdentity: canonicalizeGeoTargetGrid(source),
+        targetGridIdentity: canonicalizeGeoTargetGrid(inputTarget),
+        ...(relationship !== 'different-crs' || input.recipe.transform === undefined
+          ? {}
+          : {
+              transform: {
+                descriptorId: input.recipe.transform.id,
+                descriptorVersion: input.recipe.transform.version,
+                transformIdentity: `proj4-compatible:${input.runtime.grid.crs}->${request.recipe.targetGrid.crs}`,
+                implementationIdentity: transforms?.implementationIdentity ?? 'unavailable',
+                accuracy: input.recipe.transform.accuracy,
+                warnings:
+                  input.recipe.transform.accuracy.kind === 'estimated'
+                    ? [
+                        `Estimated to ${input.recipe.transform.accuracy.maximumError} ${input.recipe.transform.accuracy.unit}.`,
+                      ]
+                    : [],
+              },
+            }),
+      })),
+    },
   }
 }
 
@@ -146,12 +202,21 @@ export async function evaluateDerivedRasterTile(
   const operation = request.recipe.operation
   const terrain = operation.kind === 'terrain'
   const readTarget = terrain ? haloRegion(region, request.recipe.targetGrid) : region
+  const targetGrid = targetApplicationGeoGrid(request.recipe.targetGrid, inputs)
   const evaluated: EvaluatedInput[] = []
   try {
     for (const input of inputs) {
       signal.throwIfAborted()
       evaluated.push(
-        await evaluateInput(input, request.recipe, readTarget, priority, signal, transforms),
+        await evaluateInput(
+          input,
+          request.recipe,
+          targetGrid,
+          readTarget,
+          priority,
+          signal,
+          transforms,
+        ),
       )
     }
     signal.throwIfAborted()
@@ -305,7 +370,7 @@ export async function computeDerivedRasterStatistics(
     }
   }
   return {
-    cacheKey: derivedRasterCacheKey(request),
+    cacheKey: derivedRasterCacheKey(request, transforms),
     count,
     invalidCount,
     excludedByMask,
@@ -416,7 +481,7 @@ export async function sampleDerivedRasterLine(
       tile,
       { signal, limits: operationLimits(request.recipe) },
     )
-    return { cacheKey: derivedRasterCacheKey(request), ...result }
+    return { cacheKey: derivedRasterCacheKey(request, transforms), ...result }
   } finally {
     tile.release()
   }
@@ -425,14 +490,15 @@ export async function sampleDerivedRasterLine(
 async function evaluateInput(
   input: BoundDerivedRasterInput,
   recipe: DerivedRasterRecipeV1,
+  targetGrid: GeoTargetGrid,
   targetRegion: Region,
   priority: 'visible' | 'near-visible' | 'background',
   signal: AbortSignal,
   transforms: DerivedRasterTransformProvider | undefined,
 ): Promise<EvaluatedInput> {
-  const sourceGrid = grid(input.runtime.grid)
-  const targetGrid = grid(recipe.targetGrid)
-  if (numericRasterGridsEqual(sourceGrid, targetGrid)) {
+  const sourceGrid = applicationGeoGrid(input.runtime.grid, input.record)
+  const relationship = classifyGeoGridRelationship(sourceGrid, targetGrid)
+  if (relationship === 'exact-grid') {
     const source = await requestSourceTile(input.record, targetRegion, priority, signal)
     try {
       return normalizeInputValues(
@@ -450,52 +516,86 @@ async function evaluateInput(
   if (recipe.alignment !== 'resample')
     throw new Error(`Input ${input.recipe.layerId} requires explicit resampling.`)
   const descriptor = input.recipe.transform
-  const transform =
-    sourceGrid.crs === targetGrid.crs
+  const transformProvider =
+    relationship !== 'different-crs'
       ? undefined
-      : descriptor === undefined
+      : descriptor === undefined || transforms === undefined
         ? undefined
-        : transforms?.resolve(descriptor, sourceGrid.crs, targetGrid.crs)
-  if (sourceGrid.crs !== targetGrid.crs && transform === undefined)
+        : createApplicationGeoTransformProvider(
+            transforms,
+            descriptor,
+            input.runtime.grid.crs,
+            recipe.targetGrid.crs,
+          )
+  if (relationship === 'different-crs' && transformProvider === undefined)
     throw new Error(`Input ${input.recipe.layerId} requires an available coordinate transform.`)
-  const sourceRegion = requiredSourceRegion(
-    sourceGrid,
-    targetGrid,
-    targetRegion,
-    recipe.targetGrid.resampling,
-    transform,
-    signal,
-  )
-  const source = await requestSourceTile(input.record, sourceRegion, priority, signal)
+  const view = geoView(input)
+  const nativeSampleType = numericSampleType(input.record.geo?.descriptor.sampleType)
+  const intermediateTarget = rasterTargetGridToGeoTargetGrid(recipe.targetGrid, {
+    crs: targetGrid.crs,
+    sampleType: recipe.targetGrid.resampling === 'nearest' ? nativeSampleType : 'float32',
+    noData: input.recipe.noData,
+    componentCount: 1,
+    sourceBands: [input.recipe.component],
+  })
+  let resampled: NumericTile | undefined
   try {
-    const plannedTransform = sourceGrid.crs === targetGrid.crs ? undefined : descriptor
-    const intermediateTarget: NumericRasterGrid = {
-      ...targetGrid,
-      sampleType: recipe.targetGrid.resampling === 'nearest' ? source.sampleType : 'float32',
-      noData: noData(input.recipe.noData),
-    }
-    const plan = createRasterTargetGridPlan({
-      sourceGrid,
+    for await (const tile of readReprojectedGeoRegion(view, {
       targetGrid: intermediateTarget,
-      sourceComponent: input.recipe.component,
+      targetRegion,
+      sourceBands: [input.recipe.component],
       resampling: recipe.targetGrid.resampling,
-      sourceNoData: noData(input.recipe.noData),
-      outputNoData: noData(input.recipe.noData),
-      minimumValidWeight: recipe.minimumValidWeight,
-      ...(plannedTransform === undefined ? {} : { transform: plannedTransform }),
-    })
-    const resampled = resampleRasterTileToGrid(plan, source, targetRegion, {
-      ...(transform === undefined ? {} : { transform }),
+      noData: {
+        source: rasterNoDataToGeoReprojectionNoData(input.recipe.noData),
+        output: rasterNoDataToGeoReprojectionNoData(input.recipe.noData),
+        minimumValidWeight: recipe.minimumValidWeight,
+      },
+      ...(transformProvider === undefined ? {} : { transformProvider }),
       signal,
-      limits: operationLimits(recipe),
-    })
-    try {
-      return normalizeInputValues(input.recipe, resampled, 0, targetRegion, recipe, signal)
-    } finally {
-      resampled.release()
+      limits: {
+        maxWidth: recipe.targetGrid.width,
+        maxHeight: recipe.targetGrid.height,
+        maxOutputPixels: Math.max(
+          recipe.limits.maxTilePixels,
+          targetRegion.width * targetRegion.height,
+        ),
+        maxOutputSamples: Math.max(
+          recipe.limits.maxTilePixels,
+          targetRegion.width * targetRegion.height,
+        ),
+        maxOutputBytes: recipe.limits.maxOutputBytes,
+        maxWorkingBytes: recipe.limits.maxWorkingBytes,
+        maxSourcePixels: recipe.limits.maxSourcePixels ?? recipe.limits.maxTilePixels * 4,
+      },
+    })) {
+      if (resampled !== undefined) {
+        tile.release()
+        throw new Error('Geo reprojection returned more than one target tile.')
+      }
+      canonicalizeGeoReprojectionPlan(
+        createGeoReprojectionPlan({
+          ...tile.provenance,
+          targetRegion,
+          sourceBands: [input.recipe.component],
+        }),
+      )
+      if (relationship === 'different-crs' && descriptor !== undefined) {
+        const provenance = geoReprojectionProvenanceToApplication(tile.provenance, descriptor)
+        if (
+          provenance.implementationIdentity !== transforms?.implementationIdentity ||
+          provenance.transformIdentity !==
+            `proj4-compatible:${input.runtime.grid.crs}->${recipe.targetGrid.crs}`
+        ) {
+          tile.release()
+          throw new Error('Geo reprojection transform provenance does not match the dry-run plan.')
+        }
+      }
+      resampled = tile
     }
+    if (resampled === undefined) throw new Error('Geo reprojection returned no target tile.')
+    return normalizeInputValues(input.recipe, resampled, 0, targetRegion, recipe, signal)
   } finally {
-    source.release()
+    resampled?.release()
   }
 }
 
@@ -548,63 +648,13 @@ async function requestSourceTile(
       dataset: record.tileIdentity,
       displayAxes: record.selection.displayAxes,
       fixedIndices: record.selection.fixedIndices,
-      resolutionLevel: 0,
+      resolutionLevel: record.selection.resolutionLevel,
       ...region,
     },
     priority,
     signal,
     target: { sampleType: 'float32' },
   })
-}
-
-function requiredSourceRegion(
-  source: NumericRasterGrid,
-  target: NumericRasterGrid,
-  region: Region,
-  resampling: 'nearest' | 'bilinear',
-  transform: RasterCoordinateTransform | undefined,
-  signal: AbortSignal,
-): Region {
-  let minimumPixelX = Number.POSITIVE_INFINITY
-  let minimumPixelY = Number.POSITIVE_INFINITY
-  let maximumPixelX = Number.NEGATIVE_INFINITY
-  let maximumPixelY = Number.NEGATIVE_INFINITY
-  const include = (column: number, row: number): void => {
-    const model = modelPoint(target, column, row)
-    const sourceModel = transform?.inverse(model[0], model[1]) ?? model
-    const pixel = pixelPoint(source, sourceModel[0], sourceModel[1])
-    if (!Number.isFinite(pixel[0]) || !Number.isFinite(pixel[1]))
-      throw new Error('Coordinate transform returned a non-finite source position.')
-    minimumPixelX = Math.min(minimumPixelX, pixel[0])
-    minimumPixelY = Math.min(minimumPixelY, pixel[1])
-    maximumPixelX = Math.max(maximumPixelX, pixel[0])
-    maximumPixelY = Math.max(maximumPixelY, pixel[1])
-  }
-  if (transform === undefined) {
-    include(region.x, region.y)
-    include(region.x + region.width, region.y)
-    include(region.x, region.y + region.height)
-    include(region.x + region.width, region.y + region.height)
-  } else {
-    for (let row = region.y; row < region.y + region.height; row += 1) {
-      signal.throwIfAborted()
-      for (let column = region.x; column < region.x + region.width; column += 1) {
-        include(column, row)
-      }
-    }
-  }
-  const padding = resampling === 'bilinear' ? 2 : 1
-  const minimumX = Math.max(0, Math.floor(minimumPixelX) - padding)
-  const minimumY = Math.max(0, Math.floor(minimumPixelY) - padding)
-  const maximumX = Math.min(source.width, Math.ceil(maximumPixelX) + padding + 1)
-  const maximumY = Math.min(source.height, Math.ceil(maximumPixelY) + padding + 1)
-  if (maximumX <= minimumX || maximumY <= minimumY) return { x: 0, y: 0, width: 1, height: 1 }
-  return {
-    x: minimumX,
-    y: minimumY,
-    width: maximumX - minimumX,
-    height: maximumY - minimumY,
-  }
 }
 
 function stackBands(
@@ -668,12 +718,21 @@ function validateBindings(
     )
       throw new Error('Derived input order or identity does not match the recipe.')
     if (names.has(recipe.name)) throw new Error(`Duplicate derived input ${recipe.name}.`)
+    const sampleType =
+      bound.runtime.grid.sampleType === 'int64' || bound.runtime.grid.sampleType === 'uint64'
+        ? bound.runtime.grid.sampleType
+        : bound.record.dataset.descriptor.sampleType
+    if (sampleType === 'int64' || sampleType === 'uint64') {
+      throw new Error(
+        `Derived quantitative operations do not support exact ${sampleType} sources; convert explicitly before analysis.`,
+      )
+    }
     names.add(recipe.name)
   }
 }
 
 function validateRecipeOperation(recipe: DerivedRasterRecipeV1): void {
-  grid(recipe.targetGrid)
+  rasterTargetGridToGeoTargetGrid(recipe.targetGrid)
   const operation = recipe.operation
   if (operation.kind === 'virtual-band-stack') {
     if (operation.bands.length < 1 || operation.bands.length > 16)
@@ -772,15 +831,104 @@ function operationLimits(recipe: DerivedRasterRecipeV1): RasterOperationLimits {
   return recipe.limits
 }
 
-function grid(value: RasterTargetGridV1): NumericRasterGrid {
-  return normalizeNumericRasterGrid({
-    ...value,
-    noData: noData(value.noData),
+function noData(value: RasterTargetGridV1['noData']): RasterNoData {
+  if (value.kind === 'integer64')
+    throw new Error('Derived quantitative operations do not support exact 64-bit nodata.')
+  return value.kind === 'value' ? { kind: 'value', value: value.value } : { kind: value.kind }
+}
+
+function applicationGeoGrid(value: RasterTargetGridV1, record: DatasetRecord): GeoTargetGrid {
+  const sourceCrs = record.geo?.descriptor.spatialReference
+  return rasterTargetGridToGeoTargetGrid(value, {
+    ...(sourceCrs !== undefined && spatialReferenceMatches(sourceCrs, value.crs)
+      ? { crs: sourceCrs }
+      : {}),
   })
 }
 
-function noData(value: RasterTargetGridV1['noData']): RasterNoData {
-  return value.kind === 'value' ? { kind: 'value', value: value.value } : { kind: value.kind }
+function targetApplicationGeoGrid(
+  value: RasterTargetGridV1,
+  inputs: readonly BoundDerivedRasterInput[],
+): GeoTargetGrid {
+  const matching =
+    inputs.find(
+      ({ runtime, record }) =>
+        record.geo !== undefined &&
+        spatialReferenceMatches(record.geo.descriptor.spatialReference, value.crs) &&
+        sameApplicationGridGeometry(runtime.grid, value),
+    ) ??
+    inputs.find(
+      ({ record }) =>
+        record.geo !== undefined &&
+        spatialReferenceMatches(record.geo.descriptor.spatialReference, value.crs),
+    )
+  return rasterTargetGridToGeoTargetGrid(value, {
+    ...(matching?.record.geo === undefined
+      ? {}
+      : { crs: matching.record.geo.descriptor.spatialReference }),
+  })
+}
+
+function sameApplicationGridGeometry(left: RasterTargetGridV1, right: RasterTargetGridV1): boolean {
+  return (
+    left.crs === right.crs &&
+    left.width === right.width &&
+    left.height === right.height &&
+    left.pixelInterpretation === right.pixelInterpretation &&
+    left.affine.every((value, index) => value === right.affine[index]) &&
+    left.extent.every((value, index) => value === right.extent[index])
+  )
+}
+
+function geoView(input: BoundDerivedRasterInput): GeoRasterView {
+  const geo = input.record.geo
+  if (geo === undefined) throw new Error('Resampled Atlas analysis requires a Geo raster dataset.')
+  const level = geo.descriptor.levels.find(
+    ({ sourceResolutionLevel }) => sourceResolutionLevel === input.record.selection.resolutionLevel,
+  )
+  if (level === undefined)
+    throw new Error(
+      `Geo resolution level ${input.record.selection.resolutionLevel} is unavailable.`,
+    )
+  const sourceGrid = geoTargetGridFromGeometry(level.geometry, geo.descriptor.spatialReference, {
+    sampleType: numericSampleType(geo.descriptor.sampleType),
+    noData: noData(input.recipe.noData),
+    bandLayout: {
+      componentCount: 1,
+      layout: 'interleaved',
+      sourceBands: [input.recipe.component],
+    },
+  })
+  const authored = rasterTargetGridToGeoTargetGrid(input.runtime.grid, {
+    crs: geo.descriptor.spatialReference,
+    sampleType: sourceGrid.sampleType,
+    noData: input.recipe.noData,
+    componentCount: 1,
+    sourceBands: [input.recipe.component],
+  })
+  if (!geoTargetGridsEqual(sourceGrid, authored))
+    throw new Error('Derived source grid does not match the selected Geo raster view.')
+  return geo.dataset.createView({
+    spatialDimensions: [
+      geo.descriptor.spatialDimensions.x.id,
+      geo.descriptor.spatialDimensions.y.id,
+    ],
+    nonSpatial: input.record.selection.fixedIndices.map(({ axisId, index }) => ({
+      kind: 'index' as const,
+      axisId,
+      index,
+    })),
+    sourceBands: [input.recipe.component],
+    levelId: level.id,
+  })
+}
+
+function numericSampleType(
+  value: GeoRasterDescriptor['sampleType'] | undefined,
+): GeoTargetGrid['sampleType'] {
+  if (value === undefined) throw new Error('Geo source sample type is unavailable.')
+  if (value === 'float16') return 'float32'
+  return value
 }
 
 function haloRegion(region: Region, target: RasterTargetGridV1): Region {
@@ -809,34 +957,6 @@ function lineRegion(request: DerivedRasterLineProfileRequest): Region {
   if (maximumX <= minimumX || maximumY <= minimumY)
     throw new Error('Line profile is outside the target grid.')
   return { x: minimumX, y: minimumY, width: maximumX - minimumX, height: maximumY - minimumY }
-}
-
-function modelPoint(
-  gridValue: NumericRasterGrid,
-  column: number,
-  row: number,
-): readonly [number, number] {
-  const offset = gridValue.pixelInterpretation === 'area' ? 0.5 : 0
-  const x = column + offset
-  const y = row + offset
-  return [
-    gridValue.affine[0] * x + gridValue.affine[1] * y + gridValue.affine[2],
-    gridValue.affine[3] * x + gridValue.affine[4] * y + gridValue.affine[5],
-  ]
-}
-
-function pixelPoint(
-  gridValue: NumericRasterGrid,
-  modelX: number,
-  modelY: number,
-): readonly [number, number] {
-  const [a, b, c, d, e, f] = gridValue.affine
-  const determinant = a * e - b * d
-  const offset = gridValue.pixelInterpretation === 'area' ? 0.5 : 0
-  return [
-    (e * (modelX - c) - b * (modelY - f)) / determinant - offset,
-    (-d * (modelX - c) + a * (modelY - f)) / determinant - offset,
-  ]
 }
 
 function canonicalJson(value: unknown): string {

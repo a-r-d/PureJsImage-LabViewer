@@ -19,6 +19,9 @@ import type {
   TileRuntime,
   TileSource,
 } from 'purejsimage/analysis/runtime'
+import type { GeoRasterDataset, GeoRasterDescriptor, GeoRasterDocument } from 'purejsimage/geo'
+import type { GeoTiffStructuralReport } from 'purejsimage/geo/readers/geotiff'
+import type { GeoZarrStructuralReport } from 'purejsimage/geo/readers/geozarr'
 import type {
   ScientificDataset,
   ScientificDatasetSummary,
@@ -35,10 +38,19 @@ export interface SourceRecord {
   readonly name: string
   readonly size: number
   readonly url?: string
-  readonly document: ScientificDocument
+  readonly document:
+    | Readonly<{ kind: 'scientific'; value: ScientificDocument }>
+    | Readonly<{
+        kind: 'geo'
+        value: GeoRasterDocument
+        identity: Readonly<Record<string, unknown>>
+      }>
   readonly rangeSources: readonly HttpRangeSource[]
   readonly lifetime: AbortController
   readonly cogInspection?: CogInspectionReport
+  readonly geoTiffStructure?: GeoTiffStructuralReport
+  readonly geoZarrStructure?: GeoZarrStructuralReport
+  readonly geoZarrDiagnostics?: () => GeoZarrStructuralReport
   readonly omeZarrHttpStore?: OmeZarrHttpStore
   readonly omeZarrIdentity?: OmeZarrRootIdentityEvidence
   readonly omeZarrNetwork?: () => OmeZarrNetworkDiagnostics
@@ -51,8 +63,12 @@ export interface SourceRecord {
 export interface DatasetRecord {
   readonly handleId: DatasetHandleId
   readonly sourceId: SourceId
-  readonly summary: ScientificDatasetSummary
+  readonly summary: ScientificDatasetSummary | import('purejsimage/geo').GeoRasterDatasetSummary
   readonly dataset: ScientificDataset
+  readonly geo?: Readonly<{
+    dataset: GeoRasterDataset
+    descriptor: GeoRasterDescriptor
+  }>
   readonly analysisDataset: ScientificDataset
   readonly readerId: string
   readonly runtime: TileRuntime

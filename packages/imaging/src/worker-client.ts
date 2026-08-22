@@ -210,6 +210,51 @@ export class ImagingWorkerClient {
     )
   }
 
+  async openGeoZarrRemote(
+    url: string,
+    generation: number,
+    signal?: AbortSignal,
+  ): Promise<OpenedSourceDescriptor> {
+    return this.#opened(
+      this.#payload(
+        await this.#call('source.open-geozarr-remote', { generation, url }, signal),
+        'source.opened',
+      ),
+    )
+  }
+
+  async openGeoZarrBundled(
+    files: readonly File[],
+    primary: File,
+    generation: number,
+    signal?: AbortSignal,
+  ): Promise<OpenedSourceDescriptor> {
+    const primaryIndex = files.indexOf(primary)
+    if (primaryIndex < 0) throw new Error('The GeoZarr root must be present in the fixture files')
+    return this.#opened(
+      this.#payload(
+        await this.#call(
+          'source.open-geozarr-bundled',
+          {
+            generation,
+            primaryId: `file-${primaryIndex}`,
+            files: files.map((file, index) => ({
+              id: `file-${index}`,
+              name: file.name,
+              relativePath: file.name,
+              size: file.size,
+              type: file.type,
+              lastModified: file.lastModified,
+              blob: file as Blob,
+            })),
+          },
+          signal,
+        ),
+        'source.opened',
+      ),
+    )
+  }
+
   async openOmeZarrDirectory(
     files: readonly File[],
     storeRoot: string,

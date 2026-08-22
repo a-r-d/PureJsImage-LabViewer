@@ -195,7 +195,7 @@ export function scientificTiffFixture(): Uint8Array<ArrayBuffer> {
   })
 }
 
-export function northUpGeoTiffFixture(): Uint8Array<ArrayBuffer> {
+export function northUpGeoTiffFixture(noData = '-9999'): Uint8Array<ArrayBuffer> {
   return geoTiffFixture({
     width: 4,
     height: 2,
@@ -204,7 +204,7 @@ export function northUpGeoTiffFixture(): Uint8Array<ArrayBuffer> {
       { tag: 33_550, type: 12, values: [10, 20, 0] },
       { tag: 33_922, type: 12, values: [0, 0, 0, 100, 200, 0] },
       ...geoKeyEntries(1, { kind: 'geographic', code: 4_326, name: 'WGS 84' }),
-      geoAsciiEntry(42_113, '-9999'),
+      geoAsciiEntry(42_113, noData),
     ],
   })
 }

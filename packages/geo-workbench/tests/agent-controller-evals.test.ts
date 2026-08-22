@@ -107,6 +107,20 @@ class LocalFixtureRuntime implements GeoImagingRuntime {
       nodataPolicy: request.recipe.outputNoData,
       expectedOutput: { sampleType: 'float32' as const, componentCount: 1 },
       warnings: [],
+      execution: {
+        schemaVersion: 1 as const,
+        engine: 'purejsimage/geo' as const,
+        packageVersion: '0.16.0',
+        cacheSchemaVersion: 2 as const,
+        inputs: request.inputs.map((input) => ({
+          layerId: input.layerId,
+          relationship: 'exact-grid' as const,
+          pixelAligned: true,
+          pyramidCompatible: true,
+          sourceGridIdentity: `source:${input.layerId}`,
+          targetGridIdentity: 'target',
+        })),
+      },
     }
   }
   async requestDerivedStatistics() {

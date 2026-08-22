@@ -56,7 +56,7 @@ const reader = (
 
 /**
  * Portable initialize-time catalog. Ordinary single-file readers keep the 1.0.0
- * catalog versions used at Worker startup. OME-Zarr matches the live 0.15.0
+ * catalog versions used at Worker startup. OME-Zarr matches the live 0.16.0
  * descriptor and is loaded only through explicit source kinds.
  */
 export const SUPPORTED_READERS = Object.freeze([

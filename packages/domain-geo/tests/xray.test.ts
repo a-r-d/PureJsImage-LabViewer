@@ -184,6 +184,80 @@ describe('COG X-ray and readout', () => {
     expect(report.issues[0]?.code).toBe('STRIPED_IMAGE')
   })
 
+  it('does not treat the GeoZarr root metadata size as the complete store size', () => {
+    const source = {
+      sourceId: 'source-zarr' as SourceId,
+      documentId: 'document-zarr',
+      generation: 1,
+      identity: {},
+      source: {
+        kind: 'geo-zarr-remote' as const,
+        name: 'fixture.zarr',
+        size: 843,
+        url: 'https://x/fixture.zarr/',
+      },
+      reader: { id: 'purejsimage/geo/geozarr', version: '1.0.0', format: 'GeoZarr' },
+      metadata: {},
+      datasets: [],
+    } as unknown as OpenedSourceDescriptor
+    const dataset = {
+      id: 'array-0',
+      identity: {},
+      sampleType: 'uint16',
+      axes: [
+        { id: 'x', kind: 'spatial', length: 4, coordinates: { type: 'index' } },
+        { id: 'y', kind: 'spatial', length: 4, coordinates: { type: 'index' } },
+      ],
+      components: [{ id: '0', kind: 'intensity' }],
+      levels: [],
+      capabilities: {
+        regionReads: true,
+        resolutionLevels: false,
+        planeReads: { kind: 'any-axis-pair' },
+      },
+    } satisfies DatasetDescriptor
+    const diagnostics = {
+      epoch: 1,
+      sources: [
+        {
+          id: source.sourceId,
+          kind: 'geo-zarr-remote' as const,
+          size: 843,
+          revision: 1,
+          rangeRequests: 15,
+          rangeBytesFetched: 879,
+          rangeCacheBytes: 512,
+          rangeCacheHits: 11,
+          rangeCacheMisses: 4,
+          openDatasets: 1,
+        },
+      ],
+      aggregate: {
+        openSources: 1,
+        openDatasets: 1,
+        pendingRequests: 0,
+        rangeCacheBytes: 512,
+        tileRuntimeBytes: 0,
+      },
+      pendingRequests: 0,
+      tileRuntime: null,
+      releases: { documents: 0, datasets: 0, tiles: 0, runtimes: 0 },
+      limits: {
+        maxOpenSources: 8,
+        maxDatasetsPerSource: 8,
+        maxRangeCacheBytes: 32 * 1_024 * 1_024,
+        maxTileRuntimeBytes: 192 * 1_024 * 1_024,
+        maxInFlightRequests: 32,
+      },
+    } satisfies WorkerDiagnostics
+
+    expect(buildCogXrayReport({ source, dataset, diagnostics, activeOverview: 0 })).toMatchObject({
+      rangeRequests: 15,
+      bytesFetched: 879,
+      percentFetched: undefined,
+    })
+  })
+
   it('includes WGS84 when the source CRS can be transformed', () => {
     const geographic = formatGeoCursorReadout({
       pixel: { x: 1.5, y: 0.5 },

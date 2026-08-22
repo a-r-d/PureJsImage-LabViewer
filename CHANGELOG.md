@@ -15,9 +15,10 @@ The application is not yet versioned for release (`0.0.0`).
   `analysis.particle.quality.read` plus dedicated ROI/histogram/profile/FFT/surface/stack/compare
   actions. Atlas keeps labeled scripted action-contract evals and adds controller-backed grading.
 
-- The workbench consumes `purejsimage@0.15.0`. Science opens remote, directory, and ZIP OME-Zarr
-  stores through explicit source kinds on the imaging Worker. Atlas does not gain an OME-Zarr
-  source workflow merely because the format is multiscale.
+- The workbench consumes `purejsimage@0.16.0`. Atlas opens local, bundled, and remote GeoTIFF/COG
+  sources plus remote and bounded bundled GeoZarr stores through the released Geo reader surface
+  and an explicit Geo Worker profile. Science retains its existing TIFF and
+  remote/directory/ZIP OME-Zarr paths; arbitrary OME-Zarr is not treated as GeoZarr.
 
 - Atlas virtual raster analysis through the shared semantic action host: normalized band math,
   explicit virtual band stacks, hillshade/slope/aspect, raster difference, bounded region

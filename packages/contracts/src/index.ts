@@ -57,6 +57,7 @@ import type {
   DerivedRasterStatisticsRequest,
   DerivedRasterStatisticsResponse,
 } from './geo-analysis.js'
+import type { GeoRasterDescriptorV1, GeoZarrStructuralDiagnosticsV1 } from './geo-raster.js'
 import type {
   OmeZarrChannelDisplayState,
   OmeZarrColorModel,
@@ -67,6 +68,7 @@ import type { SpatialReference } from './spatial-reference.js'
 
 export * from './analysis.js'
 export * from './geo-analysis.js'
+export * from './geo-raster.js'
 export * from './ome-zarr.js'
 export * from './spatial-reference.js'
 
@@ -78,6 +80,8 @@ export type SourceKind =
   | 'ome-zarr-remote'
   | 'ome-zarr-directory'
   | 'ome-zarr-zip'
+  | 'geo-zarr-remote'
+  | 'geo-zarr-bundled'
 export type TilePriority = 'visible' | 'near-visible' | 'background'
 export type DisplayStretch = 'minmax' | 'percentile'
 
@@ -236,6 +240,9 @@ export interface DatasetDescriptor {
       | Readonly<{ kind: 'axes'; axes: readonly string[] }>
   }>
   readonly spatialReference?: SpatialReference
+  /** Additive rich Geo projection; scientific compatibility fields remain populated. */
+  readonly geo?: GeoRasterDescriptorV1
+  readonly geoZarrStructure?: GeoZarrStructuralDiagnosticsV1
   readonly metadata?: Readonly<Record<string, unknown>>
 }
 
@@ -443,6 +450,7 @@ export interface SourceRangeDiagnostics {
   readonly openDatasets: number
   readonly omeZarrNetwork?: OmeZarrNetworkDiagnostics
   readonly omeZarrIdentity?: OmeZarrRootIdentityEvidence
+  readonly geoZarrStructure?: GeoZarrStructuralDiagnosticsV1
 }
 
 export interface WorkerDiagnostics {
@@ -534,6 +542,15 @@ export type WorkerRequest =
       }>
     >
   | RpcRequest<'source.open-remote', Readonly<{ generation: number; url: string }>>
+  | RpcRequest<'source.open-geozarr-remote', Readonly<{ generation: number; url: string }>>
+  | RpcRequest<
+      'source.open-geozarr-bundled',
+      Readonly<{
+        generation: number
+        primaryId: string
+        files: readonly LocalFileAttachment[]
+      }>
+    >
   | RpcRequest<'source.open-ome-zarr-remote', Readonly<{ generation: number; url: string }>>
   | RpcRequest<
       'source.open-ome-zarr-directory',
@@ -665,6 +682,8 @@ const REQUEST_KINDS = new Set<string>([
   'source.open-local',
   'source.open-bundled',
   'source.open-remote',
+  'source.open-geozarr-remote',
+  'source.open-geozarr-bundled',
   'source.open-ome-zarr-remote',
   'source.open-ome-zarr-directory',
   'source.open-ome-zarr-zip',
@@ -1292,6 +1311,12 @@ function assertRasterNoData(value: unknown, label: string): void {
   if (!isRecord(value))
     throw new RpcValidationError('INVALID_PAYLOAD', `${label} must be an object`)
   if (value['kind'] === 'none' || value['kind'] === 'nan') return
+  if (value['kind'] === 'integer64') {
+    assertString(value['value'], `${label} exact integer`)
+    if (!/^-?(?:0|[1-9][0-9]*)$/u.test(value['value'] as string))
+      throw new RpcValidationError('INVALID_PAYLOAD', `${label} exact integer must be canonical`)
+    return
+  }
   if (value['kind'] !== 'value')
     throw new RpcValidationError('INVALID_PAYLOAD', `${label} kind is invalid`)
   assertFinite(value['value'], `${label} value`)
@@ -1330,12 +1355,29 @@ function assertRasterGrid(value: unknown, label: string): void {
       'int8',
       'int16',
       'int32',
+      'int64',
       'float32',
       'float64',
     ].includes(String(value['sampleType']))
   )
     throw new RpcValidationError('INVALID_PAYLOAD', `${label} sample type is invalid`)
   assertRasterNoData(value['noData'], `${label} nodata`)
+  if (isRecord(value['noData']) && value['noData']['kind'] === 'integer64') {
+    const sampleType = String(value['sampleType'])
+    if (sampleType !== 'int64' && sampleType !== 'uint64')
+      throw new RpcValidationError(
+        'INVALID_PAYLOAD',
+        `${label} exact integer nodata requires int64 or uint64`,
+      )
+    const integer = BigInt(value['noData']['value'] as string)
+    const minimum = sampleType === 'uint64' ? 0n : -(1n << 63n)
+    const maximum = sampleType === 'uint64' ? (1n << 64n) - 1n : (1n << 63n) - 1n
+    if (integer < minimum || integer > maximum)
+      throw new RpcValidationError(
+        'INVALID_PAYLOAD',
+        `${label} exact integer nodata is outside ${sampleType}`,
+      )
+  }
 }
 
 function assertTransformDescriptor(value: unknown, label: string): void {
@@ -1400,6 +1442,8 @@ export function assertDerivedRasterRecipe(value: unknown): asserts value is Deri
   assertInteger(limits['maxTilePixels'], 'derived maxTilePixels', 1)
   assertInteger(limits['maxOutputBytes'], 'derived maxOutputBytes', 1)
   assertInteger(limits['maxWorkingBytes'], 'derived maxWorkingBytes', 1)
+  if (limits['maxSourcePixels'] !== undefined)
+    assertInteger(limits['maxSourcePixels'], 'derived maxSourcePixels', 1)
   assertDerivedRasterOperation(recipe['operation'], inputNames)
 }
 
@@ -1543,6 +1587,7 @@ function utf8Bytes(value: string): number {
 function jsonMessageBytes(value: Candidate): number {
   const payload =
     (value.kind === 'source.open-local' ||
+      value.kind === 'source.open-geozarr-bundled' ||
       value.kind === 'source.open-ome-zarr-directory' ||
       value.kind === 'source.open-ome-zarr-zip') &&
     isRecord(value.payload)
@@ -1594,7 +1639,11 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
       assertGeneration(payload)
       if (payload['sampleId'] !== undefined) assertString(payload['sampleId'], 'sampleId')
     }
-    if (kind === 'source.open-remote' || kind === 'source.open-ome-zarr-remote') {
+    if (
+      kind === 'source.open-remote' ||
+      kind === 'source.open-geozarr-remote' ||
+      kind === 'source.open-ome-zarr-remote'
+    ) {
       assertGeneration(payload)
       assertString(payload.url, 'url')
     }
@@ -1619,13 +1668,14 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
     }
     if (
       kind === 'source.open-local' ||
+      kind === 'source.open-geozarr-bundled' ||
       kind === 'source.open-ome-zarr-directory' ||
       kind === 'source.open-ome-zarr-zip'
     ) {
       assertGeneration(payload)
       assertString(payload.primaryId, 'primaryId')
       const maxFiles =
-        kind === 'source.open-ome-zarr-directory'
+        kind === 'source.open-ome-zarr-directory' || kind === 'source.open-geozarr-bundled'
           ? RPC_LIMITS.maxOmeZarrDirectoryFiles
           : RPC_LIMITS.maxItems
       if (!Array.isArray(payload.files) || payload.files.length === 0) {
@@ -1663,6 +1713,13 @@ export function validateWorkerRequest(value: unknown): WorkerRequest {
         if (blob.size !== fileCandidate.size) {
           throw new RpcValidationError('INVALID_PAYLOAD', 'Blob attachment size does not match')
         }
+      }
+      if (
+        kind === 'source.open-geozarr-bundled' &&
+        payload.files.reduce((total, file) => total + Number(file.size), 0) >
+          RPC_LIMITS.maxBundledSourceBytes
+      ) {
+        throw new RpcValidationError('LIMIT_EXCEEDED', 'bundled GeoZarr exceeds the byte limit')
       }
     }
     if (kind === 'source.close') {

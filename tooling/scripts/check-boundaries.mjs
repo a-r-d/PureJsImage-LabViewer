@@ -102,6 +102,10 @@ export function inspectSource(relativeFile, source) {
       violations.push(`${file}: private PureJsImage import '${specifier}'`)
     }
 
+    if (specifier === 'purejsimage/geo/readers/all') {
+      violations.push(`${file}: aggregate Geo reader import '${specifier}'`)
+    }
+
     if (specifier === 'purejsimage' || specifier.startsWith('purejsimage/')) {
       const deliberateTypeContract =
         (file.startsWith('packages/contracts/') || file.startsWith('packages/workspace/')) &&

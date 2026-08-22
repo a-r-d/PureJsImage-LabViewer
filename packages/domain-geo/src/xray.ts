@@ -67,6 +67,9 @@ export function buildCogXrayReport(input: {
   const size = input.source.source.size
   const range = input.diagnostics.sources.find((source) => source.id === input.source.sourceId)
   const bytesFetched = range?.rangeBytesFetched ?? 0
+  const percentFetchedApplies =
+    input.source.source.kind !== 'geo-zarr-remote' &&
+    input.source.source.kind !== 'geo-zarr-bundled'
   return {
     objectSize: size,
     container: inspection?.container ?? 'unknown',
@@ -93,7 +96,7 @@ export function buildCogXrayReport(input: {
     bytesFetched,
     cacheHits: range?.rangeCacheHits ?? 0,
     cacheMisses: range?.rangeCacheMisses ?? 0,
-    percentFetched: size > 0 ? (100 * bytesFetched) / size : undefined,
+    percentFetched: percentFetchedApplies && size > 0 ? (100 * bytesFetched) / size : undefined,
     activeOverview: input.activeOverview,
     likelyCog: inspection?.likelyCog ?? false,
     issues: inspection?.issues ?? [],

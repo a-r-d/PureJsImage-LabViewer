@@ -152,6 +152,51 @@ type TileState =
   | Readonly<{ kind: 'failed-permanent'; failure: FailedTile }>
   | Readonly<{ kind: 'superseded' }>
 
+export interface CanvasTileTransform {
+  readonly a: number
+  readonly b: number
+  readonly c: number
+  readonly d: number
+  readonly e: number
+  readonly f: number
+}
+
+export function canvasTileTransform(
+  origin: Point,
+  xAxis: Point,
+  yAxis: Point,
+  width: number,
+  height: number,
+  ratio: number,
+): CanvasTileTransform {
+  const deviceOrigin = { x: ratio * origin.x, y: ratio * origin.y }
+  const deviceXAxis = { x: ratio * xAxis.x, y: ratio * xAxis.y }
+  const deviceYAxis = { x: ratio * yAxis.x, y: ratio * yAxis.y }
+  const axisAligned =
+    Math.abs(deviceXAxis.y - deviceOrigin.y) < 1e-7 &&
+    Math.abs(deviceYAxis.x - deviceOrigin.x) < 1e-7
+  if (axisAligned) {
+    const e = Math.round(deviceOrigin.x)
+    const f = Math.round(deviceOrigin.y)
+    return {
+      a: (Math.round(deviceXAxis.x) - e) / width,
+      b: 0,
+      c: 0,
+      d: (Math.round(deviceYAxis.y) - f) / height,
+      e,
+      f,
+    }
+  }
+  return {
+    a: (deviceXAxis.x - deviceOrigin.x) / width,
+    b: (deviceXAxis.y - deviceOrigin.y) / width,
+    c: (deviceYAxis.x - deviceOrigin.x) / height,
+    d: (deviceYAxis.y - deviceOrigin.y) / height,
+    e: deviceOrigin.x,
+    f: deviceOrigin.y,
+  }
+}
+
 class CanvasGeoRenderer {
   readonly #canvas: HTMLCanvasElement
   #context: CanvasRenderingContext2D
@@ -336,13 +381,21 @@ class CanvasGeoRenderer {
     this.#context.globalAlpha = layer.opacity
     this.#context.globalCompositeOperation = canvasCompositeOperation(layer.blendMode)
     this.#context.imageSmoothingEnabled = canvasSmoothingEnabled(layer.style.resample)
+    const transform = canvasTileTransform(
+      origin,
+      xAxis,
+      yAxis,
+      cached.canvas.width,
+      cached.canvas.height,
+      ratio,
+    )
     this.#context.setTransform(
-      (ratio * (xAxis.x - origin.x)) / cached.canvas.width,
-      (ratio * (xAxis.y - origin.y)) / cached.canvas.width,
-      (ratio * (yAxis.x - origin.x)) / cached.canvas.height,
-      (ratio * (yAxis.y - origin.y)) / cached.canvas.height,
-      ratio * origin.x,
-      ratio * origin.y,
+      transform.a,
+      transform.b,
+      transform.c,
+      transform.d,
+      transform.e,
+      transform.f,
     )
     this.#context.drawImage(cached.canvas, 0, 0)
     this.#context.restore()

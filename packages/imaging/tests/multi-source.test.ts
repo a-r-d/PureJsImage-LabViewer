@@ -301,7 +301,7 @@ describe('multi-source imaging Worker', () => {
 
   it('cancels in-flight work for one source without aborting the other', async () => {
     const files = {
-      'slow.tif': pad(northUpGeoTiffFixture()),
+      'slow.tif': pad(northUpGeoTiffFixture('255')),
       'keep.tif': pad(rgbGeoTiffFixture()),
     }
     let holdSlowTiles = false
@@ -310,6 +310,7 @@ describe('multi-source imaging Worker', () => {
       releaseSlow = resolve
     })
     const host = new ImagingWorkerHost({
+      profile: 'geo',
       fetch: async (input, init) => {
         if (holdSlowTiles && String(input).includes('slow.tif')) await slowGate
         return rangeFetch(files)(input, init)

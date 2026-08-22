@@ -13,20 +13,22 @@ interface ImagingWorkerScope {
 
 const worker = self as unknown as ImagingWorkerScope
 const host = new ImagingWorkerHost({
+  profile: 'geo',
   rasterTransforms: {
-    resolve(descriptor, sourceCrs, targetCrs) {
+    implementationIdentity: 'proj4@2.19.10',
+    supports(descriptor, sourceCrs, targetCrs) {
       if (descriptor.id !== 'pji-workbench.proj4-inverse' || descriptor.version !== '1')
-        return undefined
+        return false
+      return supportedCrs(sourceCrs) !== undefined && supportedCrs(targetCrs) !== undefined
+    },
+    transform(descriptor, sourceCrs, targetCrs, coordinate) {
+      if (!this.supports(descriptor, sourceCrs, targetCrs))
+        throw new Error(`Transform ${descriptor.id}@${descriptor.version} is unavailable.`)
       const source = supportedCrs(sourceCrs)
       const target = supportedCrs(targetCrs)
-      if (source === undefined || target === undefined) return undefined
-      return {
-        descriptor,
-        inverse(targetX, targetY) {
-          const point = transformMapPoint({ x: targetX, y: targetY }, target, source)
-          return [point.x, point.y]
-        },
-      }
+      if (source === undefined || target === undefined) throw new Error('CRS is unavailable.')
+      const point = transformMapPoint({ x: coordinate[0], y: coordinate[1] }, source, target)
+      return [point.x, point.y]
     },
   },
 })

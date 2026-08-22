@@ -60,6 +60,22 @@ function completeProject() {
     sourceIds: [left.id, right.id],
     recipe: { recipeId: 'geo.analysis.raster_difference', recipeVersion: '1' },
     createdAt: '2026-08-20T00:00:00.000Z',
+    execution: {
+      schemaVersion: 1,
+      engine: 'purejsimage/geo',
+      packageVersion: '0.16.0',
+      cacheSchemaVersion: 2,
+      inputs: [
+        {
+          layerId: leftLayer.id,
+          relationship: 'exact-grid',
+          pixelAligned: true,
+          pyramidCompatible: true,
+          sourceGridIdentity: 'left-grid',
+          targetGridIdentity: 'target-grid',
+        },
+      ],
+    },
   } as const
   const derived = createDerivedGeoRasterLayer({
     id: 'difference',
@@ -141,7 +157,7 @@ describe('Atlas project documents', () => {
     const project = completeProject()
     const exported = exportGeoProjectDocument(project, {
       appVersion: '1.2.3',
-      pureJsImageVersion: '0.15.0',
+      pureJsImageVersion: '0.16.0',
     })
     const imported = importGeoProjectDocument(exported.text)
     expect(imported.checksumVerified).toBe(true)
@@ -153,13 +169,14 @@ describe('Atlas project documents', () => {
     expect(imported.project.rois).toEqual(project.rois)
     expect(imported.project.viewport).toEqual(project.viewport)
     expect(imported.project.selection).toEqual(project.selection)
+    expect(imported.project.provenance[0]?.execution).toEqual(project.provenance[0]?.execution)
     expect(canonicalGeoProject(imported.project)).toBe(canonicalGeoProject(project))
   })
 
   it('removes signed session hrefs from durable source identity', () => {
     const { text } = exportGeoProjectDocument(completeProject(), {
       appVersion: '1',
-      pureJsImageVersion: '0.15.0',
+      pureJsImageVersion: '0.16.0',
     })
     expect(text).not.toContain('temporary=1')
     expect(text).not.toContain('session.invalid')
@@ -191,6 +208,19 @@ describe('Atlas project documents', () => {
     expect(canonicalGeoProject(first.project)).toBe(canonicalGeoProject(second.project))
   })
 
+  it('keeps v1 derived projects without package execution provenance readable', () => {
+    const legacy = JSON.parse(JSON.stringify(completeProject())) as {
+      provenance: Array<Record<string, unknown>>
+      layers: Array<Record<string, unknown>>
+    }
+    delete legacy.provenance[0]?.['execution']
+    const layerProvenance = legacy.layers[2]?.['provenance']
+    if (typeof layerProvenance === 'object' && layerProvenance !== null)
+      delete (layerProvenance as Record<string, unknown>)['execution']
+    const imported = importGeoProjectDocument(JSON.stringify(legacy))
+    expect(imported.project.provenance[0]?.execution).toBeUndefined()
+  })
+
   it('rejects oversized imports, pollution keys, secret fields, and bad checksums', () => {
     expect(() =>
       importGeoProjectDocument(' '.repeat(GEO_PROJECT_DOCUMENT_LIMITS.maxDocumentBytes + 1)),
@@ -206,11 +236,11 @@ describe('Atlas project documents', () => {
       rois: [{ ...roi, properties: { apiKey: 'do-not-persist' } }],
     })
     expect(() =>
-      exportGeoProjectDocument(unsafe, { appVersion: '1', pureJsImageVersion: '0.15.0' }),
+      exportGeoProjectDocument(unsafe, { appVersion: '1', pureJsImageVersion: '0.16.0' }),
     ).toThrow(GeoProjectDocumentError)
     const exported = exportGeoProjectDocument(project, {
       appVersion: '1',
-      pureJsImageVersion: '0.15.0',
+      pureJsImageVersion: '0.16.0',
     })
     const damaged = JSON.parse(exported.text) as { project: { title: string } }
     damaged.project.title = 'tampered'

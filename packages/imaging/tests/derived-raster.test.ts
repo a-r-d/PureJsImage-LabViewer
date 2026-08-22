@@ -11,7 +11,7 @@ import { encodeGsf } from 'purejsimage/scientific/readers/gsf'
 import { describe, expect, it } from 'vitest'
 
 import { ImagingWorkerHost } from '../src/index.js'
-import { fourBandGeoTiffFixture } from './geotiff-fixture.js'
+import { fourBandGeoTiffFixture, geoKeyEntries, geoTiffFixture } from './geotiff-fixture.js'
 
 function payload<Kind extends Extract<WorkerResponse, { ok: true }>['kind']>(
   response: WorkerResponse,
@@ -69,6 +69,29 @@ async function openGrid(
     'dataset.opened',
   ) as OpenedDatasetDescriptor
   return { source, dataset }
+}
+
+async function openGeoGrid(
+  host: ImagingWorkerHost,
+  name: string,
+  width: number,
+  height: number,
+  values: readonly number[],
+): Promise<Readonly<{ source: OpenedSourceDescriptor; dataset: OpenedDatasetDescriptor }>> {
+  return openFile(
+    host,
+    name,
+    geoTiffFixture({
+      width,
+      height,
+      pixels: Uint8Array.from(values),
+      extraEntries: [
+        { tag: 33_550, type: 12, values: [1, 1, 0] },
+        { tag: 33_922, type: 12, values: [0, 0, 0, 0, height, 0] },
+        ...geoKeyEntries(1, { kind: 'geographic', code: 4_326, name: 'WGS 84' }),
+      ],
+    }),
+  )
 }
 
 async function openFile(
@@ -231,8 +254,77 @@ const rawInput = (name: string, layerId: string) => ({
 })
 
 describe('derived geo raster RPC', () => {
-  it('masks polygon holes across tile boundaries and excludes nodata', async () => {
+  it('keeps Geo analysis disabled in the default Science Worker profile', async () => {
     const host = new ImagingWorkerHost()
+    const target = grid(1, 1)
+    const input = rawInput('source', 'source')
+    const result = await host.handle(
+      rpcRequest('science-derived', 'geo.analysis.dry_run', {
+        layerId: 'derived',
+        recipe: recipe(target, [input], {
+          kind: 'linear-combination',
+          terms: [{ input: 'source', coefficient: 1 }],
+          constant: 0,
+        }),
+        inputs: [
+          {
+            layerId: 'source',
+            datasetHandleId: 'missing' as never,
+            generation: 1,
+            sourceIdentity: 'fixture',
+            sourceRevision: '1',
+            grid: target,
+          },
+        ],
+      }),
+    )
+    expect(result.response).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_PAYLOAD', message: 'Geo analysis requires the Geo Worker profile' },
+    })
+    await host.dispose()
+  })
+
+  it('fails explicitly instead of rounding declared 64-bit integer sources', async () => {
+    const host = new ImagingWorkerHost({ profile: 'geo' })
+    const opened = await openGrid(
+      host,
+      'integer64-source.gsf',
+      2,
+      2,
+      Float32Array.of(1, 2, 3, 4),
+      1,
+    )
+    const target = grid(2, 2)
+    const input = rawInput('source', 'source')
+    const result = await host.handle(
+      rpcRequest('integer64-dry-run', 'geo.analysis.dry_run', {
+        layerId: 'integer64-layer',
+        recipe: recipe(target, [input], {
+          kind: 'linear-combination',
+          terms: [{ input: 'source', coefficient: 1 }],
+          constant: 0,
+        }),
+        inputs: [
+          {
+            ...runtimeInput('source', opened, target),
+            grid: { ...target, sampleType: 'int64' },
+          },
+        ],
+      }),
+    )
+    expect(result.response).toMatchObject({
+      ok: false,
+      error: {
+        code: 'INVALID_PAYLOAD',
+        message: expect.stringContaining('do not support exact int64 sources'),
+      },
+    })
+    await host.dispose()
+  })
+
+  it('masks polygon holes across tile boundaries and excludes nodata', async () => {
+    const host = new ImagingWorkerHost({ profile: 'geo' })
     const width = 300
     const height = 2
     const values = Float32Array.from({ length: width * height }, (_, index) => index)
@@ -289,7 +381,7 @@ describe('derived geo raster RPC', () => {
   })
 
   it('derives a normalized difference from two bands of one four-band raster', async () => {
-    const host = new ImagingWorkerHost()
+    const host = new ImagingWorkerHost({ profile: 'geo' })
     const opened = await openFile(host, 'four-band.tif', fourBandGeoTiffFixture())
     const target = {
       ...grid(2, 1, 'EPSG:4326'),
@@ -354,7 +446,7 @@ describe('derived geo raster RPC', () => {
 
   it('does not fetch a complete remote GeoTIFF to evaluate a derived region', async () => {
     const bytes = paddedRemote(fourBandGeoTiffFixture())
-    const host = new ImagingWorkerHost({ fetch: rangeFetch(bytes) })
+    const host = new ImagingWorkerHost({ profile: 'geo', fetch: rangeFetch(bytes) })
     const opened = await openRemoteFile(host, 'https://fixtures.invalid/four-band.tif')
     const target = {
       ...grid(2, 1, 'EPSG:4326'),
@@ -390,7 +482,7 @@ describe('derived geo raster RPC', () => {
   })
 
   it('evaluates a normalized difference on demand and reports a stable identity', async () => {
-    const host = new ImagingWorkerHost()
+    const host = new ImagingWorkerHost({ profile: 'geo' })
     const left = await openGrid(host, 'left.gsf', 2, 2, Float32Array.of(3, 6, 9, 12), 1)
     const right = await openGrid(host, 'right.gsf', 2, 2, Float32Array.of(1, 2, 3, 4), 2)
     const target = grid(2, 2)
@@ -449,7 +541,7 @@ describe('derived geo raster RPC', () => {
   })
 
   it('refuses mismatched grids unless resampling and cross-CRS transforms are explicit', async () => {
-    const host = new ImagingWorkerHost()
+    const host = new ImagingWorkerHost({ profile: 'geo' })
     const opened = await openGrid(host, 'mismatch.gsf', 2, 2, Float32Array.of(1, 2, 3, 4), 1)
     const sourceGrid = grid(2, 2, 'EPSG:4326')
     const target = grid(4, 4, 'EPSG:3857')
@@ -491,7 +583,7 @@ describe('derived geo raster RPC', () => {
   })
 
   it('preserves explicit virtual-stack band order', async () => {
-    const host = new ImagingWorkerHost()
+    const host = new ImagingWorkerHost({ profile: 'geo' })
     const first = await openGrid(host, 'first.gsf', 2, 1, Float32Array.of(10, 20), 1)
     const second = await openGrid(host, 'second.gsf', 2, 1, Float32Array.of(30, 40), 2)
     const target = grid(2, 1)
@@ -539,15 +631,14 @@ describe('derived geo raster RPC', () => {
       accuracy: { kind: 'exact' as const },
     }
     const host = new ImagingWorkerHost({
+      profile: 'geo',
       rasterTransforms: {
-        resolve(candidate) {
-          return candidate.id === descriptor.id
-            ? { descriptor: candidate, inverse: (x, y) => [x, y] }
-            : undefined
-        },
+        implementationIdentity: 'fixture-transform@1',
+        supports: (candidate) => candidate.id === descriptor.id,
+        transform: (_candidate, _sourceCrs, _targetCrs, coordinate) => coordinate,
       },
     })
-    const opened = await openGrid(host, 'resample.gsf', 2, 2, Float32Array.of(1, 2, 3, 4), 1)
+    const opened = await openGeoGrid(host, 'resample.tif', 2, 2, [1, 2, 3, 4])
     const sourceGrid = grid(2, 2, 'EPSG:4326')
     const sameCrsTarget = {
       ...grid(4, 4, 'EPSG:4326'),
@@ -582,6 +673,19 @@ describe('derived geo raster RPC', () => {
     )
     expect(sameCrs.count).toBeGreaterThan(0)
     expect(sameCrs.mean).toBeCloseTo(2.5, 1)
+    const sourceLimited = await host.handle(
+      rpcRequest('same-crs-source-limit', 'geo.analysis.region_statistics', {
+        ...sameCrsRequest,
+        recipe: {
+          ...sameCrsRequest.recipe,
+          limits: { ...sameCrsRequest.recipe.limits, maxSourcePixels: 1 },
+        },
+      }),
+    )
+    expect(sourceLimited.response).toMatchObject({
+      ok: false,
+      error: { code: 'LIMIT_EXCEEDED' },
+    })
 
     const target = {
       ...grid(4, 4, 'EPSG:3857'),
@@ -617,6 +721,22 @@ describe('derived geo raster RPC', () => {
         descriptor,
       },
     ])
+    expect(dryRun.execution).toMatchObject({
+      engine: 'purejsimage/geo',
+      packageVersion: '0.16.0',
+      cacheSchemaVersion: 2,
+      inputs: [
+        {
+          relationship: 'different-crs',
+          transform: {
+            descriptorId: descriptor.id,
+            descriptorVersion: descriptor.version,
+            transformIdentity: 'proj4-compatible:EPSG:4326->EPSG:3857',
+            implementationIdentity: 'fixture-transform@1',
+          },
+        },
+      ],
+    })
     const statistics = payload(
       (
         await host.handle(
@@ -641,24 +761,24 @@ describe('derived geo raster RPC', () => {
       accuracy: { kind: 'exact' as const },
     }
     const host = new ImagingWorkerHost({
+      profile: 'geo',
       rasterTransforms: {
-        resolve(candidate) {
-          return candidate.id === descriptor.id
-            ? {
-                descriptor: candidate,
-                inverse: (x, y) => [x + 6 * Math.sin((Math.PI * (y - 0.5)) / 3), y],
-              }
-            : undefined
+        implementationIdentity: 'fixture-nonlinear@1',
+        supports: (candidate) => candidate.id === descriptor.id,
+        transform(_candidate, sourceCrs, targetCrs, coordinate) {
+          const bulge = 6 * Math.sin((Math.PI * (coordinate[1] - 0.5)) / 3)
+          if (sourceCrs === 'EPSG:3857' && targetCrs === 'EPSG:4326')
+            return [coordinate[0] + bulge, coordinate[1]]
+          return [coordinate[0] - bulge, coordinate[1]]
         },
       },
     })
-    const opened = await openGrid(
+    const opened = await openGeoGrid(
       host,
-      'nonlinear.gsf',
+      'nonlinear.tif',
       12,
       4,
-      Float32Array.from({ length: 48 }, () => 1),
-      1,
+      Array.from({ length: 48 }, () => 1),
     )
     const sourceGrid = grid(12, 4, 'EPSG:4326')
     const target = { ...grid(4, 4, 'EPSG:3857'), resampling: 'bilinear' as const }
@@ -692,7 +812,7 @@ describe('derived geo raster RPC', () => {
   })
 
   it('uses a source halo so terrain profiles agree across tile boundaries', async () => {
-    const host = new ImagingWorkerHost()
+    const host = new ImagingWorkerHost({ profile: 'geo' })
     const width = 8
     const height = 8
     const values = Float32Array.from({ length: width * height }, (_, index) => {

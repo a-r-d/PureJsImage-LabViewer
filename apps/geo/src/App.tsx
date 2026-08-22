@@ -212,6 +212,7 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   const [blinkInterval, setBlinkInterval] = useState(750)
   const [drawingTool, setDrawingTool] = useState<GeoDrawingTool>('pan')
   const inspectorProjectRef = useRef(snapshot.project.id)
+  const lifecycleGenerationRef = useRef(0)
 
   const selectTab = useCallback(
     (next: InspectorTab) => {
@@ -261,6 +262,8 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
   )
 
   useEffect(() => {
+    const generation = lifecycleGenerationRef.current + 1
+    lifecycleGenerationRef.current = generation
     let cancelled = false
     void runtime
       .initialize()
@@ -272,9 +275,12 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
       })
     return () => {
       cancelled = true
-      openAbortRef.current?.abort()
-      agentRuntime.dispose()
-      void controller.dispose()
+      queueMicrotask(() => {
+        if (lifecycleGenerationRef.current !== generation) return
+        openAbortRef.current?.abort()
+        agentRuntime.dispose()
+        void controller.dispose()
+      })
     }
   }, [agentRuntime, controller, runtime])
 
@@ -888,7 +894,11 @@ export function App({ environment }: { readonly environment: PublicEnvironment }
               ? `Opening ${snapshot.task.label ?? 'GeoTIFF'}…`
               : xray === undefined
                 ? `${snapshot.project.sources.length}/32 sources`
-                : `${xray.rangeRequests} ranges · ${xray.percentFetched?.toFixed(1) ?? '0'}% fetched`}
+                : `${xray.rangeRequests} ranges · ${
+                    xray.percentFetched === undefined
+                      ? 'n/a fetched'
+                      : `${xray.percentFetched.toFixed(1)}% fetched`
+                  }`}
           </span>
         </footer>
       </WorkbenchShell>
