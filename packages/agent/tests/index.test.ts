@@ -112,7 +112,12 @@ function call(
 }
 
 function fixtureGateway(
-  options: Readonly<{ available?: boolean; failReadCount?: number; largeResult?: boolean }> = {},
+  options: Readonly<{
+    available?: boolean
+    failReadCount?: number
+    largeResult?: boolean
+    mutationAdvancesRevision?: boolean
+  }> = {},
 ): {
   readonly gateway: AgentActionGateway
   readonly executions: AgentActionCall[]
@@ -145,7 +150,7 @@ function fixtureGateway(
         'fixture.mutate@1',
         {
           execute: () => {
-            revision += 1
+            if (options.mutationAdvancesRevision !== false) revision += 1
             return { revision }
           },
         },
@@ -383,6 +388,30 @@ describe('model-independent agent runtime', () => {
     expect(fixture.executions.map(({ callId }) => callId)).toEqual(['call-1', 'call-current'])
     expect(audit.trace.map(({ actionId }) => actionId)).toEqual(['fixture.mutate', 'fixture.read'])
     expect(fixture.revision()).toBe(1)
+  })
+
+  it('enforces one mutation boundary even when a handler does not advance revision', async () => {
+    const fixture = fixtureGateway({ mutationAdvancesRevision: false })
+    const transport = new DeterministicAgentTransport([
+      modelResponse([call('fixture.mutate', {}), call('fixture.mutate', {}, 0, 'call-deferred')]),
+      (request) => {
+        expect(request.messages.slice(-2)).toEqual([
+          expect.objectContaining({ role: 'tool', actionId: 'fixture.mutate' }),
+          expect.objectContaining({
+            role: 'tool',
+            actionId: 'fixture.mutate',
+            content: expect.stringContaining('MUTATION_BATCH_BOUNDARY'),
+          }),
+        ])
+        return modelResponse([call('fixture.mutate', {}, 0, 'call-reissued')])
+      },
+      modelResponse([], 'Both reviewed mutations completed in separate model steps.'),
+    ])
+    const runtime = new AgentRuntime({ transport, gateway: fixture.gateway, policy: ALLOW_ALL })
+
+    await runtime.start('Apply two reviewed mutations.', 'fake/atlas')
+
+    expect(fixture.executions.map(({ callId }) => callId)).toEqual(['call-1', 'call-reissued'])
   })
 
   it('reuses a bounded session approval scope and preserves it in replay provenance', async () => {
@@ -792,7 +821,7 @@ describe('OpenRouter transport', () => {
     ])
   })
 
-  it('uses session-only credentials, tool-capable models, and sequential tool calls', async () => {
+  it('uses session-only credentials and accepts an ordered batch of tool calls', async () => {
     const requests: Array<{ readonly url: string; readonly body?: string }> = []
     const bodies = [
       { data: [{ id: 'fixture/tools', name: 'Fixture Tools', supported_parameters: ['tools'] }] },
@@ -809,6 +838,14 @@ describe('OpenRouter transport', () => {
                   function: {
                     name: 'fixture__read__v1',
                     arguments: '```json\n{"input":{"query":"Kentucky"}}\n```',
+                  },
+                },
+                {
+                  id: 'or-call-2',
+                  type: 'function',
+                  function: {
+                    name: 'fixture__read__v1',
+                    arguments: { input: { query: 'Ohio' } },
                   },
                 },
               ],
@@ -851,15 +888,207 @@ describe('OpenRouter transport', () => {
     expect(JSON.stringify(requestBody)).toContain('Permissions: workspace.read')
     expect(JSON.stringify(requestBody)).toContain('Output schema:')
     expect(JSON.stringify(requestBody)).not.toContain('projectRevision')
-    expect(response.toolCalls[0]).toMatchObject({
-      actionId: 'fixture.read',
-      actionVersion: 1,
-      projectRevision: 7,
-      input: { query: 'Kentucky' },
-    })
+    expect(response.toolCalls).toEqual([
+      {
+        callId: 'or-call-1',
+        actionId: 'fixture.read',
+        actionVersion: 1,
+        projectRevision: 7,
+        input: { query: 'Kentucky' },
+      },
+      {
+        callId: 'or-call-2',
+        actionId: 'fixture.read',
+        actionVersion: 1,
+        projectRevision: 7,
+        input: { query: 'Ohio' },
+      },
+    ])
     expect(JSON.stringify(requests)).not.toContain('sk-or-session-fixture')
     credentials.clear()
     expect(credentials.has()).toBe(false)
+  })
+
+  it('rejects duplicate tool-call ids in an OpenRouter batch', async () => {
+    const credentials = new MemoryOpenRouterCredentialStore()
+    credentials.set('sk-or-session-fixture')
+    const responses = [
+      { data: [{ id: 'fixture/tools', supported_parameters: ['tools'] }] },
+      {
+        model: 'fixture/tools',
+        choices: [
+          {
+            message: {
+              content: '',
+              tool_calls: ['one', 'two'].map((query) => ({
+                id: 'duplicate-call',
+                type: 'function',
+                function: {
+                  name: 'fixture__read__v1',
+                  arguments: JSON.stringify({ input: { query } }),
+                },
+              })),
+            },
+          },
+        ],
+      },
+    ]
+    const transport = new OpenRouterTransport({
+      credentials,
+      fetch: async () => Response.json(responses.shift() ?? {}),
+    })
+
+    await expect(
+      transport.complete(
+        {
+          model: 'fixture/tools',
+          messages: [{ role: 'user', content: 'Inspect two fixtures' }],
+          manifest: fixtureGateway().gateway.capabilities(),
+          maximumTokens: 128,
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({
+      code: 'INVALID_MODEL_RESPONSE',
+      message: 'OpenRouter returned duplicate tool call id duplicate-call.',
+    })
+  })
+
+  it('rejects an OpenRouter tool-call batch above the provider boundary', async () => {
+    const credentials = new MemoryOpenRouterCredentialStore()
+    credentials.set('sk-or-session-fixture')
+    const responses = [
+      { data: [{ id: 'fixture/tools', supported_parameters: ['tools'] }] },
+      {
+        model: 'fixture/tools',
+        choices: [
+          {
+            message: {
+              content: '',
+              tool_calls: Array.from({ length: 33 }, (_, index) => ({
+                id: `call-${index + 1}`,
+                type: 'function',
+                function: {
+                  name: 'fixture__read__v1',
+                  arguments: JSON.stringify({ input: { query: `fixture-${index + 1}` } }),
+                },
+              })),
+            },
+          },
+        ],
+      },
+    ]
+    const transport = new OpenRouterTransport({
+      credentials,
+      fetch: async () => Response.json(responses.shift() ?? {}),
+    })
+
+    await expect(
+      transport.complete(
+        {
+          model: 'fixture/tools',
+          messages: [{ role: 'user', content: 'Inspect too many fixtures' }],
+          manifest: fixtureGateway().gateway.capabilities(),
+          maximumTokens: 128,
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({
+      code: 'INVALID_MODEL_RESPONSE',
+      message: 'OpenRouter must return a bounded batch of at most 32 tool calls per model step.',
+    })
+  })
+
+  it('treats null tool calls as an empty final response', async () => {
+    const credentials = new MemoryOpenRouterCredentialStore()
+    credentials.set('sk-or-session-fixture')
+    const responses = [
+      { data: [{ id: 'fixture/tools', supported_parameters: ['tools'] }] },
+      {
+        model: 'fixture/tools',
+        choices: [{ message: { content: 'Done.', tool_calls: null } }],
+      },
+    ]
+    const transport = new OpenRouterTransport({
+      credentials,
+      fetch: async () => Response.json(responses.shift() ?? {}),
+    })
+
+    await expect(
+      transport.complete(
+        {
+          model: 'fixture/tools',
+          messages: [{ role: 'user', content: 'Inspect' }],
+          manifest: fixtureGateway().gateway.capabilities(),
+          maximumTokens: 128,
+        },
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({ content: 'Done.', toolCalls: [] })
+  })
+
+  it('classifies generic upstream provider errors as retryable', async () => {
+    const credentials = new MemoryOpenRouterCredentialStore()
+    credentials.set('sk-or-session-fixture')
+    const responses = [
+      { data: [{ id: 'fixture/tools', supported_parameters: ['tools'] }] },
+      {
+        model: 'fixture/tools',
+        choices: [
+          {
+            error: {
+              error_type: 'provider_error',
+              message: 'Upstream provider temporarily failed.',
+            },
+          },
+        ],
+      },
+    ]
+    const transport = new OpenRouterTransport({
+      credentials,
+      fetch: async () => Response.json(responses.shift() ?? {}),
+    })
+
+    await expect(
+      transport.complete(
+        {
+          model: 'fixture/tools',
+          messages: [{ role: 'user', content: 'Inspect' }],
+          manifest: fixtureGateway().gateway.capabilities(),
+          maximumTokens: 128,
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: 'PROVIDER_ERROR', retryable: true })
+  })
+
+  it('classifies malformed upstream 5xx responses as retryable', async () => {
+    const credentials = new MemoryOpenRouterCredentialStore()
+    credentials.set('sk-or-session-fixture')
+    const transport = new OpenRouterTransport({
+      credentials,
+      fetch: async () => new Response('<html>temporary upstream failure</html>', { status: 502 }),
+    })
+
+    await expect(transport.listModels()).rejects.toMatchObject({
+      code: 'PROVIDER_ERROR',
+      message: 'OpenRouter returned malformed JSON (502).',
+      retryable: true,
+    })
+  })
+
+  it('does not retry an untyped non-retryable HTTP error', async () => {
+    const credentials = new MemoryOpenRouterCredentialStore()
+    credentials.set('sk-or-session-fixture')
+    const transport = new OpenRouterTransport({
+      credentials,
+      fetch: async () => Response.json({ error: { message: 'Invalid API key.' } }, { status: 401 }),
+    })
+
+    await expect(transport.listModels()).rejects.toMatchObject({
+      code: 'PROVIDER_ERROR',
+      retryable: false,
+    })
   })
 
   it('keeps shared AI parsing behind schema and JSON-safety validation', async () => {

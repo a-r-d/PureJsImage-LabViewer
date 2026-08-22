@@ -76,6 +76,9 @@ interface AgentEvalCaseV1 {
 
 ### Scientific analysis
 
+- complete the exact natural request `count an measure the particles in this image. inspect the
+  result and tell me whether the count looks reliable` in one turn, including reviewed execution,
+  bounded quality diagnostics, and an approved labels preview;
 - report calibration and units;
 - create an ROI and measure statistics;
 - threshold and count generated particles;
@@ -210,6 +213,9 @@ follow-up turn without any live provider request.
 
 The opt-in Chromium suite includes:
 
+- `particle-reliability-single-prompt` uses the exact natural-language request above and requires
+  the complete count, measurement, diagnostics, preview, units, and reliability explanation in one
+  user turn;
 - `sem-particle-count` runs reviewed particle analysis, reads bounded results, approves a viewport
   preview, and asks a follow-up that must retain the prior tool context;
 - `split-touching-particles` compares a no-watershed baseline with a watershed run, requiring two

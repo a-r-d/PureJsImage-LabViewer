@@ -121,7 +121,13 @@ Use stable references (`dataset:...`, `roi:...`, `node:...`, `result:...`) so th
 
 ## Tool loop
 
-- Start with sequential tool calls (`parallel_tool_calls: false`).
+- Request sequential tool calling (`parallel_tool_calls: false`), but accept a bounded ordered batch
+  when a provider still returns multiple calls in one assistant message. Execute the calls in order
+  and append one matching tool result for every call. After a failure or project-revision change,
+  mark the remaining calls not executed so the model can reassess against current state.
+- Treat absent or null tool-call arrays as empty, accept JSON arguments encoded as either the
+  standard string or an already-decoded object, and reject duplicate call IDs. A successful
+  mutation ends the current batch even if a buggy handler does not advance the project revision.
 - Validate every tool argument against the action registry’s JSON Schema.
 - Enforce max iterations, tool calls, elapsed time, input/output tokens, result bytes, and estimated cost.
 - Append assistant tool-call messages and matching tool-result messages in correct order.

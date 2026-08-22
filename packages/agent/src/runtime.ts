@@ -374,6 +374,26 @@ export class AgentRuntime {
           return completed
         }
         const imageMessages: AgentModelMessage[] = []
+        const appendUnexecutedCalls = (
+          calls: readonly AgentActionCall[],
+          code: string,
+          message: string,
+        ): void => {
+          toolCalls += calls.length
+          if (toolCalls > this.#limits.maximumToolCalls)
+            throw new AgentRuntimeError(
+              'MAXIMUM_TOOL_CALLS',
+              `${this.#productName} agent exceeded ${this.#limits.maximumToolCalls} tool calls.`,
+            )
+          const skippedMessages = unexecutedToolMessages(
+            calls,
+            this.#gateway.revision(),
+            code,
+            message,
+          )
+          messages.push(...skippedMessages)
+          turnMessages.push(...skippedMessages)
+        }
         for (const [callIndex, call] of response.toolCalls.entries()) {
           toolCalls += 1
           if (toolCalls > this.#limits.maximumToolCalls)
@@ -381,6 +401,7 @@ export class AgentRuntime {
               'MAXIMUM_TOOL_CALLS',
               `${this.#productName} agent exceeded ${this.#limits.maximumToolCalls} tool calls.`,
             )
+          const capability = this.#capability(call)
           let outcome: Readonly<{ result: JsonValue; artifact?: AgentArtifact }>
           try {
             outcome = await this.#executeCall(call, controller.signal, audit)
@@ -409,22 +430,11 @@ export class AgentRuntime {
             }
             messages.push(toolMessage)
             turnMessages.push(toolMessage)
-            const skippedCalls = response.toolCalls.slice(callIndex + 1)
-            toolCalls += skippedCalls.length
-            if (toolCalls > this.#limits.maximumToolCalls)
-              throw new AgentRuntimeError(
-                'MAXIMUM_TOOL_CALLS',
-                `${this.#productName} agent exceeded ${this.#limits.maximumToolCalls} tool calls.`,
-              )
-            for (const skippedMessage of unexecutedToolMessages(
-              skippedCalls,
-              this.#gateway.revision(),
+            appendUnexecutedCalls(
+              response.toolCalls.slice(callIndex + 1),
               'NOT_EXECUTED',
               `Not executed because the preceding ${call.actionId} call failed. Reassess the plan before retrying.`,
-            )) {
-              messages.push(skippedMessage)
-              turnMessages.push(skippedMessage)
-            }
+            )
             this.#publish({
               status: 'requesting-model',
               activeTaskId: audit.id,
@@ -456,22 +466,19 @@ export class AgentRuntime {
             imageMessages.push(imageMessage)
           }
           if (call.projectRevision !== this.#gateway.revision()) {
-            const skippedCalls = response.toolCalls.slice(callIndex + 1)
-            toolCalls += skippedCalls.length
-            if (toolCalls > this.#limits.maximumToolCalls)
-              throw new AgentRuntimeError(
-                'MAXIMUM_TOOL_CALLS',
-                `${this.#productName} agent exceeded ${this.#limits.maximumToolCalls} tool calls.`,
-              )
-            for (const skippedMessage of unexecutedToolMessages(
-              skippedCalls,
-              this.#gateway.revision(),
+            appendUnexecutedCalls(
+              response.toolCalls.slice(callIndex + 1),
               'PROJECT_REVISION_ADVANCED',
               `Not executed because ${call.actionId} advanced the project revision. Reissue the call against the current revision after reassessing availability.`,
-            )) {
-              messages.push(skippedMessage)
-              turnMessages.push(skippedMessage)
-            }
+            )
+            break
+          }
+          if (capability.mutability === 'mutation') {
+            appendUnexecutedCalls(
+              response.toolCalls.slice(callIndex + 1),
+              'MUTATION_BATCH_BOUNDARY',
+              `Not executed because ${call.actionId} was the mutation boundary for this model response. Reassess current state before requesting another mutation.`,
+            )
             break
           }
         }

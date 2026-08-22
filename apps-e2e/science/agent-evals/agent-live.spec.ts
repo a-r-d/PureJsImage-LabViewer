@@ -344,6 +344,62 @@ function enabled(caseId: string): boolean {
   return environment('PJI_AGENT_EVAL_LIVE') === '1' && SELECTED_CASES.has(caseId)
 }
 
+test('particle reliability completes from the exact natural-language prompt in one turn', async ({
+  page,
+}) => {
+  test.skip(
+    !enabled('particle-reliability-single-prompt'),
+    'Live case was not explicitly selected.',
+  )
+  const proxy = await installLiveOpenRouterProxy(page)
+  const details: Record<string, unknown> = {}
+  let failure: unknown
+  try {
+    await openWorkbench(page)
+    await openSample(page)
+    await prepareAgent(page)
+    const turn = await runAgentTurn(
+      page,
+      'count an measure the particles in this image. inspect the result and tell me whether the count looks reliable',
+      'Start task',
+    )
+    details['actions'] = turn.actions
+    details['approvals'] = turn.approvals
+    details['answers'] = [turn.answer]
+    details['maximumReturnedToolsInOneModelStep'] = Math.max(
+      0,
+      ...proxy.requests.map(({ returnedTools }) => returnedTools.length),
+    )
+    assertAllowedActions(turn.actions)
+    expect(turn.actions).toEqual(
+      expect.arrayContaining([
+        'analysis.particle.settings.read',
+        'analysis.particle.plan',
+        'analysis.particle.execute',
+        'analysis.particle.quality.read',
+        'viewport.preview.create',
+      ]),
+    )
+    expect(turn.approvals).toEqual(
+      expect.arrayContaining(['analysis.particle.execute', 'viewport.preview.create']),
+    )
+    expect(proxy.requests.some(({ hadImage }) => hadImage)).toBe(true)
+    const countText = await resultCountText(page)
+    details['uiResult'] = countText
+    expect(countText).toBe('10 particles counted')
+    expect(turn.answer).toContain('10')
+    expect(turn.answer).toMatch(/reliab/iu)
+    expect(turn.answer).toMatch(/nm|pixel/iu)
+    expect(turn.answer.toLowerCase()).toContain('not a formal')
+    expect(turn.answer.toLowerCase()).toMatch(/limitation|provisional|warning/u)
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await writeReport('particle-reliability-single-prompt', proxy, details, failure)
+  }
+})
+
 test('sem-particle-count uses analysis, visual evidence, and retained follow-up context', async ({
   page,
 }) => {

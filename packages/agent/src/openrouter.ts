@@ -17,6 +17,7 @@ import { AgentRuntimeError } from './types.js'
 const CHAT_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions'
 const MODELS_ENDPOINT = 'https://openrouter.ai/api/v1/models?supported_parameters=tools&limit=1000'
 const MAX_RESPONSE_BYTES = 2 * 1_024 * 1_024
+const MAX_TOOL_CALLS_PER_RESPONSE = 32
 const REASONING_EFFORTS = new Set<AgentReasoningEffort>([
   'none',
   'minimal',
@@ -377,12 +378,13 @@ function messageContainsImage(message: AgentModelMessage): boolean {
 }
 
 function parseToolCalls(value: unknown, request: AgentModelRequest): readonly AgentActionCall[] {
-  if (value === undefined) return []
-  if (!Array.isArray(value) || value.length > 1)
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value) || value.length > MAX_TOOL_CALLS_PER_RESPONSE)
     throw new AgentRuntimeError(
       'INVALID_MODEL_RESPONSE',
-      'OpenRouter must return at most one sequential tool call per model step.',
+      `OpenRouter must return a bounded batch of at most ${MAX_TOOL_CALLS_PER_RESPONSE} tool calls per model step.`,
     )
+  const callIds = new Set<string>()
   return value.map((entry, index) => {
     const call = record(entry)
     const fn = record(call?.['function'])
@@ -393,31 +395,44 @@ function parseToolCalls(value: unknown, request: AgentModelRequest): readonly Ag
         'INVALID_MODEL_RESPONSE',
         `OpenRouter requested unknown tool ${name}.`,
       )
-    const argumentsText = typeof fn?.['arguments'] === 'string' ? fn['arguments'] : ''
-    const parsed = aiJsonParse<unknown>(argumentsText, { mode: 'safe' })
-    if (!parsed.success)
-      throw new AgentRuntimeError(
-        'INVALID_MODEL_RESPONSE',
-        `${capability.actionId} arguments are not valid JSON.`,
-      )
-    const args = record(parsed.data)
-    if (args === undefined)
-      throw new AgentRuntimeError(
-        'INVALID_MODEL_RESPONSE',
-        `${capability.actionId} arguments are malformed.`,
-      )
+    const args = parseToolArguments(fn?.['arguments'], capability.actionId)
     const input = args['input'] === undefined ? flattenedToolInput(args) : jsonValue(args['input'])
+    const callId =
+      typeof call?.['id'] === 'string' && call['id'].length > 0 && call['id'].length <= 256
+        ? call['id']
+        : `openrouter-call-${index + 1}`
+    if (callIds.has(callId))
+      throw new AgentRuntimeError(
+        'INVALID_MODEL_RESPONSE',
+        `OpenRouter returned duplicate tool call id ${callId}.`,
+      )
+    callIds.add(callId)
     return {
-      callId:
-        typeof call?.['id'] === 'string' && call['id'].length <= 256
-          ? call['id']
-          : `openrouter-call-${index + 1}`,
+      callId,
       actionId: capability.actionId,
       actionVersion: capability.actionVersion,
       projectRevision: request.manifest.projectRevision,
       input,
     }
   })
+}
+
+function parseToolArguments(value: unknown, actionId: string): Readonly<Record<string, unknown>> {
+  if (typeof value === 'string') {
+    const parsed = aiJsonParse<unknown>(value, { mode: 'safe' })
+    if (!parsed.success)
+      throw new AgentRuntimeError(
+        'INVALID_MODEL_RESPONSE',
+        `${actionId} arguments are not valid JSON.`,
+      )
+    const args = record(parsed.data)
+    if (args !== undefined) return args
+  } else {
+    const args = record(value)
+    const normalizedArgs = args === undefined ? undefined : record(jsonValue(args))
+    if (normalizedArgs !== undefined) return normalizedArgs
+  }
+  throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `${actionId} arguments are malformed.`)
 }
 
 function parsePlan(content: string): AgentPlan | undefined {
@@ -475,6 +490,7 @@ async function responseJson(response: Response, key: string): Promise<unknown> {
     throw new AgentRuntimeError(
       'PROVIDER_ERROR',
       redact(`OpenRouter returned malformed JSON (${response.status}).`, key),
+      retryableHttpStatus(response.status),
     )
   }
 }
@@ -529,9 +545,8 @@ function openRouterFailure(status: number, value: unknown, key: string): AgentRu
       : 'PROVIDER_ERROR'
   const retryable =
     availability?.['retryable'] === true ||
-    status === 408 ||
-    status === 429 ||
-    status >= 500 ||
+    retryableHttpStatus(status) ||
+    (type === 'provider_error' && status >= 200 && status < 300) ||
     type === 'provider_overloaded' ||
     type === 'provider_unavailable' ||
     type === 'timeout'
@@ -540,6 +555,10 @@ function openRouterFailure(status: number, value: unknown, key: string): AgentRu
       ? redact(error['message'], key).slice(0, 1_024)
       : `OpenRouter request failed (${status}).`
   return new AgentRuntimeError(code, `${type}: ${message}`, retryable)
+}
+
+function retryableHttpStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500
 }
 
 function redact(value: string, key: string): string {

@@ -7,8 +7,9 @@ import { pathToFileURL } from 'node:url'
 
 const DEFAULT_MODEL = 'openai/gpt-5.6-luna'
 const CASES = Object.freeze({
-  smoke: ['sem-particle-count'],
+  smoke: ['particle-reliability-single-prompt'],
   analysis: [
+    'particle-reliability-single-prompt',
     'sem-particle-count',
     'split-touching-particles',
     'particle-quality-required',

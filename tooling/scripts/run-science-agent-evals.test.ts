@@ -21,6 +21,7 @@ describe('live scientific agent eval launcher', () => {
 
   it('selects bounded suites and individual known cases', () => {
     expect(selectedAgentEvalCases(parseAgentEvalArgs(['--suite', 'analysis'], {}))).toEqual([
+      'particle-reliability-single-prompt',
       'sem-particle-count',
       'split-touching-particles',
       'particle-quality-required',
@@ -46,9 +47,9 @@ describe('live scientific agent eval launcher', () => {
     ])
     expect(
       selectedAgentEvalCases(
-        parseAgentEvalArgs(['--case=split-touching-particles', '--max-cost-usd=0.4'], {}),
+        parseAgentEvalArgs(['--case=particle-reliability-single-prompt', '--max-cost-usd=0.4'], {}),
       ),
-    ).toEqual(['split-touching-particles'])
+    ).toEqual(['particle-reliability-single-prompt'])
   })
 
   it('removes the real OpenRouter key from every Playwright child environment', () => {
