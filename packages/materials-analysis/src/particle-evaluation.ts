@@ -11,6 +11,28 @@ export interface ParticleSegmentationEvaluationInput {
   readonly boundaryTolerancePixels?: number
 }
 
+export interface SemanticSegmentationEvaluationInput {
+  readonly predictedMask: Uint8Array
+  readonly truthMask: Uint8Array
+  readonly width: number
+  readonly height: number
+  readonly ignoreMask?: Uint8Array
+  readonly boundaryTolerancePixels?: number
+}
+
+export interface SemanticSegmentationEvaluation {
+  readonly schemaVersion: 1
+  readonly policy: Readonly<{ boundaryTolerancePixels: number; ignoredPixels: number }>
+  readonly truthForegroundPixels: number
+  readonly predictedForegroundPixels: number
+  readonly intersectionPixels: number
+  readonly unionPixels: number
+  readonly maskIoU: number
+  readonly maskDice: number
+  readonly boundaryF1: number
+  readonly foregroundFractionError: number
+}
+
 export interface ParticleInstanceMatch {
   readonly truthLabel: number
   readonly predictedLabel: number
@@ -284,7 +306,7 @@ function axialAngleDistance(left: number, right: number): number {
 }
 
 function boundaryMask(
-  labels: Uint32Array,
+  labels: ArrayLike<number>,
   width: number,
   height: number,
   ignoreMask: Uint8Array | undefined,
@@ -312,6 +334,83 @@ function boundaryMask(
     }
   }
   return output
+}
+
+/** Grades binary semantic masks without inventing instance identities or count metrics. */
+export function evaluateSemanticSegmentation(
+  input: SemanticSegmentationEvaluationInput,
+): SemanticSegmentationEvaluation {
+  const pixels = input.width * input.height
+  if (
+    !Number.isSafeInteger(input.width) ||
+    !Number.isSafeInteger(input.height) ||
+    input.width < 1 ||
+    input.height < 1 ||
+    !Number.isSafeInteger(pixels) ||
+    input.predictedMask.length !== pixels ||
+    input.truthMask.length !== pixels ||
+    (input.ignoreMask !== undefined && input.ignoreMask.length !== pixels)
+  )
+    throw new Error('Semantic segmentation dimensions do not match.')
+  const boundaryTolerancePixels = input.boundaryTolerancePixels ?? 1
+  if (
+    !Number.isSafeInteger(boundaryTolerancePixels) ||
+    boundaryTolerancePixels < 0 ||
+    boundaryTolerancePixels > 16
+  )
+    throw new Error('Boundary tolerance must be an integer between 0 and 16 pixels.')
+  let ignoredPixels = 0
+  let truthForegroundPixels = 0
+  let predictedForegroundPixels = 0
+  let intersectionPixels = 0
+  let unionPixels = 0
+  for (let index = 0; index < pixels; index += 1) {
+    if (input.ignoreMask !== undefined && input.ignoreMask[index] !== 0) {
+      ignoredPixels += 1
+      continue
+    }
+    const truth = input.truthMask[index] !== 0
+    const predicted = input.predictedMask[index] !== 0
+    if (truth) truthForegroundPixels += 1
+    if (predicted) predictedForegroundPixels += 1
+    if (truth && predicted) intersectionPixels += 1
+    if (truth || predicted) unionPixels += 1
+  }
+  const truthBoundary = boundaryMask(input.truthMask, input.width, input.height, input.ignoreMask)
+  const predictedBoundary = boundaryMask(
+    input.predictedMask,
+    input.width,
+    input.height,
+    input.ignoreMask,
+  )
+  const boundaryPrecision = boundaryRecall(
+    predictedBoundary,
+    truthBoundary,
+    input.width,
+    input.height,
+    boundaryTolerancePixels,
+  )
+  const boundaryRecallValue = boundaryRecall(
+    truthBoundary,
+    predictedBoundary,
+    input.width,
+    input.height,
+    boundaryTolerancePixels,
+  )
+  const usablePixels = Math.max(1, pixels - ignoredPixels)
+  const diceDenominator = truthForegroundPixels + predictedForegroundPixels
+  return {
+    schemaVersion: 1,
+    policy: { boundaryTolerancePixels, ignoredPixels },
+    truthForegroundPixels,
+    predictedForegroundPixels,
+    intersectionPixels,
+    unionPixels,
+    maskIoU: unionPixels === 0 ? 1 : intersectionPixels / unionPixels,
+    maskDice: diceDenominator === 0 ? 1 : (2 * intersectionPixels) / diceDenominator,
+    boundaryF1: harmonicMean(boundaryPrecision, boundaryRecallValue),
+    foregroundFractionError: (predictedForegroundPixels - truthForegroundPixels) / usablePixels,
+  }
 }
 
 function boundaryRecall(

@@ -58,12 +58,14 @@ Target strata:
 - calibrated and explicitly uncalibrated images from multiple instruments and laboratories.
 
 The fixture-level foundation now lives at
-`packages/materials-analysis/testdata/corpus/manifest.v1.json`. Corpus `0.2.0` checks in 41 unique
+`packages/materials-analysis/testdata/corpus/manifest.v1.json`. Corpus `0.3.0` checks in 41 unique
 assets (18,703,137 bytes): sixteen deterministic native BBBC039 16-bit TIFF/instance-mask pairs,
 two BBBC039 preview pairs, the BBBC005 focus-control trio, a NIST asbestos montage, and a USGS
 anthophyllite SEM. BBBC039 remains `upstream-unreviewed`, not locally adjudicated gold; the asbestos
-files remain `smoke-test-only`. All 38 calibrated NIST lipid-nanoparticle pairs are still required
-before release claims.
+files remain `smoke-test-only`. The official metadata for all four NIST lipid-nanoparticle archives
+is now checksum- and size-pinned. Explicit fetch and bounded preparation produce all 38 calibrated
+image/semantic-mask pairs in an external cache; they are not instance masks or adjudicated gold.
+See `docs/PARTICLE_ANALYSIS_NIST_LNP_EVAL.md` for the first condition-level evidence.
 
 Core source definitions cover NIST lipid nanoparticle cryoEM, BBBC039, BBBC005, the two asbestos
 smoke sources, and NIST SEM detection-limit controls. Dryad HRTEM nanoparticles, RODARE carbide SEM,
@@ -105,6 +107,8 @@ pnpm corpus:fetch:particles -- --source bbbc039
 pnpm corpus:fetch:particles -- --source dryad-hrtem-nanoparticles --extended
 pnpm corpus:select:particles -- features.json selection.json
 pnpm corpus:benchmark:bbbc039 -- --split validation --output .local/bbbc039-validation.json
+pnpm corpus:prepare:nist-lnp -- --cache <external-cache>
+pnpm corpus:benchmark:nist-lnp -- --inventory <inventory.v1.json> --condition s404-ph4-no-rna --output <report.json>
 ```
 
 Verification and normal tests perform no network access. Fetching is explicit, refuses blocked or
@@ -116,7 +120,9 @@ F1, centroid and morphology biases, foreground error, runtime, and managed-memor
 The current BBBC039 evidence and its leakage/qualification limits are frozen in
 `docs/PARTICLE_ANALYSIS_BBBC039_EVAL.md`. The particle workflow now exposes a low-information ROI
 guard and a watershed minimum-peak-height control. Both are explicit, schema-validated settings and
-are retained in Agent diagnostics; no specimen-dependent watershed scale is silently applied.
+are retained in Agent diagnostics; no specimen-dependent watershed scale is silently applied. The
+guard defaults to disabled because NIST cryo-EM training evidence shows that the BBBC039-selected
+`0.1` threshold rejects valid low-contrast fields. Specimen profiles must opt in explicitly.
 
 ### Tier 3: local live-agent evals
 

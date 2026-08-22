@@ -220,7 +220,15 @@ function validateDownload(
     return
   }
   rejectUnknown(value, ['filename', 'url', 'sha256', 'sizeBytes', 'role'], path, issues)
-  requiredText(value['filename'], `${path}/filename`, issues)
+  const filename = requiredText(value['filename'], `${path}/filename`, issues)
+  if (
+    filename === '.' ||
+    filename === '..' ||
+    filename.includes('/') ||
+    filename.includes('\\') ||
+    filename.includes('\0')
+  )
+    issues.push({ path: `${path}/filename`, message: 'Expected a safe basename.' })
   if (value['url'] !== undefined) httpsUrl(value['url'], `${path}/url`, issues)
   if (value['sha256'] !== undefined) sha256(value['sha256'], `${path}/sha256`, issues)
   if (value['sizeBytes'] !== undefined)

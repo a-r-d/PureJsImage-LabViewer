@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "corpusVersion": "0.2.0",
+  "corpusVersion": "0.3.0",
   "generatedAt": "2026-08-22",
   "policy": {
     "requireCommercialUse": true,
@@ -15,7 +15,7 @@
     {
       "id": "nist-lnp-cryoem",
       "tier": "core",
-      "fetchPolicy": "blocked",
+      "fetchPolicy": "core-explicit",
       "title": "Segmentation of lipid nanoparticles from cryogenic electron microscopy images",
       "authors": "National Institute of Standards and Technology",
       "landingUrl": "https://data.nist.gov/od/id/mds2-2753",
@@ -32,25 +32,40 @@
         {
           "filename": "R111_S404_pH4_1p5pcPEG_noRNA.zip",
           "url": "https://data.nist.gov/od/ds/mds2-2753/R111_S404_pH4_1p5pcPEG_noRNA.zip",
+          "sha256": "599548b24f609c1abcba0f5920897837e6056e7e2244103871dddea986dc7ad1",
+          "sizeBytes": 234024393,
           "role": "archive"
         },
         {
           "filename": "R111_S405_pH7_1p5pcPEG_noRNA.zip",
           "url": "https://data.nist.gov/od/ds/mds2-2753/R111_S405_pH7_1p5pcPEG_noRNA.zip",
+          "sha256": "c1947bcd14a6e509decd07897967739a50271713ce513fee907fc1c0258889b0",
+          "sizeBytes": 271273239,
           "role": "archive"
         },
         {
           "filename": "R111_S406_pH4_1p5pcPEG_RNA.zip",
           "url": "https://data.nist.gov/od/ds/mds2-2753/R111_S406_pH4_1p5pcPEG_RNA.zip",
+          "sha256": "45d92f2bd956a3a35b91f1d6e9dff15859208bb0871c44f01c85894dc8251a33",
+          "sizeBytes": 296281555,
           "role": "archive"
         },
         {
           "filename": "R111_S407_pH7_1p5pcPEG_RNA.zip",
           "url": "https://data.nist.gov/od/ds/mds2-2753/R111_S407_pH7_1p5pcPEG_RNA.zip",
+          "sha256": "f547a0da4ec8568b9f9a9686ed60205c8c8a45e41fcda2b7d04c599b63f82176",
+          "sizeBytes": 315150038,
           "role": "archive"
+        },
+        {
+          "filename": "readme.txt",
+          "url": "https://data.nist.gov/od/ds/mds2-2753/readme.txt",
+          "sha256": "7825db98e7c16142f766236c3c5bc2a458521840b477d2826137a9541a2ac8d9",
+          "sizeBytes": 2137,
+          "role": "metadata"
         }
       ],
-      "notes": "Target all 38 native TIFF image-mask pairs at 0.223 nm per pixel, grouped by pH and RNA condition. Fetch remains blocked until every archive checksum is independently pinned."
+      "notes": "The official NIST metadata pins all four archives and the readme by SHA-256 and byte size. Target all 38 native 16-bit TIFF images and 8-bit binary semantic masks at 0.223 nm per pixel, grouped by pH and RNA condition. The upstream masks do not provide independent instance identities; counting gold requires local instance annotation and adjudication."
     },
     {
       "id": "bbbc039",

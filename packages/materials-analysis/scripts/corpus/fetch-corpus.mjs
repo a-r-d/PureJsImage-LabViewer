@@ -11,12 +11,15 @@ import { readManifest, sha256File } from './common.mjs'
 
 function options(argv) {
   let sourceId
+  let downloadName
   let allowExtended = false
   let cache = process.env['PJI_PARTICLE_CORPUS_CACHE']
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index]
+    if (value === '--') continue
     if (value === '--extended') allowExtended = true
     else if (value === '--source') sourceId = argv[++index]
+    else if (value === '--download') downloadName = argv[++index]
     else if (value === '--cache') cache = argv[++index]
     else throw new Error(`Unknown corpus fetch option ${value}.`)
   }
@@ -24,6 +27,7 @@ function options(argv) {
     throw new Error('Corpus fetch requires --source <stable-source-id>.')
   return {
     sourceId,
+    downloadName,
     allowExtended,
     cache: path.resolve(
       cache ?? path.join(homedir(), '.cache', 'purejsimage-lab', 'particle-corpus'),
@@ -38,14 +42,30 @@ if (source === undefined) throw new Error(`Unknown particle corpus source ${requ
 if (source.fetchPolicy === 'blocked') throw new Error(`${source.id} is blocked: ${source.notes}`)
 if (source.fetchPolicy === 'extended-opt-in' && !request.allowExtended)
   throw new Error(`${source.id} requires the explicit --extended flag.`)
-if (source.downloads.length === 0) throw new Error(`${source.id} has no exact download records.`)
-for (const download of source.downloads)
+const downloads =
+  request.downloadName === undefined
+    ? source.downloads
+    : source.downloads.filter(({ filename }) => filename === request.downloadName)
+if (downloads.length === 0)
+  throw new Error(
+    request.downloadName === undefined
+      ? `${source.id} has no exact download records.`
+      : `${source.id} has no download named ${request.downloadName}.`,
+  )
+for (const download of downloads)
   if (download.url === undefined || download.sha256 === undefined)
     throw new Error(`${source.id}/${download.filename} lacks an exact URL or SHA-256.`)
 
 const destination = path.join(request.cache, source.id)
 await mkdir(destination, { recursive: true })
-for (const download of source.downloads) {
+for (const download of downloads) {
+  if (
+    path.basename(download.filename) !== download.filename ||
+    download.filename === '.' ||
+    download.filename === '..' ||
+    download.filename.includes('\0')
+  )
+    throw new Error(`${source.id} has an unsafe download filename.`)
   const finalPath = path.join(destination, download.filename)
   try {
     const existing = await stat(finalPath)
@@ -60,12 +80,25 @@ for (const download of source.downloads) {
   const response = await fetch(download.url, { redirect: 'follow' })
   if (!response.ok || response.body === null)
     throw new Error(`${source.id}/${download.filename} returned HTTP ${response.status}.`)
+  const contentLengthHeader = response.headers.get('content-length')
+  const contentLength = contentLengthHeader === null ? undefined : Number(contentLengthHeader)
+  if (
+    download.sizeBytes !== undefined &&
+    contentLength !== undefined &&
+    Number.isSafeInteger(contentLength) &&
+    contentLength !== download.sizeBytes
+  )
+    throw new Error(
+      `${source.id}/${download.filename} advertises ${contentLength} bytes; expected ${download.sizeBytes}.`,
+    )
   const digest = createHash('sha256')
   let bytes = 0
   const meter = new TransformStream({
     transform(chunk, controller) {
       const value = new Uint8Array(chunk)
       bytes += value.byteLength
+      if (download.sizeBytes !== undefined && bytes > download.sizeBytes)
+        throw new Error(`${source.id}/${download.filename} exceeded its pinned byte size.`)
       digest.update(value)
       controller.enqueue(value)
     },

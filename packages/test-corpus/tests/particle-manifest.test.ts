@@ -47,7 +47,14 @@ describe('fixture-level particle corpus manifest', () => {
           downloads.every(({ url, sha256 }) => url !== undefined && sha256 !== undefined),
         ),
     ).toBe(true)
-    expect(value.sources.find(({ id }) => id === 'nist-lnp-cryoem')?.fetchPolicy).toBe('blocked')
+    const nistLnp = value.sources.find(({ id }) => id === 'nist-lnp-cryoem')
+    expect(nistLnp?.fetchPolicy).toBe('core-explicit')
+    expect(nistLnp?.downloads).toHaveLength(5)
+    expect(
+      nistLnp?.downloads.every(
+        ({ sha256, sizeBytes }) => sha256 !== undefined && sizeBytes !== undefined,
+      ),
+    ).toBe(true)
     expect(value.sources.find(({ id }) => id === 'nist-sem-detection-limits')?.fetchPolicy).toBe(
       'blocked',
     )
@@ -169,6 +176,33 @@ describe('fixture-level particle corpus manifest', () => {
           message: 'Expected a scalar.',
         }),
       ]),
+    )
+  })
+
+  it('rejects download filenames that can escape the source cache', async () => {
+    const value = await manifest()
+    const source = value.sources.find(({ fetchPolicy }) => fetchPolicy === 'core-explicit')
+    if (source === undefined) throw new Error('A fetchable source is required for this test.')
+    const validation = validateParticleCorpusManifest({
+      ...value,
+      sources: value.sources.map((candidate) =>
+        candidate.id === source.id
+          ? {
+              ...candidate,
+              downloads: candidate.downloads.map((download, index) =>
+                index === 0 ? { ...download, filename: '../outside.zip' } : download,
+              ),
+            }
+          : candidate,
+      ),
+    })
+    expect(validation.ok).toBe(false)
+    if (validation.ok) return
+    expect(validation.issues).toContainEqual(
+      expect.objectContaining({
+        path: expect.stringContaining('/filename'),
+        message: 'Expected a safe basename.',
+      }),
     )
   })
 })

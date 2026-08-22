@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   assessParticleRefinement,
   evaluateParticleSegmentation,
+  evaluateSemanticSegmentation,
   labelColorInstanceMaskForEvaluation,
 } from '../src/particle-evaluation.js'
 
@@ -20,6 +21,42 @@ function fillRectangle(
 }
 
 describe('particle instance evaluation', () => {
+  it('grades semantic masks without inventing instance or count metrics', () => {
+    const width = 8
+    const height = 6
+    const truth = new Uint8Array(width * height)
+    fillRectangle(truth, width, 1, 1, 3, 3, 1)
+    const exact = evaluateSemanticSegmentation({
+      predictedMask: truth,
+      truthMask: truth,
+      width,
+      height,
+    })
+    expect(exact).toMatchObject({
+      truthForegroundPixels: 9,
+      predictedForegroundPixels: 9,
+      maskIoU: 1,
+      maskDice: 1,
+      boundaryF1: 1,
+      foregroundFractionError: 0,
+    })
+    expect(exact).not.toHaveProperty('truthCount')
+
+    const prediction = new Uint8Array(truth)
+    fillRectangle(prediction, width, 6, 0, 7, 1, 1)
+    const ignoreMask = new Uint8Array(width * height)
+    fillRectangle(ignoreMask, width, 5, 0, 7, 2, 1)
+    expect(
+      evaluateSemanticSegmentation({
+        predictedMask: prediction,
+        truthMask: truth,
+        ignoreMask,
+        width,
+        height,
+      }),
+    ).toMatchObject({ maskIoU: 1, maskDice: 1, foregroundFractionError: 0 })
+  })
+
   it('keeps disconnected instances distinct when an indexed mask reuses a color', () => {
     const samples = new Uint8Array([255, 0, 0, 255, 0, 0, 0, 255, 0, 0, 255, 255])
     const labels = labelColorInstanceMaskForEvaluation(samples, 3, 1, 4)

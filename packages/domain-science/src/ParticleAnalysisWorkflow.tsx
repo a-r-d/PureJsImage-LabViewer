@@ -29,7 +29,7 @@ export const DEFAULT_PARTICLE_WORKFLOW: ParticleWorkflowSettings = Object.freeze
   windowRadius: 15,
   sauvolaK: 0.2,
   dynamicRange: 128,
-  minimumCoefficientOfVariation: 0.1,
+  minimumCoefficientOfVariation: 0,
   noDataPolicy: 'background',
   backgroundRadius: 0,
   openRadius: 1,

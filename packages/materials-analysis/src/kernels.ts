@@ -194,16 +194,85 @@ export function boxFilterPlane(
   radius: number,
   options: KernelOptions,
 ): DensePlane {
+  assertPlane(plane)
   if (!Number.isSafeInteger(radius) || radius < 1 || radius > 64)
     throw new Error('Box-filter radius must be an integer from 1 to 64.')
-  const width = radius * 2 + 1
-  const coefficient = 1 / (width * width)
-  return convolvePlane(
-    plane,
-    Array.from({ length: width * width }, () => coefficient),
-    width,
-    options,
-  )
+  const windowWidth = radius * 2 + 1
+  const samples = plane.width * plane.height * plane.components
+  const horizontalSums = new Float64Array(samples)
+  const horizontalCounts = new Uint16Array(samples)
+  const horizontalInvalid = new Uint16Array(samples)
+  const addHorizontal = (
+    y: number,
+    component: number,
+    x: number,
+    direction: 1 | -1,
+    aggregate: { sum: number; count: number; invalid: number },
+  ): void => {
+    const value = sample(plane, x, y, component, options.boundary, options.constantValue)
+    if (invalid(value, plane.noDataValue)) aggregate.invalid += direction
+    else {
+      aggregate.sum += direction * value
+      aggregate.count += direction
+    }
+  }
+  for (let y = 0; y < plane.height; y += 1) {
+    options.signal?.throwIfAborted()
+    for (let component = 0; component < plane.components; component += 1) {
+      const aggregate = { sum: 0, count: 0, invalid: 0 }
+      for (let x = -radius; x <= radius; x += 1) addHorizontal(y, component, x, 1, aggregate)
+      for (let x = 0; x < plane.width; x += 1) {
+        const index = (y * plane.width + x) * plane.components + component
+        horizontalSums[index] = aggregate.sum
+        horizontalCounts[index] = aggregate.count
+        horizontalInvalid[index] = aggregate.invalid
+        addHorizontal(y, component, x - radius, -1, aggregate)
+        addHorizontal(y, component, x + radius + 1, 1, aggregate)
+      }
+    }
+  }
+  const values = new Float64Array(samples)
+  const constantInvalid = invalid(options.constantValue, plane.noDataValue)
+  const addRow = (
+    x: number,
+    component: number,
+    y: number,
+    direction: 1 | -1,
+    aggregate: { sum: number; count: number; invalid: number },
+  ): void => {
+    const mappedY = mappedCoordinate(y, plane.height, options.boundary)
+    if (mappedY === undefined) {
+      if (constantInvalid) aggregate.invalid += direction * windowWidth
+      else {
+        aggregate.sum += direction * options.constantValue * windowWidth
+        aggregate.count += direction * windowWidth
+      }
+      return
+    }
+    const index = (mappedY * plane.width + x) * plane.components + component
+    aggregate.sum += direction * (horizontalSums[index] ?? 0)
+    aggregate.count += direction * (horizontalCounts[index] ?? 0)
+    aggregate.invalid += direction * (horizontalInvalid[index] ?? 0)
+  }
+  for (let x = 0; x < plane.width; x += 1) {
+    options.signal?.throwIfAborted()
+    for (let component = 0; component < plane.components; component += 1) {
+      const aggregate = { sum: 0, count: 0, invalid: 0 }
+      for (let y = -radius; y <= radius; y += 1) addRow(x, component, y, 1, aggregate)
+      for (let y = 0; y < plane.height; y += 1) {
+        const index = (y * plane.width + x) * plane.components + component
+        values[index] =
+          aggregate.invalid > 0 && options.invalidPolicy === 'propagate'
+            ? Number.NaN
+            : aggregate.count === 0
+              ? Number.NaN
+              : aggregate.sum / aggregate.count
+        addRow(x, component, y - radius, -1, aggregate)
+        addRow(x, component, y + radius + 1, 1, aggregate)
+      }
+    }
+  }
+  return { ...plane, values, noDataValue: Number.NaN }
 }
 
 export function gaussianKernel(sigma: number): readonly number[] {

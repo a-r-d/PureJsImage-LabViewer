@@ -277,8 +277,10 @@ budget change.
 `pnpm test:particle-corpus` additionally gates the strict fixture manifest, exact local hashes,
 published-reader dimension parity, upstream instance-ID preservation, ignore/edge behavior,
 deterministic hard-case selection, full instance and mask metrics, stable report rendering, and the
-generated grayscale-to-measurement benchmark. `pnpm corpus:verify:particles` is offline. Extended
-fetches are never an implicit test dependency.
+generated grayscale-to-measurement benchmark. It also gates file-backed ZIP central-directory
+validation, traversal refusal, member CRC verification, and semantic-only evaluation that cannot
+emit instance/count metrics. `pnpm corpus:verify:particles` is offline. External fetches and NIST
+preparation are never implicit test dependencies.
 
 ## CI layout
 

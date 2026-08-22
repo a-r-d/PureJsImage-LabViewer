@@ -146,6 +146,45 @@ describe('materials reference kernels', () => {
     expect(ignored.values[4]).toBeCloseTo(5, 12)
   })
 
+  it('keeps the sliding box filter differential-exact across boundaries and invalid policies', () => {
+    const source = {
+      width: 4,
+      height: 3,
+      components: 2,
+      values: Float64Array.from({ length: 24 }, (_value, index) =>
+        index === 7 ? -999 : ((index * 17) % 23) - 11,
+      ),
+      noDataValue: -999,
+    }
+    const boundaryCases = [
+      { boundary: 'clamp' as const, constantValue: 0 },
+      { boundary: 'mirror' as const, constantValue: 0 },
+      { boundary: 'constant' as const, constantValue: -3 },
+      { boundary: 'constant' as const, constantValue: Number.NaN },
+    ]
+    for (const boundaryCase of boundaryCases)
+      for (const invalidPolicy of ['ignore', 'propagate'] as const) {
+        for (const radius of [1, 2, 4]) {
+          const options = { ...boundaryCase, invalidPolicy }
+          const width = radius * 2 + 1
+          const expected = convolvePlane(
+            source,
+            Array.from({ length: width * width }, () => 1 / (width * width)),
+            width,
+            options,
+          )
+          const actual = boxFilterPlane(source, radius, options)
+          for (let index = 0; index < expected.values.length; index += 1) {
+            const reference = expected.values[index] ?? Number.NaN
+            const value = actual.values[index] ?? Number.NaN
+            const context = `${boundaryCase.boundary}/${boundaryCase.constantValue}/${invalidPolicy}/${radius}/${index}`
+            if (Number.isNaN(reference)) expect(Number.isNaN(value), context).toBe(true)
+            else expect(value, context).toBeCloseTo(reference, 12)
+          }
+        }
+      }
+  })
+
   it('despeckles only values beyond the requested threshold', () => {
     const source = plane(3, 3, [1, 1, 1, 1, 100, 1, 1, 1, 1])
     expect(outlierPlane(source, 1, 10).values[4]).toBe(1)
