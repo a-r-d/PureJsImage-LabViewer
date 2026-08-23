@@ -31,6 +31,7 @@ import {
   flipPlane,
   gradientPlane,
   mapPlane,
+  multiscaleContrastPlane,
   outlierPlane,
   rankFilterPlane,
   rotateRightAngle,
@@ -359,6 +360,15 @@ function processNeighborhood(
     }
     return { ...plane, values, noDataValue: Number.NaN }
   }
+  if (operationId === MATERIALS_OPERATION_IDS.multiscaleContrast)
+    return multiscaleContrastPlane(
+      plane,
+      numberParameter(value, 'innerRadius'),
+      numberParameter(value, 'outerRadius'),
+      stringParameter(value, 'polarity') as 'light' | 'dark' | 'absolute',
+      invalidPolicy,
+      signal,
+    )
   throw new Error(`Unknown neighborhood operation: ${operationId}`)
 }
 
@@ -372,6 +382,8 @@ function operationRadius(operationId: string, value: OperationJsonObject): numbe
     operationId === MATERIALS_OPERATION_IDS.background
   )
     return numberParameter(value, 'radius')
+  if (operationId === MATERIALS_OPERATION_IDS.multiscaleContrast)
+    return numberParameter(value, 'outerRadius')
   if (operationId === MATERIALS_OPERATION_IDS.convolution)
     return Math.floor(numberParameter(value, 'kernelWidth') / 2)
   if (operationId === MATERIALS_OPERATION_IDS.unsharp)
@@ -707,9 +719,13 @@ function implementation(operationId: string): OperationImplementation {
     estimatePlan(request) {
       const descriptor = descriptorFromCharacteristics(request.inputCharacteristics[0])
       const components = descriptor.components.length
+      const peakWorkingBytes =
+        operationId === MATERIALS_OPERATION_IDS.multiscaleContrast
+          ? 384 * 384 * components * 48
+          : 384 * 384 * components * 16
       return {
         ...ZERO_COST,
-        peakWorkingBytes: 384 * 384 * components * 16,
+        peakWorkingBytes,
         outputBytes: 256 * 256 * components * 4,
         retainedBytes: 256 * 256 * components * 4,
       }

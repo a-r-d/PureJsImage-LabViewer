@@ -118,7 +118,9 @@ Build bounded context from:
 
 Do not invent a conversation summary through an unreviewed model call. Compaction removes old raw
 turns, retains bounded facts (goals, decisions, source/result IDs, grants), and records that
-compaction occurred. Science and Atlas share `AgentConversationShell` with restricted Markdown
+compaction occurred. If one completed turn alone exceeds the retained-context budget, its bounded
+user-facing request and answer remain visible while its raw model/tool transcript is compacted.
+Science and Atlas share `AgentConversationShell` with restricted Markdown
 answers. Intermediate actions sit between the user message and the answer in a collapsed work
 trail (one current step while running). Session grants and run diagnostics stay behind
 disclosures. Large Markdown tables fold until the user opens them. The OpenRouter key is
@@ -136,6 +138,9 @@ Use stable references (`dataset:...`, `roi:...`, `node:...`, `result:...`) so th
   standard string or an already-decoded object, and reject duplicate call IDs. A successful
   mutation ends the current batch even if a buggy handler does not advance the project revision.
 - Validate every tool argument against the action registry’s JSON Schema.
+- Reject an exact successful read repeated with the same input at the same project revision. Return
+  a bounded correction telling the model to reuse the prior result, choose a materially different
+  action, or stop. Mutations retain their explicit revision and batch-boundary semantics.
 - Enforce max iterations, tool calls, elapsed time, input/output tokens, result bytes, and estimated cost.
 - Append assistant tool-call messages and matching tool-result messages in correct order.
 - Do not rewrite already-sent live-loop messages; prefix edits bust provider prompt cache.
@@ -143,6 +148,10 @@ Use stable references (`dataset:...`, `roi:...`, `node:...`, `result:...`) so th
 - Retry only classified transient transport/provider errors.
 - Never retry mutations blindly.
 - Support user cancellation while waiting for model or tool execution.
+
+Science caps one user turn at 16 model steps, 20 tool calls, and six minutes. Its particle
+instruction permits one baseline plus one reasoned refinement unless the user explicitly requests
+additional iterations, and requires the model to answer as soon as the stopping condition is met.
 
 ## Product policy profiles
 
@@ -173,7 +182,15 @@ previews, export, and external side effects. The shared runtime therefore still 
   conversation. Never estimate price from a local model table; show unavailable or partial cost
   explicitly when OpenRouter omits accounting for any call.
 - The provider-independent agent core never owns storage.
-- Store conversation/event history in IndexedDB because it can exceed localStorage capacity.
+- Store conversation/event history in IndexedDB because it can exceed localStorage capacity. The
+  shared shell uses `purejsimage-agent-history-v1`, namespaced separately for Science and Atlas,
+  and persists active, completed, failed, cancelled, and reload-interrupted sessions. It retains at
+  most 64 sessions per application, 128 bounded turns per session, and 512 KiB per session.
+- Persist only bounded user/assistant text, action identities, outcome, model ID, timestamps, and
+  concise errors. Never persist model-visible images, tool-result payloads, raw action inputs,
+  credentials, or full audit context. Credential-shaped text in messages is redacted before write.
+- The History dialog can inspect, delete, or clear local sessions. Clearing current runtime context
+  does not silently delete its already persisted prior session.
 - Never store the API key in history, tools, projects, logs, error reports, URLs, telemetry, or eval traces.
 - Add a clear “local browser storage is not an enterprise secret vault” warning and recommend a
   separate low-limit OpenRouter key.

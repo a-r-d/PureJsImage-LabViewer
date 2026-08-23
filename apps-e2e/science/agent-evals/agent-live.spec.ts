@@ -696,6 +696,7 @@ test('particle refinement follow-up improves an undercount without an unreadable
     assertAllowedActions(baseline.actions)
     expect(baseline.actions).toEqual(
       expect.arrayContaining([
+        'analysis.particle.settings.read',
         'analysis.particle.plan',
         'analysis.particle.execute',
         'analysis.particle.quality.read',
@@ -713,7 +714,7 @@ test('particle refinement follow-up improves an undercount without an unreadable
     assertAllowedActions(refined.actions)
     expect(refined.actions).toEqual(
       expect.arrayContaining([
-        'analysis.particle.settings.read',
+        'analysis.result.compare.read',
         'analysis.particle.plan',
         'analysis.particle.execute',
         'analysis.particle.quality.read',

@@ -9,6 +9,7 @@ import {
   boxFilterPlane,
   evaluateSemanticSegmentation,
   gradientPlane,
+  multiscaleContrastPlane,
 } from '../../dist/index.js'
 
 import { decodeBinaryMaskFile, decodeImageFile } from './common.mjs'
@@ -116,6 +117,44 @@ const configurations = [
     fillHoles: true,
     minimumSize: 64,
   })),
+  ...[
+    [2, 8],
+    [4, 16],
+    [8, 32],
+  ].flatMap(([innerRadius, outerRadius]) =>
+    ['otsu', 'yen'].map((method) => ({
+      id: `cryoem-multiscale-${innerRadius}-${outerRadius}-absolute-${method}`,
+      preprocessing: 'multiscale-contrast',
+      innerRadius,
+      outerRadius,
+      contrastPolarity: 'absolute',
+      method,
+      polarity: 'light',
+      minimumCoefficientOfVariation: 0,
+      openRadius: 0,
+      closeRadius: 2,
+      fillHoles: true,
+      minimumSize: 64,
+    })),
+  ),
+  ...[
+    [4, 16, 4],
+    [8, 32, 4],
+    [8, 32, 8],
+  ].map(([innerRadius, outerRadius, closeRadius]) => ({
+    id: `cryoem-multiscale-${innerRadius}-${outerRadius}-dark-otsu-close-${closeRadius}`,
+    preprocessing: 'multiscale-contrast',
+    innerRadius,
+    outerRadius,
+    contrastPolarity: 'dark',
+    method: 'otsu',
+    polarity: 'light',
+    minimumCoefficientOfVariation: 0,
+    openRadius: 0,
+    closeRadius,
+    fillHoles: true,
+    minimumSize: 64,
+  })),
 ]
 
 function mean(values) {
@@ -169,6 +208,19 @@ for (const pair of pairs) {
         },
         'sobel',
         'magnitude',
+      ).values
+    if (settings.preprocessing === 'multiscale-contrast')
+      values = multiscaleContrastPlane(
+        {
+          width: decoded.width,
+          height: decoded.height,
+          components: 1,
+          values: decoded.values,
+        },
+        settings.innerRadius,
+        settings.outerRadius,
+        settings.contrastPolarity,
+        'ignore',
       ).values
     if ((settings.backgroundRadius ?? 0) > 0) {
       const background = boxFilterPlane(

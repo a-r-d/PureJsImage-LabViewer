@@ -124,6 +124,12 @@ are retained in Agent diagnostics; no specimen-dependent watershed scale is sile
 guard defaults to disabled because NIST cryo-EM training evidence shows that the BBBC039-selected
 `0.1` threshold rejects valid low-contrast fields. Specimen profiles must opt in explicitly.
 
+The trusted operation catalog now also contains an explicit multiscale local-contrast
+particle-likelihood primitive with declared inner/outer pixel radii and light, dark, or absolute
+response. The first frozen NIST train/validation/transfer evaluation improves semantic overlap over
+the prior global-threshold baseline but remains condition-dependent and weak on boundaries. It is a
+building block, not a promoted default or a count oracle; see `docs/PARTICLE_ANALYSIS_NIST_LNP_EVAL.md`.
+
 ### Tier 3: local live-agent evals
 
 Live evals use a small representative subset because they are paid and nondeterministic. They grade

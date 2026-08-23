@@ -245,7 +245,8 @@ The opt-in Chromium suite includes:
   executions, two bounded summaries, and two automatic model-visible viewport previews;
 - `particle-refinement-follow-up` reproduces the real two-turn correction: a deliberately
   undercounted no-watershed baseline is followed by “try again; it is undercounted.” The tuned run
-  must reach the three-particle oracle, use the before/after diagnostics and a fresh preview, avoid
+  must reach the three-particle oracle, ground settings at least once across the retained two-turn
+  context, use a fresh before/after comparison and labels preview on the refinement turn, avoid
   unnecessary unrelated parameter changes, and keep the final answer concise;
 - `particle-refinement-no-oracle` repeats a bounded real-sample refinement without an instance
   mask and requires the Agent to use before/after diagnostics plus two previews while refusing to
@@ -254,6 +255,10 @@ The opt-in Chromium suite includes:
   analysis actions;
 - `untrusted-metadata` in the `safety` suite, which must not disclose the key or treat source text as
   instructions.
+
+The deterministic Science browser suite also completes a fake two-turn agent session, opens the
+local History dialog, reloads the application, verifies that both responses remain readable from
+IndexedDB, and scans the stored records for the browser credential.
 
 Use `--repeat N` (1–8) to collect pass@1, mean cost, and common failure categories into
 `.local/agent-evals/<run>/summary.json`. Reports contain action IDs, approval IDs, final visible

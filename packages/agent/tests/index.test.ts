@@ -273,6 +273,74 @@ describe('model-independent agent runtime', () => {
     expect(efforts).toEqual(['high', 'high'])
   })
 
+  it('returns a bounded correction instead of re-executing an exact successful action', async () => {
+    const fixture = fixtureGateway()
+    const transport = new DeterministicAgentTransport([
+      modelResponse([call('fixture.read', { query: 'Kentucky' }, 0, 'call-first')]),
+      modelResponse([call('fixture.read', { query: 'Kentucky' }, 0, 'call-repeat')]),
+      (request) => {
+        const latest = request.messages.at(-1)
+        expect(latest?.role).toBe('tool')
+        expect(typeof latest?.content === 'string' ? latest.content : '').toContain(
+          'already completed with the same input',
+        )
+        return modelResponse([], 'I reused the first bounded result and stopped.')
+      },
+    ])
+    const runtime = new AgentRuntime({ transport, gateway: fixture.gateway, policy: ALLOW_READS })
+
+    await runtime.start('Inspect Kentucky without looping.', 'fake/atlas')
+
+    expect(fixture.executions).toHaveLength(1)
+    expect(runtime.getSnapshot()).toMatchObject({
+      status: 'completed',
+      finalText: 'I reused the first bounded result and stopped.',
+    })
+  })
+
+  it('requests one bounded recovery when a completed tool loop returns an empty final answer', async () => {
+    const fixture = fixtureGateway()
+    const transport = new DeterministicAgentTransport([
+      modelResponse([call('fixture.read', { query: 'Kentucky' })]),
+      modelResponse([], ''),
+      (request) => {
+        expect(request.messages.at(-1)).toEqual({
+          role: 'user',
+          content:
+            'The bounded action sequence is complete, but your final answer was empty. Provide the concise evidence-grounded final answer now without calling another tool.',
+        })
+        return modelResponse([], 'The bounded Kentucky result is ready.')
+      },
+    ])
+    const runtime = new AgentRuntime({ transport, gateway: fixture.gateway, policy: ALLOW_READS })
+
+    await runtime.start('Inspect Kentucky.', 'fake/atlas')
+
+    expect(transport.requests).toHaveLength(3)
+    expect(runtime.getSnapshot()).toMatchObject({
+      status: 'completed',
+      finalText: 'The bounded Kentucky result is ready.',
+    })
+  })
+
+  it('fails when the provider repeats an empty final answer', async () => {
+    const fixture = fixtureGateway()
+    const runtime = new AgentRuntime({
+      transport: new DeterministicAgentTransport([
+        modelResponse([call('fixture.read', { query: 'Kentucky' })]),
+        modelResponse([], ''),
+        modelResponse([], ''),
+      ]),
+      gateway: fixture.gateway,
+      policy: ALLOW_READS,
+    })
+
+    await expect(runtime.start('Inspect Kentucky.', 'fake/atlas')).rejects.toThrow(
+      'returned an empty final answer twice',
+    )
+    expect(runtime.getSnapshot().status).toBe('failed')
+  })
+
   it('recovers a missing inline plan through a tool-free structured planning step', async () => {
     const fixture = fixtureGateway()
     const recoveredPlan = {
@@ -1562,10 +1630,23 @@ describe('session grants, untrusted data, and replay stops', () => {
       limits: { maximumConversationBytes: 1_200, maximumConversationMessages: 96 },
     })
     await runtime.start('First long scientific goal about calibration', 'fake/atlas')
+    expect(runtime.getSnapshot()).toMatchObject({
+      conversationTurnCount: 1,
+      conversationMessageCount: 0,
+      conversation: [
+        expect.objectContaining({ request: 'First long scientific goal about calibration' }),
+      ],
+    })
     await runtime.start('Second long scientific goal about the same result', 'fake/atlas')
     await runtime.start('What was the first result id?', 'fake/atlas')
     expect(runtime.getSnapshot().ledger.compacted).toBe(true)
     expect(runtime.getSnapshot().ledger.goals.length).toBeGreaterThan(0)
+    expect(runtime.getSnapshot().conversation).toEqual([
+      expect.objectContaining({
+        request: 'What was the first result id?',
+        answer: 'Follow-up used the ledger.',
+      }),
+    ])
   })
 
   it('compacts when the message budget is exceeded and keeps a deterministic ledger', async () => {

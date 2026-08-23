@@ -514,6 +514,21 @@ const specs: readonly DefinitionSpec[] = [
     }),
     execution: 'neighborhood',
   },
+  {
+    id: MATERIALS_OPERATION_IDS.multiscaleContrast,
+    title: 'Multiscale particle contrast',
+    description:
+      'Compute an inner-versus-outer local-mean response with explicit foreground polarity.',
+    category: 'filters',
+    tags: ['particles', 'local contrast', 'band pass', 'low contrast'],
+    parameters: objectSchema({
+      innerRadius: integer('Inner radius', 2, 1, 32),
+      outerRadius: integer('Outer radius', 8, 2, 64),
+      polarity: choice('Foreground polarity', ['light', 'dark', 'absolute'] as const, 'absolute'),
+      invalidPolicy: boundaryProperties.invalidPolicy,
+    }),
+    execution: 'neighborhood',
+  },
 ]
 
 function createDefinition(spec: DefinitionSpec): OperationDefinition {
@@ -576,6 +591,8 @@ function createDefinition(spec: DefinitionSpec): OperationDefinition {
           Number(value['maximum']) < Number(value['minimum'])) ||
         (spec.id === MATERIALS_OPERATION_IDS.invert &&
           Number(value['maximum']) <= Number(value['minimum'])) ||
+        (spec.id === MATERIALS_OPERATION_IDS.multiscaleContrast &&
+          Number(value['outerRadius']) <= Number(value['innerRadius'])) ||
         (spec.id === MATERIALS_OPERATION_IDS.convolution &&
           Array.isArray(value['kernel']) &&
           value['kernel'].length !== Number(value['kernelWidth']) ** 2)

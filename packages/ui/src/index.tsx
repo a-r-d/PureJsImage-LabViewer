@@ -15,6 +15,7 @@ import {
   FlaskConical,
   Folder,
   FolderOpen,
+  History,
   Images,
   Layers,
   Link2,
@@ -236,6 +237,7 @@ export type IconName =
   | 'file-new'
   | 'folder'
   | 'help'
+  | 'history'
   | 'import'
   | 'layers'
   | 'link'
@@ -276,6 +278,7 @@ const iconComponents: Readonly<Record<IconName, LucideIcon>> = {
   'file-new': FilePlus2,
   folder: Folder,
   help: CircleQuestionMark,
+  history: History,
   import: FileInput,
   layers: Layers,
   link: Link2,

@@ -21,6 +21,29 @@ documented `purejsimage/analysis`, `purejsimage/analysis/results`, `purejsimage/
 `purejsimage/operations`, `purejsimage/scientific`, and `purejsimage/extensions` exports. The guided
 surface composes these same versioned nodes; it does not have a privileged analysis path.
 
+## Multiscale particle-likelihood response
+
+`pji-workbench.materials.filter.multiscale-contrast@1` is an optional bounded preprocessing
+primitive for faint particles. For each finite scalar sample it computes an inner square-neighborhood
+mean `mᵢ` and a larger outer square-neighborhood mean `mₒ`, then returns one of:
+
+- light: `max(0, mᵢ - mₒ)`;
+- dark: `max(0, mₒ - mᵢ)`;
+- absolute: `abs(mᵢ - mₒ)`.
+
+The inner radius is an integer from 1 through 32 pixels. The outer radius is an integer from 2
+through 64 and must be larger than the inner radius. Both exact sliding-window means use mirror
+boundaries and the same explicit `propagate` or `ignore` invalid-sample policy. The response retains
+the source intensity unit, axes, and calibration; it is not a probability and does not infer a
+specimen scale. Thresholding, cleanup, and particle measurement remain separate visible graph nodes.
+
+The implementation is deterministic, contains cancellation checkpoints, and uses the outer radius
+as its tile halo. It is a rectangular multiscale local-contrast response, not a Gaussian/template
+picker and not a learned classifier. The operation was motivated by the scale-space family used in
+reference-free cryo-EM particle picking, including
+[Voss et al. (2009)](https://doi.org/10.1016/j.jsb.2009.01.004), while keeping the implemented
+numerical contract exact and separately named.
+
 ## Threshold definitions
 
 The selected plane, component, and area ROI define the threshold population. Declared no-data and
@@ -115,7 +138,8 @@ All new operations are declared as PureJsImage global transforms. The reference 
 - more than 1,000,000 convex-hull input points;
 - annotation tiles over 2,048 objects.
 
-Particle planning charges 104 working bytes per plane pixel; watershed charges 56. These conservative
+Particle planning charges 104 working bytes per plane pixel; watershed charges 56. Neighborhood
+execution remains tile-bounded and charges the declared outer halo. These conservative
 estimates cover typed source/output planes and bounded JavaScript measurement structures. Refusal is
 a hard plan failure, not a warning. Global loops, ROI rasterization, morphology floods, distance
 passes, watershed, and particle scans all contain cancellation checkpoints. Outputs are owned by the

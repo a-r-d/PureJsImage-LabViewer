@@ -209,6 +209,39 @@ test('fake OpenRouter conversation survives inspector changes and keeps tool con
   await expect(usage).toHaveText('ctx 3% · $0.037')
   await expect(usage).toHaveAttribute('title', /30,000 prompt tokens/u)
   await expect(usage).toHaveAttribute('title', /Provider-reported session cost: \$0\.037000 USD/u)
+  await page.getByRole('button', { name: 'Agent history' }).click()
+  const history = page.getByRole('dialog', { name: 'Lab Assistant history' })
+  await expect(history).toBeVisible()
+  await expect(history.getByText('Inspect this workspace.').first()).toBeVisible()
+  await expect(history.getByText('The bounded scientific workspace was inspected.')).toBeVisible()
+  await expect(
+    history.getByText('I inspected the bounded workspace summary through its semantic action.'),
+  ).toBeVisible()
+  await history.getByRole('button', { name: 'Done' }).click()
+  await page.getByRole('button', { name: 'New chat' }).click()
+  await expect(page.getByRole('button', { name: 'Start task' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Agent history' }).click()
+  await expect(history.getByText('The bounded scientific workspace was inspected.')).toBeVisible()
+  await history.getByRole('button', { name: 'Done' }).click()
+
+  await page.reload()
+  await waitForWorkbenchSettled(page)
+  await page.getByRole('button', { name: 'Show agent readiness' }).click()
+  await page.getByRole('button', { name: 'Agent history' }).click()
+  await expect(history.getByText('The bounded scientific workspace was inspected.')).toBeVisible()
+  const storedHistory = await page.evaluate(
+    () =>
+      new Promise<string>((resolve, reject) => {
+        const open = indexedDB.open('purejsimage-agent-history-v1', 1)
+        open.onerror = () => reject(open.error)
+        open.onsuccess = () => {
+          const request = open.result.transaction('sessions').objectStore('sessions').getAll()
+          request.onerror = () => reject(request.error)
+          request.onsuccess = () => resolve(JSON.stringify(request.result))
+        }
+      }),
+  )
+  expect(storedHistory).not.toContain('sk-or-fake-e2e-key')
   expect(modelCalls).toBe(3)
   expect(await page.evaluate(() => JSON.stringify(sessionStorage))).not.toContain(
     'sk-or-fake-e2e-key',

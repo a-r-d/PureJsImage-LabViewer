@@ -93,6 +93,15 @@ test('@a11y agent setup and chat have no serious violations', async ({ page }) =
     chatResults.violations.filter(({ impact }) => impact === 'critical' || impact === 'serious'),
   ).toEqual([])
 
+  await page.getByRole('button', { name: 'Agent history' }).click()
+  const history = page.getByRole('dialog', { name: 'Lab Assistant history' })
+  await expect(history).toBeVisible()
+  const historyResults = await new AxeBuilder({ page }).include('.science-agent-history').analyze()
+  expect(
+    historyResults.violations.filter(({ impact }) => impact === 'critical' || impact === 'serious'),
+  ).toEqual([])
+  await history.getByRole('button', { name: 'Done' }).click()
+
   const settingsTrigger = page.getByRole('button', { name: 'Agent settings' })
   await settingsTrigger.click()
   await page.keyboard.press('Escape')

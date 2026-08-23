@@ -1,6 +1,7 @@
 import {
   type AgentModelSummary,
   type AgentRuntime,
+  type AgentRuntimeSnapshot,
   type AgentSessionUsage,
   compactTurnActions,
   DEFAULT_OPENROUTER_MODEL,
@@ -29,6 +30,13 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { AgentActionTrail, actionApprovalPrompt } from './AgentActionTrail.js'
+import {
+  type ActiveAgentHistoryRequest,
+  type AgentHistorySession,
+  type AgentHistoryStore,
+  agentHistorySessionFromSnapshot,
+  createAgentHistorySessionId,
+} from './agent-history-store.js'
 
 export interface AgentStarterPrompt {
   readonly title: string
@@ -86,6 +94,8 @@ export function AgentConversationShell({
   approvalExtras,
   welcomeExtras,
   retainGrantsOnNewConversation = false,
+  historyStore,
+  historyScope,
 }: {
   readonly runtime: AgentRuntime
   readonly credentials: OptionalPersistentOpenRouterCredentialStore
@@ -96,6 +106,8 @@ export function AgentConversationShell({
   readonly approvalExtras?: ReactNode
   readonly welcomeExtras?: ReactNode
   readonly retainGrantsOnNewConversation?: boolean
+  readonly historyStore?: AgentHistoryStore
+  readonly historyScope?: string
 }) {
   const prefix = copy.classPrefix
   const subscribe = useCallback((listener: () => void) => runtime.subscribe(listener), [runtime])
@@ -118,11 +130,23 @@ export function AgentConversationShell({
   >()
   const [panelError, setPanelError] = useState<string>()
   const [loadingModels, setLoadingModels] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historySessions, setHistorySessions] = useState<readonly AgentHistorySession[]>([])
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string>()
+  const [historyError, setHistoryError] = useState<string>()
+  const [confirmClearHistory, setConfirmClearHistory] = useState(false)
   const settingsDialog = useRef<HTMLDialogElement>(null)
+  const historyDialog = useRef<HTMLDialogElement>(null)
   const chatScroller = useRef<HTMLElement>(null)
   const keyInputElement = useRef<HTMLInputElement>(null)
   const composer = useRef<HTMLTextAreaElement>(null)
   const settingsRestoreTarget = useRef<HTMLElement | null>(null)
+  const historySession = useRef({
+    id: createAgentHistorySessionId(),
+    createdAt: new Date().toISOString(),
+  })
+  const activeHistoryRequest = useRef<ActiveAgentHistoryRequest | undefined>(undefined)
+  const historyWriteQueue = useRef<Promise<void>>(Promise.resolve())
   const active = !['idle', 'completed', 'cancelled', 'failed'].includes(snapshot.status)
   const selectedModel = modelChoice === 'custom' ? customModel.trim() : modelChoice
   const selectedModelName =
@@ -134,6 +158,53 @@ export function AgentConversationShell({
   const scrollSignal = `${snapshot.conversationTurnCount}:${snapshot.approval?.id ?? ''}:${snapshot.status}:${snapshot.trace.length}:${pendingRequest?.request ?? ''}`
   const persistenceLabel =
     credentials.persistence === 'browser' ? 'Remembered in this browser' : 'Session only'
+  const selectedHistory = historySessions.find(({ id }) => id === selectedHistoryId)
+
+  const persistHistory = useCallback(
+    (
+      currentSnapshot: AgentRuntimeSnapshot,
+      currentRequest: ActiveAgentHistoryRequest | undefined = activeHistoryRequest.current,
+    ): Promise<void> => {
+      if (historyStore === undefined || historyScope === undefined) return Promise.resolve()
+      const session = agentHistorySessionFromSnapshot(
+        {
+          id: historySession.current.id,
+          scope: historyScope,
+          createdAt: historySession.current.createdAt,
+          updatedAt: new Date().toISOString(),
+        },
+        currentSnapshot,
+        currentRequest,
+      )
+      if (session === undefined) return Promise.resolve()
+      const next = historyWriteQueue.current
+        .catch(() => undefined)
+        .then(() => historyStore.upsert(session))
+        .catch((error: unknown) => {
+          setHistoryError(error instanceof Error ? error.message : String(error))
+        })
+      historyWriteQueue.current = next
+      return next
+    },
+    [historyScope, historyStore],
+  )
+
+  const refreshHistory = useCallback(async (): Promise<void> => {
+    if (historyStore === undefined || historyScope === undefined) return
+    try {
+      await historyWriteQueue.current
+      const sessions = await historyStore.list(historyScope)
+      setHistorySessions(sessions)
+      setSelectedHistoryId((current) =>
+        current !== undefined && sessions.some(({ id }) => id === current)
+          ? current
+          : sessions[0]?.id,
+      )
+      setHistoryError(undefined)
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : String(error))
+    }
+  }, [historyScope, historyStore])
 
   const closeSettings = useCallback((): void => {
     setSettingsOpen(false)
@@ -157,6 +228,29 @@ export function AgentConversationShell({
       if (dialog.open) dialog.close()
     }
   }, [settingsOpen])
+
+  useEffect(() => {
+    const dialog = historyDialog.current
+    if (dialog === null) return
+    if (historyOpen) {
+      if (!dialog.open) dialog.showModal()
+    } else if (dialog.open) dialog.close()
+    return () => {
+      if (dialog.open) dialog.close()
+    }
+  }, [historyOpen])
+
+  useEffect(
+    () =>
+      runtime.subscribe(() => {
+        void persistHistory(runtime.getSnapshot())
+      }),
+    [persistHistory, runtime],
+  )
+
+  useEffect(() => {
+    void persistHistory(runtime.getSnapshot())
+  }, [persistHistory, runtime])
 
   useEffect(() => {
     const scroller = chatScroller.current
@@ -230,12 +324,22 @@ export function AgentConversationShell({
     setPanelError(undefined)
     setRequest('')
     setPendingRequest({ request: submitted, turnCount: snapshot.conversationTurnCount })
+    const persistedRequest: ActiveAgentHistoryRequest = {
+      request: submitted,
+      turnCount: snapshot.conversationTurnCount,
+      startedAt: new Date().toISOString(),
+    }
+    activeHistoryRequest.current = persistedRequest
     void runtime
       .start(submitted, selectedModel)
       .then(() => {
+        void persistHistory(runtime.getSnapshot(), persistedRequest)
+        activeHistoryRequest.current = undefined
         setPendingRequest(undefined)
       })
       .catch((error: unknown) => {
+        void persistHistory(runtime.getSnapshot(), persistedRequest)
+        activeHistoryRequest.current = undefined
         setPendingRequest(undefined)
         setRequest((current) => (current.length === 0 ? submitted : current))
         setPanelError(error instanceof Error ? error.message : String(error))
@@ -276,7 +380,13 @@ export function AgentConversationShell({
             <Button
               disabled={active}
               onClick={() => {
+                void persistHistory(runtime.getSnapshot())
                 runtime.resetConversation({ retainGrants: retainGrantsOnNewConversation })
+                historySession.current = {
+                  id: createAgentHistorySessionId(),
+                  createdAt: new Date().toISOString(),
+                }
+                activeHistoryRequest.current = undefined
                 setRequest('')
                 setPendingRequest(undefined)
               }}
@@ -284,6 +394,18 @@ export function AgentConversationShell({
             >
               {copy.newConversationLabel}
             </Button>
+          )}
+          {historyStore === undefined || historyScope === undefined ? null : (
+            <IconButton
+              label="Agent history"
+              onClick={() => {
+                setConfirmClearHistory(false)
+                setHistoryOpen(true)
+                void refreshHistory()
+              }}
+            >
+              <Icon name="history" size={16} />
+            </IconButton>
           )}
           <IconButton
             label={expanded ? 'Exit expanded agent view' : 'Expand agent view'}
@@ -538,6 +660,182 @@ export function AgentConversationShell({
           )}
         </div>
       </form>
+
+      <dialog
+        aria-label={`${copy.assistantName} history`}
+        className={`${prefix}-history`}
+        onCancel={(event) => {
+          event.preventDefault()
+          setHistoryOpen(false)
+          setConfirmClearHistory(false)
+        }}
+        ref={historyDialog}
+      >
+        <header>
+          <div>
+            <p className="panel-kicker">Local browser history</p>
+            <h2>{copy.assistantName} sessions</h2>
+          </div>
+          <IconButton
+            label="Close agent history"
+            onClick={() => {
+              setHistoryOpen(false)
+              setConfirmClearHistory(false)
+            }}
+          >
+            <Icon name="close" size={17} />
+          </IconButton>
+        </header>
+        <p className={`${prefix}-history__intro`}>
+          Completed, failed, cancelled, and interrupted runs stay in this browser. History stores
+          bounded messages and action identities, never image bytes, tool-result payloads, or API
+          keys.
+        </p>
+        {historyError === undefined ? null : (
+          <p className={`${prefix}-history__error`} role="alert">
+            {historyError}
+          </p>
+        )}
+        {historySessions.length === 0 ? (
+          <p className={`${prefix}-history__empty`}>No saved agent sessions yet.</p>
+        ) : (
+          <div className={`${prefix}-history__layout`}>
+            <nav aria-label="Saved agent sessions" className={`${prefix}-history__sessions`}>
+              <ul>
+                {historySessions.map((session) => (
+                  <li key={session.id}>
+                    <button
+                      aria-current={session.id === selectedHistoryId ? 'page' : undefined}
+                      onClick={() => setSelectedHistoryId(session.id)}
+                      type="button"
+                    >
+                      <strong>{session.title}</strong>
+                      <span>
+                        {historyOutcomeLabel(session.status)} · {session.turns.length}{' '}
+                        {session.turns.length === 1 ? 'turn' : 'turns'}
+                      </span>
+                      <time dateTime={session.updatedAt}>{historyTime(session.updatedAt)}</time>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            {selectedHistory === undefined ? null : (
+              <section
+                aria-label="Saved agent session transcript"
+                className={`${prefix}-history__transcript`}
+              >
+                <header>
+                  <div>
+                    <h3>{selectedHistory.title}</h3>
+                    <p>
+                      {historyOutcomeLabel(selectedHistory.status)} · updated{' '}
+                      {historyTime(selectedHistory.updatedAt)}
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      if (historyStore === undefined || historyScope === undefined) return
+                      void historyStore
+                        .delete(historyScope, selectedHistory.id)
+                        .then(refreshHistory)
+                        .catch((error: unknown) =>
+                          setHistoryError(error instanceof Error ? error.message : String(error)),
+                        )
+                    }}
+                    variant="ghost"
+                  >
+                    Delete session
+                  </Button>
+                </header>
+                <ol>
+                  {selectedHistory.turns.map((turn) => (
+                    <li key={turn.id}>
+                      <div className={`${prefix}__message-row ${prefix}__message-row--user`}>
+                        <span className={`${prefix}__message-label`}>You</span>
+                        <p className="agent-message agent-message--user">{turn.request}</p>
+                      </div>
+                      {turn.actions.length === 0 ? null : (
+                        <details>
+                          <summary>
+                            {turn.actions.length} saved{' '}
+                            {turn.actions.length === 1 ? 'action' : 'actions'}
+                          </summary>
+                          <ol className={`${prefix}__list`}>
+                            {turn.actions.map((action) => (
+                              <li key={action.callId}>
+                                <code>
+                                  {action.actionId}@{action.actionVersion}
+                                </code>
+                                <span>{action.approval}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        </details>
+                      )}
+                      {turn.answer === undefined ? null : (
+                        <div className={`${prefix}__message-row`}>
+                          <span className={`${prefix}__message-label`}>{copy.assistantName}</span>
+                          <div className={`${prefix}__reply`}>
+                            <CopyButton
+                              label="Copy saved response"
+                              text={restrictedMarkdownPlainText(turn.answer)}
+                            />
+                            <AgentAnswer answer={turn.answer} prefix={prefix} />
+                          </div>
+                        </div>
+                      )}
+                      {turn.error === undefined ? null : (
+                        <div className={`${prefix}-history__turn-error`} role="status">
+                          <strong>{historyOutcomeLabel(turn.outcome)}</strong>
+                          <span>{turn.error.message}</span>
+                        </div>
+                      )}
+                      {turn.answer === undefined && turn.error === undefined ? (
+                        <p className={`${prefix}-history__turn-status`}>
+                          {historyOutcomeLabel(turn.outcome)} before a final response was saved.
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+          </div>
+        )}
+        <footer>
+          <Button
+            disabled={historySessions.length === 0}
+            onClick={() => {
+              if (!confirmClearHistory) {
+                setConfirmClearHistory(true)
+                return
+              }
+              if (historyStore === undefined || historyScope === undefined) return
+              void historyStore
+                .clear(historyScope)
+                .then(() => {
+                  setConfirmClearHistory(false)
+                  return refreshHistory()
+                })
+                .catch((error: unknown) =>
+                  setHistoryError(error instanceof Error ? error.message : String(error)),
+                )
+            }}
+            variant="ghost"
+          >
+            {confirmClearHistory ? 'Confirm clear all history' : 'Clear all history'}
+          </Button>
+          <Button
+            onClick={() => {
+              setHistoryOpen(false)
+              setConfirmClearHistory(false)
+            }}
+          >
+            Done
+          </Button>
+        </footer>
+      </dialog>
 
       <dialog
         aria-label="Agent settings"
@@ -858,4 +1156,23 @@ function friendlyStatus(status: string, keyPresent: boolean): string {
     failed: 'Needs attention',
   }
   return labels[status] ?? status.replaceAll('-', ' ')
+}
+
+function historyOutcomeLabel(outcome: AgentHistorySession['status']): string {
+  const labels: Readonly<Record<AgentHistorySession['status'], string>> = {
+    active: 'Interrupted or active',
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+    failed: 'Failed',
+  }
+  return labels[outcome]
+}
+
+function historyTime(value: string): string {
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return value
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(timestamp))
 }

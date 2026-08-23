@@ -1,19 +1,26 @@
 import { scientificDatasetCharacteristics } from 'purejsimage/analysis'
-import { normalizeScientificDatasetDescriptor } from 'purejsimage/scientific'
+import {
+  normalizeScientificDatasetDescriptor,
+  resolveNumericTileSource,
+  type ScientificDataset,
+} from 'purejsimage/scientific'
 import { describe, expect, it } from 'vitest'
 
 import { MATERIALS_OPERATION_IDS } from '../src/catalog.js'
 import { materialsOperationDefinitions } from '../src/definitions.js'
+import { createDenseScientificDataset } from '../src/dense-dataset.js'
 import {
   boxFilterPlane,
   calculatePlanes,
   convolvePlane,
   flipPlane,
   mapPlane,
+  multiscaleContrastPlane,
   outlierPlane,
   rotateRightAngle,
   translatePlane,
 } from '../src/kernels.js'
+import { createMaterialsAnalysisProvider } from '../src/provider.js'
 
 const plane = (width: number, height: number, values: readonly number[]) => ({
   width,
@@ -189,6 +196,92 @@ describe('materials reference kernels', () => {
     const source = plane(3, 3, [1, 1, 1, 1, 100, 1, 1, 1, 1])
     expect(outlierPlane(source, 1, 10).values[4]).toBe(1)
     expect(outlierPlane(source, 1, 200).values[4]).toBe(100)
+  })
+
+  it('computes explicit signed and absolute multiscale local contrast', () => {
+    const source = plane(
+      7,
+      7,
+      Array.from({ length: 49 }, (_value, index) => (index === 24 ? 9 : 1)),
+    )
+    const light = multiscaleContrastPlane(source, 1, 2, 'light', 'propagate')
+    const dark = multiscaleContrastPlane(source, 1, 2, 'dark', 'propagate')
+    const absolute = multiscaleContrastPlane(source, 1, 2, 'absolute', 'propagate')
+    expect(light.values[24]).toBeGreaterThan(0)
+    expect(dark.values[24]).toBe(0)
+    expect(absolute.values[24]).toBe(light.values[24])
+    expect(() => multiscaleContrastPlane(source, 2, 2, 'absolute', 'propagate')).toThrow(
+      'outer radius must be greater',
+    )
+  })
+
+  it('executes multiscale contrast through the bounded provider with a conservative plan', async () => {
+    const descriptor = normalizeScientificDatasetDescriptor({
+      schemaVersion: 1,
+      sampleType: 'float32',
+      axes: [
+        { id: 'x', kind: 'space', length: 7, coordinates: { type: 'index' } },
+        { id: 'y', kind: 'space', length: 7, coordinates: { type: 'index' } },
+      ],
+      components: [{ id: 'value', kind: 'intensity' }],
+      capabilities: {
+        regionReads: true,
+        resolutionLevels: false,
+        planeReads: { kind: 'any-axis-pair' },
+      },
+    })
+    const source = createDenseScientificDataset(
+      descriptor,
+      Float32Array.from({ length: 49 }, (_value, index) => (index === 24 ? 9 : 1)),
+    )
+    const definition = materialsOperationDefinitions.find(
+      ({ descriptor: candidate }) => candidate.id === MATERIALS_OPERATION_IDS.multiscaleContrast,
+    )
+    const prepared = await createMaterialsAnalysisProvider().prepare()
+    const implementation = prepared?.implementations.find(
+      ({ descriptor: candidate }) =>
+        candidate.operationId === MATERIALS_OPERATION_IDS.multiscaleContrast,
+    )
+    if (definition === undefined || implementation === undefined)
+      throw new Error('Multiscale-contrast provider is unavailable.')
+    const parameters = {
+      displayAxes: ['x', 'y'],
+      fixedIndices: [],
+      innerRadius: 1,
+      outerRadius: 2,
+      polarity: 'light',
+      invalidPolicy: 'ignore',
+    }
+    const request = {
+      descriptor: definition.descriptor,
+      parameters,
+      inputs: [source.dataset],
+      inputCharacteristics: [scientificDatasetCharacteristics(descriptor)],
+      plannedInputCharacteristics: [scientificDatasetCharacteristics(descriptor)],
+      provider: { id: 'test', version: 1, kind: 'reference' as const, buildFingerprint: 'test' },
+      implementation: implementation.descriptor,
+      signal: new AbortController().signal,
+    }
+    expect(implementation.estimatePlan(request).peakWorkingBytes).toBe(384 * 384 * 48)
+    const owned = await implementation.execute(request)
+    const output = owned[0]?.value as ScientificDataset | undefined
+    if (output === undefined) throw new Error('Multiscale-contrast output is unavailable.')
+    const tiles = resolveNumericTileSource(output).readNumericTiles({
+      displayAxes: ['x', 'y'],
+      fixedIndices: [],
+      resolutionLevel: 0,
+      x: 0,
+      y: 0,
+      width: 7,
+      height: 7,
+      targetSampleType: 'float32',
+    })
+    for await (const tile of tiles) {
+      expect(Number(tile.data[24])).toBeGreaterThan(0)
+      tile.release()
+    }
+    for (const value of owned) await value.release()
+    source.release()
   })
 
   it('cancels deterministic loops and guards image division by zero', () => {

@@ -32,6 +32,7 @@
     "pji-workbench.materials.filter.laplacian",
     "pji-workbench.materials.filter.outlier",
     "pji-workbench.materials.filter.background-subtract",
+    "pji-workbench.materials.filter.multiscale-contrast",
     "pji-workbench.materials.segmentation.threshold-reference",
     "pji-workbench.materials.segmentation.binary-erode",
     "pji-workbench.materials.segmentation.binary-dilate",
@@ -96,6 +97,7 @@
     "pji-workbench.materials.filter.laplacian",
     "pji-workbench.materials.filter.outlier",
     "pji-workbench.materials.filter.background-subtract",
+    "pji-workbench.materials.filter.multiscale-contrast",
     "pji-workbench.materials.segmentation.threshold-reference",
     "pji-workbench.materials.segmentation.binary-erode",
     "pji-workbench.materials.segmentation.binary-dilate",
@@ -155,6 +157,11 @@
     {
       "id": "pji-workbench.materials.filter.minimum",
       "title": "Minimum filter",
+      "version": 1
+    },
+    {
+      "id": "pji-workbench.materials.filter.multiscale-contrast",
+      "title": "Multiscale particle contrast",
       "version": 1
     },
     {

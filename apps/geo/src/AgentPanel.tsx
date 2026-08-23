@@ -3,7 +3,12 @@ import type {
   OpenRouterTransport,
   OptionalPersistentOpenRouterCredentialStore,
 } from '@pji-workbench/agent'
-import { AgentConversationShell, ATLAS_AGENT_COPY } from '@pji-workbench/workbench-react'
+import {
+  AgentConversationShell,
+  ATLAS_AGENT_COPY,
+  IndexedDbAgentHistoryStore,
+} from '@pji-workbench/workbench-react'
+import { useMemo } from 'react'
 
 const STARTERS = [
   {
@@ -35,10 +40,18 @@ export function AgentPanel({
   readonly credentials: OptionalPersistentOpenRouterCredentialStore
   readonly transport: OpenRouterTransport
 }) {
+  const historyStore = useMemo(
+    () =>
+      typeof globalThis.indexedDB === 'undefined'
+        ? undefined
+        : new IndexedDbAgentHistoryStore(globalThis.indexedDB),
+    [],
+  )
   return (
     <AgentConversationShell
       copy={ATLAS_AGENT_COPY}
       credentials={credentials}
+      {...(historyStore === undefined ? {} : { historyScope: 'atlas', historyStore })}
       modelPreferenceKey={MODEL_PREFERENCE_KEY}
       runtime={runtime}
       starters={STARTERS}

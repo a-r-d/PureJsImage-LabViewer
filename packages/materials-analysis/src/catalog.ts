@@ -26,6 +26,7 @@ export const MATERIALS_OPERATION_IDS = Object.freeze({
   laplacian: 'pji-workbench.materials.filter.laplacian',
   outlier: 'pji-workbench.materials.filter.outlier',
   background: 'pji-workbench.materials.filter.background-subtract',
+  multiscaleContrast: 'pji-workbench.materials.filter.multiscale-contrast',
   thresholdReference: 'pji-workbench.materials.segmentation.threshold-reference',
   binaryErode: 'pji-workbench.materials.segmentation.binary-erode',
   binaryDilate: 'pji-workbench.materials.segmentation.binary-dilate',
@@ -217,6 +218,19 @@ export const TOOLBOX_DOCUMENTATION: readonly ToolboxOperationDocumentation[] = O
       boundaryPolicy: 'Mirror boundary; radius is limited to 64 pixels.',
       preset: 'Correct uneven background',
       cost: 'expensive',
+    },
+  ),
+  docs(
+    MATERIALS_OPERATION_IDS.multiscaleContrast,
+    'Compute an explicit inner-versus-outer local-mean particle-likelihood response.',
+    {
+      inputPolicy: 'One numeric plane; the outer radius must be larger than the inner radius.',
+      outputPolicy:
+        'A half-wave-rectified light/dark response or absolute local-contrast plane in the original intensity units for downstream thresholding.',
+      noDataPolicy: 'Invalid samples propagate or are ignored explicitly in both local means.',
+      boundaryPolicy: 'Both neighborhoods use a deterministic mirror boundary.',
+      cost: 'expensive',
+      preset: 'Low-contrast particle likelihood',
     },
   ),
   docs(

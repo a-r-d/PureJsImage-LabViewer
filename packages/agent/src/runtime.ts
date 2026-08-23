@@ -264,6 +264,8 @@ export class AgentRuntime {
     try {
       let toolCalls = 0
       let consecutiveToolFailures = 0
+      let requestedFinalAnswer = false
+      const completedActionFingerprints = new Set<string>()
       for (let step = 0; step < this.#limits.maximumModelSteps; step += 1) {
         controller.signal.throwIfAborted()
         this.#publish({ status: 'requesting-model', activeTaskId: audit.id, model: selectedModel })
@@ -281,6 +283,33 @@ export class AgentRuntime {
           controller.signal,
           audit,
         )
+        if (requestedFinalAnswer && response.toolCalls.length > 0)
+          throw new AgentRuntimeError(
+            'INVALID_MODEL_RESPONSE',
+            `${this.#productName} agent requested more actions after it was asked for its missing final answer.`,
+          )
+        if (response.toolCalls.length === 0 && response.content.trim().length === 0) {
+          if (requestedFinalAnswer)
+            throw new AgentRuntimeError(
+              'INVALID_MODEL_RESPONSE',
+              `${this.#productName} agent returned an empty final answer twice.`,
+            )
+          const finalAnswerRequest: AgentModelMessage = {
+            role: 'user',
+            content:
+              'The bounded action sequence is complete, but your final answer was empty. Provide the concise evidence-grounded final answer now without calling another tool.',
+          }
+          messages.push(finalAnswerRequest)
+          turnMessages.push(finalAnswerRequest)
+          requestedFinalAnswer = true
+          this.#publish({
+            status: 'summarizing',
+            activeTaskId: audit.id,
+            model: selectedModel,
+            ...(audit.plan === undefined ? {} : { plan: audit.plan }),
+          })
+          continue
+        }
         if (
           response.toolCalls.length > 0 &&
           response.plan === undefined &&
@@ -408,7 +437,14 @@ export class AgentRuntime {
           const capability = this.#capability(call)
           let outcome: Readonly<{ result: JsonValue; artifact?: AgentArtifact }>
           try {
+            const fingerprint = actionCallFingerprint(call)
+            if (capability.mutability === 'read' && completedActionFingerprints.has(fingerprint))
+              throw new AgentRuntimeError(
+                'ACTION_VALIDATION_FAILED',
+                `${call.actionId} already completed with the same input at project revision ${call.projectRevision}. Use the prior result, choose a materially different action, or stop and answer if the plan condition is satisfied.`,
+              )
             outcome = await this.#executeCall(call, controller.signal, audit)
+            if (capability.mutability === 'read') completedActionFingerprints.add(fingerprint)
           } catch (error) {
             const failure = classifyFailure(error, controller.signal)
             if (!recoverableToolFailure(failure)) throw failure
@@ -1018,6 +1054,11 @@ export class AgentRuntime {
     messages: readonly AgentModelMessage[],
     completedTurn: AgentConversationTurn,
   ): void {
+    if (this.#completedTurns.length > this.#conversation.length)
+      this.#completedTurns =
+        this.#conversation.length === 0
+          ? []
+          : this.#completedTurns.slice(-this.#conversation.length)
     const sanitized = messages.map(sanitizeConversationMessage)
     this.#conversation.push(sanitized)
     this.#completedTurns.push(Object.freeze({ ...completedTurn }))
@@ -1031,6 +1072,8 @@ export class AgentRuntime {
       this.#completedTurns.shift()
       dropped += 1
     }
+    if (this.#completedTurns.length === 0)
+      this.#completedTurns.push(Object.freeze({ ...completedTurn }))
     if (dropped > 0) {
       this.#ledger = markCompacted(rememberGrants(this.#ledger, [...this.#grants.values()]))
       this.#conversation = this.#conversation.map((turn, index) =>
@@ -1083,7 +1126,7 @@ export class AgentRuntime {
       ...(patch.audit === undefined ? {} : { audit: patch.audit }),
       ...(this.#sessionUsage === undefined ? {} : { sessionUsage: this.#sessionUsage }),
       conversation: [...this.#completedTurns],
-      conversationTurnCount: this.#conversation.length,
+      conversationTurnCount: this.#completedTurns.length,
       conversationMessageCount: this.#conversation.flat().length,
       grants: [...this.#grants.values()],
       ledger: this.#ledger,
@@ -1173,6 +1216,8 @@ function systemPrompt(
     'Never request raw pixels, credentials, browser storage, JavaScript execution, or unrestricted network access.',
     'To request approval, call the approval-gated action. The local runtime will pause and ask the user. Never stop to ask for action approval in prose.',
     'If an action returns ok:false, use its bounded error to correct the next call or stop; never blindly repeat the same failing call.',
+    'Reuse successful tool results already present in the turn. The runtime rejects an exact successful action repeated at the same project revision because it cannot add evidence.',
+    'Stop calling tools and provide the final answer as soon as the recorded stopping condition is satisfied.',
     'Before claiming a segmentation or detection result looks reliable, use quantitative quality diagnostics together with an approved preview. These diagnostics are not a formal statistical guarantee.',
     'Before the first tool use in each user turn, include a compact JSON plan using exactly this shape: {"goalSummary":"...","actions":[{"actionId":"...","actionVersion":1,"input":{},"expectedOutput":"..."}],"approvalsRequired":["..."],"stoppingCondition":"..."}.',
     ...(additionalInstructions === undefined ? [] : [additionalInstructions]),
@@ -1193,6 +1238,19 @@ function canonicalPlan(plan: AgentPlan, manifest: AgentCapabilityManifest): Agen
       return [{ ...action, actionId: capability.actionId }]
     }),
   }
+}
+
+function actionCallFingerprint(call: AgentActionCall): string {
+  return `${call.projectRevision}:${call.actionId}@${call.actionVersion}:${stableJson(call.input)}`
+}
+
+function stableJson(value: JsonValue): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (typeof value !== 'object' || value === null) return JSON.stringify(value)
+  return `{${Object.entries(value)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+    .join(',')}}`
 }
 
 function unexecutedToolMessages(

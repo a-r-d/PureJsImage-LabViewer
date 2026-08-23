@@ -275,6 +275,48 @@ export function boxFilterPlane(
   return { ...plane, values, noDataValue: Number.NaN }
 }
 
+export function multiscaleContrastPlane(
+  plane: DensePlane,
+  innerRadius: number,
+  outerRadius: number,
+  polarity: 'light' | 'dark' | 'absolute',
+  invalidPolicy: InvalidPolicy,
+  signal?: AbortSignal,
+): DensePlane {
+  assertPlane(plane)
+  if (!Number.isSafeInteger(innerRadius) || innerRadius < 1 || innerRadius > 32)
+    throw new Error('Multiscale-contrast inner radius must be an integer from 1 to 32.')
+  if (!Number.isSafeInteger(outerRadius) || outerRadius < 2 || outerRadius > 64)
+    throw new Error('Multiscale-contrast outer radius must be an integer from 2 to 64.')
+  if (outerRadius <= innerRadius)
+    throw new Error('Multiscale-contrast outer radius must be greater than the inner radius.')
+  const options: KernelOptions = {
+    boundary: 'mirror',
+    constantValue: 0,
+    invalidPolicy,
+    ...(signal === undefined ? {} : { signal }),
+  }
+  const inner = boxFilterPlane(plane, innerRadius, options)
+  const outer = boxFilterPlane(plane, outerRadius, options)
+  const values = new Float64Array(plane.values.length)
+  for (let index = 0; index < values.length; index += 1) {
+    if (index % 16_384 === 0) signal?.throwIfAborted()
+    const innerMean = inner.values[index] ?? Number.NaN
+    const outerMean = outer.values[index] ?? Number.NaN
+    if (!Number.isFinite(innerMean) || !Number.isFinite(outerMean)) values[index] = Number.NaN
+    else {
+      const response = innerMean - outerMean
+      values[index] =
+        polarity === 'light'
+          ? Math.max(0, response)
+          : polarity === 'dark'
+            ? Math.max(0, -response)
+            : Math.abs(response)
+    }
+  }
+  return { ...plane, values, noDataValue: Number.NaN }
+}
+
 export function gaussianKernel(sigma: number): readonly number[] {
   if (!Number.isFinite(sigma) || sigma <= 0 || sigma > 16)
     throw new Error('Gaussian sigma must be greater than zero and at most 16.')
