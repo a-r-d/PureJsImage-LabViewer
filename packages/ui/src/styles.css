@@ -430,6 +430,8 @@ textarea::placeholder {
 }
 
 .agent-message {
+  box-sizing: border-box;
+  min-width: 0;
   max-width: 90%;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--wb-border) 75%, transparent);
@@ -437,6 +439,7 @@ textarea::placeholder {
   background: var(--wb-surface-raised);
   font-size: 12px;
   line-height: 1.55;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 .agent-message--user {
@@ -446,9 +449,12 @@ textarea::placeholder {
 }
 .science-agent {
   display: grid;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: 0;
   height: 100%;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   padding: 0;
   overflow: hidden;
@@ -572,6 +578,9 @@ textarea::placeholder {
   font-size: 11px;
 }
 .science-agent__chat {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: 0;
   padding: 16px 12px 20px;
@@ -655,18 +664,25 @@ textarea::placeholder {
 }
 .science-agent__conversation {
   display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   gap: 19px;
-  max-width: var(--science-agent-content-width, 560px);
+  max-width: min(100%, var(--science-agent-content-width, 560px));
   margin: 0 auto;
   padding: 0;
   list-style: none;
 }
 .science-agent__conversation > li {
   display: grid;
+  min-width: 0;
   gap: 8px;
 }
 .science-agent__message-row {
   display: grid;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   justify-items: start;
   gap: 5px;
 }
@@ -682,6 +698,7 @@ textarea::placeholder {
 }
 .science-agent__reply {
   position: relative;
+  min-width: 0;
   max-width: 90%;
 }
 .science-agent__reply .ui-copy-button {

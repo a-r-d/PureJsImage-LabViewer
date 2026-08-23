@@ -49,7 +49,9 @@ export const SCIENCE_EXAMPLE_SCENARIO_IDS = Object.freeze([
   'generated.drifting-stack',
   'cdc.ecoli-sem',
   'cdc.staph-aureus-sem',
+  'cdc.ecoli-sem-jpeg',
   'nih.hela-cells-3709',
+  'nih.hela-cells-3709-jpeg',
   'nci.hhv6-em',
 ])
 

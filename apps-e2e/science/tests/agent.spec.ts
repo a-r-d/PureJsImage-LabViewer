@@ -24,6 +24,20 @@ test('agent can expand to a modal surface and the results pane can fully collaps
     )
     .toBe('36px')
 
+  const collapsedPanelBounds = await page
+    .getByRole('region', { name: 'Analysis output' })
+    .boundingBox()
+  const expandButton = page.getByRole('button', { name: 'Expand results panel' })
+  const expandButtonBounds = await expandButton.boundingBox()
+  expect(collapsedPanelBounds).not.toBeNull()
+  expect(expandButtonBounds).not.toBeNull()
+  if (collapsedPanelBounds === null || expandButtonBounds === null)
+    throw new Error('The collapsed results panel layout is unavailable.')
+  expect(expandButtonBounds.y).toBeGreaterThanOrEqual(collapsedPanelBounds.y)
+  expect(expandButtonBounds.y + expandButtonBounds.height).toBeLessThanOrEqual(
+    collapsedPanelBounds.y + collapsedPanelBounds.height,
+  )
+
   await page.getByRole('tab', { name: 'Agent' }).click()
   await page.getByRole('button', { name: 'Expand agent view' }).click()
   await expect(page.getByRole('region', { name: 'Lab Assistant agent workspace' })).toHaveClass(
@@ -35,7 +49,7 @@ test('agent can expand to a modal surface and the results pane can fully collaps
     /science-agent--expanded/u,
   )
 
-  await page.getByRole('button', { name: 'Expand results panel' }).click()
+  await expandButton.click()
   await expect
     .poll(() =>
       page
@@ -467,4 +481,255 @@ globalThis.__scriptMain = main
   ).toBeVisible()
   await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
   expect(modelCalls).toBe(4)
+})
+
+test('agent can create a crop ROI and immediately rerun particles without overflowing chat', async ({
+  page,
+}) => {
+  let modelCalls = 0
+  let createdRoiId = ''
+  let reviewedPlanId = ''
+  await page.route('https://openrouter.ai/api/v1/**', async (route) => {
+    if (route.request().url().includes('/models?')) {
+      await route.fulfill({
+        json: {
+          data: [
+            {
+              id: 'openai/gpt-5.6-luna',
+              name: 'Fake GPT-5.6 Luna',
+              context_length: 400_000,
+              supported_parameters: ['tools'],
+              architecture: { input_modalities: ['text', 'image'] },
+            },
+          ],
+        },
+      })
+      return
+    }
+
+    const body = route.request().postDataJSON() as {
+      readonly messages: readonly Readonly<{
+        role: string
+        content: unknown
+        tool_call_id?: string
+      }>[]
+    }
+    const systemContent = body.messages.find(({ role }) => role === 'system')?.content
+    const revisionMatch =
+      typeof systemContent === 'string' ? /"revision":(\d+)/u.exec(systemContent) : null
+    expect(revisionMatch).not.toBeNull()
+    const projectRevision = Number(revisionMatch?.[1] ?? -1)
+    const actionResult = (callId: string): Record<string, unknown> => {
+      const message = body.messages.find(({ tool_call_id: id }) => id === callId)
+      expect(typeof message?.content).toBe('string')
+      const envelope = JSON.parse(String(message?.content)) as { readonly result?: unknown }
+      expect(envelope.result).toBeDefined()
+      return envelope.result as Record<string, unknown>
+    }
+
+    if (modelCalls === 0) {
+      await route.fulfill({
+        json: {
+          model: 'openai/gpt-5.6-luna',
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  goalSummary: 'Exclude the caption and rerun particle analysis',
+                  actions: [
+                    {
+                      actionId: 'roi.create',
+                      actionVersion: 1,
+                      input: {
+                        kind: 'rectangle',
+                        label: 'Caption-excluding crop',
+                        x: 0,
+                        y: 0,
+                        width: 96,
+                        height: 72,
+                      },
+                      expectedOutput: 'A current area ROI ID',
+                    },
+                    {
+                      actionId: 'analysis.particle.plan',
+                      actionVersion: 1,
+                      input: { settings: { roiId: 'from ROI result' } },
+                      expectedOutput: 'A valid ROI-bound particle plan',
+                    },
+                    {
+                      actionId: 'analysis.particle.execute',
+                      actionVersion: 1,
+                      input: { planId: 'from plan result', settings: { roiId: 'from ROI result' } },
+                      expectedOutput: 'A committed cropped particle result',
+                    },
+                  ],
+                  approvalsRequired: [],
+                  stoppingCondition: 'The ROI-bound rerun completes.',
+                }),
+                tool_calls: [
+                  {
+                    id: 'caption-roi-create',
+                    type: 'function',
+                    function: {
+                      name: 'roi__create__v1',
+                      arguments: JSON.stringify({
+                        projectRevision,
+                        input: {
+                          kind: 'rectangle',
+                          label: 'Caption-excluding crop',
+                          x: 0,
+                          y: 0,
+                          width: 96,
+                          height: 72,
+                        },
+                      }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      })
+    } else if (modelCalls === 1) {
+      const created = actionResult('caption-roi-create')
+      const roi = created['roi'] as Record<string, unknown>
+      const particleAnalysis = created['particleAnalysis'] as Record<string, unknown>
+      const settingsPatch = particleAnalysis['settingsPatch'] as Record<string, unknown>
+      createdRoiId = String(roi['id'])
+      expect(roi['geometry']).toMatchObject({
+        kind: 'rectangle',
+        x: 0,
+        y: 0,
+        width: 96,
+        height: 72,
+      })
+      expect(settingsPatch['roiId']).toBe(createdRoiId)
+      await route.fulfill({
+        json: {
+          model: 'openai/gpt-5.6-luna',
+          choices: [
+            {
+              message: {
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'caption-particle-plan',
+                    type: 'function',
+                    function: {
+                      name: 'analysis__particle__plan__v1',
+                      arguments: JSON.stringify({
+                        projectRevision,
+                        input: { settings: { roiId: createdRoiId } },
+                      }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      })
+    } else if (modelCalls === 2) {
+      const planned = actionResult('caption-particle-plan')
+      const settings = planned['settings'] as Record<string, unknown>
+      const roi = planned['roi'] as Record<string, unknown>
+      expect(planned['valid']).toBe(true)
+      expect(settings['roiId']).toBe(createdRoiId)
+      expect(roi['id']).toBe(createdRoiId)
+      reviewedPlanId = String(planned['planId'])
+      await route.fulfill({
+        json: {
+          model: 'openai/gpt-5.6-luna',
+          choices: [
+            {
+              message: {
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'caption-particle-execute',
+                    type: 'function',
+                    function: {
+                      name: 'analysis__particle__execute__v1',
+                      arguments: JSON.stringify({
+                        projectRevision,
+                        input: {
+                          planId: reviewedPlanId,
+                          settings: { roiId: createdRoiId },
+                        },
+                      }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      })
+    } else {
+      const executed = actionResult('caption-particle-execute')
+      expect(String(executed['message'])).toMatch(/Counted \d+ particles/u)
+      await route.fulfill({
+        json: {
+          model: 'openai/gpt-5.6-luna',
+          choices: [
+            {
+              message: {
+                content: `The caption-excluding ROI ${createdRoiId} was used and the particle rerun completed.`,
+              },
+            },
+          ],
+        },
+      })
+    }
+    modelCalls += 1
+  })
+
+  await openWorkbench(page)
+  await page.evaluate(({ key }) => localStorage.setItem(key, 'sk-or-fake-roi-key'), {
+    key: KEY_STORAGE,
+  })
+  await page.reload()
+  await waitForWorkbenchSettled(page)
+  await openSample(page)
+  await page.getByRole('button', { name: 'Show agent readiness' }).click()
+  const prompt =
+    'Rerun the particle analysis inside a crop that excludes the long bottom caption and do not fall back to the whole plane under any circumstances.'
+  await page.getByLabel('Request or follow-up').fill(prompt)
+  await page.getByLabel('Request or follow-up').press('Enter')
+
+  await expect(page.getByText(/particle rerun completed/u)).toBeVisible({ timeout: 30_000 })
+  expect(modelCalls).toBe(4)
+  const agentBounds = await page.getByTestId('science-agent-panel').boundingBox()
+  const promptMessage = page.getByText(prompt, { exact: true })
+  const messageBounds = await promptMessage.boundingBox()
+  const layoutDiagnostics = await promptMessage.evaluate((element) => {
+    const diagnostics = []
+    let current: Element | null = element
+    while (current !== null && diagnostics.length < 7) {
+      const style = getComputedStyle(current)
+      const bounds = current.getBoundingClientRect()
+      diagnostics.push({
+        className: current.className,
+        left: bounds.left,
+        right: bounds.right,
+        width: bounds.width,
+        display: style.display,
+        minWidth: style.minWidth,
+        maxWidth: style.maxWidth,
+        overflowX: style.overflowX,
+      })
+      current = current.parentElement
+    }
+    return diagnostics
+  })
+  expect(agentBounds).not.toBeNull()
+  expect(messageBounds).not.toBeNull()
+  if (agentBounds === null || messageBounds === null)
+    throw new Error('The agent conversation layout was unavailable.')
+  expect(messageBounds.x).toBeGreaterThanOrEqual(agentBounds.x)
+  expect(
+    messageBounds.x + messageBounds.width,
+    JSON.stringify(layoutDiagnostics),
+  ).toBeLessThanOrEqual(agentBounds.x + agentBounds.width)
 })

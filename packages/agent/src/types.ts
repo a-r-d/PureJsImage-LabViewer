@@ -342,8 +342,6 @@ export interface AgentRuntimeSnapshot {
 }
 
 export interface AgentRuntimeLimits {
-  readonly maximumModelSteps: number
-  readonly maximumToolCalls: number
   readonly maximumConsecutiveToolFailures: number
   readonly maximumTokens: number
   readonly maximumToolResultBytes: number
@@ -366,8 +364,6 @@ export class AgentRuntimeError extends Error {
       | 'CONCURRENT_TASK_LIMIT'
       | 'CONTEXT_TOO_LARGE'
       | 'INVALID_MODEL_RESPONSE'
-      | 'MAXIMUM_STEPS'
-      | 'MAXIMUM_TOOL_CALLS'
       | 'POLICY_DENIED'
       | 'PROVIDER_ERROR'
       | 'REPLAY_INCOMPATIBLE'

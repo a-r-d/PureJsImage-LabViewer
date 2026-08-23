@@ -82,6 +82,12 @@ export const SCIENCE_WORKFLOW_RECIPES: readonly DomainWorkflowRecipe[] = Object.
     kind: 'script',
   },
   {
+    id: 'builtin.original-jpeg-inspection',
+    title: 'Original JPEG inspection',
+    summary: 'Generic ROI-first inspection of an uncalibrated bundled source JPEG.',
+    kind: 'script',
+  },
+  {
     id: 'builtin.real-hhv6-histogram',
     title: 'Real TEM intensity histogram',
     summary: 'Whole-plane histogram for the bundled HHV-6 TEM image.',

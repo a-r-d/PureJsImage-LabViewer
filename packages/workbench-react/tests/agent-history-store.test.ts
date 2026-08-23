@@ -78,7 +78,7 @@ describe('agent history persistence', () => {
         status: 'failed',
         model: 'fake/atlas',
         trace: [trace],
-        error: { code: 'MAXIMUM_STEPS', message: 'The bounded step limit was reached.' },
+        error: { code: 'PROVIDER_ERROR', message: 'The provider request failed.' },
       }),
       {
         request: 'Count the particles.',
@@ -92,7 +92,7 @@ describe('agent history persistence', () => {
         {
           request: 'Count the particles.',
           outcome: 'failed',
-          error: { code: 'MAXIMUM_STEPS' },
+          error: { code: 'PROVIDER_ERROR' },
           actions: [{ actionId: 'analysis.particle.execute', actionVersion: 1 }],
         },
       ],

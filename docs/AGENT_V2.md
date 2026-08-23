@@ -141,7 +141,9 @@ Use stable references (`dataset:...`, `roi:...`, `node:...`, `result:...`) so th
 - Reject an exact successful read repeated with the same input at the same project revision. Return
   a bounded correction telling the model to reuse the prior result, choose a materially different
   action, or stop. Mutations retain their explicit revision and batch-boundary semantics.
-- Enforce max iterations, tool calls, elapsed time, input/output tokens, result bytes, and estimated cost.
+- Enforce genuine elapsed-time, input/output-token, result-byte, provider-retry, concurrency, and
+  policy bounds. Do not terminate a normal task because it crossed a fixed model-step or tool-call
+  count.
 - Append assistant tool-call messages and matching tool-result messages in correct order.
 - Do not rewrite already-sent live-loop messages; prefix edits bust provider prompt cache.
 - Preserve any provider-required reasoning details during the active loop without exposing hidden reasoning in the UI.
@@ -149,9 +151,11 @@ Use stable references (`dataset:...`, `roi:...`, `node:...`, `result:...`) so th
 - Never retry mutations blindly.
 - Support user cancellation while waiting for model or tool execution.
 
-Science caps one user turn at 16 model steps, 20 tool calls, and six minutes. Its particle
-instruction permits one baseline plus one reasoned refinement unless the user explicitly requests
-additional iterations, and requires the model to answer as soon as the stopping condition is met.
+Science requires the model to answer as soon as the stopping condition is met, but does not impose a
+fixed model-step, tool-call, baseline, or refinement count. Long legitimate workflows may continue
+until completion. User cancellation and genuine elapsed/resource/policy boundaries remain enforced.
+Trajectory efficiency is measured by deterministic and paid live evals rather than converted into a
+user-visible step-limit failure.
 
 ## Product policy profiles
 

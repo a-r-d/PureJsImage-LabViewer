@@ -192,11 +192,24 @@ from application code trying to outsmart the model.
 - Give the model the relevant current state and stable object identities without flooding it with
   stale or low-value context. Compact or summarize old turns deliberately.
 - Make tools graceful: return concise actionable failures, preserve IDs and provenance, allow the
-  model to correct a call, and keep cancellation, limits, approvals, and policy enforcement in the
-  host.
+  model to correct a call, and keep cancellation, genuine resource bounds, approvals, and policy
+  enforcement in the host.
 - The model chooses what action to propose next. Deterministic code validates schemas, permissions,
   revisions, resource limits, and side effects; it does not choose the scientific workflow on the
   model's behalf.
+
+Do not impose fixed model-step or tool-call ceilings on normal agent tasks. A legitimate long task
+must not fail solely because it needed more model responses or semantic actions. The runtime ends
+when the model provides its answer, the user cancels, or a genuine boundary fires: elapsed timeout,
+provider retry exhaustion, context/token/result-size limits, repeated action failures, concurrency,
+schema/revision/policy enforcement, or approval denial.
+
+Treat wandering, redundant work, and excessive model/tool trajectories as evaluation failures, not
+as low production cutoffs. Live and deterministic evals should record request count, action count,
+duplicate or unnecessary work, latency, token usage, cost, stopping-condition compliance, and final
+answer quality. Improve failures through instructions, context, tool design, and examples. Eval-only
+request or cost ceilings may protect a paid test run, but they must not become user-facing runtime
+step limits.
 
 The agent:
 

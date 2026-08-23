@@ -657,7 +657,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'roi.create',
       'Create ROI',
-      'Create a validated ROI on the active dataset.',
+      'Create a validated ROI on the active dataset and return its exact ID and geometry for subsequent analysis calls. ROI creation does not itself run analysis.',
       'roi',
       {
         cost: 'interactive',
@@ -892,7 +892,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'analysis.particle.plan',
       'Plan particle analysis settings',
-      'Merge a bounded settings patch, validate the complete particle workflow, and return resource estimates without execution.',
+      'Merge a bounded settings patch, validate the complete particle workflow, and return resource estimates without execution. A supplied settings.roiId must be an exact current area ROI and is never replaced with the whole plane.',
       'analysis',
       {
         mutability: 'read',
@@ -909,7 +909,7 @@ export const scienceActionDefinitions: readonly ActionDefinition<CommandContext>
     descriptor: descriptor(
       'analysis.particle.execute',
       'Execute particle analysis settings',
-      'Validate, execute, and visibly commit the complete particle workflow for a bounded settings patch.',
+      'Validate, execute, and visibly commit the complete particle workflow for a bounded settings patch. Preserve any user-requested settings.roiId from the reviewed plan.',
       'analysis',
       {
         mutability: 'mutation',

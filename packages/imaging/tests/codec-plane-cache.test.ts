@@ -141,4 +141,63 @@ describe('codec adapter plane cache', () => {
     tiles[0]?.release()
     await document.close?.()
   })
+
+  it('keeps a shared plane decode alive when one tile consumer is cancelled', async () => {
+    const bytes = await encodedJpeg()
+    const document = await new ScientificReaderRegistry([jpegReader]).open({
+      primary: { id: 'jpeg', name: 'pattern.jpg', source: new MemorySource(bytes) },
+    })
+    const dataset = await document.openDataset(document.datasets[0]?.id ?? 'image')
+    const origin = resolveNumericTileSource(dataset, { targetSampleType: 'float32' })
+    let releaseDecode = (): void => undefined
+    const decodeGate = new Promise<void>((resolve) => {
+      releaseDecode = resolve
+    })
+    let reads = 0
+    const cached = cacheCodecAdapterPlane({
+      descriptor: origin.descriptor,
+      async *readNumericTiles(request) {
+        reads += 1
+        expect(request.signal).toBeUndefined()
+        await decodeGate
+        const width = request.width ?? 64
+        const height = request.height ?? 48
+        yield {
+          x: request.x ?? 0,
+          y: request.y ?? 0,
+          width,
+          height,
+          sampleType: 'float32',
+          componentCount: 3,
+          layout: 'interleaved',
+          rowStrideElements: width * 3,
+          data: new Float32Array(width * height * 3),
+          release: () => undefined,
+        }
+      },
+    })
+    const request = {
+      displayAxes: ['x', 'y'] as const,
+      fixedIndices: [],
+      x: 8,
+      y: 8,
+      width: 8,
+      height: 8,
+      targetSampleType: 'float32' as const,
+    }
+    const controller = new AbortController()
+    const cancelledRead = Array.fromAsync(
+      cached.readNumericTiles({ ...request, signal: controller.signal }),
+    )
+    await Promise.resolve()
+    controller.abort(new DOMException('Viewport tile changed', 'AbortError'))
+    await expect(cancelledRead).rejects.toThrow('Viewport tile changed')
+
+    releaseDecode()
+    const completedRead = await Array.fromAsync(cached.readNumericTiles(request))
+    expect(completedRead).toHaveLength(1)
+    expect(reads).toBe(1)
+    completedRead[0]?.release()
+    await document.close?.()
+  })
 })

@@ -60,8 +60,14 @@ export function cacheCodecAdapterPlane(source: NumericTileSource): NumericTileSo
   let plane: Promise<CachedPlane> | undefined
 
   const load = (request: Readonly<NumericTileReadRequest>): Promise<CachedPlane> => {
-    plane ??= materializePlane(source, request)
-    return plane
+    if (plane === undefined) {
+      const { signal: _consumerSignal, ...sharedRequest } = request
+      plane = materializePlane(source, sharedRequest).catch((error: unknown) => {
+        plane = undefined
+        throw error
+      })
+    }
+    return waitForSharedPlane(plane, request.signal)
   }
 
   return {
@@ -72,6 +78,29 @@ export function cacheCodecAdapterPlane(source: NumericTileSource): NumericTileSo
       yield cropPlane(cached, request)
     },
   }
+}
+
+function waitForSharedPlane<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal === undefined) return promise
+  signal.throwIfAborted()
+  return new Promise((resolve, reject) => {
+    const cleanup = (): void => signal.removeEventListener('abort', onAbort)
+    const onAbort = (): void => {
+      cleanup()
+      reject(signal.reason)
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => {
+        cleanup()
+        resolve(value)
+      },
+      (error: unknown) => {
+        cleanup()
+        reject(error)
+      },
+    )
+  })
 }
 
 interface CachedPlane {

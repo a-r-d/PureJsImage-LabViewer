@@ -628,7 +628,7 @@ canvas:focus-visible,
 }
 .bottom-panel__header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   padding-right: 4px;
   border-bottom: 1px solid var(--wb-border);

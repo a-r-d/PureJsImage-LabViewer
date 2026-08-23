@@ -647,14 +647,16 @@ test('split-touching-particles iterates from baseline to watershed with two prev
       'Start task',
     )
     assertAllowedActions(turn.actions)
-    expect(count(turn.actions, 'analysis.particle.plan')).toBeGreaterThanOrEqual(2)
-    expect(count(turn.actions, 'analysis.particle.execute')).toBeGreaterThanOrEqual(2)
+    details['modelRequestCount'] = proxy.requests.length
+    expect(proxy.requests.length).toBeLessThanOrEqual(14)
+    expect(count(turn.actions, 'analysis.particle.plan')).toBe(2)
+    expect(count(turn.actions, 'analysis.particle.execute')).toBe(2)
     expect(
       count(turn.actions, 'result.summary.read') +
         count(turn.actions, 'analysis.particle.quality.read') +
         count(turn.actions, 'analysis.result.compare.read'),
     ).toBeGreaterThanOrEqual(2)
-    expect(count(turn.actions, 'viewport.preview.create')).toBeGreaterThanOrEqual(2)
+    expect(count(turn.actions, 'viewport.preview.create')).toBe(2)
     expect(turn.approvals).toEqual([])
     expect(proxy.requests.filter(({ hadImage }) => hadImage).length).toBeGreaterThanOrEqual(2)
     const countText = await resultCountText(page)

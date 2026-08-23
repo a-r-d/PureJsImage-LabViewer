@@ -10,11 +10,13 @@ The example system serves three purposes simultaneously:
 
 Every example is a versioned scenario, not merely an image thumbnail.
 
-The Prompt 11 baseline implements this contract in `packages/test-corpus`. Five distinct,
-deterministic GSF scenarios and four exact public-domain real electron micrographs are enabled
-offline and share their descriptors with the workbench gallery, fixture resolver, workflow
-buttons, initial-analysis presets, project replay, and tests. Other researched datasets remain in
-a separate planned/candidate/scheduled/excluded queue until every gate below is satisfied. See
+The current baseline implements this contract in `packages/test-corpus`. Six deterministic
+scientific scenarios and four exact public-domain real electron micrographs are enabled offline.
+The real files are exposed through six openable source/derivative scenarios so users can choose
+the exact original JPEG or a bounded scientific-workspace derivative where both are useful. The
+same descriptors drive the workbench gallery, fixture resolver, workflow buttons, optional
+initial-analysis presets, project replay, and tests. Other researched datasets remain in a
+separate planned/candidate/scheduled/excluded queue until every gate below is satisfied. See
 `docs/CORPUS_AUDIT.md` for the per-entry evidence and remaining blockers.
 
 ## Example descriptor

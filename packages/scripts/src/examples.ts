@@ -228,6 +228,23 @@ globalThis.__scriptMain = main
       { workflow: 'real-image-inspection', calibrated: false },
     ),
     await script(
+      'builtin.original-jpeg-inspection',
+      'Original JPEG inspection',
+      'Plans an ROI-first inspection of the active original JPEG without inventing calibration absent from the source file.',
+      `import { lab } from '@lab/api'
+
+export async function main() {
+  const plan = await lab.analysis.dryRun({ workflow: 'roi-inspection', calibrated: false })
+  return { workflow: 'original-jpeg-inspection', calibrated: false, plan }
+}
+
+globalThis.__scriptMain = main
+`,
+      'cdc.ecoli-sem-jpeg',
+      ['analysis.dry-run'],
+      { workflow: 'original-jpeg-inspection', calibrated: false },
+    ),
+    await script(
       'builtin.real-hhv6-histogram',
       'Real TEM intensity histogram',
       'Documents the bounded whole-plane histogram applied to the bundled HHV-6 TEM image.',

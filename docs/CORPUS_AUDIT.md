@@ -28,7 +28,9 @@ enabled examples.
 | `generated.drifting-stack` | enabled | ready | Deterministic 64×64×8 NRRD volume with a one-pixel-per-plane disk walk, CC0, offline open, bounded mean-projection script. |
 | `cdc.ecoli-sem` | enabled | ready | Exact public-domain 700 × 475 CDC SEM JPEG plus full-resolution grayscale GSF intensity derivative, both SHA-256 pinned; offline source loading and committed threshold/components preset. |
 | `cdc.staph-aureus-sem` | enabled | ready | Exact public-domain 2100 × 1630 CDC SEM JPEG (PHIL 6486), SHA-256 pinned and opened as the original JPEG; offline source loading and a committed bright-object threshold/components starting point. |
+| `cdc.ecoli-sem-jpeg` | enabled | ready | Exact public-domain 700 × 475 CDC SEM JPEG, SHA-256 pinned and independently openable through the codec adapter for offline original-file inspection. |
 | `nih.hela-cells-3709` | enabled | ready | Exact public-domain NIH JPEG plus a bounded 1024 × 832 grayscale GSF intensity derivative, both SHA-256 pinned; offline source loading and ROI-first inspection workflow. |
+| `nih.hela-cells-3709-jpeg` | enabled | ready | Exact public-domain 3260 × 2646 NIH JPEG, SHA-256 pinned and independently openable through the codec adapter for full-resolution offline inspection. |
 | `nci.hhv6-em` | enabled | ready | Exact public-domain NCI TEM JPEG plus a bounded 1024 × 690 grayscale GSF intensity derivative, both SHA-256 pinned; offline source loading and a committed whole-plane histogram. |
 | `nist.sem-detection-limits` | candidate | not ready | NIST publishes SHA-256 for `mask_sets.zip`; exact bytes, immutable file URL, selected archive members, redistribution decision, and result oracle remain pending. |
 | `zenodo.indentation-masks` | candidate | not ready | CC BY 4.0 record and exact mask archive URL/bytes are known, but only MD5 is published; a representative image/mask pair and SHA-256 are not pinned. |

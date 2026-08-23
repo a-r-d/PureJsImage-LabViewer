@@ -31,10 +31,10 @@ describe('generated corpus foundation', () => {
     const validation = validateCorpusManifest(corpusManifest)
     expect(validation.ok).toBe(true)
     expect(Object.isFrozen(corpusManifest)).toBe(true)
-    expect(enabledExampleScenarios()).toHaveLength(10)
+    expect(enabledExampleScenarios()).toHaveLength(12)
     expect(
       enabledExampleScenarios().filter(({ source }) => source.kind === 'bundled'),
-    ).toHaveLength(4)
+    ).toHaveLength(6)
     expect(enabledExampleScenarios().every(({ expected }) => expected.length > 0)).toBe(true)
     expect(researchExampleScenarios().length).toBeGreaterThanOrEqual(8)
     expect(new Set(corpusManifest.scenarios.map(({ id }) => id)).size).toBe(
@@ -82,7 +82,7 @@ describe('generated corpus foundation', () => {
 
   it('generates immutable PR artifacts and a complete cross-tier capability matrix', () => {
     const artifacts = scenarioTestArtifacts()
-    expect(artifacts).toHaveLength(10)
+    expect(artifacts).toHaveLength(12)
     expect(Object.isFrozen(artifacts)).toBe(true)
     expect(new Set(artifacts.map(({ fixture }) => fixture.kind))).toEqual(
       new Set(['generated', 'bundled']),
@@ -159,8 +159,8 @@ describe('generated corpus foundation', () => {
 
   it('keeps unqualified external data out of the enabled catalog with auditable reasons', () => {
     const audit = createCorpusAuditReport(corpusManifest)
-    expect(audit.counts.enabled).toBe(10)
-    expect(audit.entries.filter(({ ready }) => ready)).toHaveLength(10)
+    expect(audit.counts.enabled).toBe(12)
+    expect(audit.entries.filter(({ ready }) => ready)).toHaveLength(12)
     expect(audit.entries.find(({ id }) => id === 'zenodo.indentation-masks')).toMatchObject({
       status: 'candidate',
       ready: false,

@@ -39,8 +39,6 @@ import { AgentRuntimeError } from './types.js'
 import { UNTRUSTED_DATA_INSTRUCTIONS, wrapUntrustedModelContext } from './untrusted.js'
 
 export const DEFAULT_AGENT_LIMITS: AgentRuntimeLimits = Object.freeze({
-  maximumModelSteps: 16,
-  maximumToolCalls: 32,
   maximumConsecutiveToolFailures: 3,
   maximumTokens: 4_096,
   maximumToolResultBytes: 64 * 1_024,
@@ -262,11 +260,10 @@ export class AgentRuntime {
       { role: 'user', content: request },
     ]
     try {
-      let toolCalls = 0
       let consecutiveToolFailures = 0
       let requestedFinalAnswer = false
       const completedActionFingerprints = new Set<string>()
-      for (let step = 0; step < this.#limits.maximumModelSteps; step += 1) {
+      for (;;) {
         controller.signal.throwIfAborted()
         this.#publish({ status: 'requesting-model', activeTaskId: audit.id, model: selectedModel })
         const manifest = this.#gateway.capabilities()
@@ -315,12 +312,6 @@ export class AgentRuntime {
           response.plan === undefined &&
           audit.plan === undefined
         ) {
-          if (step + 1 >= this.#limits.maximumModelSteps)
-            throw new AgentRuntimeError(
-              'MAXIMUM_STEPS',
-              `${this.#productName} agent could not recover a bounded plan within ${this.#limits.maximumModelSteps} model steps.`,
-            )
-          step += 1
           const recovered = await this.#modelResponse(
             {
               model: selectedModel,
@@ -412,12 +403,6 @@ export class AgentRuntime {
           code: string,
           message: string,
         ): void => {
-          toolCalls += calls.length
-          if (toolCalls > this.#limits.maximumToolCalls)
-            throw new AgentRuntimeError(
-              'MAXIMUM_TOOL_CALLS',
-              `${this.#productName} agent exceeded ${this.#limits.maximumToolCalls} tool calls.`,
-            )
           const skippedMessages = unexecutedToolMessages(
             calls,
             this.#gateway.revision(),
@@ -428,12 +413,6 @@ export class AgentRuntime {
           turnMessages.push(...skippedMessages)
         }
         for (const [callIndex, call] of response.toolCalls.entries()) {
-          toolCalls += 1
-          if (toolCalls > this.#limits.maximumToolCalls)
-            throw new AgentRuntimeError(
-              'MAXIMUM_TOOL_CALLS',
-              `${this.#productName} agent exceeded ${this.#limits.maximumToolCalls} tool calls.`,
-            )
           const capability = this.#capability(call)
           let outcome: Readonly<{ result: JsonValue; artifact?: AgentArtifact }>
           try {
@@ -525,10 +504,6 @@ export class AgentRuntime {
         messages.push(...imageMessages)
         turnMessages.push(...imageMessages)
       }
-      throw new AgentRuntimeError(
-        'MAXIMUM_STEPS',
-        `${this.#productName} agent exceeded ${this.#limits.maximumModelSteps} model steps.`,
-      )
     } catch (error) {
       const failure = classifyFailure(error, controller.signal)
       audit.failures.push({ code: failure.code, message: failure.message, at: this.#now() })

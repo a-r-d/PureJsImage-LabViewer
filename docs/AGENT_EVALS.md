@@ -37,7 +37,8 @@ pnpm eval:agent --confirm-live --model openai/gpt-5.6-luna --reasoning high
 The launcher refuses CI and requires `--confirm-live`. It prints the model, case count, soft cost
 ceiling, and output directory before sending requests. The ceiling is checked after each provider
 response, so one in-flight request can exceed it. Each case also has a hard maximum of 20 chat
-requests.
+requests to bound an explicitly paid test run. This is an eval-runner safety ceiling, not a product
+runtime limit.
 
 The required live Science configuration is currently `openai/gpt-5.6-luna` with high reasoning.
 The launcher verifies current tool and image-input support before starting Playwright. Chromium runs
@@ -56,7 +57,11 @@ interface AgentEvalCaseV1 {
   readonly userPrompt: string
   readonly allowedTools?: readonly string[]
   readonly forbiddenTools?: readonly string[]
-  readonly maximumSteps: number
+  readonly efficiencyBudget?: {
+    readonly maximumModelRequests?: number
+    readonly maximumActions?: number
+    readonly maximumRedundantActions?: number
+  }
   readonly expected: {
     readonly workspaceAssertions?: readonly WorkspaceAssertion[]
     readonly resultAssertions?: readonly ResultAssertion[]
@@ -82,6 +87,9 @@ interface AgentEvalCaseV1 {
   bounded quality diagnostics, and an automatic labels preview;
 - report calibration and units;
 - create an ROI and measure statistics;
+- when excluding a caption or artifact, create a valid area ROI and carry its exact ID through
+  particle plan, execution, and preview without falling back to the whole plane or stopping after
+  ROI creation;
 - threshold and count generated particles;
 - read `analysis.particle.quality.read` plus an automatic preview before claiming reliability;
 - split touching particles with watershed;
@@ -104,6 +112,10 @@ descriptive only. In the interactive Agent, `analysis.particle.quality.read` now
 previous and current diagnostic distributions plus their bounded deltas. Because ordinary user
 images have no independent oracle, that comparison is explicitly `not-determined` until the model
 inspects both labels previews or the user adjudicates it.
+
+The deterministic browser agent suite reproduces the caption-exclusion trajectory. It fails if a
+newly created ROI is stale to the immediately following particle plan, if execution does not occur,
+or if the resulting conversation exceeds the inspector width.
 
 ### Scripting
 
@@ -185,7 +197,8 @@ Prefer deterministic grading:
 - numeric result tolerance;
 - units;
 - no secret leakage;
-- step, token, latency, and cost budgets;
+- model-request and action-count efficiency, redundant-work rate, token, latency, and cost budgets;
+- stopping-condition compliance without a production model-step or tool-call cutoff;
 - approval-policy compliance;
 - successful source/result references.
 

@@ -865,19 +865,28 @@ describe('model-independent agent runtime', () => {
     expect(transport.requests).toHaveLength(0)
   })
 
-  it('stops at the model-step limit', async () => {
+  it('continues until the model reaches its stopping condition without step or tool ceilings', async () => {
     const fixture = fixtureGateway()
+    const actionResponses = Array.from({ length: 40 }, (_value, index) =>
+      modelResponse([call('fixture.read', { query: `query-${index}` }, 0, `call-${index}`)]),
+    )
+    const transport = new DeterministicAgentTransport([
+      ...actionResponses,
+      modelResponse([], 'The requested inspection is complete.'),
+    ])
     const runtime = new AgentRuntime({
-      transport: new DeterministicAgentTransport([
-        modelResponse([call('fixture.read', { query: 'one' }, 0, 'call-1')]),
-        modelResponse([call('fixture.read', { query: 'two' }, 0, 'call-2')]),
-      ]),
+      transport,
       gateway: fixture.gateway,
       policy: ALLOW_READS,
-      limits: { maximumModelSteps: 2 },
     })
-    await expect(runtime.start('Keep inspecting', 'fake/atlas')).rejects.toMatchObject({
-      code: 'MAXIMUM_STEPS',
+
+    await runtime.start('Complete the full requested inspection.', 'fake/atlas')
+
+    expect(fixture.executions).toHaveLength(40)
+    expect(transport.requests).toHaveLength(41)
+    expect(runtime.getSnapshot()).toMatchObject({
+      status: 'completed',
+      finalText: 'The requested inspection is complete.',
     })
   })
 

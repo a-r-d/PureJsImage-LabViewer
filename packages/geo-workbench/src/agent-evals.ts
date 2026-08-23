@@ -26,7 +26,6 @@ export interface AtlasAgentFailureEvalCase {
     | 'ACTION_UNAVAILABLE'
     | 'ACTION_VALIDATION_FAILED'
     | 'APPROVAL_DENIED'
-    | 'MAXIMUM_STEPS'
     | 'PROVIDER_ERROR'
     | 'STALE_PROJECT_REVISION'
     | 'TIMEOUT'
@@ -247,7 +246,6 @@ export const ATLAS_AGENT_FAILURE_EVAL_CASES: readonly AtlasAgentFailureEvalCase[
   { id: 'malformed-tool-input', expectedError: 'ACTION_VALIDATION_FAILED' },
   { id: 'unavailable-action', expectedError: 'ACTION_UNAVAILABLE' },
   { id: 'repeated-provider-failure', expectedError: 'PROVIDER_ERROR' },
-  { id: 'maximum-steps', expectedError: 'MAXIMUM_STEPS' },
   { id: 'timeout', expectedError: 'TIMEOUT' },
   { id: 'cancellation', expectedError: 'ABORTED' },
   { id: 'stale-project-revision', expectedError: 'STALE_PROJECT_REVISION' },

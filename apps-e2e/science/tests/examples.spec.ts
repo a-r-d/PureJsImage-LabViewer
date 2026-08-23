@@ -77,9 +77,19 @@ for (const artifact of prScenarios) {
         )
       }
 
+      await expect
+        .poll(
+          async () => {
+            const metrics = await page.evaluate(() =>
+              Reflect.get(window, '__PJI_WORKBENCH_METRICS__'),
+            )
+            return metrics.firstTileMilliseconds
+          },
+          { timeout: Math.max(5_000, artifact.budgets.maxFirstUsefulTileMilliseconds + 1_000) },
+        )
+        .not.toBeNull()
       const metrics = await page.evaluate(() => Reflect.get(window, '__PJI_WORKBENCH_METRICS__'))
       expect(metrics.sourceBytes).toBeLessThanOrEqual(artifact.budgets.maxSourceBytes)
-      expect(metrics.firstTileMilliseconds).not.toBeNull()
       expect(metrics.firstTileMilliseconds).toBeLessThanOrEqual(
         artifact.budgets.maxFirstUsefulTileMilliseconds,
       )

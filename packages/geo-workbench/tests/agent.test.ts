@@ -140,7 +140,6 @@ describe('Atlas scripted action-contract evaluations', () => {
       'malformed-tool-input',
       'unavailable-action',
       'repeated-provider-failure',
-      'maximum-steps',
       'timeout',
       'cancellation',
       'stale-project-revision',

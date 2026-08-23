@@ -235,13 +235,22 @@ describe('science workbench characterization', () => {
       'generated.drifting-stack',
       'cdc.ecoli-sem',
       'cdc.staph-aureus-sem',
+      'cdc.ecoli-sem-jpeg',
       'nih.hela-cells-3709',
+      'nih.hela-cells-3709-jpeg',
       'nci.hhv6-em',
     ])
     expect(
       enabledExampleScenarios()
         .filter(({ source }) => source.kind === 'bundled')
         .map(({ id }) => id),
-    ).toEqual(['cdc.ecoli-sem', 'cdc.staph-aureus-sem', 'nih.hela-cells-3709', 'nci.hhv6-em'])
+    ).toEqual([
+      'cdc.ecoli-sem',
+      'cdc.staph-aureus-sem',
+      'cdc.ecoli-sem-jpeg',
+      'nih.hela-cells-3709',
+      'nih.hela-cells-3709-jpeg',
+      'nci.hhv6-em',
+    ])
   })
 })
