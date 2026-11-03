@@ -52,7 +52,15 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'], deviceScaleFactor: 1 } },
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chrome',
+        launchOptions: { chromiumSandbox: true },
+        deviceScaleFactor: 1,
+      },
+    },
     { name: 'firefox', use: { ...devices['Desktop Firefox'], deviceScaleFactor: 1 } },
     { name: 'webkit', use: { ...devices['Desktop Safari'], deviceScaleFactor: 1 } },
   ],

@@ -55,9 +55,6 @@ jobs:
     name: Browser ${{ matrix.browser }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container:
-      image: mcr.microsoft.com/playwright:v1.62.1-noble
-      options: --user 1001 --ipc=host
     strategy:
       fail-fast: false
       matrix:
@@ -80,6 +77,8 @@ jobs:
         run: pnpm install --frozen-lockfile
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Install current browsers
+        run: pnpm exec playwright install --with-deps chrome firefox webkit
       - name: Science Playwright
         env:
           E2E_EXPECTED_PROJECTS: ${{ matrix.browser }}

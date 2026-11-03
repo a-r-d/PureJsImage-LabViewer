@@ -288,9 +288,11 @@ Suggested jobs:
 
 1. `quality`: format, lint, typecheck, unit tests, architecture boundaries.
 2. `build`: package builds, workbench build, bundle budgets, Cloudflare dry run.
-3. `browser`: science and geo Playwright in the version-matched Playwright image, one job per
-   Chromium/Firefox/WebKit matrix cell. Science uses two workers so visual and analysis specs
-   stay stable; geo uses four. Jobs skip `playwright install --with-deps`.
+3. `browser`: science and geo Playwright on the Ubuntu runner, one job per
+   Chromium/Firefox/WebKit matrix cell. Install stable Chrome and the matching Firefox/WebKit
+   builds with `playwright install --with-deps chrome firefox webkit`. The Chromium project
+   uses the Chrome channel with sandboxing enabled. Science uses two workers so visual and
+   analysis specs stay stable; geo uses four.
 4. `accessibility-visual`: deterministic UI gates.
 5. `corpus-compact`: enabled Tier 1 subset with cache.
 6. `security`: audit, secret scan, CSP/static bundle checks.

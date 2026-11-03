@@ -102,9 +102,9 @@ describe('Playwright e2e scripts and CI wiring', () => {
     const workflow = await readFile(`${root}/.github/workflows/ci.yml`, 'utf8')
     const browser = githubJobBody(workflow, 'browser')
 
-    expect(browser).toContain('mcr.microsoft.com/playwright:v1.62.1-noble')
+    expect(browser).not.toContain('mcr.microsoft.com/playwright:')
     expect(browser).toContain('PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD')
-    expect(browser).not.toMatch(/playwright install/u)
+    expect(browser).toContain('playwright install --with-deps chrome firefox webkit')
     expect(browser).toContain(`--project=\${{ matrix.browser }}`)
     expect(browser).toContain(`pnpm test:e2e:science --project=\${{ matrix.browser }}`)
     expect(browser).toContain(`pnpm test:e2e:geo --project=\${{ matrix.browser }}`)
